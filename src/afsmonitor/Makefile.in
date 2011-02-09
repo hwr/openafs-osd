@@ -1,0 +1,68 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+srcdir=@srcdir@
+include @TOP_OBJDIR@/src/config/Makefile.config
+INSTALL = @INSTALL@
+INSTALL_DATA = @INSTALL_DATA@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_SCRIPT = @INSTALL_SCRIPT@
+
+INCLS=${TOP_INCDIR}/afs/gtxobjects.h \
+	${TOP_INCDIR}/afs/gtxwindows.h \
+	${TOP_INCDIR}/afs/gtxcurseswin.h \
+	${TOP_INCDIR}/afs/gtxdumbwin.h \
+	${TOP_INCDIR}/afs/gtxX11win.h \
+	${TOP_INCDIR}/afs/gtxobjects.h \
+	${TOP_INCDIR}/afs/gtxlightobj.h \
+	${TOP_INCDIR}/afs/gtxtextobj.h \
+	${TOP_INCDIR}/afs/gtxobjdict.h \
+	${TOP_INCDIR}/afs/keys.h \
+	${TOP_INCDIR}/afs/cellconfig.h \
+	${TOP_INCDIR}/afs/cmd.h \
+	${TOP_INCDIR}/afs/xstat_fs.h \
+	${TOP_INCDIR}/afs/xstat_cm.h \
+	afsmonitor.h \
+	afsmon-labels.h
+LIBS=${TOP_LIBDIR}/libxstat_fs.a \
+	${TOP_LIBDIR}/libxstat_cm.a \
+	${TOP_LIBDIR}/libgtx.a \
+	${TOP_LIBDIR}/libafsint.a \
+	${TOP_LIBDIR}/libcmd.a \
+	${TOP_LIBDIR}/librx.a \
+	${TOP_LIBDIR}/liblwp.a \
+	${TOP_LIBDIR}/libsys.a \
+	${TOP_LIBDIR}/util.a
+
+EXTRA_LIBS=${TXLIBS} ${XLIBS}
+
+all: afsmonitor
+
+afsmon-output.o: afsmon-output.c ${INCLS}
+afsmon-win.o: afsmon-win.c ${INCLS}
+afsmonitor.o: afsmonitor.c ${INCLS} AFS_component_version_number.c
+
+afsmonitor: afsmonitor.o afsmon-win.o afsmon-output.o ${LIBS}
+	${CC} ${LDFLAGS} -o afsmonitor afsmonitor.o afsmon-win.o \
+		afsmon-output.o ${LIBS} ${EXTRA_LIBS}
+
+afsmon-parselog:  afsmon-parselog.o ${LIBS}
+	${CC} ${CFLAGS} -o afsmon-parselog afsmon-parselog.c \
+		${LIBS} ${EXTRA_LIBS}
+
+install: afsmonitor
+	${INSTALL} -d ${DESTDIR}${bindir}
+	${INSTALL_PROGRAM} afsmonitor ${DESTDIR}${bindir}/afsmonitor
+
+dest: afsmonitor
+	${INSTALL} -d ${DEST}/bin
+	${INSTALL_PROGRAM} afsmonitor ${DEST}/bin/afsmonitor
+
+clean:
+	$(RM) -f *.o afsmonitor AFS_component_version_number.c
+
+include ../config/Makefile.version

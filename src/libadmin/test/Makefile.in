@@ -1,0 +1,56 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+srcdir=@srcdir@
+include @TOP_OBJDIR@/src/config/Makefile.config
+INSTALL = @INSTALL@
+INSTALL_DATA = @INSTALL_DATA@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_SCRIPT = @INSTALL_SCRIPT@
+
+CC = ${MT_CC}
+CFLAGS = ${COMMON_CFLAGS} ${MT_CFLAGS}
+
+########################################################################
+# build tests
+
+AFSCPLIBS =\
+	$(TOP_LIBDIR)/libafsadminutil.a \
+	$(TOP_LIBDIR)/libclientadmin.a \
+	$(TOP_LIBDIR)/libbosadmin.a \
+	$(TOP_LIBDIR)/libvosadmin.a \
+	$(TOP_LIBDIR)/libkasadmin.a \
+	$(TOP_LIBDIR)/libptsadmin.a \
+	$(TOP_LIBDIR)/libafsauthent.a \
+	$(TOP_LIBDIR)/libafsrpc.a \
+	$(TOP_LIBDIR)/libcmd.a \
+	$(TOP_LIBDIR)/libafsutil.a
+
+AFSCPOBJS =\
+	bos.o \
+	client.o \
+	kas.o \
+	pts.o \
+	util.o \
+	vos.o
+
+all test tests: afscp
+
+client.o: client.c
+	$(CC) $(CFLAGS) @CFLAGS_NOERROR@ -c ${srcdir}/client.c
+
+afscp: afscp.o $(AFSCPOBJS) $(AFSCPLIBS)
+	$(CC) $(CFLAGS) -o afscp afscp.o $(AFSCPOBJS) \
+	-L${TOP_LIBDIR} $(AFSCPLIBS) ${MT_LIBS} $(XLIBS)
+
+#######################################################################
+install:
+
+dest:
+
+clean:
+	$(RM) -f *.o afscp core

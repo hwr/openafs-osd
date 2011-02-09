@@ -1,0 +1,226 @@
+#!/usr/bin/env pagsh
+#
+#  This script archives files to a single archival OSD which's number
+#  must be supplied as argument.
+#
+#  The way the servers to ask for files must be adopted to the local site.
+#  In our (RZG) case we have a file in AFS which describes all servers.
+#  Another possibility could be to ask the VLDB by 'vos listaddr'
+#  
+#  The script extracts the size range for the archival OSD from the 
+#  osddb database.
+#
+#  In our case we want to have 2 archival copies per file. 
+#  The archival OSDS here have size ranges which allow this for all files 
+#  between 1mb and 100mb:
+#
+# 4 raid6           4095 gb  67.3 % up   arch  70  64     afs15.rz  0 (1mb-8mb)
+# 5 tape            7442 gb  56.4 % up   arch  64  30     styx.rzg  0 (1mb-100gb)
+#13 hsmgpfs         3139 gb  38.1 % up   arch  50  32     tsm.rzg. 12 (8mb-100gb)
+#
+# Syntax
+#
+# archive1 <OSD> [-grep <string> <file>] [-copies <n>]
+#
+# default for n is 2
+#
+if [ -d /var/log/openafs ]; then
+    BOS=/usr/sbin/bos
+    VOS=/usr/sbin/vos
+    OSD=/usr/bin/osd
+    FS=/usr/bin/fs
+    TOKENS=/usr/bin/tokens
+    LOCALAUTH=/usr/sbin/localauth
+    UDEBUG=/usr/sbin/udebug
+    LogDir=/var/log/openafs
+else 
+    BOS=/usr/afs/bin/bos
+    VOS=/usr/afs/bin/vos
+    OSD=/usr/afs/bin/osd
+    TOKENS=/usr/afs/bin/tokens
+    FS=/usr/afs/bin/fs
+    LOCALAUTH=/usr/afs/bin/localauth
+    UDEBUG=/usr/afs/bin/udebug
+    LogDir=/usr/afs/logs
+fi
+logfile=$LogDir/Archive${1}${2}${3}Log
+copies=2
+
+grep=0
+if [ "a$2" != "a" ]; then
+    if [ "$2" == "-wipeable" ]; then
+    	flag="-wipeable"
+    else
+	if [ "$2" == "-grep" ]; then
+	    grep=1
+	    str1=$3
+	    if [ "a$4" != "a" ]; then
+		if [ "$4" == "-copies" ]; then
+		    copies=$5
+		fi
+	    fi
+	else
+	    if [ "$2" == "-copies" ]; then
+		copies=$3
+	    fi
+	fi
+    fi
+fi
+
+if [ -f ${logfile} ]; then
+    mv ${logfile} ${logfile}.`date +"%F"`
+fi
+
+exec > ${logfile} 2>&1
+
+if [ $grep -eq 1 ]; then
+    servers=`grep openafs /afs/ipp/backups/servers | grep $str1 | awk '{print $1}'`
+else
+    servers=`grep openafs /afs/ipp/backups/servers | awk '{print $1}'`
+fi
+
+minpriority=48
+interval=1800
+wanted=2048
+highWaterMark=800
+osddbPort=7012
+skipped=0
+dontsleep=0
+
+startday=`date +%d`
+
+while [ 1 ]
+do
+    starttime=`date +%s`
+    IamSyncsite=`$UDEBUG localhost $osddbPort | grep -c "I am sync site"`
+    if [ $IamSyncsite -ne 0 ]; then
+        $LOCALAUTH
+	$TOKENS
+        authtime=`date +%s`
+	error=0
+	pmUsed=999
+	while [ $pmUsed -gt $highWaterMark ]
+	do
+		eval `$OSD osd $1 | awk '{
+	        	if ($1 == "minSize") {
+		    	    	printf("minSize=%u;\n", $3 * 1024)
+	        	}
+	        	if ($1 == "maxSize") {
+		    	    	printf("maxSize=%u;\n", $3 * 1024)
+ 	        	}
+	        	if ($1 == "alprior") {
+		    	    	print "prior="$3";"
+	        	}
+			if ($1 == "pmUsed") {
+		    	    	print "pmUsed="$3";"
+			}
+			if ($1 == "highWaterMark") {
+		    	    	print "highWaterMark="$3";"
+			}
+	    	}'`
+		if [ $pmUsed -gt $highWaterMark ]; then
+			echo `date +"%k:%M:%S"` archival OSD $1 too full, $pmUsed per mille, waiting 5 minutes
+			sleep 300
+		fi
+	done
+	
+	echo Archival OSD $1 has minsize $minSize and maxsize $maxSize
+	for s in $servers
+        do
+	    # start with different offsets
+            if [ $skipped -lt $1 ]; then
+                skipped=`expr $skipped + 1`
+		dontsleep=1
+                continue
+            fi
+	    echo `date +"%k:%M:%S"` Server $s
+	    echo vos arch $s -copies $copies -minsize $minSize -maxsize $maxSize -osd $1 $flag
+	    fids=`$VOS arch $s -copies $copies -minsize $minSize -maxsize $maxSize -osd $1 -candidates $wanted $flag -localauth | grep -v Fid |grep -v Tot |  awk '{print $1}'`
+	    while [ "x$fids" != "x" ]
+	    do
+		archived=0
+	        got=`echo $fids | wc | awk '{print $2}'`
+	        echo `date +"%k:%M:%S"` Got $got fids on server $s to archive on $1
+	        for f in $fids
+	        do 	
+		    $FS checkserver > /dev/null 2>&1
+		    error=0
+		    vol_vnode=`echo $f | awk -F\. '{print $1"."$2}'`
+		    inuse=`fs threads -serv $s | grep -c $vol_vnode`
+		    if [ $inuse -gt 0 ]; then
+			echo skiping $f, is already in use
+			continue
+		    fi
+		    existing_copies=`fs fidlistarch $f | grep -c ArchiveOsd`
+		    if [ $existing_copies -ge $copies ]; then
+			echo skiping $f, has already $existing_copies copies
+			continue
+		    fi
+		    echo `date +"%k:%M:%S"` fs fidarchive $f $1
+		    fs fidarchive $f $1
+		    error=$?
+		    if [ $error -eq 0 ]; then
+			archived=1
+		    else
+			echo Could not archive $f, error code was $error
+		    fi
+    		    now=`date +%s`
+    		    tokenlife=`expr $now - $authtime`
+    		    if [ $tokenlife -gt 1800 ]; then
+			pmUsed=999
+			while [ $pmUsed -gt $highWaterMark ]
+			do
+				eval `$OSD osd $1 | awk '{
+					if ($1 == "pmUsed") {
+		    				print "pmUsed="$3";"
+					}
+					if ($1 == "highWaterMark") {
+		    	    			print "highWaterMark="$3";"
+					}
+	    			}'`
+				if [ $pmUsed -gt $highWaterMark ]; then
+					echo `date +"%k:%M:%S"` archival OSD $1 too full, $mpUsed per mille, waiting 5 minutes
+					sleep 300
+				fi
+			done
+			echo token already $tokenlife seconds old
+			$LOCALAUTH
+			$TOKENS
+    			authtime=`date +%s`
+    		    fi
+	        done
+		if [ $got -eq $wanted ]; then
+		    if [ $archived -gt 0 ]; then
+	    		echo vos arch $s -copies 2 -minsize $minSize -maxsize $maxSize -osd $1   
+	    		fids=`$VOS arch $s -copies 2 -minsize $minSize -maxsize $maxSize -osd $1 -candidates $wanted -localauth | grep -v Fid |grep -v Tot |  awk '{print $1}'`
+		    else
+			fids=
+		    fi
+		else
+			fids=
+		fi
+		today=`date +%d`
+		if [ "$today" != "$startday" ]; then
+			echo Enough for today
+			exit
+		fi 
+	    done
+        done
+    else
+	echo `date` I am not syncsite
+    fi
+    endtime=`date +%s`
+    sleeptime=`expr $starttime + $interval - $endtime`
+    if [ $sleeptime -gt 0 ]; then
+        if [ $dontsleep -eq 1 ]; then
+            if [ $skipped -ge $1 ]; then
+                dontsleep=0
+            fi
+        else
+            echo `date +"%k:%M:%S"` now sleeping $sleeptime seconds
+            sleep $sleeptime
+        fi
+    else
+	echo `date +"%k:%M:%S"` no time to sleep!
+    fi
+done

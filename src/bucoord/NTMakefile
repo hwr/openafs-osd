@@ -1,0 +1,136 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+RELDIR=bucoord
+AFSDEV_AUXCDEFINES = $(AFSDEV_AUXCDEFINES) -DNOGDI -DWIN32_LEAN_AND_MEAN
+!INCLUDE ..\config\NTMakefile.$(SYS_NAME)
+!INCLUDE ..\config\NTMakefile.version
+
+#########################################################################
+# install local include file
+INCFILES = \
+        $(DESTDIR)\include\afs\bc.h \
+        $(DESTDIR)\include\afs\bucoord_prototypes.h
+
+$(DESTDIR)\include\afs\bc.h: bc.h
+
+############################################################################
+# build afsbxdb.lib
+
+LIBFILE = $(DESTDIR)\lib\afs\afsbxdb.lib
+
+LIBOBJS =\
+	$(OUT)/dsstub.obj \
+	$(OUT)/ubik_db_if.obj \
+	$(OUT)/status.obj \
+	$(OUT)/dlq.obj \
+	$(OUT)/bucoord_errs.obj \
+	$(OUT)/volstub.obj \
+	$(OUT)/AFS_component_version_number.obj
+
+$(LIBFILE): $(LIBOBJS)
+	$(LIBARCH)
+
+
+############################################################################
+# build backup
+
+EXEFILE = $(DESTDIR)\etc\backup.exe
+
+EXERES = $(OUT)/backup.res
+
+EXEOBJS =\
+	$(OUT)\main.obj \
+	$(OUT)\config.obj \
+	$(OUT)\dsstub.obj \
+	$(OUT)\volstub.obj \
+	$(OUT)\commands.obj \
+	$(OUT)\server.obj \
+	$(OUT)\dsvs.obj \
+	$(OUT)\dump.obj \
+	$(OUT)\restore.obj \
+	$(OUT)\ubik_db_if.obj \
+	$(OUT)\dump_sched.obj \
+	$(OUT)\vol_sets.obj \
+	$(OUT)\tape_hosts.obj \
+	$(OUT)\bucoord_errs.obj \
+	$(OUT)\bc_status.obj \
+	$(OUT)\status.obj \
+	$(OUT)\dlq.obj \
+
+
+$(EXERES): backup.rc AFS_component_version_number.h
+
+$(EXEOBJS):$$(@B).c
+	$(C2OBJ) $**
+
+EXELIBS =\
+	$(DESTDIR)\lib\afs\afsbudb.lib \
+        $(DESTDIR)\lib\afs\afsbxdb.lib \
+        $(DESTDIR)\lib\afs\afsbubasics.lib \
+        $(DESTDIR)\lib\afs\afsbutm.lib \
+        $(DESTDIR)\lib\afs\afsvolser.lib \
+        $(DESTDIR)\lib\afs\afsvldb.lib \
+        $(DESTDIR)\lib\afs\afsacl.lib \
+        $(DESTDIR)\lib\afs\afsprot.lib      \
+        $(DESTDIR)\lib\afs\afskauth.lib \
+        $(DESTDIR)\lib\afsubik.lib \
+        $(DESTDIR)\lib\afs\afsauth.lib \
+        $(DESTDIR)\lib\afsrxkad.lib \
+        $(DESTDIR)\lib\afsdes.lib \
+        $(DESTDIR)\lib\afsrx.lib \
+        $(DESTDIR)\lib\afslwp.lib \
+        $(DESTDIR)\lib\afs\afscmd.lib \
+        $(DESTDIR)\lib\afs\afscom_err.lib \
+        $(DESTDIR)\lib\afs\afsutil.lib \
+        $(DESTDIR)\lib\afs\afsusd.lib \
+	$(DESTDIR)\lib\afs\afsprocmgmt.lib \
+	$(DESTDIR)\lib\afs\afspioctl.lib \
+	$(DESTDIR)\lib\afs\afsreg.lib \
+	$(DESTDIR)\lib\libafsconf.lib
+	
+
+$(EXEFILE): $(EXEOBJS) $(EXERES) $(EXELIBS)
+	$(EXECONLINK) dnsapi.lib mpr.lib iphlpapi.lib shell32.lib
+        $(_VC_MANIFEST_EMBED_EXE)
+	$(EXEPREP)
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+
+############################################################################
+# compile_et to get bc.h
+
+bucoord_errs.c bc.h:    bucoord_errs.et bc.p.h
+	$(DEL) bucoord_errs.c bc.h
+	$(COMPILE_ET) bucoord_errs -h bc
+
+############################################################################
+# Definitions for generating versioninfo resources
+
+$(OUT)/backup.res: AFS_component_version_number.h
+
+############################################################################
+# Install 
+
+install: $(INCFILES) $(LIBFILE) $(EXEFILE)
+
+
+############################################################################
+# Local clean target; augments predefined clean target
+
+clean::
+        $(DEL) $(INCFILES)
+        $(DEL) $(LIBFILE)
+        $(DEL) $(EXEFILE)
+	$(DEL) bc.h bucoord_errs.c
+	$(DEL) $(EXERES)
+	$(DEL) AFS_component_version_number.h
+
+
+mkdir:
+

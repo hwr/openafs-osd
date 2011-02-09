@@ -1,0 +1,88 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+srcdir=@srcdir@
+include @TOP_OBJDIR@/src/config/Makefile.config
+INSTALL = @INSTALL@
+INSTALL_DATA = @INSTALL_DATA@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_SCRIPT = @INSTALL_SCRIPT@
+
+
+
+INCDIRS= -I${TOP_INCDIR} -I.. -I. -I${srcdir} -I${srcdir}/.. -I${TOP_OBJDIR}/src/config 
+LDIRS= -L.. -L${TOP_LIBDIR}
+LIBS= ${TOP_LIBDIR}/libcmd.a  ../librx.a ${TOP_LIBDIR}/liblwp.a \
+	 ${TOP_LIBDIR}/util.a ${TOP_LIBDIR}/libsys.a ${XLIBS}
+
+CFLAGS = ${OPTIMIZE} ${INCDIRS} -DRXDEBUG ${LDIRS} ${XCFLAGS} ${ARCHFLAGS}
+
+RXTESTOBJS = testclient.o testserver.o kstest.o kctest.o
+
+BASICINCLS =  ../rx_clock.h ../rx_queue.h ../rx_event.h
+
+LINK = ${CC} ${CFLAGS} -o $@ $@.o ${LIBS}
+
+TESTS = testclient testserver kstest kctest testqueue tableGen generator
+
+TH_TESTS = th_testserver th_testclient
+
+.IGNORE: 
+
+all: test
+
+test tests: ${TESTS}
+
+th_test th_tests: ${TH_TESTS}
+
+testclient: ../librx.a testclient.o
+	-${LINK}
+
+testserver: ../librx.a testserver.o
+	-${LINK}
+
+kstest: ../librx.a kstest.o
+	-${LINK}
+
+kctest: ../librx.a kctest.o
+	-${LINK}
+
+rxperf: rxperf.o ../librx.a
+	-${LINK}
+
+# th_ versions only have link lines for Solaris now.
+th_testclient: th_testclient.o ../../libafsrpc/libafsrpc.so 
+	${CC} ${CFLAGS} -mt -o th_testclient th_testclient.o \
+		../../libafsrpc/libafsrpc.so -lpthread
+
+th_testclient.o: testclient.c
+	${CC} ${CFLAGS} -DAFS_PTHREAD_ENV -mt -c -o th_testclient.o \
+		${srcdir}/testclient.c
+
+th_testserver: th_testserver.o ../../libafsrpc/libafsrpc.so 
+	${CC} ${CFLAGS} -mt -o th_testserver th_testserver.o \
+		../../libafsrpc/libafsrpc.so -lpthread
+
+th_testserver.o: testserver.c
+	${CC} ${CFLAGS} -DAFS_PTHREAD_ENV -mt -c -o th_testserver.o \
+		${srcdir}/testserver.c
+
+th_rxperf: th_rxperf.o ${TOP_LIBDIR}/libafsrpc.a
+	${MT_CC} ${MT_CFLAGS} -o th_rxperf th_rxperf.o \
+		${TOP_LIBDIR}/libafsrpc.a ${MT_LIBS} ${XLIBS}
+
+th_rxperf.o: rxperf.c
+	${MT_CC} ${MT_CFLAGS} ${CFLAGS} -c $(srcdir)/rxperf.c \
+		-o th_rxperf.o
+
+testqueue: ../librx.a testqueue.o
+	-${LINK}
+
+${RXTESTOBJS}: ${BASICINCLS} ../rx.h
+
+clean:
+	$(RM) -f *.o *.a ${TESTS} ${TH_TESTS} core

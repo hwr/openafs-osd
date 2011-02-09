@@ -1,0 +1,50 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+RELDIR=finale
+!INCLUDE ..\config\NTMakefile.$(SYS_NAME)
+!INCLUDE ..\config\NTMakefile.version
+
+############################################################################
+# Build translate_et.exe
+
+TRANSLATE_ET_EXEFILE = $(DESTDIR)\bin\translate_et.exe
+
+TRANSLATE_ET_EXEOBJS =\
+	$(OUT)\translate_et_nt.obj \
+	$(OUT)\translate_et.res
+
+TRANSLATE_ET_EXELIBS =\
+	$(DESTDIR)\lib\afs\afsadminutil.lib \
+	$(DESTDIR)\lib\afs\afsclientadmin.lib
+
+
+$(TRANSLATE_ET_EXEFILE): $(TRANSLATE_ET_EXEOBJS) $(TRANSLATE_ET_EXELIBS)
+	$(EXECONLINK)
+        $(_VC_MANIFEST_EMBED_EXE)
+	$(EXEPREP)
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+############################################################################
+# Definitions for generating versioninfo resources
+
+$(OUT)\translate_et.res: AFS_component_version_number.h
+
+############################################################################
+# Install target; primary makefile target
+
+install: $(TRANSLATE_ET_EXEFILE)
+
+
+############################################################################
+# Local clean target; augments predefined clean target
+
+clean::
+
+mkdir:
+	

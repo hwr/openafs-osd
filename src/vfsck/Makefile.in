@@ -1,0 +1,76 @@
+#
+# Copyright (c) 1987 The Regents of the University of California.
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms are permitted
+# provided that the above copyright notice and this paragraph are
+# duplicated in all such forms and that any documentation,
+# advertising materials, and other materials related to such
+# distribution and use acknowledge that the software was developed
+# by the University of California, Berkeley.  The name of the
+# University may not be used to endorse or promote products derived
+# from this software without specific prior written permission.
+# THIS SOFTWARE IS PROVIDED ``AS IS'' AND WITHOUT ANY EXPRESS OR
+# IMPLIED WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED
+# WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+#
+#	@(#)Makefile	5.12 (Berkeley) 6/26/89
+#
+srcdir=@srcdir@
+include @TOP_OBJDIR@/src/config/Makefile.config
+INSTALL = @INSTALL@
+INSTALL_DATA = @INSTALL_DATA@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_SCRIPT = @INSTALL_SCRIPT@
+
+CFLAGS=${COMMON_CFLAGS} ${XCFLAGS} ${ARCHFLAGS} ${VFSCK_CFLAGS}
+
+SRCS= dir.c inode.c main.c pass1.c pass1b.c pass2.c pass3.c \
+	pass4.c pass5.c setup.c utilities.c ufs_subr.c \
+	ufs_tables.c dirutils.c vprintf.c proplist.c
+
+OBJS= dir.o inode.o main.o pass1.o pass1b.o pass2.o pass3.o pass4.o \
+	pass5.o setup.o utilities.o dirutils.o vprintf.o proplist.o \
+	ufs_subr.o ufs_tables.o
+
+all: vfsck
+
+vfsck: ${OBJS} 
+	${CC} -o vfsck ${CFLAGS} ${OBJS} ${NON_SHARED} ${XLIBS}
+
+main.o: main.c AFS_component_version_number.c
+
+
+#
+# Installation targets
+#
+install: vfsck
+	${INSTALL} -d ${DESTDIR}${afssrvlibexecdir}
+	${INSTALL_PROGRAM} vfsck ${DESTDIR}${afssrvlibexecdir}/vfsck
+
+dest: vfsck
+	${INSTALL} -d ${DEST}/root.server/etc
+	${INSTALL} -d ${DEST}/root.server/usr/afs/bin
+	${INSTALL_PROGRAM} vfsck ${DEST}/root.server/etc/vfsck
+	${INSTALL_PROGRAM} vfsck ${DEST}/root.server/usr/afs/bin/vfsck
+	case ${SYS_NAME} in \
+		hp_ux10?) \
+			${CP} ${srcdir}/bcheckrc ${DEST}/root.server/etc ;; \
+		hp_ux11?) \
+			${CP} ${srcdir}/bcheckrc-hp_ux110 ${DEST}/root.server/etc/bcheckrc ;; \
+	esac
+	case ${SYS_NAME} in \
+		hp_ux10? | hp_ux11? ) \
+			${CP} ${srcdir}/mount ${DEST}/root.server/etc; \
+			${CP} ${srcdir}/umount ${DEST}/root.server/etc; \
+			chmod 755 ${DEST}/root.server/etc/bcheckrc ${DEST}/root.server/etc/mount ${DEST}/root.server/etc/umount ;\
+				;; \
+	esac
+
+#
+# Misc targets
+#
+clean:
+	$(RM) -f ${OBJS} vfsck core AFS_component_version_number.c
+
+include ../config/Makefile.version

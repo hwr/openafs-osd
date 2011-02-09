@@ -1,0 +1,93 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+AFSDEV_AUXCDEFINES = -DAFS_PTHREAD_ENV
+
+RELDIR=libadmin\vos
+!include ..\..\config\NTMakefile.$(SYS_NAME)
+!include ..\..\config\NTMakefile.version
+
+VLSERVER = ..\..\vlserver
+
+VOLSER = ..\..\volser
+
+FSINT = ..\..\fsint
+
+RX = ..\..\rx
+
+ADMINOBJS = \
+	$(OUT)\afs_vosAdmin.obj \
+	$(OUT)\vosutils.obj \
+	$(OUT)\vsprocs.obj \
+	$(OUT)\lockprocs.obj
+
+VLSERVEROBJS = \
+	$(OUT)\vldbint.cs.obj \
+	$(OUT)\vldbint.xdr.obj
+
+VOLSEROBJS = \
+	$(OUT)\volint.cs.obj \
+	$(OUT)\volint.xdr.obj
+
+FSINTOBJS =\
+	$(OUT)\afsint.xdr.obj \
+	$(OUT)\afscbint.xdr.obj
+
+RXOBJS = $(OUT)\xdr_int32.obj $(OUT)\xdr_int64.obj
+
+DLLOBJS =\
+	$(ADMINOBJS) \
+	$(VLSERVEROBJS) \
+	$(VOLSEROBJS) \
+	$(FSINTOBJS) \
+	$(RXOBJS) \
+	$(OUT)\afsvosadmin.res
+
+LIBINCLUDES = \
+	$(DESTDIR)\include\afs\afs_vosAdmin.h
+
+
+
+DLLFILE = $(DESTDIR)\root.server\usr\afs\bin\afsvosadmin.dll
+ILIBDIR = $(DESTDIR)\lib\afs
+
+DLLLIBS =\
+	$(DESTDIR)\lib\afspthread.lib \
+	$(DESTDIR)\lib\afs\afsadminutil.lib \
+	$(DESTDIR)\lib\afsauthent.lib \
+	$(DESTDIR)\lib\afsrpc.lib \
+	$(DESTDIR)\lib\afs\afsutil.lib
+
+$(DLLFILE): $(DLLOBJS) $(DLLLIBS)
+	$(DLLCONLINK) /DEF:vosadmin.def
+        $(_VC_MANIFEST_EMBED_DLL)
+	$(DLLPREP)
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+	$(MAKECYGLIB) --input-def vosadmin.def
+	$(COPY) $*.lib $(ILIBDIR)
+	$(DEL) $*.lib $*.exp
+
+install: $(DLLFILE) $(LIBINCLUDES)
+
+$(RXOBJS): $(RX)\$$(@B).c
+	$(C2OBJ) -I$(RX) $**
+
+$(VLSERVEROBJS):$(VLSERVER)\$$(@B).c
+	$(C2OBJ) $**
+
+$(VOLSEROBJS):$(VOLSER)\$$(@B).c
+	$(C2OBJ) $**
+
+$(FSINTOBJS):$(FSINT)\$$(@B).c
+	$(C2OBJ) $**
+
+# Definitions for generating versioninfo resources
+$(OUT)\afsvosadmin.res: AFS_component_version_number.h
+
+mkdir:
+	

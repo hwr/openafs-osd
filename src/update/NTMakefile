@@ -1,0 +1,100 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+RELDIR=update
+!INCLUDE ..\config\NTMakefile.$(SYS_NAME)
+!INCLUDE ..\config\NTMakefile.version
+
+LIBS = \
+	$(DESTDIR)\lib\afs\afsauth.lib \
+	$(DESTDIR)\lib\afs\afsauth.lib \
+	$(DESTDIR)\lib\afs\afscom_err.lib \
+	$(DESTDIR)\lib\afs\afsutil.lib \
+	$(DESTDIR)\lib\afs\afsreg.lib \
+	$(DESTDIR)\lib\afslwp.lib \
+	$(DESTDIR)\lib\afsdes.lib \
+	$(DESTDIR)\lib\afsrx.lib \
+	$(DESTDIR)\lib\afsubik.lib \
+	$(DESTDIR)\lib\afs\afseventlog.lib \
+	$(DESTDIR)\lib\afsrxkad.lib \
+	$(DESTDIR)\lib\afs\afsprocmgmt.lib \
+	$(DESTDIR)\lib\libafsconf.lib \
+        $(DESTDIR)\lib\afs\afspioctl.lib
+
+############################################################################
+# Definitions for generating files via RXGEN
+
+update.cs.c: update.xg update.h
+	$(RXGEN) -u -C -o $@ update.xg
+
+update.ss.c: update.xg update.h
+	$(RXGEN) -S -o $@ update.xg
+
+update.xdr.c: update.xg	update.h
+	$(RXGEN) -c -o $@ update.xg
+
+update.h: update.xg
+	$(RXGEN) -u -h -o $@ update.xg
+
+############################################################################
+# upserver
+UPSERVER = $(DESTDIR)\root.server\usr\afs\bin\upserver.exe
+
+USVR_OBJS = \
+	$(OUT)\AFS_component_version_number.obj \
+	$(OUT)\server.obj \
+	$(OUT)\utils.obj \
+	$(OUT)\update.ss.obj \
+	$(OUT)\upserver.res
+
+$(UPSERVER):  $(USVR_OBJS) $(LIBS)
+	$(EXECONLINK) dnsapi.lib mpr.lib iphlpapi.lib shell32.lib
+        $(_VC_MANIFEST_EMBED_EXE)
+	$(EXEPREP) 
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+############################################################################
+# upclient
+UPCLIENT = $(DESTDIR)\root.server\usr\afs\bin\upclient.exe
+
+UCLNT_OBJS = \
+	$(OUT)\AFS_component_version_number.obj \
+	$(OUT)\client.obj \
+	$(OUT)\utils.obj \
+	$(OUT)\update.cs.obj \
+	$(OUT)\upclient.res
+
+$(UPCLIENT):  $(UCLNT_OBJS)  $(LIBS)
+	$(EXECONLINK) dnsapi.lib mpr.lib iphlpapi.lib shell32.lib
+        $(_VC_MANIFEST_EMBED_EXE)
+	$(EXEPREP) 
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+############################################################################
+# generate versioninfo resources
+
+$(OUT)\upserver.res: AFS_component_version_number.h
+
+$(OUT)\upclient.res: AFS_component_version_number.h
+
+############################################################################
+# Install update executables.
+
+install: update.h $(UPCLIENT) $(UPSERVER)
+
+
+############################################################################
+# Local clean target; augments predefined clean target
+
+clean::
+	$(DEL) update.cs.c update.ss.c update.xdr.c update.h
+
+mkdir:
+	 copy home $(OUT)\.
+	

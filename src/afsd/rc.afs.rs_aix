@@ -1,0 +1,121 @@
+#!/bin/sh
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+# rc.afs: rc script for AFS on AIX platforms
+#
+# Install this script as /etc/rc.afs
+# then make an entry in /etc/inittab after the NFS entry:
+# rcnfs:2:wait:/etc/rc.nfs > /dev/console 2>&1 # Start NFS Daemons
+# rcafs:2:wait:/etc/rc.afs > /dev/console 2>&1 # Start AFS Daemons
+# 
+
+# Choose one depending on how much usage this client gets
+SMALL="-stat 300 -dcache 100 -daemons 2 -volumes 50"
+MEDIUM="-stat 2000 -dcache 800 -daemons 3 -volumes 70"
+LARGE="-stat 2800 -dcache 2400 -daemons 5 -volumes 128"
+OPTIONS=$LARGE
+
+# Choose one depending on how you want NFS requests handled by AFS
+# Use "none" if this machine won't be an AFS/NFS Translator.
+# To make the machine an AFS/NFS Translator, use iauth for:
+#   AIX 4.1.x  where x >= 5
+#   AIX 4.2.x  where x >= 1
+#   AIX 4.3.x  for any x
+# otherwise use "nfs"
+NFS_NONE="none"
+NFS_NFS="nfs"
+NFS_IAUTH="iauth"
+NFS=$NFS_NONE
+
+if [ "$NFS" = "nfs" ]; then
+  ExportExt=""
+  AFSExt=".trans"
+  RMTSYS="-rmtsys"
+elif [ "$NFS" = "iauth" ]; then
+  ExportExt=".nonfs"
+  AFSExt=".iauth"
+  RMTSYS="-rmtsys"
+else
+  ExportExt=".nonfs"
+  AFSExt=""
+  RMTSYS=""
+fi
+
+# find out whether we have 32 or 64 bit kernel
+
+kernel=32
+if [ -x /usr/sbin/bootinfo ]; then
+	kernel=`/usr/sbin/bootinfo -K`
+fi
+
+# Load AFS into the kernel
+
+echo "$0: Loading $kernel bit kernel AFS modules"
+cd /usr/vice/etc/dkload
+if [ $kernel -eq 32 ]; then
+    ./cfgexport -a export.ext${ExportExt} && ./cfgafs -a afs.ext.32
+else
+    ./cfgexport64 -a export64.ext${ExportExt} && ./cfgafs64 -a afs.ext.64
+fi
+if [ $? -ne 0 ]; then
+  /bin/echo "Unable to load AFS extensions into kernel. Not starting client."
+  exit 1
+fi
+
+
+# Start bosserver
+if [ -x /usr/afs/bin/bosserver ]; then
+  echo 'Starting bosserver' > /dev/console
+  /usr/afs/bin/bosserver &
+fi
+
+
+#
+# Check that all of the client configuration files exist
+#
+for file in afsd cacheinfo ThisCell CellServDB; do
+  if [ ! -f /usr/vice/etc/${file} ]; then
+    /bin/echo "/usr/vice/etc/${file} does not exist. Not starting AFS client."
+    exit 2
+  fi
+done
+
+
+#
+# Check that the root directory for AFS (/afs) 
+# and the cache directory (/usr/vice/cache) both exist
+#
+for dir in `awk -F: '{print $1, $2}' /usr/vice/etc/cacheinfo`; do
+  if [ ! -d ${dir} ]; then
+    echo "${dir} does not exist. Not starting AFS client."
+    exit 3
+  fi
+done
+
+#
+# Make sure afs exists in /etc/name_to_sysnum
+#
+if grep -s "afs" /etc/vfs > /dev/null; then
+    echo "Entry for afs already exists in /etc/vfs"
+else
+    echo "Creating entry for afs in /etc/vfs"
+    cp /etc/vfs /etc/vfs.orig
+    sed '/cdrfs/i\
+afs	4	none	none	remote' /etc/vfs > /tmp/vfs
+    mv /tmp/vfs /etc/vfs
+fi
+
+
+# Start afsd
+/usr/vice/etc/afsd $OPTIONS $RMTSYS
+
+
+# Start AFS inetd services
+if [ -x /etc/inetd.afs -a -f /etc/inetd.conf.afs ]; then
+    /etc/inetd.afs /etc/inetd.conf.afs
+fi

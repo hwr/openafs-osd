@@ -1,0 +1,15 @@
+# After changing this file, please run
+#     git ls-files -i --exclude-standard
+# to check that you haven't inadvertently ignored any tracked files.
+
+/afsio
+/cacheout
+/cmdebug
+/fs
+/fstrace
+/kdump-*
+/up
+/kdump
+/kdump64
+/livesys
+/twiddle

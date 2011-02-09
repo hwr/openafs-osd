@@ -1,0 +1,187 @@
+#!/usr/bin/env pagsh
+
+
+if [ -d /var/log/openafs ]; then
+    BOS=/usr/sbin/bos
+    VOS=/usr/sbin/vos
+    OSD=/usr/bin/osd
+    FS=/usr/bin/fs
+    TOKENS=/usr/bin/tokens
+    LOCALAUTH=/usr/sbin/localauth
+    UDEBUG=/usr/sbin/udebug
+    LogDir=/var/log/openafs
+else
+    BOS=/usr/afs/bin/bos
+    VOS=/usr/afs/bin/vos
+    OSD=/usr/afs/bin/osd
+    TOKENS=/usr/afs/bin/tokens
+    FS=/usr/afs/bin/fs
+    LOCALAUTH=/usr/afs/bin/localauth
+    UDEBUG=/usr/afs/bin/udebug
+    LogDir=/usr/afs/logs
+fi
+
+if [ -f $LogDir/WiperLog ]; then
+    mv $LogDir/WiperLog $LogDir/WiperLog.`date +"%F_%H:%M"`
+fi
+exec > $LogDir/WiperLog 2>&1
+
+
+sleeptime=600
+
+startday=`date +%d`
+
+while [ 1 ] 
+do
+    IamSyncsite=`$UDEBUG localhost 7012 | grep -c "I am sync site"`
+    if [ $IamSyncsite -ne 0 ]; then
+        $LOCALAUTH
+        osds=`$OSD list -wipeable | grep -v "id     name" |awk '{print $1}'`
+        for o in $osds
+        do
+	    newestWiped=0
+	    newnewest=0
+	    minMB=0
+	    eval `$OSD osd $o | awk '
+	        BEGIN{}
+	        {
+		    if ($1=="pmUsed") {
+		        pmused = $3
+		    }
+		    if ($1=="highWaterMark") {
+		        hw = $3
+		    } 
+		    if ($1=="totalSize") {
+		        tot = $3
+		    }
+		    if ($1=="minWipeSize") {
+		        print "minMB="$3";"
+		    }
+		    if ($1=="newest" && $2=="wiped") {
+		        print "newestWiped="$4";"
+		    }
+	        }
+	        END{
+		    if (pmused < hw) {
+		        kb = 0;
+		    } else {
+		        kb = int((pmused - hw) * tot)
+		    }
+		    printf("kb=%u; used=%u;\n", kb, pmused)
+	        }'`
+     	    echo `date +"%F_%H:%M"` OSD $o: used = $used/1000, wipe $kb kb
+	    while [ $kb -gt 0 ]
+	    do
+		success=0
+	        candfile=/tmp/wipe-cand.$o
+	        candvolfile=/tmp/wipe-candvols.$o
+	        if [ -f $candvolfile ]; then
+		    rm $candvolfile
+	        fi
+	        echo $OSD wipecand $o -max 1000 -crit 0 -minMB $minMB -seconds
+	        $OSD wipecand $o -max 1000 -crit 0 -minMB $minMB -seconds > $candfile
+	        fids=`cat $candfile | awk '{print $4}'`
+		if [ "x$fids" == "x" ]; then
+			break;
+		fi
+	        for f in $fids
+	        do
+		    $FS checkserver 
+		    fid=`grep $f $candfile | awk '{print $5}'`
+		    tag=`echo $f| awk -F\. '{print $4}'`
+		    if [ "$f" != "$fid.$tag" ]; then
+		        echo $f belongs to $fid 
+		    fi
+		    actual=`$FS fidosd $fid | grep osd=$o | grep -c $f`
+		    if [ $actual -eq 0 ]; then
+			rc=22
+		    else
+		        echo `date +"%F_%H:%M"` $FS fidwipe $fid
+		        $FS fidwipe $fid
+		        rc=$?
+		    fi
+		    if [ $rc -eq 22 ]; then
+			# 
+			# Error handling:
+			# 
+			# return code was EINVAL which could mean
+			# this object is not part of the file any more
+			#
+			$FS fidosd $fid
+			active=1
+			active=`$FS fidosd $fid | grep -c osd=$o`
+			if [ $active -eq 0 ]; then
+			    ro=`$VOS ex $f | grep ROnly: | awk '{print $4}'`
+			    if [ "x$ro" != "x" ]; then
+				eval `echo $fid | awk -F\. '{printf("vn=%s; un=%s;\n", $2, $3)}'`
+				fid2=$ro.$vn.$un
+				$FS fidosd $fid2
+				active=1
+				active=`$FS fidosd $fid2 | grep -c osd=$o`
+				if [ $active -eq 0 ]; then
+				    $OSD ex $o $f 
+				    lc=`$OSD ex $o $f | awk '{print $10}'`
+				    if [ $lc -lt 32 ]; then
+					while [ $lc -gt 0 ]
+				    	do
+					    echo $OSD decr $o $f 
+					    lc=`expr $lc - 1`
+				        done
+				    else
+					echo ATTENTION: bad link count for $f on OSD $o
+				    fi
+				fi
+			    fi
+			fi 
+		    fi
+		    if [ $rc -eq 0 ]; then
+		        v=`echo $f | awk -F\. '{print $1}'`
+		        echo $v >> $candvolfile
+			eval `grep $f $candfile | awk '{d=$3/1024; printf("diff=%d; newest=%u",int(d),int($2))}'`
+			# echo diff=$diff  newest=$newest
+			if [ $newest -gt $newnewest ]; then
+			 	newnewest=$newest
+			fi
+		        echo `date +"%F_%H:%M"` wiping of $f may free $diff kb
+		        kb=`expr $kb -  $diff `
+		        echo `date +"%F_%H:%M"` still $kb kb to wipe
+			success=1
+		    fi
+		    if [ $kb -le 0 ] ; then
+		        break	
+		    fi
+	        done
+		echo newnewest=$newnewest newestWiped=$newestWiped
+		if [ $newnewest -gt $newestWiped ]; then
+		    $TOKENS
+		    echo $OSD setosd $o -newestwiped $newnewest
+		    $OSD setosd $o -newestwiped $newnewest
+                    if [ $? -ne 0 ]; then
+                        echo $OSD setosd $o -newestwiped $newnewest -localauth
+                        $OSD setosd $o -newestwiped $newnewest -localauth
+                    fi
+		fi
+		if [ -f $candvolfile ]; then
+	        	volumes=`cat $candvolfile | sort -u`
+	        	for v in $volumes
+	        	do
+		    	$VOS rel $v -localauth
+	        	done
+		fi
+		if [ $success -eq 0 ]; then
+		 	break
+		fi
+	    done
+        done
+    else
+	echo `date +"%F_%H:%M"` I am not syncsite
+    fi
+    today=`date +%d`
+    if [ "$startday" != "$today" ]; then
+	$BOS restart localhost wiper -localauth
+	echo Enough for today
+	exit
+    fi
+    echo `date +"%F_%H:%M"` now sleeping  $sleeptime seconds
+    sleep $sleeptime
+done

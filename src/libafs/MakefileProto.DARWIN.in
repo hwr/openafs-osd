@@ -1,0 +1,188 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+#
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+# $Header$
+# 
+# MakefileProto for Digital Unix systems
+#
+srcdir=@srcdir@
+include @TOP_OBJDIR@/src/config/Makefile.config
+INSTALL = @INSTALL@
+INSTALL_DATA = @INSTALL_DATA@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_SCRIPT = @INSTALL_SCRIPT@
+
+
+# OS specific object files:
+AFS_OS_OBJS = \
+	osi_misc.o \
+	osi_file.o \
+	osi_inode.o \
+	osi_gcpags.o \
+	osi_groups.o \
+	osi_sleep.o \
+	osi_vcache.o \
+	osi_vm.o \
+	osi_vnodeops.o \
+	osi_module.o
+
+
+#AFS_OS_NFSOBJS = osi_vfsops_nfs.o
+
+AFS_OS_NONFSOBJS = osi_vfsops.o
+
+
+# System specific build commands and flags
+KDEFS=
+DBUG = 
+DEFINES= -D_KERNEL -DKERNEL -DKERNEL_PRIVATE -DDIAGNOSTIC -DUSE_SELECT -DMACH_USER_API -DMACH_KERNEL
+KINCLUDES=-I${KROOT}/System/Library/Frameworks/Kernel.framework/Headers
+
+<ppc_darwin_80 x86_darwin_80>
+KOPTS_DBUG=-g
+<ppc_darwin_90 x86_darwin_90
+KOPTS_DBUG=-ggdb
+< x86_darwin_100>
+KOPTS_DBUG=-gdwarf-2
+<ppc_darwin_80 x86_darwin_80 ppc_darwin_90 x86_darwin_90 x86_darwin_100>
+KOPTS_ppc=-static -nostdinc -nostdlib -fno-builtin -finline -fno-keep-inline-functions -msoft-float -mlong-branch -fsigned-bitfields -arch ppc -Dppc -DPPC -D__PPC__ -DPAGE_SIZE_FIXED -mcpu=750 -mmultiple -fschedule-insns -force_cpusubtype_ALL
+KOPTS_x86=-static -nostdinc -nostdlib -fno-builtin -finline -fno-keep-inline-functions -msoft-float -mlong-branch -fsigned-bitfields -arch i386 -Di386 -DI386 -D__I386__ -DPAGE_SIZE_FIXED -march=i686 -mpreferred-stack-boundary=2 -falign-functions=4
+KOPTS_amd64=-static -nostdinc -nostdlib -fno-builtin -finline -fno-keep-inline-functions -msoft-float -mlong-branch -fsigned-bitfields -arch x86_64 -Damd64 -DAMD64 -D__AMD64__ -DPAGE_SIZE_FIXED -march=x86-64 -mpreferred-stack-boundary=4 -falign-functions=4 -m64 -mkernel -mno-red-zone
+ARCH_ppc=$(shell echo "${ARCHFLAGS}" | grep -q -w ppc && echo yes || echo ${ARCHFLAGS} | egrep -q -w -v 'ppc|i386|x86_64' && arch | grep -q -w ppc && echo yes)
+ARCH_x86=$(shell echo "${ARCHFLAGS}" | grep -q -w i386 && echo yes || echo ${ARCHFLAGS} | egrep -q -w -v 'ppc|i386|x86_64' && arch | grep -q -w i386 && echo yes)
+ARCH_amd64=$(shell echo "${ARCHFLAGS}" | grep -q -w x86_64 && echo yes || echo ${ARCHFLAGS} | egrep -q -w -v 'ppc|i386|x86_64' && arch | grep -q -w x86_64 && echo yes)
+OBJ_ppc=$(shell echo "${ARCH_ppc}" | grep -q -w yes && echo "$@.ppc")
+OBJ_x86=$(shell echo "${ARCH_x86}" | grep -q -w yes && echo "$@.x86")
+OBJ_amd64=$(shell echo "${ARCH_amd64}" | grep -q -w yes && echo "$@.amd64")
+
+<x86_darwin_100>
+MODLD=$(CC) -static $(KOPTS_DBUG) -nostdlib $(ARCHFLAGS) -Xlinker -kext
+<all -x86_darwin_100>
+MODLD=$(CC) -static $(KOPTS_DBUG) -nostdlib $(ARCHFLAGS)
+<all>
+
+CFLAGS_ppc=${KINCLUDES} -I. -I.. -I${TOP_OBJDIR}/src/config $(DEFINES) $(KDEFS) $(KOPTS_ppc) $(KOPTS_DBUG)
+CFLAGS_x86=${KINCLUDES} -I. -I.. -I${TOP_OBJDIR}/src/config $(DEFINES) $(KDEFS) $(KOPTS_x86) $(KOPTS_DBUG)
+CFLAGS_amd64=${KINCLUDES} -I. -I.. -I${TOP_OBJDIR}/src/config $(DEFINES) $(KDEFS) $(KOPTS_amd64) $(KOPTS_DBUG)
+
+<all>
+# Name of directory to hold object files and libraries.
+KOBJ = MODLOAD
+
+# This tells Makefile.common to use it's single directory build target.
+COMPDIRS = single_compdir
+INSTDIRS = single_instdir
+DESTDIRS = single_destdir
+
+include Makefile.common
+
+<ppc_darwin_80 x86_darwin_80 ppc_darwin_90 x86_darwin_90 x86_darwin_100>
+# override suffix rule; unfortunately, this causes a warning message
+.c.o:
+	if [ "$(ARCH_ppc)" = "yes" ]; then \
+	    $(CC) $(COMMON_INCLUDE) $(KERN_DBG) $(CFLAGS_ppc) $(CFLAGS-$@) -o $(patsubst %.o,%.o.ppc,$@) -c $< || exit(1) \
+	fi \
+	if [ "$(ARCH_x86)" = "yes" ]; then \
+	    $(CC) $(COMMON_INCLUDE) $(KERN_DBG) $(CFLAGS_x86) $(CFLAGS-$@) -o $(patsubst %.o,%.o.x86,$@) -c $< || exit(1) \
+	fi
+	if [ "$(ARCH_amd64)" = "yes" ]; then \
+	    $(CC) $(COMMON_INCLUDE) $(KERN_DBG) $(CFLAGS_amd64) $(CFLAGS-$@) -o $(patsubst %.o,%.o.amd64,$@) -c $< || exit(1) \
+	fi \
+	lipo -create ${OBJ_ppc} ${OBJ_x86} ${OBJ_amd64} -output $@;
+
+CRULE_NOOPT_ppc=$(CC) $(COMMON_INCLUDE) $(KERN_DBG) $(CFLAGS_ppc) $(CFLAGS-$@) -o $(patsubst %.o,%.o.ppc,$@) -c $?
+CRULE_NOOPT_x86=$(CC) $(COMMON_INCLUDE) $(KERN_DBG) $(CFLAGS_x86) $(CFLAGS-$@) -o $(patsubst %.o,%.o.x86,$@) -c $?
+CRULE_NOOPT_amd64=$(CC) $(COMMON_INCLUDE) $(KERN_DBG) $(CFLAGS_amd64) $(CFLAGS-$@) -o $(patsubst %.o,%.o.amd64,$@) -c $?
+CRULE_NOOPT=$(shell echo "${ARCH_ppc}" | grep -q -w yes && echo "${CRULE_NOOPT_ppc} && "; echo "${ARCH_x86}" | grep -q -w yes && echo "${CRULE_NOOPT_x86} && "; echo "${ARCH_amd64}" | grep -q -w yes && echo "${CRULE_NOOPT_amd64} && "; echo " lipo -create ${OBJ_ppc} ${OBJ_x86} ${OBJ_amd64} -output $@")
+
+CRULE_OPT_ppc=$(CC) $(COMMON_INCLUDE) $(KERN_DBG) $(KERN_OPTMZ) $(CFLAGS_ppc) $(CFLAGS-$@) -o $(patsubst %.o,%.o.ppc,$@) -c $? 
+CRULE_OPT_x86=$(CC) $(COMMON_INCLUDE) $(KERN_DBG) $(KERN_OPTMZ) $(CFLAGS_x86) $(CFLAGS-$@) -o $(patsubst %.o,%.o.x86,$@) -c $? 
+CRULE_OPT_amd64=$(CC) $(COMMON_INCLUDE) $(KERN_DBG) $(KERN_OPTMZ) $(CFLAGS_amd64) $(CFLAGS-$@) -o $(patsubst %.o,%.o.amd64,$@) -c $? 
+CRULE_OPT=$(shell echo "${ARCH_ppc}" | grep -q -w yes && echo "${CRULE_OPT_ppc} && "; echo "${ARCH_x86}" | grep -q -w yes && echo "${CRULE_OPT_x86} && "; echo "${ARCH_amd64}" | grep -q -w yes && echo "${CRULE_OPT_amd64} && ";echo "lipo -create ${OBJ_ppc} ${OBJ_x86} ${OBJ_amd64} -output $@")
+
+<all -ppc_darwin_80 -x86_darwin_80 -ppc_darwin_90 -x86_darwin_90 -x86_darwin_100>
+MODLD=$(LD)
+CFLAGS=${KINCLUDES} -I. -I.. -I${TOP_OBJDIR}/src/config $(DEFINES) $(KDEFS) $(KOPTS)
+<ppc_darwin_70>
+KOPTS=-static -fno-common -finline -fno-keep-inline-functions -force_cpusubtype_ALL -msoft-float -mlong-branch 
+<ppc_darwin_60>
+KOPTS=-no-cpp-precomp -static -fno-common -finline -fno-keep-inline-functions -force_cpusubtype_ALL -msoft-float -mlong-branch 
+<ppc_darwin_14 ppc_darwin_13 ppc_darwin_12>
+KOPTS=-no-precomp -static -fno-common -finline -fno-keep-inline-functions -force_cpusubtype_ALL -msoft-float -mlong-branch 
+
+<all>
+setup:
+	-mkdir $(KOBJ)
+	-$(RM) $(KOBJ)/Makefile $(KOBJ)/Makefile.common $(KOBJ)/config
+	ln -fs ../Makefile $(KOBJ)/Makefile
+	ln -fs ../Makefile.common $(KOBJ)/Makefile.common
+	ln -fs ../config $(KOBJ)/config
+	-$(RM) -f  h rpc
+	-ln -fs $(KROOT)/System/Library/Frameworks/Kernel.framework/Headers/sys h
+	-ln -fs /usr/include/rpc rpc
+
+
+# Below this line are targets when in the COMMON directory:
+LIBAFS = libafs.o
+LIBAFSNONFS = libafs.nonfs.o
+
+INST_LIBAFS = ${DESTDIR}${afskerneldir}/afs-nfs.kext
+INST_LIBAFSNONFS = ${DESTDIR}${afskerneldir}/afs.kext
+DEST_LIBAFS = ${DEST}/root.client/usr/vice/etc/afs-nfs.kext
+DEST_LIBAFSNONFS = ${DEST}/root.client/usr/vice/etc/afs.kext
+<all -ppc_darwin_90 -x86_darwin_90 -x86_darwin_100>
+LIBAFSDSYM =
+LIBAFSNONFSDSYM =
+INST_LIBAFSDSYM =
+INST_LIBAFSNONFSDSYM =
+DEST_LIBAFSDSYM =
+DEST_LIBAFSNONFSDSYM =
+<ppc_darwin_90 x86_darwin_90 x86_darwin_100>
+LIBAFSDSYM = libafs.o.dSYM
+LIBAFSNONFSDSYM = libafs.nonfs.o.dSYM
+INST_LIBAFSDSYM = ${DESTDIR}${afskerneldir}/afs-nfs.kext.dSYM
+INST_LIBAFSNONFSDSYM = ${DESTDIR}${afskerneldir}/afs.kext.dSYM
+DEST_LIBAFSDSYM =  ${DEST}/root.client/usr/vice/etc/afs-nfs.kext.dSYM
+DEST_LIBAFSNONFSDSYM = ${DEST}/root.client/usr/vice/etc/afs.kext.dSYM
+<all>
+
+libafs: $(LIBAFSNONFS) $(LIBAFSNONFSDSYM) ;
+install_libafs: $(LIBAFSNONFS) $(LIBAFSNONFSDSYM) ;
+	-mkdir -p ${INST_LIBAFSNONFS}
+	-mkdir -p ${INST_LIBAFSNONFS}/Contents
+	$(INSTALL) -m 644 ../${DARWIN_INFOFILE} ${INST_LIBAFSNONFS}/Contents/Info.plist
+	-mkdir -p ${INST_LIBAFSNONFS}/Contents/MacOS
+	$(INSTALL) -m 644 ${LIBAFSNONFS} ${INST_LIBAFSNONFS}/Contents/MacOS/afs
+<ppc_darwin_90 x86_darwin_90 x86_darwin_100>
+	-mkdir -p ${INST_LIBAFSNONFSDSYM}/Contents/Resources/DWARF
+	$(INSTALL) ${LIBAFSNONFSDSYM}/Contents/Info.plist ${INST_LIBAFSNONFSDSYM}/Contents
+	$(INSTALL) ${LIBAFSNONFSDSYM}/Contents/Resources/DWARF/${LIBAFSNONFS} ${INST_LIBAFSNONFSDSYM}/Contents/Resources/DWARF
+<all>
+
+dest_libafs: $(LIBAFSNONFS) $(LIBAFSNONFSDSYM) ;
+	-mkdir -p ${DEST_LIBAFSNONFS}
+	-mkdir -p ${DEST_LIBAFSNONFS}/Contents
+	$(INSTALL) -m 644 ../${DARWIN_INFOFILE} ${DEST_LIBAFSNONFS}/Contents/Info.plist
+	-mkdir -p ${DEST_LIBAFSNONFS}/Contents/MacOS
+	$(INSTALL) -m 644 ${LIBAFSNONFS} ${DEST_LIBAFSNONFS}/Contents/MacOS/afs
+<ppc_darwin_90 x86_darwin_90 x86_darwin_100>
+	-mkdir -p ${DEST_LIBAFSNONFSDSYM}/Contents/Resources/DWARF
+	$(INSTALL) ${LIBAFSNONFSDSYM}/Contents/Info.plist ${DEST_LIBAFSNONFSDSYM}/Contents
+	$(INSTALL) ${LIBAFSNONFSDSYM}/Contents/Resources/DWARF/${LIBAFSNONFS} ${DEST_LIBAFSNONFSDSYM}/Contents/Resources/DWARF
+<all>
+
+${LIBAFS}: $(AFSAOBJS) $(AFSNFSOBJS)
+	$(MODLD) -r -o ${LIBAFS} ${AFSAOBJS} ${AFSNFSOBJS} -lcc_kext
+
+${LIBAFSNONFS}:  $(AFSAOBJS) $(AFSNONFSOBJS)
+	$(MODLD) -r -o ${LIBAFSNONFS} ${AFSAOBJS} ${AFSNONFSOBJS} -lcc_kext
+
+<ppc_darwin_90 x86_darwin_90 x86_darwin_100>
+$(LIBAFSDSYM): ${LIBAFS}
+	dsymutil -o ${LIBAFS}.dSYM ${LIBAFS}
+${LIBAFSNONFSDSYM}: ${LIBAFSNONFS}
+	dsymutil -o ${LIBAFSNONFS}.dSYM ${LIBAFSNONFS}
+<all>

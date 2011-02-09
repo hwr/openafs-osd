@@ -1,0 +1,846 @@
+/* src/config/afsconfig.h.in.  Generated from configure.ac by autoheader.  */
+
+/* define if asynchronous socket errors can be received */
+#undef ADAPT_PMTU_RECVERR
+
+/* define to activate cache bypassing Unix client */
+#undef AFS_CACHE_BYPASS
+
+/* define to allow use of DCACHE as HSM system for object storage */
+#undef AFS_DCACHE_SUPPORT
+
+/* define if client may access visible fileserver partitions directly
+   (experimental) */
+#undef AFS_ENABLE_VICEP_ACCESS
+
+/* define to allow use of HPSS as HSM system for object storage */
+#undef AFS_HPSS_SUPPORT
+
+/* define if you want to want namei fileserver */
+#undef AFS_NAMEI_ENV
+
+/* define to disable the nfs translator */
+#undef AFS_NONFSTRANS
+
+/* define to use interface specific I/O routines */
+#undef AFS_RXOSD_SPECIAL
+
+/* define if you want to use object storage in your cell */
+#undef AFS_RXOSD_SUPPORT
+
+/* define if aops.writepage takes a struct writeback_control */
+#undef AOP_WRITEPAGE_TAKES_WRITEBACK_CONTROL
+
+/* define if target is big endian */
+#undef AUTOCONF_FOUND_BIGENDIAN
+
+/* define if you want to salvager to check bitmasks later */
+#undef BITMAP_LATER
+
+/* define if your dops.d_revalidate takes a nameidata argument */
+#undef DOP_REVALIDATE_TAKES_NAMEIDATA
+
+/* define if d_path() takes a struct path argument */
+#undef D_PATH_TAKES_STRUCT_PATH
+
+/* define to enable syscall table probes */
+#undef ENABLE_LINUX_SYSCALL_PROBING
+
+/* define if you have redhat buildsystem */
+#undef ENABLE_REDHAT_BUILDSYS
+
+/* define if sys/param.h defines the endiness */
+#undef ENDIANESS_IN_SYS_PARAM_H
+
+/* define if your linux kernel exports ia32_sys_call_table */
+#undef EXPORTED_IA32_SYS_CALL_TABLE
+
+/* define if your kernel exports init_mm */
+#undef EXPORTED_INIT_MM
+
+/* define if your linux kernel exports kallsyms address */
+#undef EXPORTED_KALLSYMS_ADDRESS
+
+/* define if your linux kernel exports kallsyms */
+#undef EXPORTED_KALLSYMS_SYMBOL
+
+/* define if key_type_keyring is exported */
+#undef EXPORTED_KEY_TYPE_KEYRING
+
+/* define if proc_root_fs is exported */
+#undef EXPORTED_PROC_ROOT_FS
+
+/* define if your linux kernel exports sys_call_table */
+#undef EXPORTED_SYS_CALL_TABLE
+
+/* define if your linux kernel exports sys_chdir */
+#undef EXPORTED_SYS_CHDIR
+
+/* define if your linux kernel exports sys_open */
+#undef EXPORTED_SYS_OPEN
+
+/* define if tasklist_lock exported */
+#undef EXPORTED_TASKLIST_LOCK
+
+/* define if your fops.flush takes an fl_owner_t argument */
+#undef FOP_FLUSH_TAKES_FL_OWNER_T
+
+/* define if your fops.fsync takes an dentry argument */
+#undef FOP_FSYNC_TAKES_DENTRY
+
+/* define if your get_sb_nodev needs a struct vfsmount argument */
+#undef GET_SB_HAS_STRUCT_VFSMOUNT
+
+/* Define to 1 if you have the `add_error_table' function. */
+#undef HAVE_ADD_ERROR_TABLE
+
+/* Define to 1 if you have the `add_to_error_table' function. */
+#undef HAVE_ADD_TO_ERROR_TABLE
+
+/* define if arpa/nameser_compat.h exists */
+#undef HAVE_ARPA_NAMESER_COMPAT_H
+
+/* Define to 1 if you have the <crt_externs.h> header file. */
+#undef HAVE_CRT_EXTERNS_H
+
+/* Define to 1 if you have the `daemon' function. */
+#undef HAVE_DAEMON
+
+/* Define to 1 if you have the <direct.h> header file. */
+#undef HAVE_DIRECT_H
+
+/* Define to 1 if you have the <dirent.h> header file, and it defines `DIR'.
+   */
+#undef HAVE_DIRENT_H
+
+/* Define to 1 if you have the `encode_krb5_enc_tkt_part' function. */
+#undef HAVE_ENCODE_KRB5_ENC_TKT_PART
+
+/* Define to 1 if you have the `encode_krb5_ticket' function. */
+#undef HAVE_ENCODE_KRB5_TICKET
+
+/* Define to 1 if you have the <et/com_err.h> header file. */
+#undef HAVE_ET_COM_ERR_H
+
+/* Define to 1 if you have the <fcntl.h> header file. */
+#undef HAVE_FCNTL_H
+
+/* Define to 1 if you have the `flock' function. */
+#undef HAVE_FLOCK
+
+/* Define to 1 if the system has the type `fsblkcnt_t'. */
+#undef HAVE_FSBLKCNT_T
+
+/* Define to 1 if you have the `fseeko64' function. */
+#undef HAVE_FSEEKO64
+
+/* Define to 1 if you have the `ftello64' function. */
+#undef HAVE_FTELLO64
+
+/* Define to 1 if you have the `getcwd' function. */
+#undef HAVE_GETCWD
+
+/* Define to 1 if you have the `getprogname' function. */
+#undef HAVE_GETPROGNAME
+
+/* Define to 1 if you have the `getrlimit' function. */
+#undef HAVE_GETRLIMIT
+
+/* Define to 1 if you have the <grp.h> header file. */
+#undef HAVE_GRP_H
+
+/* Define to 1 if you have the <ibm_svc/krb5_svc.h> header file. */
+#undef HAVE_IBM_SVC_KRB5_SVC_H
+
+/* Define to 1 if the system has the type `intptr_t'. */
+#undef HAVE_INTPTR_T
+
+/* Define to 1 if you have the <inttypes.h> header file. */
+#undef HAVE_INTTYPES_H
+
+/* define if you have in_systm.h header file */
+#undef HAVE_IN_SYSTM_H
+
+/* Define to enable Kerberos features. */
+#undef HAVE_KERBEROS
+
+/* Define to 1 if you have the <kerberosIV/krb.h> header file. */
+#undef HAVE_KERBEROSIV_KRB_H
+
+/* Define to 1 if you have the <kerberosV/heim_err.h> header file. */
+#undef HAVE_KERBEROSV_HEIM_ERR_H
+
+/* define if kmem_cache_t exists */
+#undef HAVE_KMEM_CACHE_T
+
+/* Define to 1 if you have the `krb524_convert_creds_kdc' function. */
+#undef HAVE_KRB524_CONVERT_CREDS_KDC
+
+/* Define to 1 if you have the `krb5_524_convert_creds' function. */
+#undef HAVE_KRB5_524_CONVERT_CREDS
+
+/* Define to 1 if you have the `krb5_allow_weak_crypto' function. */
+#undef HAVE_KRB5_ALLOW_WEAK_CRYPTO
+
+/* Define to 1 if `keyblock' is member of `krb5_creds'. */
+#undef HAVE_KRB5_CREDS_KEYBLOCK
+
+/* Define to 1 if `session' is member of `krb5_creds'. */
+#undef HAVE_KRB5_CREDS_SESSION
+
+/* Define to 1 if you have the `krb5_c_encrypt' function. */
+#undef HAVE_KRB5_C_ENCRYPT
+
+/* Define to 1 if you have the `krb5_decode_ticket' function. */
+#undef HAVE_KRB5_DECODE_TICKET
+
+/* Define to 1 if you have the `krb5_enctype_enable' function. */
+#undef HAVE_KRB5_ENCTYPE_ENABLE
+
+/* Define to 1 if you have the `krb5_free_error_message' function. */
+#undef HAVE_KRB5_FREE_ERROR_MESSAGE
+
+/* Define to 1 if you have the `krb5_get_error_message' function. */
+#undef HAVE_KRB5_GET_ERROR_MESSAGE
+
+/* Define to 1 if you have the `krb5_get_error_string' function. */
+#undef HAVE_KRB5_GET_ERROR_STRING
+
+/* Define to 1 if you have the `krb5_get_err_txt' function. */
+#undef HAVE_KRB5_GET_ERR_TXT
+
+/* Define to 1 if you have the `krb5_get_init_creds_opt_alloc' function. */
+#undef HAVE_KRB5_GET_INIT_CREDS_OPT_ALLOC
+
+/* Define to 1 if you have the `krb5_get_prompt_types' function. */
+#undef HAVE_KRB5_GET_PROMPT_TYPES
+
+/* Define to 1 if you have the `krb5_principal_get_comp_string' function. */
+#undef HAVE_KRB5_PRINCIPAL_GET_COMP_STRING
+
+/* Define to 1 if you have the `krb5_princ_size' function. */
+#undef HAVE_KRB5_PRINC_SIZE
+
+/* Define to 1 if `type' is member of `krb5_prompt'. */
+#undef HAVE_KRB5_PROMPT_TYPE
+
+/* Define to 1 if you have the `krb5_svc_get_msg' function. */
+#undef HAVE_KRB5_SVC_GET_MSG
+
+/* Define if you have the libintl package. */
+#undef HAVE_LIBINTL
+
+/* Define if your kernel has the bdi_init function */
+#undef HAVE_LINUX_BDI_INIT
+
+/* Define if your kernel has linux/completion.h */
+#undef HAVE_LINUX_COMPLETION_H
+
+/* Define if your kernel has linux/config.h */
+#undef HAVE_LINUX_CONFIG_H
+
+/* Define if your kernel has the current_kernel_time function */
+#undef HAVE_LINUX_CURRENT_KERNEL_TIME
+
+/* Define if your kernel has the do_sync_read function */
+#undef HAVE_LINUX_DO_SYNC_READ
+
+/* Define if your kernel has the d_alloc_anon function */
+#undef HAVE_LINUX_D_ALLOC_ANON
+
+/* Define to 1 if you have the <linux/errqueue.h> header file. */
+#undef HAVE_LINUX_ERRQUEUE_H
+
+/* Define if your kernel has linux/exportfs.h */
+#undef HAVE_LINUX_EXPORTFS_H
+
+/* Define if your kernel has the find_task_by_pid function */
+#undef HAVE_LINUX_FIND_TASK_BY_PID
+
+/* Define if your kernel has linux/freezer.h */
+#undef HAVE_LINUX_FREEZER_H
+
+/* Define if your kernel has the generic_file_aio_read function */
+#undef HAVE_LINUX_GENERIC_FILE_AIO_READ
+
+/* Define if your kernel has the grab_cache_page_write_begin function */
+#undef HAVE_LINUX_GRAB_CACHE_PAGE_WRITE_BEGIN
+
+/* Define if your kernel has the hlist_unhashed function */
+#undef HAVE_LINUX_HLIST_UNHASHED
+
+/* Define if your kernel has the inode_setattr function */
+#undef HAVE_LINUX_INODE_SETATTR
+
+/* Define if your kernel has the i_size_read function */
+#undef HAVE_LINUX_I_SIZE_READ
+
+/* Define if your kernel has the kernel_setsockopt function */
+#undef HAVE_LINUX_KERNEL_SETSOCKOPT
+
+/* Define if your kernel has linux/key-type.h */
+#undef HAVE_LINUX_KEY_TYPE_H
+
+/* Define if your kernel has the PageChecked function */
+#undef HAVE_LINUX_PAGECHECKED
+
+/* Define if your kernel has the PageFsMisc function */
+#undef HAVE_LINUX_PAGEFSMISC
+
+/* Define if your kernel has the pagevec_lru_add_file function */
+#undef HAVE_LINUX_PAGEVEC_LRU_ADD_FILE
+
+/* Define if your kernel has the page_follow_link function */
+#undef HAVE_LINUX_PAGE_FOLLOW_LINK
+
+/* Define if your kernel has the page_offset function */
+#undef HAVE_LINUX_PAGE_OFFSET
+
+/* Define if your kernel has the rcu_read_lock function */
+#undef HAVE_LINUX_RCU_READ_LOCK
+
+/* Define if your kernel has linux/semaphore.h */
+#undef HAVE_LINUX_SEMAPHORE_H
+
+/* Define if your kernel has linux/seq_file.h */
+#undef HAVE_LINUX_SEQ_FILE_H
+
+/* Define if your kernel has the splice_direct_to_actor function */
+#undef HAVE_LINUX_SPLICE_DIRECT_TO_ACTOR
+
+/* Define if your kernel has the svc_addr_in function */
+#undef HAVE_LINUX_SVC_ADDR_IN
+
+/* Define if your kernel has the zero_user_segments function */
+#undef HAVE_LINUX_ZERO_USER_SEGMENTS
+
+/* Define to 1 if you have the <memory.h> header file. */
+#undef HAVE_MEMORY_H
+
+/* Define to 1 if you have the `mkstemp' function. */
+#undef HAVE_MKSTEMP
+
+/* define if you have mm_inline.h header file */
+#undef HAVE_MM_INLINE_H
+
+/* Define to 1 if you have the <mntent.h> header file. */
+#undef HAVE_MNTENT_H
+
+/* Define to 1 if you have the <ndir.h> header file, and it defines `DIR'. */
+#undef HAVE_NDIR_H
+
+/* Define to 1 if you have the <netdb.h> header file. */
+#undef HAVE_NETDB_H
+
+/* Define to 1 if you have the <netinet/in.h> header file. */
+#undef HAVE_NETINET_IN_H
+
+/* Define to 1 if the system has the type `off64_t'. */
+#undef HAVE_OFF64_T
+
+/* define if you have POSIX regex library */
+#undef HAVE_POSIX_REGEX
+
+/* Define to 1 if you have the `regcomp' function. */
+#undef HAVE_REGCOMP
+
+/* Define to 1 if you have the `regerror' function. */
+#undef HAVE_REGERROR
+
+/* Define to 1 if you have the `regexec' function. */
+#undef HAVE_REGEXEC
+
+/* Define to 1 if you have the <regex.h> header file. */
+#undef HAVE_REGEX_H
+
+/* Define if resolv.h's res_state has the fields retrans/retry */
+#undef HAVE_RES_RETRANSRETRY
+
+/* Define to 1 if you have the <security/pam_modules.h> header file. */
+#undef HAVE_SECURITY_PAM_MODULES_H
+
+/* define if keyctl has the KEYCTL_SESSION_TO_PARENT function */
+#undef HAVE_SESSION_TO_PARENT
+
+/* Define to 1 if you have the `setprogname' function. */
+#undef HAVE_SETPROGNAME
+
+/* Define to 1 if you have the `setvbuf' function. */
+#undef HAVE_SETVBUF
+
+/* Define to 1 if you have the `sigaction' function. */
+#undef HAVE_SIGACTION
+
+/* Define to 1 if you have the <signal.h> header file. */
+#undef HAVE_SIGNAL_H
+
+/* Define to 1 if you have the `snprintf' function. */
+#undef HAVE_SNPRINTF
+
+/* Define to 1 if you have the <stdint.h> header file. */
+#undef HAVE_STDINT_H
+
+/* Define to 1 if you have the <stdlib.h> header file. */
+#undef HAVE_STDLIB_H
+
+/* Define to 1 if you have the `strcasestr' function. */
+#undef HAVE_STRCASESTR
+
+/* Define to 1 if you have the `strerror' function. */
+#undef HAVE_STRERROR
+
+/* Define to 1 if you have the <strings.h> header file. */
+#undef HAVE_STRINGS_H
+
+/* Define to 1 if you have the <string.h> header file. */
+#undef HAVE_STRING_H
+
+/* Define to 1 if you have the `strlcat' function. */
+#undef HAVE_STRLCAT
+
+/* Define to 1 if you have the `strlcpy' function. */
+#undef HAVE_STRLCPY
+
+/* Define to 1 if your compiler supports labels in structs. */
+#undef HAVE_STRUCT_LABEL_SUPPORT
+
+/* Define to 1 if you have the <sys/bitypes.h> header file. */
+#undef HAVE_SYS_BITYPES_H
+
+/* Define to 1 if you have the <sys/dir.h> header file, and it defines `DIR'.
+   */
+#undef HAVE_SYS_DIR_H
+
+/* Define to 1 if you have the <sys/fcntl.h> header file. */
+#undef HAVE_SYS_FCNTL_H
+
+/* Define to 1 if you have the <sys/file.h> header file. */
+#undef HAVE_SYS_FILE_H
+
+/* Define to 1 if you have the <sys/fstyp.h> header file. */
+#undef HAVE_SYS_FSTYP_H
+
+/* Define to 1 if you have the <sys/fs_types.h> header file. */
+#undef HAVE_SYS_FS_TYPES_H
+
+/* Define to 1 if you have the <sys/ipc.h> header file. */
+#undef HAVE_SYS_IPC_H
+
+/* Define to 1 if you have the <sys/mntent.h> header file. */
+#undef HAVE_SYS_MNTENT_H
+
+/* Define to 1 if you have the <sys/mnttab.h> header file. */
+#undef HAVE_SYS_MNTTAB_H
+
+/* Define to 1 if you have the <sys/mount.h> header file. */
+#undef HAVE_SYS_MOUNT_H
+
+/* Define to 1 if you have the <sys/ndir.h> header file, and it defines `DIR'.
+   */
+#undef HAVE_SYS_NDIR_H
+
+/* Define to 1 if you have the <sys/pag.h> header file. */
+#undef HAVE_SYS_PAG_H
+
+/* Define to 1 if you have the <sys/param.h> header file. */
+#undef HAVE_SYS_PARAM_H
+
+/* Define to 1 if you have the <sys/resource.h> header file. */
+#undef HAVE_SYS_RESOURCE_H
+
+/* Define to 1 if you have the <sys/statfs.h> header file. */
+#undef HAVE_SYS_STATFS_H
+
+/* Define to 1 if you have the <sys/statvfs.h> header file. */
+#undef HAVE_SYS_STATVFS_H
+
+/* Define to 1 if you have the <sys/stat.h> header file. */
+#undef HAVE_SYS_STAT_H
+
+/* Define to 1 if you have the <sys/time.h> header file. */
+#undef HAVE_SYS_TIME_H
+
+/* Define to 1 if you have the <sys/types.h> header file. */
+#undef HAVE_SYS_TYPES_H
+
+/* Define to 1 if you have the <sys/vfs.h> header file. */
+#undef HAVE_SYS_VFS_H
+
+/* Define to 1 if you have <sys/wait.h> that is POSIX.1 compatible. */
+#undef HAVE_SYS_WAIT_H
+
+/* Define to 1 if you have the <termios.h> header file. */
+#undef HAVE_TERMIOS_H
+
+/* Define to 1 if you have the `timegm' function. */
+#undef HAVE_TIMEGM
+
+/* define if your kernel has the try_to_freeze function */
+#undef HAVE_TRY_TO_FREEZE
+
+/* Define to 1 if you have the <ucontext.h> header file. */
+#undef HAVE_UCONTEXT_H
+
+/* Define to 1 if the system has the type `uintptr_t'. */
+#undef HAVE_UINTPTR_T
+
+/* Define to 1 if you have the <unistd.h> header file. */
+#undef HAVE_UNISTD_H
+
+/* define if you have old ndir.h */
+#undef HAVE_USR_OLD_USR_INCLUDE_NDIR_H
+
+/* define if struct ufsvfs has vfs_dqrwlock */
+#undef HAVE_VFS_DQRWLOCK
+
+/* Define to 1 if you have the `vsnprintf' function. */
+#undef HAVE_VSNPRINTF
+
+/* Define to 1 if you have the `vsyslog' function. */
+#undef HAVE_VSYSLOG
+
+/* Define to 1 if you have the <windows.h> header file. */
+#undef HAVE_WINDOWS_H
+
+/* define to disable some gcc warnings in warnings-as-errors mode */
+#undef IGNORE_SOME_GCC_WARNINGS
+
+/* define if INIT_WORK takes a data (3rd) argument */
+#undef INIT_WORK_HAS_DATA
+
+/* define if your setattr return return non-void */
+#undef INODE_SETATTR_NOT_VOID
+
+/* define if your iops.create takes a nameidata argument */
+#undef IOP_CREATE_TAKES_NAMEIDATA
+
+/* define if your iops.lookup takes a nameidata argument */
+#undef IOP_LOOKUP_TAKES_NAMEIDATA
+
+/* define if your iops.permission takes a nameidata argument */
+#undef IOP_PERMISSION_TAKES_NAMEIDATA
+
+/* define if your iops.put_link takes a cookie */
+#undef IOP_PUT_LINK_TAKES_COOKIE
+
+/* define if irix has memcpy and friends */
+#undef IRIX_HAS_MEM_FUNCS
+
+/* define if key_alloc takes credentials */
+#undef KEY_ALLOC_NEEDS_CRED
+
+/* define if key_alloc takes a struct task * */
+#undef KEY_ALLOC_NEEDS_STRUCT_TASK
+
+/* define if kmem_cache_create constructor takes a single void ptr */
+#undef KMEM_CACHE_CTOR_TAKES_VOID
+
+/* define for new kmem_cache init function parameters */
+#undef KMEM_CACHE_INIT
+
+/* define if kmem_cache_create takes a destructor argument */
+#undef KMEM_CACHE_TAKES_DTOR
+
+/* Define if you have the libintl package. */
+#undef LIBINTL
+
+/* define if your linux kernel uses 5 arguments for sock_create */
+#undef LINUX_KERNEL_SOCK_CREATE_V
+
+/* define if your kernel has keyring support */
+#undef LINUX_KEYRING_SUPPORT
+
+/* define if your refrigerator takes PF_FREEZE */
+#undef LINUX_REFRIGERATOR_TAKES_PF_FREEZE
+
+/* define if kernel uses new export ops */
+#undef NEW_EXPORT_OPS
+
+/* Name of package */
+#undef PACKAGE
+
+/* Define to the address where bug reports for this package should be sent. */
+#undef PACKAGE_BUGREPORT
+
+/* Define to the full name of this package. */
+#undef PACKAGE_NAME
+
+/* Define to the full name and version of this package. */
+#undef PACKAGE_STRING
+
+/* Define to the one symbol short name of this package. */
+#undef PACKAGE_TARNAME
+
+/* Define to the version of this package. */
+#undef PACKAGE_VERSION
+
+/* Define to const if PAM uses const in pam_get_item, empty otherwise. */
+#undef PAM_CONST
+
+/* define if your kernel uses 3 arguments for posix_lock_file */
+#undef POSIX_LOCK_FILE_WAIT_ARG
+
+/* define if posix_test_lock takes a conflict argument */
+#undef POSIX_TEST_LOCK_CONFLICT_ARG
+
+/* define if posix_test_lock returns the conflicting lock */
+#undef POSIX_TEST_LOCK_RETURNS_CONFLICT
+
+/* define if printf and friends understand the %z length modifier */
+#undef PRINTF_TAKES_Z_LEN
+
+/* define if your recalc_sigpending takes void */
+#undef RECALC_SIGPENDING_TAKES_VOID
+
+/* define if register_sysctl_table has no insert_at head flag */
+#undef REGISTER_SYSCTL_TABLE_NOFLAG
+
+/* Define as the return type of signal handlers (`int' or `void'). */
+#undef RETSIGTYPE
+
+/* The size of `long', as computed by sizeof. */
+#undef SIZEOF_LONG
+
+/* The size of `unsigned int', as computed by sizeof. */
+#undef SIZEOF_UNSIGNED_INT
+
+/* The size of `unsigned long', as computed by sizeof. */
+#undef SIZEOF_UNSIGNED_LONG
+
+/* The size of `unsigned long long', as computed by sizeof. */
+#undef SIZEOF_UNSIGNED_LONG_LONG
+
+/* The size of `void *', as computed by sizeof. */
+#undef SIZEOF_VOID_P
+
+/* define if solookup takes a sockparams** */
+#undef SOLOOKUP_TAKES_SOCKPARAMS
+
+/* define if your statfs takes a dentry argument */
+#undef STATFS_TAKES_DENTRY
+
+/* Define to 1 if you have the ANSI C header files. */
+#undef STDC_HEADERS
+
+/* Define if kernel struct address_space_operations has the write_begin
+   element */
+#undef STRUCT_ADDRESS_SPACE_OPERATIONS_HAS_WRITE_BEGIN
+
+/* Define if kernel struct backing_dev_info has the name element */
+#undef STRUCT_BACKING_DEV_INFO_HAS_NAME
+
+/* Define if kernel struct ctl_table has the ctl_name element */
+#undef STRUCT_CTL_TABLE_HAS_CTL_NAME
+
+/* Define if kernel struct file_operations has the flock element */
+#undef STRUCT_FILE_OPERATIONS_HAS_FLOCK
+
+/* Define if kernel struct file_operations has the sendfile element */
+#undef STRUCT_FILE_OPERATIONS_HAS_SENDFILE
+
+/* define if struct file_operations has splice functions */
+#undef STRUCT_FILE_OPERATIONS_HAS_SPLICE
+
+/* Define if kernel struct file_system_type has the mount element */
+#undef STRUCT_FILE_SYSTEM_TYPE_HAS_MOUNT
+
+/* define if struct fs has fs_rolled */
+#undef STRUCT_FS_HAS_FS_ROLLED
+
+/* Define if kernel struct inode has the i_alloc_sem element */
+#undef STRUCT_INODE_HAS_I_ALLOC_SEM
+
+/* Define if kernel struct inode has the i_blkbits element */
+#undef STRUCT_INODE_HAS_I_BLKBITS
+
+/* Define if kernel struct inode has the i_blksize element */
+#undef STRUCT_INODE_HAS_I_BLKSIZE
+
+/* Define if kernel struct inode has the i_mutex element */
+#undef STRUCT_INODE_HAS_I_MUTEX
+
+/* Define if kernel struct inode has the i_security element */
+#undef STRUCT_INODE_HAS_I_SECURITY
+
+/* Define if kernel struct nameidata has the path element */
+#undef STRUCT_NAMEIDATA_HAS_PATH
+
+/* Define if kernel struct proc_dir_entry has the owner element */
+#undef STRUCT_PROC_DIR_ENTRY_HAS_OWNER
+
+/* define if you struct sockaddr sa_len */
+#undef STRUCT_SOCKADDR_HAS_SA_LEN
+
+/* Define if kernel struct super_block has the s_bdi element */
+#undef STRUCT_SUPER_BLOCK_HAS_S_BDI
+
+/* Define if kernel struct super_operations has the alloc_inode element */
+#undef STRUCT_SUPER_OPERATIONS_HAS_ALLOC_INODE
+
+/* Define if kernel struct super_operations has the evict_inode element */
+#undef STRUCT_SUPER_OPERATIONS_HAS_EVICT_INODE
+
+/* Define if kernel struct task_struct has the cred element */
+#undef STRUCT_TASK_STRUCT_HAS_CRED
+
+/* Define if kernel struct task_struct has the exit_state element */
+#undef STRUCT_TASK_STRUCT_HAS_EXIT_STATE
+
+/* Define if kernel struct task_struct has the parent element */
+#undef STRUCT_TASK_STRUCT_HAS_PARENT
+
+/* Define if kernel struct task_struct has the real_parent element */
+#undef STRUCT_TASK_STRUCT_HAS_REAL_PARENT
+
+/* Define if kernel struct task_struct has the rlim element */
+#undef STRUCT_TASK_STRUCT_HAS_RLIM
+
+/* Define if kernel struct task_struct has the sig element */
+#undef STRUCT_TASK_STRUCT_HAS_SIG
+
+/* Define if kernel struct task_struct has the sighand element */
+#undef STRUCT_TASK_STRUCT_HAS_SIGHAND
+
+/* Define if kernel struct task_struct has the sigmask_lock element */
+#undef STRUCT_TASK_STRUCT_HAS_SIGMASK_LOCK
+
+/* define if your struct task_struct has signal->rlim */
+#undef STRUCT_TASK_STRUCT_HAS_SIGNAL_RLIM
+
+/* Define if kernel struct task_struct has the tgid element */
+#undef STRUCT_TASK_STRUCT_HAS_TGID
+
+/* Define if kernel struct task_struct has the thread_info element */
+#undef STRUCT_TASK_STRUCT_HAS_THREAD_INFO
+
+/* define if you want to have support for nested pts groups */
+#undef SUPERGROUPS
+
+/* define if your kernel has a usable symlink cache API */
+#undef USABLE_KERNEL_PAGE_SYMLINK_CACHE
+
+/* Enable extensions on AIX 3, Interix.  */
+#ifndef _ALL_SOURCE
+# undef _ALL_SOURCE
+#endif
+/* Enable GNU extensions on systems that have them.  */
+#ifndef _GNU_SOURCE
+# undef _GNU_SOURCE
+#endif
+/* Enable threading extensions on Solaris.  */
+#ifndef _POSIX_PTHREAD_SEMANTICS
+# undef _POSIX_PTHREAD_SEMANTICS
+#endif
+/* Enable extensions on HP NonStop.  */
+#ifndef _TANDEM_SOURCE
+# undef _TANDEM_SOURCE
+#endif
+/* Enable general extensions on Solaris.  */
+#ifndef __EXTENSIONS__
+# undef __EXTENSIONS__
+#endif
+
+
+/* define if you want to use UNIX sockets for fssync. */
+#undef USE_UNIX_SOCKETS
+
+/* Version number of package */
+#undef VERSION
+
+/* Define to 1 if `lex' declares `yytext' as a `char *' by default, not a
+   `char[]'. */
+#undef YYTEXT_POINTER
+
+/* Define to 1 if on MINIX. */
+#undef _MINIX
+
+/* Define to 2 if the system does not provide POSIX.1 features except with
+   this defined. */
+#undef _POSIX_1_SOURCE
+
+/* Define to 1 if you need to in order for `stat' and other things to work. */
+#undef _POSIX_SOURCE
+
+/* Define to the type of a signed integer type wide enough to hold a pointer,
+   if such a type exists, and if the system does not define it. */
+#undef intptr_t
+
+/* Define to `int' if <sys/types.h> does not define. */
+#undef pid_t
+
+/* Define to int if <signal.h> does not define. */
+#undef sig_atomic_t
+
+/* Define to `unsigned int' if <sys/types.h> does not define. */
+#undef size_t
+
+/* Define to int if <sys/socket.h> does not define. */
+#undef socklen_t
+
+/* Define to `int' if <sys/types.h> does not define. */
+#undef ssize_t
+
+/* Define to the type of an unsigned integer type wide enough to hold a
+   pointer, if such a type exists, and if the system does not define it. */
+#undef uintptr_t
+
+
+#undef HAVE_RES_SEARCH
+#undef STRUCT_SOCKADDR_HAS_SA_LEN
+#if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__)
+# if ENDIANESS_IN_SYS_PARAM_H
+#  ifndef KERNEL
+#   include <sys/types.h>
+#   include <sys/param.h>
+#   if BYTE_ORDER == BIG_ENDIAN
+#   define WORDS_BIGENDIAN 1
+#   endif
+#  else
+#   if defined(AUTOCONF_FOUND_BIGENDIAN)
+#    define WORDS_BIGENDIAN 1
+#   else
+#    undef WORDS_BIGENDIAN
+#   endif
+#  endif
+# else
+#  if defined(AUTOCONF_FOUND_BIGENDIAN)
+#   define WORDS_BIGENDIAN 1
+#  else
+#   undef WORDS_BIGENDIAN
+#  endif
+# endif
+#else
+# if defined(__BIG_ENDIAN__)
+#  define WORDS_BIGENDIAN 1
+# else
+#  undef WORDS_BIGENDIAN
+# endif
+#endif
+#ifdef UKERNEL
+/*
+ * Always use 64-bit file offsets for UKERNEL code. Needed for UKERNEL stuff to
+ * play nice with some other interfaces like FUSE. We technically only would
+ * need to define this when building for such interfaces, but set it always to
+ * try and reduce potential confusion. 
+ */
+#define _FILE_OFFSET_BITS 64
+#define AFS_CACHE_VNODE_PATH
+#endif
+
+#undef AFS_NAMEI_ENV
+#undef BITMAP_LATER
+#undef FAST_RESTART
+#undef DEFINED_FOR_EACH_PROCESS
+#undef DEFINED_PREV_TASK
+#undef EXPORTED_SYS_CALL_TABLE
+#undef EXPORTED_IA32_SYS_CALL_TABLE
+#undef IRIX_HAS_MEM_FUNCS
+#undef RECALC_SIGPENDING_TAKES_VOID
+#undef STRUCT_FS_HAS_FS_ROLLED
+#undef ssize_t
+#undef HAVE_ARPA_NAMESER_COMPAT_H
+/* glue for RedHat kernel bug */
+#undef ENABLE_REDHAT_BUILDSYS
+#if defined(ENABLE_REDHAT_BUILDSYS) && defined(KERNEL) && defined(REDHAT_FIX)
+#include "redhat-fix.h"
+#endif

@@ -1,0 +1,269 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+AFSDEV_AUXCDEFINES = -DFSSYNC_BUILD_SERVER -DFSSYNC_BUILD_CLIENT
+
+RELDIR=vol
+!INCLUDE ..\config\NTMakefile.$(SYS_NAME)
+!INCLUDE ..\config\NTMakefile.version
+
+############################################################################
+# Definitions for installing header files
+
+INCFILEDIR = $(DESTDIR)\include  # header file install directory
+
+INCFILES =\
+	$(INCFILEDIR)\afs\fssync.h \
+	$(INCFILEDIR)\afs\ihandle.h \
+	$(INCFILEDIR)\afs\nfs.h \
+	$(INCFILEDIR)\afs\ntops.h \
+	$(INCFILEDIR)\afs\partition.h \
+	$(INCFILEDIR)\afs\viceinode.h \
+	$(INCFILEDIR)\afs\vnode.h \
+        $(INCFILEDIR)\afs\vnode_inline.h \
+	$(INCFILEDIR)\afs\volume.h \
+        $(INCFILEDIR)\afs\volume_inline.h \
+	$(INCFILEDIR)\afs\voldefs.h \
+	$(INCFILEDIR)\afs\daemon_com.h \
+        $(INCFILEDIR)\afs\vol_prototypes.h
+
+############################################################################
+# Build afsvol.lib
+
+LIBFILE = $(DESTDIR)\lib\afs\afsvol.lib
+
+MT_LIBFILE = $(DESTDIR)\lib\afs\mtafsvol.lib
+
+DAFS_LIBFILE = $(DESTDIR)\lib\afs\daafsvol.lib
+
+LIBOBJS =\
+	$(OUT)\common.obj \
+	$(OUT)\clone.obj \
+	$(OUT)\fssync-client.obj \
+	$(OUT)\fssync-server.obj \
+	$(OUT)\daemon_com.obj \
+	$(OUT)\ntops.obj \
+	$(OUT)\nuke.obj \
+	$(OUT)\partition.obj \
+	$(OUT)\purge.obj \
+	$(OUT)\vnode.obj \
+	$(OUT)\volume.obj \
+	$(OUT)\vutil.obj \
+	$(OUT)\ihandle.obj \
+	$(OUT)\AFS_component_version_number.obj
+
+MT_LIBOBJS =\
+	$(OUT)\common.obj \
+	$(OUT)\clone_mt.obj \
+	$(OUT)\fssync-client_mt.obj \
+	$(OUT)\fssync-server_mt.obj \
+	$(OUT)\daemon_com_mt.obj \
+	$(OUT)\ntops.obj \
+	$(OUT)\nuke_mt.obj \
+	$(OUT)\partition_mt.obj \
+	$(OUT)\purge.obj \
+	$(OUT)\vnode_mt.obj \
+	$(OUT)\volume_mt.obj \
+	$(OUT)\vutil_mt.obj \
+	$(OUT)\ihandle_mt.obj \
+	$(OUT)\AFS_component_version_number.obj
+
+$(OUT)\clone_mt.obj:clone.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV
+
+$(OUT)\daemon_com_mt.obj:daemon_com.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV
+
+$(OUT)\fssync-client_mt.obj:fssync-client.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV
+
+$(OUT)\fssync-server_mt.obj:fssync-server.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV
+
+$(OUT)\ihandle_mt.obj:ihandle.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV
+
+$(OUT)\nuke_mt.obj:nuke.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV
+
+$(OUT)\partition_mt.obj:partition.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV
+
+$(OUT)\vnode_mt.obj:vnode.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV
+
+$(OUT)\volume_mt.obj:volume.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV
+
+$(OUT)\vutil_mt.obj:vutil.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV
+
+$(LIBFILE): $(LIBOBJS)
+	$(LIBARCH)
+
+$(MT_LIBFILE): $(MT_LIBOBJS)
+	$(LIBARCH)
+
+DAFS_LIBOBJS =\
+	$(OUT)\common.obj \
+	$(OUT)\clone_dafs.obj \
+	$(OUT)\fssync-client_dafs.obj \
+	$(OUT)\fssync-server_dafs.obj \
+	$(OUT)\daemon_com_dafs.obj \
+	$(OUT)\ntops.obj \
+	$(OUT)\nuke_dafs.obj \
+	$(OUT)\partition_dafs.obj \
+	$(OUT)\purge.obj \
+	$(OUT)\vnode_dafs.obj \
+	$(OUT)\volume_dafs.obj \
+	$(OUT)\vutil_dafs.obj \
+	$(OUT)\ihandle_dafs.obj \
+        $(OUT)\vg_cache.obj \
+        $(OUT)\vg_scan.obj \
+	$(OUT)\AFS_component_version_number.obj
+
+$(OUT)\clone_dafs.obj:clone.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV -DAFS_DEMAND_ATTACH_FS
+
+$(OUT)\daemon_com_dafs.obj:daemon_com.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV -DAFS_DEMAND_ATTACH_FS
+
+$(OUT)\fssync-client_dafs.obj:fssync-client.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV -DAFS_DEMAND_ATTACH_FS
+
+$(OUT)\fssync-server_dafs.obj:fssync-server.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV -DAFS_DEMAND_ATTACH_FS
+
+$(OUT)\ihandle_dafs.obj:ihandle.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV -DAFS_DEMAND_ATTACH_FS
+
+$(OUT)\nuke_dafs.obj:nuke.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV -DAFS_DEMAND_ATTACH_FS
+
+$(OUT)\partition_dafs.obj:partition.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV -DAFS_DEMAND_ATTACH_FS
+
+$(OUT)\vnode_dafs.obj:vnode.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV -DAFS_DEMAND_ATTACH_FS
+
+$(OUT)\volume_dafs.obj:volume.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV -DAFS_DEMAND_ATTACH_FS
+
+$(OUT)\vutil_dafs.obj:vutil.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV -DAFS_DEMAND_ATTACH_FS
+
+$(OUT)\vg_cache.obj:vg_cache.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV -DAFS_DEMAND_ATTACH_FS
+
+$(OUT)\vg_scan.obj:vg_scan.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV -DAFS_DEMAND_ATTACH_FS
+
+$(DAFS_LIBFILE): $(DAFS_LIBOBJS)
+	$(LIBARCH)
+
+############################################################################
+# External libraries
+
+EXEC_LIBS = \
+	$(DESTDIR)\lib\afs\afscmd.lib \
+	$(DESTDIR)\lib\afs\mtafsvol.lib \
+	$(DESTDIR)\lib\afs\mtafsutil.lib \
+        $(DESTDIR)\lib\afsrpc.lib \
+	$(DESTDIR)\lib\afs\afsdir.lib \
+	$(DESTDIR)\lib\afs\afsacl.lib \
+	$(DESTDIR)\lib\afs\afsreg.lib \
+	$(DESTDIR)\lib\afs\afsprocmgmt.lib \
+	$(DESTDIR)\lib\afs\afseventlog.lib \
+	$(DESTDIR)\lib\afspthread.lib
+
+############################################################################
+# build salvager
+SALVAGER = $(DESTDIR)\root.server\usr\afs\bin\salvager.exe
+
+$(OUT)\salvager.obj: salvager.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV
+
+$(OUT)\vol-salvage.obj: vol-salvage.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV
+
+$(OUT)\physio.obj: physio.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV
+
+SALVAGER_EXEOBJS =\
+	$(OUT)\salvager.obj \
+	$(OUT)\vol-salvage.obj \
+	$(OUT)\physio.obj \
+	$(OUT)\AFS_component_version_number.obj \
+	$(OUT)\salvager.res
+
+$(SALVAGER): $(SALVAGER_EXEOBJS) $(EXEC_LIBS)
+	$(EXECONLINK) shell32.lib
+        $(_VC_MANIFEST_EMBED_EXE)
+	$(EXEPREP)
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+
+############################################################################
+# build fssync-debug
+FSSYNC_DEBUG = $(DESTDIR)\root.server\usr\afs\bin\fssync-debug.exe
+
+$(OUT)\fssync-debug.obj: fssync-debug.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV
+
+FSSYNC_DEBUG_EXEOBJS =\
+	$(OUT)\fssync-debug.obj \
+	$(OUT)\AFS_component_version_number.obj \
+	$(OUT)\fssync-debug.res
+
+$(FSSYNC_DEBUG): $(FSSYNC_DEBUG_EXEOBJS) $(EXEC_LIBS)
+	$(EXECONLINK) shell32.lib
+        $(_VC_MANIFEST_EMBED_EXE)
+	$(EXEPREP)
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+############################################################################
+# build volinfo
+VOLINFO = $(DESTDIR)\root.server\usr\afs\bin\volinfo.exe
+
+$(OUT)\vol-info.obj: vol-info.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV
+
+$(VOLINFO): $(OUT)\vol-info.obj $(OUT)\physio.obj $(OUT)\volinfo.res $(EXEC_LIBS)
+	$(EXECONLINK) shell32.lib
+        $(_VC_MANIFEST_EMBED_EXE)
+	$(EXEPREP)
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+############################################################################
+# build volinfo
+VOLBLESS = $(DESTDIR)\root.server\usr\afs\bin\vol-bless.exe
+
+$(OUT)\vol-bless.obj: vol-bless.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV
+
+$(VOLBLESS): $(OUT)\vol-bless.obj $(OUT)\physio.obj $(OUT)\vol-bless.res $(EXEC_LIBS)
+	$(EXECONLINK) shell32.lib
+        $(_VC_MANIFEST_EMBED_EXE)
+	$(EXEPREP)
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+############################################################################
+# generate versioninfo resources
+$(OUT)\salvager.res: salvager.rc AFS_component_version_number.h
+
+$(OUT)\volinfo.res: AFS_component_version_number.h
+
+############################################################################
+# Install targets
+install: $(INCFILES) $(LIBFILE) $(MT_LIBFILE) $(DAFS_LIBFILE) $(SALVAGER) $(VOLINFO)
+
+mkdir:
+	

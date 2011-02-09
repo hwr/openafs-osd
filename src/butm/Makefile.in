@@ -1,0 +1,60 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+srcdir=@srcdir@
+include @TOP_OBJDIR@/src/config/Makefile.config
+INSTALL = @INSTALL@
+INSTALL_DATA = @INSTALL_DATA@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_SCRIPT = @INSTALL_SCRIPT@
+
+INCLS=${TOP_INCDIR}/afs/com_err.h ${TOP_INCDIR}/afs/butm.h
+
+LIBS=${TOP_LIBDIR}/libbubasics.a \
+	${TOP_LIBDIR}/liblwp.a \
+	${TOP_LIBDIR}/libusd.a \
+	${TOP_LIBDIR}/libcom_err.a \
+	${TOP_LIBDIR}/libbutm.a \
+	${TOP_LIBDIR}/libcom_err.a \
+	${TOP_LIBDIR}/util.a \
+	${XLIBS}
+
+all: ${TOP_LIBDIR}/libbutm.a ${TOP_INCDIR}/afs/butm_prototypes.h
+
+${TOP_LIBDIR}/libbutm.a: libbutm.a
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/afs/butm_prototypes.h: butm_prototypes.h
+	${INSTALL_DATA} $? $@
+
+libbutm.a: file_tm.o AFS_component_version_number.o
+	-$(RM) -f $@
+	$(AR) crv $@ file_tm.o AFS_component_version_number.o
+	$(RANLIB) $@
+
+file_tm.o: file_tm.c ${INCLS} AFS_component_version_number.c
+
+test_ftm.o: test_ftm.c ${INCLS} AFS_component_version_number.c
+
+test_ftm: test_ftm.o libbutm.a
+	${CC} ${LDFLAGS} -o test_ftm test_ftm.o libbutm.a ${LIBS}
+
+test: test_ftm
+	echo 'Usage: ./test_ftm -conf config -tape xxx *'
+
+install: libbutm.a
+	${INSTALL} -d ${DESTDIR}${libdir}/afs
+	${INSTALL_DATA} libbutm.a ${DESTDIR}${libdir}/afs/libbutm.a
+
+dest: libbutm.a
+	${INSTALL} -d ${DEST}/lib/afs
+	${INSTALL_DATA} libbutm.a ${DEST}/lib/afs/libbutm.a
+
+clean:
+	$(RM) -f *.o *.a core test_ftm AFS_component_version_number.c
+
+include ../config/Makefile.version

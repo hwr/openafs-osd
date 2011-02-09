@@ -1,0 +1,165 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+AFSDEV_AUXCDEFINES = -DAFS_PTHREAD_ENV -DRXDEBUG -DNOGDI -DWIN32_LEAN_AND_MEAN
+
+RELDIR=tbutc
+!INCLUDE ..\config\NTMakefile.$(SYS_NAME)
+!INCLUDE ..\config\NTMakefile.version
+
+SRCDIR = ..\butc
+
+############################################################################
+# build tbutc
+
+BUTCEXE = $(DESTDIR)\etc\butc.exe
+
+VICED   =..\viced
+VLSERVER=..\vlserver
+LWP     =..\lwp
+LIBACL  =..\libacl
+UTIL    =..\util
+DIR     =..\dir
+VOL     =..\vol
+FSINT   =..\fsint
+BUTM    =..\butm
+BUTC    =..\butc
+BUCOORD = ..\bucoord
+VOLSER  = ..\tvolser
+
+BUCOORDOBJS = $(OUT)\ubik_db_if.obj \
+    $(OUT)\$(BUCOORD)\volstub.obj \
+    $(OUT)\$(BUCOORD)\dlq.obj \
+	$(OUT)\$(BUCOORD)\status.obj \
+    $(OUT)\$(BUCOORD)\bucoord_errs.obj
+
+LWPOBJS     = $(OUT)\lock.obj
+
+BUTMOBJS    = $(OUT)\file_tm.obj \
+              $(OUT)\AFS_component_version_number.obj
+BUTMLIBS    = $(OUT)\afstbutm.lib
+BUTMINCLUDE = -I$(DESTDIR)\include
+
+BUTCOBJS   = $(OUT)\dbentries.obj \
+         $(OUT)\tcprocs.obj \
+         $(OUT)\lwps.obj \
+         $(OUT)\tcmain.obj \
+         $(OUT)\list.obj \
+         $(OUT)\recoverDb.obj \
+	     $(OUT)\tcudbprocs.obj \
+         $(OUT)\dump.obj \
+         $(OUT)\tcstatus.obj \
+         $(OUT)\butc_xbsa.obj \
+         $(LWPOBJS) \
+         $(BUCOORDOBJS)
+
+BUTCRES = $(OUT)\butc.res
+
+BUTCINCLUDE= -I. -I$(DESTDIR)\include -I$(XBSADIR)
+BUTCLIBS=$(DESTDIR)\lib\afs\afsbudb.lib  \
+	     $(DESTDIR)\lib\afs\afsbubasics.lib \
+	     $(DESTDIR)\lib\afs\afstvolser.lib \
+             $(BUTMLIBS) \
+	     $(DESTDIR)\lib\afs\mtafsvldb.lib \
+	     $(DESTDIR)\lib\afs\afskauth.lib \
+	     $(DESTDIR)\lib\afs\afsauth.lib \
+	     $(DESTDIR)\lib\afsrpc.lib \
+             $(DESTDIR)\lib\afsrxkad.lib \
+	     $(DESTDIR)\lib\afs\mtafsubik.lib \
+             $(DESTDIR)\lib\afs\afsutil.lib \
+             $(DESTDIR)\lib\afs\afsusd.lib \
+	     $(DESTDIR)\lib\afs\afspioctl.lib \
+             $(DESTDIR)\lib\afs\afscmd.lib \
+             $(DESTDIR)\lib\afs\afscom_err.lib \
+	     $(DESTDIR)\lib\afs\afsreg.lib \
+	     $(DESTDIR)\lib\afs\afsprocmgmt.lib \
+             $(DESTDIR)\lib\afs\afseventlog.lib \
+!IF (("$(SYS_NAME)"=="i386_win95" ) || ("$(SYS_NAME)"=="I386_WIN95" ))
+	$(DESTDIR)\lib\win95\afspthread.lib \
+!ELSE
+	$(DESTDIR)\lib\afspthread.lib \
+!ENDIF
+	     $(DESTDIR)\lib\afsdes.lib \
+	     $(DESTDIR)\lib\libafsconf.lib
+
+
+# rm $(OUT)\tcstatus.obj
+# nmake /nologo /f ntmakefile install
+#----------------------------------------------- BUTC
+
+$(BUTCRES): butc.rc AFS_component_version_number.h
+
+$(BUTCEXE): $(BUTCOBJS) $(BUTCRES) $(BUTCLIBS)
+	$(EXECONLINK) dnsapi.lib mpr.lib shell32.lib
+        $(_VC_MANIFEST_EMBED_EXE)
+	$(EXEPREP)
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+.c.$(OUT)\obj:
+	$(C2OBJ) -I$(BUCOORD) $<
+
+$(OUT)\dbentries.obj: $(BUTC)/dbentries.c
+	$(C2OBJ) $**
+
+$(OUT)\tcprocs.obj: $(BUTC)/tcprocs.c
+	$(C2OBJ) $**
+
+$(OUT)\lwps.obj: $(BUTC)/lwps.c
+	$(C2OBJ) $**
+
+$(OUT)\tcmain.obj: $(BUTC)/tcmain.c
+	$(C2OBJ) $**
+
+$(OUT)\list.obj: $(BUTC)/list.c
+	$(C2OBJ) $**
+
+$(OUT)\recoverDb.obj: $(BUTC)/recoverDb.c
+	$(C2OBJ) $**
+
+$(OUT)\tcudbprocs.obj: $(BUTC)/tcudbprocs.c
+	$(C2OBJ) $**
+
+$(OUT)\dump.obj: $(BUTC)/dump.c
+	$(C2OBJ) $**
+
+$(OUT)\tcstatus.obj: $(BUTC)/tcstatus.c
+	$(C2OBJ) $**
+
+$(OUT)\butc_xbsa.obj: $(BUTC)/butc_xbsa.c
+	$(C2OBJ) $**
+
+#----------------------------------------------- BUCOORD
+
+$(OUT)\ubik_db_if.obj: $(BUCOORD)/ubik_db_if.c
+	$(C2OBJ) -I$(BUCOORD) $**
+
+#----------------------------------------------- LWP
+
+$(OUT)\lock.obj: $(LWP)/lock.c
+	$(C2OBJ) $**
+
+#----------------------------------------------- BUTC
+
+$(OUT)\file_tm.obj: $(BUTM)/file_tm.c
+	$(C2OBJ) $**
+
+$(OUT)\afstbutm.lib: $(BUTMOBJS)
+	$(LIBARCH)
+
+#-----------------------------------------------
+
+all: $(BUTCEXE) $(BUTMLIBS)
+
+install: all
+
+noversion: install
+
+mkdir:
+	
+clean::
+	$(DEL) $(BUTCRES)

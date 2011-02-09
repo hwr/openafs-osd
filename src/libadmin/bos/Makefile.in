@@ -1,0 +1,62 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+srcdir=@srcdir@
+include @TOP_OBJDIR@/src/config/Makefile.config
+INSTALL = @INSTALL@
+INSTALL_DATA = @INSTALL_DATA@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_SCRIPT = @INSTALL_SCRIPT@
+
+CC = ${MT_CC}
+CFLAGS=${COMMON_CFLAGS} ${MT_CFLAGS} ${CFLAGS_NOERROR}
+CCRULE = ${CC} ${CFLAGS} -c $?
+
+BOZO = ../../bozo
+
+ADMINOBJS = afs_bosAdmin.o
+
+BOZOOBJS = bosint.xdr.o bosint.cs.o
+
+LIBOBJS = ${ADMINOBJS} ${BOZOOBJS}
+
+all: ${TOP_INCDIR}/afs/afs_bosAdmin.h ${TOP_LIBDIR}/libbosadmin.a
+
+${TOP_INCDIR}/afs/afs_bosAdmin.h: afs_bosAdmin.h
+	${INSTALL_DATA} $? $@
+
+${TOP_LIBDIR}/libbosadmin.a: libbosadmin.a
+	${INSTALL_DATA} $? $@
+
+install: libbosadmin.a afs_bosAdmin.h
+	${INSTALL} -d ${DESTDIR}${includedir}/afs
+	${INSTALL} -d ${DESTDIR}${libdir}/afs
+	${INSTALL_DATA} ${srcdir}/afs_bosAdmin.h ${DESTDIR}${includedir}/afs/afs_bosAdmin.h
+	${INSTALL_DATA} libbosadmin.a ${DESTDIR}${libdir}/afs/libbosadmin.a
+
+dest: libbosadmin.a afs_bosAdmin.h
+	${INSTALL} -d ${DEST}/include/afs
+	${INSTALL} -d ${DEST}/lib/afs
+	${INSTALL_DATA} ${srcdir}/afs_bosAdmin.h ${DEST}/include/afs/afs_bosAdmin.h
+	${INSTALL_DATA} libbosadmin.a ${DEST}/lib/afs/libbosadmin.a
+
+libbosadmin.a: ${LIBOBJS}
+	-$(RM) -f $@
+	$(AR) crv $@ ${LIBOBJS}
+	${RANLIB} $@
+
+afs_bosAdmin.o: afs_bosAdmin.c afs_bosAdmin.h
+	$(CC) $(CFLAGS) -c ${srcdir}/afs_bosAdmin.c
+
+bosint.xdr.o: ${BOZO}/bosint.xdr.c
+	${CCRULE}
+
+bosint.cs.o: ${BOZO}/bosint.cs.c
+	${CCRULE}
+
+clean:
+	$(RM) -f *.o libbosadmin*

@@ -1,0 +1,278 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+srcdir=@srcdir@
+include @TOP_OBJDIR@/src/config/Makefile.config
+INSTALL = @INSTALL@
+INSTALL_DATA = @INSTALL_DATA@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_SCRIPT = @INSTALL_SCRIPT@
+HELPER_SPLINT=@HELPER_SPLINT@
+WITH_OBJECT_STORAGE=@WITH_OBJECT_STORAGE@
+
+CC=${MT_CC}
+CFLAGS=${COMMON_CFLAGS} -DNINTERFACE ${MT_CFLAGS} -DRXDEBUG -DFSSYNC_BUILD_CLIENT
+
+CCRULE=${CC} ${CFLAGS} -c $?
+
+VICED=${srcdir}/../viced
+VLSERVER=${srcdir}/../vlserver
+LWP=${srcdir}/../lwp
+LIBACL=${srcdir}/../libacl
+UTIL=${srcdir}/../util
+DIR=${srcdir}/../dir
+VOL=${srcdir}/../vol
+FSINT=${srcdir}/../fsint
+VOLSER=${srcdir}/../volser
+RX=${srcdir}/../rx
+OSDDBSRC=${srcdir}/../osddb
+RXOSD=${srcdir}/../rxosd
+
+VOLSEROBJS=volmain.o volprocs.o physio.o voltrans.o volerr.o volint.cs.o dumpstuff.o  volint.ss.o volint.xdr.o vscommon.o vol_split.o
+
+VLSERVEROBJS=vldbint.cs.o vldbint.xdr.o vl_errors.o
+
+VOSOBJS= vsprocs.o vsutils.o lockprocs.o volint.xdr.o volerr.o volint.cs.o
+
+LWPOBJS=lock.o threadname.o
+
+LIBACLOBJS=aclprocs.o netprocs.o
+
+UTILOBJS=assert.o uuid.o serverLog.o fileutil.o netutils.o dirpath.o volparse.o flipbase64.o softsig.o
+
+DIROBJS=buffer.o dir.o salvage.o
+
+VOLOBJS= vnode.o volume.o vutil.o partition.o fssync-client.o purge.o \
+	 clone.o devname.o common.o ihandle.o listinodes.o \
+	 namei_ops.o nuke.o salvsync-client.o daemon_com.o \
+	 vol_osd.o vol_osd.xdr.o
+
+FSINTOBJS=# afsaux.o afscbint.cs.o afsint.ss.o afsint.xdr.o
+
+RXOBJS=rx_pthread.o
+
+RXOSDOBJS=rxosd.cs.o rxosd.xdr.o osddb.cs.o osddb.xdr.o osddbuser.o
+
+objects= ${VOLSEROBJS} ${LWPOBJS} ${LIBACLOBJS} \
+	 ${UTILOBJS} ${DIROBJS} ${VOLOBJS} ${FSINTOBJS} ${RXOBJS}
+
+osdobjects= ${RXOSDOBJS}
+
+vosobjects= ${VOSOBJS} ${VLSERVEROBJS} ${LIBACLOBJS} ${UTILOBJS} ${DIROBJS} \
+	${VOLOBJS} ${FSINTOBJS} ${RXOBJS}
+
+LIBS=	${TOP_LIBDIR}/libcmd.a          \
+	${TOP_LIBDIR}/libafsauthent.a   \
+	${TOP_LIBDIR}/libafsrpc.a       \
+	${TOP_LIBDIR}/libafsutil.a      \
+	${TOP_LIBDIR}/libusd.a
+
+all: volserver 
+
+all_vos: vos
+
+COMPILE=${CC} ${CFLAGS} -c $?
+
+rx_pthread.o: ${RX}/rx_pthread.c
+	${COMPILE} -DDPF_FSLOG
+volmain.o: ${VOLSER}/volmain.c
+	${COMPILE} -I../volser
+vol_split.o: ${VOLSER}/vol_split.c
+	${COMPILE} -I../volser
+volprocs.o: ${VOLSER}/volprocs.c
+	${COMPILE} -I../volser
+physio.o: ${VOLSER}/physio.c
+	${COMPILE}
+voltrans.o: ${VOLSER}/voltrans.c
+	${COMPILE} -I../volser
+volerr.o: ../volser/volerr.c
+	${COMPILE}
+volint.h: ${VOLSER}/volint.xg
+	${RXGEN} -x -h -o $@ ${VOLSER}/volint.xg
+volint.cs.c: ${VOLSER}/volint.xg
+	${RXGEN} -x -C -o $@ ${VOLSER}/volint.xg
+volint.cs.o: volint.cs.c volint.h
+volint.cs.o: volint.cs.c
+	${COMPILE}
+dumpstuff.o: ${VOLSER}/dumpstuff.c
+	${COMPILE} -I../volser
+volint.ss.o: ../volser/volint.ss.c
+	${COMPILE}
+volint.xdr.o: ../volser/volint.xdr.c
+	${COMPILE}
+vsprocs.o: ${VOLSER}/vsprocs.c
+	${COMPILE}
+vsutils.o: ${VOLSER}/vsutils.c
+	${COMPILE}
+lockprocs.o: ${VOLSER}/lockprocs.c
+	${COMPILE}
+
+assert.o: ${UTIL}/assert.c
+	${COMPILE}
+
+uuid.o: ${UTIL}/uuid.c
+	${COMPILE}
+
+serverLog.o: ${UTIL}/serverLog.c
+	${COMPILE}
+
+fileutil.o: ${UTIL}/fileutil.c
+	${COMPILE}
+
+volparse.o: ${UTIL}/volparse.c
+	${COMPILE}
+
+flipbase64.o: ${UTIL}/flipbase64.c
+	${COMPILE}
+
+netutils.o: ${UTIL}/netutils.c
+	${COMPILE} -I../util
+
+dirpath.o: ${UTIL}/dirpath.c
+	${COMPILE}
+
+softsig.o: ${UTIL}/softsig.c
+	${COMPILE}
+
+lock.o: ${LWP}/lock.c
+	${COMPILE}
+
+threadname.o: ${LWP}/threadname.c
+	${COMPILE}
+
+aclprocs.o: ${LIBACL}/aclprocs.c
+	${COMPILE}
+
+netprocs.o: ${LIBACL}/netprocs.c
+	${COMPILE}
+
+vlserver.h vl_errors.c: ${VLSERVER}/vl_errors.et ${VLSERVER}/vlserver.p.h
+	$(RM) -f vlserver.h vl_errors.c; ${COMPILE_ET} -p ${VLSERVER} vl_errors -h vlserver
+
+vl_errors.o: vl_errors.c
+	${COMPILE}
+
+vldbint.cs.o: ../vlserver/vldbint.cs.c
+	${COMPILE}
+
+vldbint.xdr.o: ../vlserver/vldbint.xdr.c
+	${COMPILE}
+
+buffer.o: ${DIR}/buffer.c
+	${COMPILE}
+
+dir.o: ${DIR}/dir.c
+	${COMPILE}
+
+salvage.o: ${DIR}/salvage.c
+	${COMPILE}
+
+vnode.o: ${VOL}/vnode.c
+	${COMPILE}
+
+volume.o: ${VOL}/volume.c
+	${COMPILE}
+
+vutil.o: ${VOL}/vutil.c
+	${COMPILE}
+
+partition.o: ${VOL}/partition.c
+	${COMPILE}
+
+nuke.o: ${VOL}/nuke.c
+	${COMPILE}
+
+fssync-client.o: ${VOL}/fssync-client.c
+	${COMPILE}
+
+salvsync-client.o: ${VOL}/salvsync-client.c
+	${COMPILE}
+
+daemon_com.o: ${VOL}/daemon_com.c
+	${COMPILE}
+
+purge.o: ${VOL}/purge.c
+	${COMPILE} -I../vol
+
+clone.o: ${VOL}/clone.c
+	${COMPILE} -I../vol
+
+devname.o: ${VOL}/devname.c
+	${COMPILE}
+
+common.o: ${VOL}/common.c
+	${COMPILE}
+
+vscommon.o: ${VOLSER}/common.c
+	${COMPILE} -o vscommon.o
+
+listinodes.o: ${VOL}/listinodes.c
+	${COMPILE}
+
+ihandle.o: ${VOL}/ihandle.c
+	${COMPILE}
+
+namei_ops.o: ${VOL}/namei_ops.c
+	${COMPILE}
+
+vol_osd.xdr.o: ../vol/vol_osd.xdr.c
+	${COMPILE}
+
+vol_osd.o: ${VOL}/vol_osd.c
+	${COMPILE} -I../vol
+
+rxosd.cs.o: ../rxosd/rxosd.cs.c
+	${COMPILE}
+
+rxosd.xdr.o: ../rxosd/rxosd.xdr.c
+	${COMPILE}
+
+osddbuser.o: ${OSDDBSRC}/osddbuser.c
+	${COMPILE} -I../osddb
+
+osddb.cs.o: ../osddb/osddb.cs.c
+	${COMPILE}
+
+osddb.xdr.o: ../osddb/osddb.xdr.c
+	${COMPILE}
+
+vos.o: ${VOLSER}/vos.c
+	${COMPILE}
+
+vos: vos.o  ${VOSOBJS} ${VLSERVEROBJS} ${LIBS} ${TOP_LIBDIR}/libubik_pthread.a
+	${CC} ${LDFLAGS} -o vos vos.o ${VOSOBJS} ${VLSERVEROBJS} ${LIBS} ${TOP_LIBDIR}/libubik_pthread.a ${MT_LIBS} ${XLIBS}
+
+volserver: ${objects} ${LIBS}
+	case ${WITH_OBJECT_STORAGE} in \
+	YES) \
+	${MAKE} ${osdobjects} ; \
+	${CC} ${LDFLAGS} -o volserver ${objects} \
+		${osdobjects} ${LIBS} ${MT_LIBS} ${XLIBS} ;; \
+	*) \
+	${CC} ${LDFLAGS} -o volserver ${objects} ${LIBS} ${MT_LIBS} ${XLIBS};; \
+	esac
+
+install: volserver
+	${INSTALL} -d ${DESTDIR}${afssrvlibexecdir}
+	${INSTALL} volserver ${DESTDIR}${afssrvlibexecdir}/volserver
+
+install_vos: vos
+	${INSTALL} vos ${DESTDIR}${afssrvsbindir}/vos
+	${INSTALL} vos ${DESTDIR}${sbindir}/vos
+
+dest: volserver
+	${INSTALL} -d ${DEST}/root.server/usr/afs/bin
+	${INSTALL} volserver ${DEST}/root.server/usr/afs/bin/volserver
+
+dest_vos: vos
+	${INSTALL} vos ${DEST}/root.server/usr/afs/bin/vos
+	${INSTALL} vos ${DEST}/etc/vos
+
+clean:
+	$(RM) -f *.o *.c *h volserver core 
+
+include ../config/Makefile.version

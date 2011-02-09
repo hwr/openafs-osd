@@ -1,0 +1,181 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+srcdir=@srcdir@
+include @TOP_OBJDIR@/src/config/Makefile.config
+INSTALL = @INSTALL@
+INSTALL_DATA = @INSTALL_DATA@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_SCRIPT = @INSTALL_SCRIPT@
+ENABLE_PTHREADED_UBIK = @ENABLE_PTHREADED_UBIK@
+
+INCLS=${TOP_INCDIR}/ubik.h \
+             ${TOP_INCDIR}/lwp.h \
+             ${TOP_INCDIR}/lock.h  \
+             ${TOP_INCDIR}/rx/rx.h \
+             ${TOP_INCDIR}/rx/xdr.h \
+             ${TOP_INCDIR}/afs/keys.h \
+             ${TOP_INCDIR}/afs/cellconfig.h \
+	vlserver.h vldbint.h
+
+LIBS=\
+	${TOP_LIBDIR}/libubik.a \
+	${TOP_LIBDIR}/libauth.a \
+	${TOP_LIBDIR}/librxkad.a \
+	${TOP_LIBDIR}/librxstat.a \
+	${TOP_LIBDIR}/librx.a \
+	${TOP_LIBDIR}/liblwp.a \
+	${TOP_LIBDIR}/libdes.a \
+	${TOP_LIBDIR}/libcom_err.a \
+	${TOP_LIBDIR}/libcmd.a \
+	${TOP_LIBDIR}/libsys.a \
+	${TOP_LIBDIR}/libafsutil.a
+
+OBJS=vldbint.xdr.o vldbint.cs.o vl_errors.o
+
+
+all: \
+	vlserver vlclient cnvldb vlserver cnvldb vldb_check \
+	Kvldbint.cs.c Kvldbint.xdr.c vldbint.h \
+	${TOP_LIBDIR}/libvldb.a depinstall
+
+generated: \
+	vl_errors.c vlserver.h \
+	Kvldbint.cs.c Kvldbint.xdr.c \
+	vldbint.cs.c vldbint.ss.c vldbint.xdr.c vldbint.h
+
+depinstall: \
+	Kvldbint.cs.c Kvldbint.xdr.c vldbint.h \
+	${TOP_INCDIR}/afs/vl_opcodes.h \
+	${TOP_INCDIR}/afs/vlserver.h \
+	${TOP_INCDIR}/afs/vldbint.h \
+	${TOP_INCDIR}/afs/cnvldb.h 
+
+${TOP_LIBDIR}/libvldb.a: libvldb.a
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/afs/vl_opcodes.h: vl_opcodes.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/afs/vlserver.h: vlserver.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/afs/vldbint.h: vldbint.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/afs/cnvldb.h: cnvldb.h
+	${INSTALL_DATA} $? $@
+
+vldb_check: vldb_check.o ${LIBS}
+	$(CC) ${CFLAGS} -o vldb_check vldb_check.o ${LIBS} ${XLIBS} 
+
+vldb_check.o: vldb_check.c AFS_component_version_number.o
+
+cnvldb: cnvldb.o ${LIBS}
+	$(CC) ${CFLAGS} -o cnvldb cnvldb.o ${LIBS} ${XLIBS}
+
+cnvldb.o: cnvldb.c cnvldb.h AFS_component_version_number.o
+
+sascnvldb: sascnvldb.o ${LIBS}
+	$(CC) ${CFLAGS} -o sascnvldb sascnvldb.o ${LIBS} ${XLIBS}
+
+sascnvldb.o: sascnvldb.c cnvldb.h AFS_component_version_number.o
+
+vlserver: vlserver.o vlutils.o vlprocs.o vldbint.ss.o vldbint.xdr.o $(LIBS)
+	$(CC) ${CFLAGS} -o vlserver vlserver.o vlutils.o vlprocs.o vldbint.ss.o \
+		vldbint.xdr.o $(LIBS) ${XLIBS} ${TOP_LIBDIR}/libaudit.a
+
+vlserver.o: vlserver.c ${INCLS} AFS_component_version_number.o
+vlutils.o: vlutils.c ${INCLS}
+vlprocs.o: vlprocs.c ${INCLS}
+vldbint.ss.o: vldbint.ss.c vldbint.xdr.c
+vldbint.cs.o: vldbint.cs.c vldbint.xdr.c
+vldbint.xdr.o: vldbint.xdr.c vldbint.h
+
+vldbint.cs.c: vldbint.xg
+	${RXGEN} -A -u -x -C -o $@ ${srcdir}/vldbint.xg
+
+vldbint.ss.c: vldbint.xg
+	${RXGEN} -A -x -S -o $@ ${srcdir}/vldbint.xg
+
+vldbint.xdr.c: vldbint.xg
+	${RXGEN} -A -x -c -o $@ ${srcdir}/vldbint.xg
+
+vldbint.h: vldbint.xg
+	${RXGEN} -A -u -x -h -o $@ ${srcdir}/vldbint.xg
+
+vldbint.cs.c: vldbint.h
+vldbint.ss.c: vldbint.h
+vldbint.xdr.c: vldbint.h
+
+Kvldbint.cs.c: vldbint.xg
+	${RXGEN} -A -x -k -C -o $@ ${srcdir}/vldbint.xg
+
+Kvldbint.xdr.c: vldbint.xg
+	${RXGEN} -A -x -k -c -o $@ ${srcdir}/vldbint.xg
+
+libvldb.a: $(OBJS) AFS_component_version_number.o
+	$(RM) -f $@
+	$(AR) crv $@ $(OBJS) AFS_component_version_number.o
+	$(RANLIB) $@
+
+vlclient: vlclient.o libvldb.a $(LIBS)
+	$(CC) ${CFLAGS} -o vlclient vlclient.o libvldb.a $(LIBS) ${XLIBS} ${TOP_LIBDIR}/libcmd.a
+
+vlclient.o: vlclient.c ${INCLS} AFS_component_version_number.o
+
+vl_errors.o: vl_errors.c
+vlserver.h vl_errors.c: vl_errors.et vlserver.p.h
+	$(RM) -f vlserver.h vl_errors.c; ${COMPILE_ET} -p ${srcdir} vl_errors -h vlserver
+
+vlserver.o: vlserver.c
+
+system: install
+
+install: vlserver cnvldb vldb_check libvldb.a vl_opcodes.h vlserver.h \
+		vldbint.h cnvldb.h
+	${INSTALL} -d ${DESTDIR}${afssrvlibexecdir}
+	${INSTALL} -d ${DESTDIR}${afssrvsbindir}
+	${INSTALL} -d ${DESTDIR}${libdir}/afs
+	${INSTALL} -d ${DESTDIR}${includedir}/afs
+	if [ "x$(ENABLE_PTHREADED_UBIK)" != "xyes" ] ; then \
+		${INSTALL_PROGRAM} vlserver ${DESTDIR}${afssrvlibexecdir}/vlserver; \
+		${INSTALL_PROGRAM} cnvldb ${DESTDIR}${afssrvsbindir}/vldb_convert; \
+		${INSTALL_PROGRAM} vldb_check ${DESTDIR}${afssrvsbindir}/vldb_check; \
+	fi;
+	${INSTALL_DATA} libvldb.a ${DESTDIR}${libdir}/afs/libvldb.a
+	${INSTALL_DATA} ${srcdir}/vl_opcodes.h ${DESTDIR}${includedir}/afs/vl_opcodes.h
+	${INSTALL_DATA} vlserver.h ${DESTDIR}${includedir}/afs/vlserver.h
+	${INSTALL_DATA} vldbint.h ${DESTDIR}${includedir}/afs/vldbint.h
+	${INSTALL_DATA} ${srcdir}/cnvldb.h ${DESTDIR}${includedir}/afs/cnvldb.h
+
+dest: vlserver cnvldb vldb_check libvldb.a vl_opcodes.h vlserver.h \
+		vldbint.h cnvldb.h
+	${INSTALL} -d ${DEST}/root.server/usr/afs/bin
+	${INSTALL} -d ${DEST}/etc
+	${INSTALL} -d ${DEST}/lib/afs
+	${INSTALL} -d ${DEST}/include/afs
+	if [ "x$(ENABLE_PTHREADED_UBIK)" != "xyes" ] ; then \
+		${INSTALL_PROGRAM} vlserver ${DEST}/root.server/usr/afs/bin/vlserver; \
+		${INSTALL_PROGRAM} cnvldb ${DEST}/etc/vldb_convert; \
+		${INSTALL_PROGRAM} vldb_check ${DEST}/etc/vldb_check; \
+	fi;
+	${INSTALL_DATA} libvldb.a ${DEST}/lib/afs/libvldb.a
+	${INSTALL_DATA} ${srcdir}/vl_opcodes.h ${DEST}/include/afs/vl_opcodes.h
+	${INSTALL_DATA} vlserver.h ${DEST}/include/afs/vlserver.h
+	${INSTALL_DATA} vldbint.h ${DEST}/include/afs/vldbint.h
+	${INSTALL_DATA} ${srcdir}/cnvldb.h ${DEST}/include/afs/cnvldb.h
+
+#
+# Misc targets
+#
+include ../config/Makefile.version
+
+clean:
+	$(RM) -f *.o *.a *.otl *.xdr.c *.cs.c *.ss.c core \
+		vlserver vlclient cnvldb vldbint.h vlserver.h vldb_check \
+		vl_errors.c AFS_component_version_number.c

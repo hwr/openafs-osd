@@ -1,0 +1,260 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+#
+# Portions Copyright (c) 2003 Apple Computer, Inc.
+
+srcdir=@srcdir@
+include @TOP_OBJDIR@/src/config/Makefile.config
+WITH_OBJECT_STORAGE=@WITH_OBJECT_STORAGE@
+INSTALL = @INSTALL@
+INSTALL_DATA = @INSTALL_DATA@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_SCRIPT = @INSTALL_SCRIPT@
+
+CC=${MT_CC}
+CFLAGS=${COMMON_CFLAGS} -DNINTERFACE ${MT_CFLAGS} -DRXDEBUG -DFSSYNC_BUILD_SERVER -DSALVSYNC_BUILD_CLIENT
+
+CCRULE=${CC} ${CFLAGS} -c $?
+
+RX=${srcdir}/../rx
+VICED=${srcdir}/../viced
+VLSERVER=${srcdir}/../vlserver
+LWP=${srcdir}/../lwp
+LIBACL=${srcdir}/../libacl
+UTIL=${srcdir}/../util
+DIR=${srcdir}/../dir
+VOL=${srcdir}/../vol
+FSINT=${srcdir}/../fsint
+RXOSD=${srcdir}/../rxosd
+OSDDB=${srcdir}/../osddb
+
+VICEDOBJS=viced.o afsfileprocs.o host.o physio.o callback.o serialize_state.o	
+
+RXOSDOBJS=rxosd.cs.o rxosd.xdr.o osddb.cs.o osddb.xdr.o osddbuser.o
+
+VLSERVEROBJS=vldbint.cs.o vldbint.xdr.o
+
+LWPOBJS=lock.o threadname.o
+
+LIBACLOBJS=aclprocs.o netprocs.o
+
+UTILOBJS=assert.o uuid.o serverLog.o fileutil.o netutils.o dirpath.o volparse.o flipbase64.o softsig.o
+
+DIROBJS=buffer.o dir.o salvage.o
+
+VOLOBJS= vnode.o volume.o vutil.o partition.o fssync-server.o \
+	 vol_osd.o vol_osd.xdr.o \
+	 clone.o devname.o common.o ihandle.o listinodes.o namei_ops.o \
+	 fstab.o salvsync-client.o daemon_com.o vg_cache.o vg_scan.o
+
+FSINTOBJS= afsaux.o afscbint.cs.o afsint.ss.o afsint.xdr.o
+
+RXOBJS = rx_pthread.o 
+
+objects= ${VICEDOBJS} ${VLSERVEROBJS} ${LWPOBJS} ${LIBACLOBJS} \
+	 ${UTILOBJS} ${DIROBJS} ${VOLOBJS} ${FSINTOBJS} ${RXOBJS}
+
+osdobjects = ${RXOSDOBJS}
+
+LIBS=${TOP_LIBDIR}/libafsauthent.a ${TOP_LIBDIR}/libafsrpc.a ${TOP_LIBDIR}/util.a
+
+all: fileserver
+
+rxosd.cs.o: ../rxosd/rxosd.cs.c
+	${CCRULE}
+
+rxosd.xdr.o: ../rxosd/rxosd.xdr.c
+	${CCRULE}
+
+osddb.cs.o: ../osddb/osddb.cs.c
+	${CCRULE}
+
+osddb.xdr.o: ../osddb/osddb.xdr.c
+	${CCRULE}
+
+osddbuser.o: ${OSDDB}/osddbuser.c
+	${CCRULE} -I../osddb
+
+rx_pthread.o: ${RX}/rx_pthread.c
+	${CCRULE} -DDPF_FSLOG
+
+viced.o: ${VICED}/viced.c
+	${CCRULE}
+
+afsfileprocs.o: ${VICED}/afsfileprocs.c
+	${CCRULE}
+
+host.o: ${VICED}/host.c
+	${CCRULE}
+
+physio.o: ${VICED}/physio.c
+	${CCRULE}
+
+callback.o: ${VICED}/callback.c
+	${CCRULE}
+
+serialize_state.o: serialize_state.c
+	${CCRULE}
+
+assert.o: ${UTIL}/assert.c
+	${CCRULE}
+
+uuid.o: ${UTIL}/uuid.c
+	${CCRULE}
+
+serverLog.o: ${UTIL}/serverLog.c
+	${CCRULE}
+
+fileutil.o: ${UTIL}/fileutil.c
+	${CCRULE}
+
+volparse.o: ${UTIL}/volparse.c
+	${CCRULE}
+
+flipbase64.o: ${UTIL}/flipbase64.c
+	${CCRULE}
+
+netutils.o: ${UTIL}/netutils.c
+	${CCRULE} -I../util
+
+dirpath.o: ${UTIL}/dirpath.c
+	${CCRULE}
+
+softsig.o: ${UTIL}/softsig.c
+	${CCRULE}
+
+lock.o: ${LWP}/lock.c
+	${CCRULE}
+
+threadname.o: ${LWP}/threadname.c
+	${CCRULE}
+
+aclprocs.o: ${LIBACL}/aclprocs.c
+	${CCRULE}
+
+netprocs.o: ${LIBACL}/netprocs.c
+	${CCRULE}
+
+vldbint.cs.o: ../vlserver/vldbint.cs.c
+	${CCRULE} -I${srcdir}/../vlserver
+
+vldbint.xdr.o: ../vlserver/vldbint.xdr.c
+	${CCRULE} -I${srcdir}/../vlserver
+
+buffer.o: ${DIR}/buffer.c
+	${CCRULE}
+
+dir.o: ${DIR}/dir.c
+	${CCRULE}
+
+salvage.o: ${DIR}/salvage.c
+	${CCRULE}
+
+vnode.o: ${VOL}/vnode.c
+	${CCRULE}
+
+volume.o: ${VOL}/volume.c
+	${CCRULE}
+
+vutil.o: ${VOL}/vutil.c
+	${CCRULE}
+
+partition.o: ${VOL}/partition.c
+	${CCRULE}
+
+vg_cache.o: ${VOL}/vg_cache.c
+	${CCRULE}
+
+vg_scan.o: ${VOL}/vg_scan.c
+	${CCRULE}
+
+fssync-server.o: ${VOL}/fssync-server.c
+	${CCRULE}
+
+fssync-client.o: ${VOL}/fssync-client.c
+	${CCRULE}
+
+salvsync-client.o: ${VOL}/salvsync-client.c
+	${CCRULE}
+
+daemon_com.o: ${VOL}/daemon_com.c
+	${CCRULE}
+
+clone.o: ${VOL}/clone.c
+	${CCRULE} -I../vol
+
+nuke.o: ${VOL}/nuke.c
+	${CCRULE}
+
+devname.o: ${VOL}/devname.c
+	${CCRULE}
+
+vol_osd.xdr.o: ../vol/vol_osd.xdr.c
+	${CCRULE}
+
+vol_osd.o: ${VOL}/vol_osd.c
+	${CCRULE} -I../vol
+
+# only for darwin?
+fstab.o: ${UTIL}/fstab.c
+	${CCRULE}
+
+common.o: ${VOL}/common.c
+	${CCRULE}
+
+listinodes.o: ${VOL}/listinodes.c
+	${CCRULE}
+
+ihandle.o: ${VOL}/ihandle.c
+	${CCRULE}
+
+namei_ops.o: ${VOL}/namei_ops.c
+	${CCRULE}
+
+afsaux.o: ${FSINT}/afsaux.c
+	${CCRULE} -I../fsint
+
+afscbint.cs.o: ../fsint/afscbint.cs.c
+	${CCRULE}
+
+afscbint.xdr.o: ../fsint/afscbint.xdr.c
+	${CCRULE}
+
+afsint.cs.o: ../fsint/afsint.cs.c
+	${CCRULE}
+
+afsint.ss.o: ../fsint/afsint.ss.c
+	${CCRULE}
+
+afsint.xdr.o: ../fsint/afsint.xdr.c
+	${CCRULE}
+
+fileserver: ${objects} ${LIBS}
+	case ${WITH_OBJECT_STORAGE} in \
+	YES) \
+	${MAKE} ${osdobjects} ; \
+	${CC} ${LDFLAGS} -o fileserver ${objects} \
+		${osdobjects} ${LIBS} ${MT_LIBS} ${XLIBS} ;; \
+	*) \
+	${CC} ${LDFLAGS} -o fileserver ${objects} ${LIBS} ${MT_LIBS} ${XLIBS} ;; \
+	esac
+
+install: fileserver
+	${INSTALL} -d ${DESTDIR}${afssrvlibexecdir}
+	${INSTALL} -d ${DESTDIR}${afssrvsbindir}
+	${INSTALL} fileserver \
+		${DESTDIR}${afssrvlibexecdir}/fileserver
+
+dest: fileserver
+	${INSTALL} -d ${DEST}/root.server/usr/afs/bin
+	${INSTALL} fileserver \
+		${DEST}/root.server/usr/afs/bin/fileserver
+
+clean:
+	$(RM) -f *.o *.c *.h fileserver core
+
+include ../config/Makefile.version

@@ -1,0 +1,98 @@
+# rcsid : $Id$
+
+RELDIR=WINNT\install\loopback
+!INCLUDE ..\..\..\config\NTMakefile.$(SYS_NAME)
+!INCLUDE ..\..\..\config\NTMakefile.version
+
+MEDIABINDIR = $(DESTDIR)\WinInstall\Config
+
+EXEFILE = $(MEDIABINDIR)\instloop.exe
+
+EXERES = $(OUT)\instloop.res
+
+DLLFILE = $(MEDIABINDIR)\afsloopback.dll
+
+DLLRES = $(OUT)\afsloopback.res
+
+DLLEXPORTS=\
+	-EXPORT:UnInstallLoopBack \
+	-EXPORT:IsLoopbackInstalled \
+	-EXPORT:InstallLoopBack \
+	-EXPORT:doLoopBackEntryW \
+	-EXPORT:uninstallLoopBackEntryW \
+	-EXPORT:installLoopbackMSI \
+	-EXPORT:uninstallLoopbackMSI
+
+DLLLIBFILES=\
+	setupapi.lib msi.lib uuid.lib Shell32.lib ole32.lib advapi32.lib wbemuuid.lib
+
+LINK=link
+
+# Figure out which DDK include path we require
+!IF EXIST ($(NTDDKDIR)\netcfgx.h)
+DDK_INCL = $(NTDDKDIR)
+!ELSEIF EXIST ($(NTDDKDIR)\INC\WNET\netcfgx.h)
+DDK_INCL = $(NTDDKDIR)\INC\WNET
+!ELSEIF EXIST ($(NTDDKDIR)\INC\API\netcfgx.h)
+DDK_INCL = $(NTDDKDIR)\INC\API
+!ELSE
+!ERROR netcfgx.h header file cannot be found.  DDK improperly configured.
+!ENDIF
+
+# DDK version 6001 and above contain SDK header files and come with
+# its own set of runtime header files.  We want to use the Platform
+# SDK header files.
+INCLUDE=$(INCLUDE);$(DDK_INCL)
+
+# afsloopback.dll
+
+DLLSOURCEFILES = loopbackutils.cpp wmi.cpp renameconnection.cpp
+
+# The order of these files is significant.  The first in the list
+# should be an .obj that includes <afx.h> at the top of the source
+# file.  See Q148652
+DLLOBJFILES =  $(OUT)\renameconnection.obj $(OUT)\loopbackutils.obj $(OUT)\wmi.obj
+
+$(EXERES) : instloop.rc AFS_component_version_number.h
+
+$(DLLRES) : afsloopback.rc AFS_component_version_number.h
+
+STATICC2OBJ=$(CC) $(cflags) $(afscflags) $(afscdefs) -ML
+
+$(OUT)\loopbackutils.obj: loopbackutils.cpp
+	$(STATICC2OBJ) -c -DUNICODE -D_UNICODE /Fo$@ $**
+
+$(OUT)\renameconnection.obj: renameconnection.cpp
+	$(STATICC2OBJ) -c -DUNICODE -D_UNICODE /Fo$@ $**
+
+$(OUT)\wmi.obj: wmi.cpp
+	$(STATICC2OBJ) -c -DUNICODE -D_UNICODE /Fo$@ $**
+
+$(DLLFILE): $(DLLOBJFILES) $(DLLRES)
+	$(LINK) -DLL $(DLLEXPORTS) -OUT:$@ $** $(DLLLIBFILES)
+        $(_VC_MANIFEST_EMBED_DLL)
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+# instloop.exe
+
+EXEOBJFILES = $(DLLOBJFILES) $(OUT)\instloop.obj
+#EXELIBFILES = $(MEDIABINDIR)\afsloopback.lib
+
+$(OUT)\instloop.obj: instloop.c
+      $(STATICC2OBJ) -c -DUNICODE -D_UNICODE /Fo$@ $**
+
+$(EXEFILE): $(EXEOBJFILES) $(EXERES)
+        $(LINK) /OUT:$@ $** $(DLLLIBFILES)
+        $(_VC_MANIFEST_EMBED_EXE)
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+install:  $(DLLFILE) $(EXEFILE)
+
+clean	::
+	$(DEL) *.pdb
+	$(DEL) $(EXERES)
+	$(DEL) $(DLLRES)
+	$(DEL) AFS_component_version_number.h
+

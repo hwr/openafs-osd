@@ -1,0 +1,65 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+RELDIR=cmd\test
+!INCLUDE ..\..\config\NTMakefile.$(SYS_NAME)
+!INCLUDE ..\..\config\NTMakefile.version
+
+# test exe's
+EXELIBS =\
+	$(DESTDIR)\lib\afs\afscmd.lib \
+	$(DESTDIR)\lib\afs\afsutil.lib \
+	$(DESTDIR)\lib\afs\afscom_err.lib
+
+# build itest.exe
+ITEST_EXEOBJS =\
+	$(OUT)\itest.obj
+
+ITEST_EXEFILE = $(OUT)\itest.exe
+
+$(ITEST_EXEFILE): $(ITEST_EXEOBJS) 
+	$(EXECONLINK) $(EXELIBS)  
+        $(_VC_MANIFEST_EMBED_EXE)
+	$(EXEPREP) 
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+#build ctest.exe
+CTEST_EXEOBJS =\
+	$(OUT)\ctest.obj
+
+CTEST_EXEFILE = $(OUT)\ctest.exe
+
+$(CTEST_EXEFILE): $(CTEST_EXEOBJS) 
+	$(EXECONLINK) $(EXELIBS)  
+        $(_VC_MANIFEST_EMBED_EXE)
+	$(EXEPREP) 
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+# build dtest.exe
+DTEST_EXEOBJS =\
+	$(OUT)\dtest.obj
+
+DTEST_EXEFILE = $(OUT)\dtest.exe
+
+$(DTEST_EXEFILE): $(DTEST_EXEOBJS) 
+	$(EXECONLINK) $(EXELIBS)  
+        $(_VC_MANIFEST_EMBED_EXE)
+	$(EXEPREP) 
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+all: test
+
+test tests: $(CTEST_EXEFILE) $(ITEST_EXEFILE) $(DTEST_EXEFILE)
+
+clean::
+	$(DEL) $(OUT)\ctest.exe $(OUT)\dtest.exe $(OUT)\itest.exe
+
+mkdir:
+	

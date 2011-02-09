@@ -1,0 +1,221 @@
+# Generated automatically from Makefile.in by configure.
+#
+# Copyright (c) 2006, Hartmut Reuter,
+# RZG, Max-Planck-Institut f. Plasmaphysik.
+# All Rights Reserved.
+#
+srcdir=@srcdir@
+include @TOP_OBJDIR@/src/config/Makefile.config
+HSM_LIB=@HSM_LIB@
+HSM_INC=@HSM_INC@
+INSTALL=/usr/bin/install -c
+
+VICED=../viced
+VLSERVER=../vlserver
+LWP=../lwp
+LIBACL=../libacl
+UTIL=../util
+DIR=../dir
+VOL=../vol
+OSDDBSRC=${srcdir}/../osddb
+FSINT=../fsint
+
+CC=${MT_CC}
+CFLAGS=${COMMON_CFLAGS} -I.. -I${UTIL}/ ${MT_CFLAGS}
+
+CCRULE=${CC} ${CFLAGS} -c $?
+
+CLIENTOBJS=osd.o
+
+OSDOBJS=rxosd.o rxosd.ss.o rxosd.cs.o rxosd.xdr.o rxosd_hpss.o rxosd_dcache.o	
+
+LWPOBJS=lock.o threadname.o
+
+UTILOBJS=assert.o uuid.o serverLog.o fileutil.o netutils.o dirpath.o volparse.o flipbase64.o softsig.o
+
+VOLOBJS= devname.o common.o ihandle.o namei_ops.o
+
+OSDDBOBJS=osddb.cs.o osddb.xdr.o osddbuser.o
+
+objects= ${OSDOBJS} ${LWPOBJS} ${UTILOBJS} ${VOLOBJS} ${OSDDBOBJS}
+
+LIBS=${TOP_LIBDIR}/libafsauthent.a ${TOP_LIBDIR}/libafsrpc.a ${TOP_LIBDIR}/util.a ${TOP_LIBDIR}/libcmd.a
+
+source: rxosd.h rxosd.cs.c rxosd.xdr.c Krxosd.cs.c Krxosd.xdr.c \
+	${TOP_INCDIR}/afs/rxosd.h rxosd.xdr.o rxosd.cs.o
+
+all: rxosd Krxosd.cs.c Krxosd.xdr.c rxosd.h osd readabyte \
+		${TOP_INCDIR}/afs/rxosd.h  ${TOP_LIBDIR}/librxosd.a
+
+
+dest: all
+
+${TOP_INCDIR}/afs/rxosd.h: rxosd.h
+	${INSTALL} $? $@
+
+osd: osd.o rxosd.cs.o osddbuser.o policy_parser.o
+	${CC} ${LDFLAGS} -o osd osd.o rxosd.cs.o rxosd.xdr.o policy_parser.o \
+	${OSDDBOBJS} ${LIBS} ${MT_LIBS} ${XLIBS}
+	
+
+rxosd.o: rxosd.c
+	${CCRULE} ${HSM_INC} ${PNFS_OPT} -DBUILDING_RXOSD
+
+rxosd_hpss.o: rxosd_hpss.c
+	${CCRULE} ${HSM_INC} ${PNFS_OPT}
+
+rxosd_dcache.o: rxosd_dcache.c
+	${CCRULE} ${HSM_INC} ${PNFS_OPT}
+
+policy_parser.o: policies.tab.c
+	${CCRULE} -o policy_parser.o
+
+policies.tab.c: policies.y
+	${YACC} -b policies ${srcdir}/policies.y
+
+assert.o: ${UTIL}/assert.c
+	${CCRULE}
+
+uuid.o: ${UTIL}/uuid.c
+	${CCRULE}
+
+serverLog.o: ${UTIL}/serverLog.c
+	${CCRULE}
+
+fileutil.o: ${UTIL}/fileutil.c
+	${CCRULE}
+
+volparse.o: ${UTIL}/volparse.c
+	${CCRULE}
+
+flipbase64.o: ${UTIL}/flipbase64.c
+	${CCRULE}
+
+netutils.o: ${UTIL}/netutils.c
+	${CCRULE}
+
+dirpath.o: ${UTIL}/dirpath.c
+	${CCRULE}
+
+softsig.o: ${UTIL}/softsig.c
+	${CCRULE}
+
+lock.o: ${LWP}/lock.c
+	${CCRULE}
+
+threadname.o: ${LWP}/threadname.c
+	${CCRULE}
+
+netprocs.o: ${LIBACL}/netprocs.c
+	${CCRULE}
+
+devname.o: ${VOL}/devname.c
+	${CCRULE}
+
+# only for darwin
+fstab.o: ${VOL}/fstab.c
+	${CCRULE}
+
+common.o: ${VOL}/common.c
+	${CCRULE}
+
+ihandle.o: ${VOL}/ihandle.c
+	${CCRULE} -DBUILDING_RXOSD
+
+namei_ops.o: ${VOL}/namei_ops.c
+	${CCRULE} ${DCACHE_INC} ${PNFS_OPT} -DBUILDING_RXOSD
+
+osddb.h: ${OSDDBSRC}/osddb.xg
+	${RXGEN} -x -h -o $@ ${OSDDBSRC}/osddb.xg
+
+osddb.cs.c: ${OSDDBSRC}/osddb.xg osddb.h
+	${RXGEN} -x -C -o $@ ${OSDDBSRC}/osddb.xg
+
+osddb.xdr.c: ${OSDDBSRC}/osddb.xg osddb.h
+	${RXGEN} -x -c -o $@ ${OSDDBSRC}/osddb.xg
+
+osddbuser.o: ${OSDDBSRC}/osddbuser.c
+	${CCRULE}
+
+osddb.xdr.o: osddb.xdr.c 
+	${CCRULE}
+
+osddb.cs.o: osddb.cs.c 
+	${CCRULE}
+
+afsaux.o: ${FSINT}/afsaux.c
+	${CCRULE}
+
+rxosd.cs.o: rxosd.cs.c
+	${CCRULE}
+
+rxosd.ss.o: rxosd.ss.c
+	${CCRULE}
+
+rxosd.xdr.o: rxosd.xdr.c
+	${CCRULE}
+
+rxosd.ss.c: rxosd.xg rxosd.h
+	${RXGEN} -x -S -o $@ ${srcdir}/rxosd.xg
+
+rxosd.cs.c: rxosd.xg rxosd.h
+	${RXGEN} -x -C -o $@ ${srcdir}/rxosd.xg
+
+Krxosd.cs.c: rxosd.xg rxosd.h
+	${RXGEN} -x -k -C -o $@ ${srcdir}/rxosd.xg
+
+rxosd.xdr.c: rxosd.xg rxosd.h
+	${RXGEN} -x -y -c -o $@ ${srcdir}/rxosd.xg
+
+Krxosd.xdr.c: rxosd.xg rxosd.h
+	${RXGEN} -x -k -y -c -o $@ ${srcdir}/rxosd.xg
+
+rxosd.h: rxosd.xg
+	${RXGEN} -x -h -o $@ ${srcdir}/rxosd.xg
+
+rxosd: rxosd.h ${objects} ${LIBS}
+	${CC} ${LDFLAGS} -ldl -o rxosd ${objects} ${LIBS} ${MT_LIBS} ${XLIBS} \
+			${HSM_LIB}
+
+readabyte.o: readabyte.c
+	${CCRULE} ${HSM_INC}
+
+readabyte: readabyte.o
+	${CC} ${LDFLAGS} -ldl -o readabyte readabyte.o rxosd_hpss.o rxosd_dcache.o ${MT_LIBS} ${HSM_LIB}
+
+${DEST}/root.server/usr/afs/bin/rxosd: rxosd  
+	${INSTALL} $? $@
+
+${DEST}/root.server/usr/afs/bin/readabyte: readabyte 
+	${INSTALL} $? $@
+
+${DEST}/root.server/usr/afs/bin/osd: osd  
+	${INSTALL} $? $@
+
+${DEST}/bin/osd: osd  
+	${INSTALL} $? $@
+
+librxosd.a: rxosd.xdr.o rxosd.cs.o
+	${RM} -f $@
+	${AR} crv $@ rxosd.xdr.o rxosd.cs.o
+	${RANLIB} $@
+
+${TOP_LIBDIR}/librxosd.a: librxosd.a
+	${INSTALL} $? $@
+
+install: ${DESTDIR}${afssrvlibexecdir}/rxosd ${DESTDIR}${bindir}/osd
+
+clean:
+	$(RM) -f *.o rxosd.*.* rxosd.[oh] Krxo* osd core AFS_component_version_number.c osddb* policy_parser.c
+
+include ../config/Makefile.version
+
+${DESTDIR}${afssrvlibexecdir}/rxosd: rxosd
+	${INSTALL} $? $@
+
+${DESTDIR}${bindir}/osd: osd
+	${INSTALL} $? $@
+
+dest: ${DEST}/root.server/usr/afs/bin/rxosd ${DEST}/root.server/usr/afs/bin/osd ${DEST}/bin/osd
+
+

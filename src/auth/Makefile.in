@@ -1,0 +1,130 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+srcdir=@srcdir@
+include @TOP_OBJDIR@/src/config/Makefile.config
+
+INSTALL = @INSTALL@
+INSTALL_DATA = @INSTALL_DATA@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_SCRIPT = @INSTALL_SCRIPT@
+
+OBJS= cellconfig.o ktc.o userok.o writeconfig.o authcon.o \
+    acfg_errors.o ktc_errors.o
+KOBJS= cellconfig.o ktc.krb.o userok.o writeconfig.o authcon.o \
+    acfg_errors.o ktc_errors.o
+
+LIBS=libauth.a \
+      ${TOP_LIBDIR}/librxkad.a ${TOP_LIBDIR}/libdes.a \
+      ${TOP_LIBDIR}/librx.a ${TOP_LIBDIR}/libsys.a \
+      ${TOP_LIBDIR}/liblwp.a ${TOP_LIBDIR}/util.a
+INCLS=cellconfig.h auth.h keys.h
+KSRCS=auth.h
+UKSRCS=${KSRCS} cellconfig.h acfg_errors.c keys.h cellconfig.c \
+       ktc.c authcon.c ktc_errors.c
+
+all: ${TOP_LIBDIR}/libauth.a ${TOP_LIBDIR}/libauth.krb.a depinstall
+
+depinstall: ${TOP_INCDIR}/afs/keys.h \
+	${TOP_INCDIR}/afs/cellconfig.h \
+	${TOP_INCDIR}/afs/auth.h \
+	${TOP_INCDIR}/afs/ktc.h
+
+generated: acfg_errors.c cellconfig.h ktc_errors.c auth.h
+
+${TOP_INCDIR}/afs/keys.h: keys.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/afs/cellconfig.h: cellconfig.h
+	${INSTALL_DATA} cellconfig.h $@
+
+${TOP_INCDIR}/afs/auth.h: auth.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/afs/ktc.h: ktc.h
+	${INSTALL_DATA} $? $@
+
+${TOP_LIBDIR}/libauth.a: libauth.a
+	${INSTALL_DATA} libauth.a $@
+
+${TOP_LIBDIR}/libauth.krb.a: libauth.krb.a
+	${INSTALL_DATA} libauth.krb.a $@
+
+cellconfig.o: cellconfig.c ${INCLS}
+ktc.o: ktc.c ${INCLS} ${TOP_INCDIR}/afs/vice.h
+writeconfig.o: writeconfig.c ${INCLS}
+authcon.o: authcon.c ${INCLS}
+userok.o: userok.c ${INCLS}
+cellconfig.o: cellconfig.c ${INCLS}
+copyauth.o: copyauth.c ${INCLS} AFS_component_version_number.o
+setkey.o: setkey.c ${INCLS} AFS_component_version_number.o
+
+ktc.krb.o: ktc.c ${INCLS} ${TOP_INCDIR}/afs/vice.h
+	${CCOBJ} ${CFLAGS} -DAFS_KERBEROS_ENV -c ${srcdir}/ktc.c -o ktc.krb.o
+
+libauth.a: $(OBJS) AFS_component_version_number.o
+	-$(RM) -f libauth.a
+	$(AR) crv $@ $(OBJS) AFS_component_version_number.o
+	$(RANLIB) libauth.a
+
+libauth.krb.a: $(KOBJS) AFS_component_version_number.o
+	-$(RM) -f $@
+	$(AR) crv $@ $(KOBJS) AFS_component_version_number.o
+	$(RANLIB) $@
+
+copyauth: copyauth.o ${LIBS}
+	$(CC) $(CFLAGS) -o copyauth copyauth.o ${LIBS} ${XLIBS}
+
+setkey: setkey.o ${LIBS}
+	${CC} $(CFLAGS) -o setkey setkey.o ${LIBS} ${XLIBS}
+
+acfg_errors.o: acfg_errors.c
+
+acfg_errors.c cellconfig.h: acfg_errors.et cellconfig.p.h
+	$(RM) -f cellconfig.h acfg_errors.c
+	${COMPILE_ET} -p ${srcdir} acfg_errors -h cellconfig
+
+ktc_errors.o: ktc_errors.c
+
+ktc_errors.c auth.h: ktc_errors.et auth.p.h
+	$(RM) -f auth.h ktc_errors.c
+	${COMPILE_ET} -p ${srcdir} ktc_errors -h auth
+
+#
+# Install targets
+#
+install: libauth.a libauth.krb.a auth.h cellconfig.h
+	${INSTALL} -d ${DESTDIR}${libdir}/afs
+	${INSTALL} -d ${DESTDIR}${includedir}/afs
+	${INSTALL_DATA} libauth.a ${DESTDIR}${libdir}/afs/libauth.a
+	${INSTALL_DATA} libauth.krb.a ${DESTDIR}${libdir}/afs/libauth.krb.a
+	${INSTALL_DATA} ${srcdir}/keys.h ${DESTDIR}${includedir}/afs/keys.h
+	${INSTALL_DATA} cellconfig.h ${DESTDIR}${includedir}/afs/cellconfig.h
+	${INSTALL_DATA} auth.h ${DESTDIR}${includedir}/afs/auth.h
+	${INSTALL_DATA} ${srcdir}/ktc.h ${DESTDIR}${includedir}/afs/ktc.h
+
+dest: libauth.a libauth.krb.a auth.h cellconfig.h
+	${INSTALL} -d ${DEST}/lib/afs
+	${INSTALL} -d ${DEST}/include/afs
+	${INSTALL_DATA} libauth.a ${DEST}/lib/afs/libauth.a
+	${INSTALL_DATA} libauth.krb.a ${DEST}/lib/afs/libauth.krb.a
+	${INSTALL_DATA} ${srcdir}/keys.h ${DEST}/include/afs/keys.h
+	${INSTALL_DATA} cellconfig.h ${DEST}/include/afs/cellconfig.h
+	${INSTALL_DATA} auth.h ${DEST}/include/afs/auth.h
+	${INSTALL_DATA} ${srcdir}/ktc.h ${DEST}/include/afs/ktc.h
+
+#
+# Misc. targets
+#
+test: 
+	cd test; $(MAKE)
+
+clean:
+	$(RM) -f *.o *.a copyauth setkey auth.h cellconfig.h acfg_errors.c ktc_errors.c core \
+	AFS_component_version_number.c
+
+include ../config/Makefile.version

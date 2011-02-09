@@ -1,0 +1,106 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+AFSDEV_AUXCDEFINES = -DAFS_PTHREAD_ENV -DADMINEXPORT=__declspec(dllexport)
+
+RELDIR=libadmin\cfg
+!INCLUDE ..\..\config\NTMakefile.$(SYS_NAME)
+!INCLUDE ..\..\config\NTMakefile.version
+
+############################################################################
+
+INCFILES =\
+	$(DESTDIR)\include\afs\afs_cfgAdmin.h
+
+############################################################################
+# Build afscfgadmin.dll
+
+DLLFILE = $(DESTDIR)\root.server\usr\afs\bin\afscfgadmin.dll
+ILIBDIR = $(DESTDIR)\lib\afs
+
+RXOBJS = $(OUT)\xdr_int32.obj $(OUT)\xdr_int64.obj
+
+UBIKOBJS=\
+	$(OUT)\ubik_int.cs.obj \
+	$(OUT)\ubik_int.xdr.obj
+
+CLIENTOBJS=\
+	$(OUT)\cellservdb.obj
+
+CFGOBJS = \
+	$(OUT)\cfgclient.obj \
+	$(OUT)\cfgdb.obj \
+	$(OUT)\cfghost.obj \
+	$(OUT)\cfgservers.obj \
+	$(OUT)\cfginternal.obj
+
+DLLOBJS =\
+	$(UBIKOBJS) \
+	$(CLIENTOBJS) \
+	$(RXOBJS) \
+	$(CFGOBJS) \
+	$(OUT)\afscfgadmin.res
+
+DLLLIBS =\
+	$(DESTDIR)\lib\afspthread.lib \
+	$(DESTDIR)\lib\afs\afsadminutil.lib \
+	$(DESTDIR)\lib\afs\afsbosadmin.lib \
+	$(DESTDIR)\lib\afs\afskasadmin.lib \
+	$(DESTDIR)\lib\afs\afsclientadmin.lib \
+	$(DESTDIR)\lib\afs\afsptsadmin.lib \
+	$(DESTDIR)\lib\afs\afsvosadmin.lib \
+	$(DESTDIR)\lib\afsrpc.lib \
+	$(DESTDIR)\lib\afsauthent.lib \
+	$(DESTDIR)\lib\afs\afsreg.lib \
+        $(DESTDIR)\lib\libafsconf.lib
+
+$(DLLFILE): $(DLLOBJS) $(DLLLIBS)
+	$(DLLCONLINK) /DEF:afscfgadmin.def shell32.lib
+        $(_VC_MANIFEST_EMBED_DLL)
+	$(DLLPREP)
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+	$(MAKECYGLIB) --input-def afscfgadmin.def
+	$(COPY) $*.lib $(ILIBDIR)
+	$(DEL) $*.lib $*.exp
+
+############################################################################
+# Definitions for building ubik objects
+
+UBIK=..\..\ubik
+RX= ..\..\rx
+
+$(RXOBJS): $(RX)\$$(@B).c
+	$(C2OBJ) -I$(RX) $**
+
+$(UBIKOBJS): $(UBIK)\$$(@B).c
+	$(C2OBJ) $**
+
+
+############################################################################
+# Definitions for building client objects
+#   NOTE: headers should be installed and .obj should be put in a static lib
+
+CLIENTCFGDIR = ..\..\WINNT\client_config
+
+$(CLIENTOBJS): $(CLIENTCFGDIR)\$$(@B).c
+	$(C2OBJ) -I$(CLIENTCFGDIR) $**
+
+$(CFGOBJS): $$(@B).c
+	$(C2OBJ) -I$(CLIENTCFGDIR) $**
+
+############################################################################
+# Definitions for generating versioninfo resources
+
+$(OUT)\afscfgadmin.res: AFS_component_version_number.h
+
+install: $(DLLFILE) $(INCFILES)
+
+clean::
+
+mkdir:
+	

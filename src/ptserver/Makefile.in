@@ -1,0 +1,263 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+srcdir=@srcdir@
+include @TOP_OBJDIR@/src/config/Makefile.config
+INSTALL = @INSTALL@
+INSTALL_DATA = @INSTALL_DATA@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_SCRIPT = @INSTALL_SCRIPT@
+ENABLE_PTHREADED_UBIK=@ENABLE_PTHREADED_UBIK@
+
+INCLS=${TOP_INCDIR}/ubik.h \
+	${TOP_INCDIR}/lock.h  \
+	${TOP_INCDIR}/lwp.h \
+	${TOP_INCDIR}/rx/rx.h \
+	${TOP_INCDIR}/rx/xdr.h \
+	${TOP_INCDIR}/afs/keys.h \
+	${TOP_INCDIR}/afs/cellconfig.h \
+	ptserver.h ptclient.h ptuser.h ptint.h pterror.h map.h ptprototypes.h
+
+LINCLS=${TOP_INCDIR}/ubik.h \
+	${TOP_INCDIR}/lock.h \
+	${TOP_INCDIR}/rx/rx.h \
+	${TOP_INCDIR}/rx/xdr.h  \
+	${TOP_INCDIR}/rx/rxkad.h \
+	${TOP_INCDIR}/afs/auth.h \
+	${TOP_INCDIR}/afs/cellconfig.h \
+	ptclient.h ptuser.h ptint.h pterror.h
+
+LIBS=${TOP_LIBDIR}/libubik.a \
+	${TOP_LIBDIR}/libauth.a \
+	${TOP_LIBDIR}/librxkad.a \
+	${TOP_LIBDIR}/librxstat.a \
+	${TOP_LIBDIR}/librx.a \
+	${TOP_LIBDIR}/liblwp.a \
+	${TOP_LIBDIR}/libdes.a \
+	${TOP_LIBDIR}/libcmd.a \
+	${TOP_LIBDIR}/libcom_err.a \
+	${TOP_LIBDIR}/libsys.a \
+	${TOP_LIBDIR}/libafsutil.a
+
+
+all: ptserver pts pt_util db_verify ${TOP_LIBDIR}/libprot.a \
+	depinstall readgroup readpwd testpt
+
+generated: \
+	pterror.h pterror.c \
+	ptint.cs.c ptint.ss.c ptint.xdr.c ptint.h
+
+depinstall: \
+	ptint.cs.c ptint.xdr.c \
+	${TOP_INCDIR}/afs/prclient.h \
+	${TOP_INCDIR}/afs/prerror.h \
+	${TOP_INCDIR}/afs/print.h \
+	${TOP_INCDIR}/afs/prserver.h \
+	${TOP_INCDIR}/afs/ptclient.h \
+	${TOP_INCDIR}/afs/ptuser.h \
+	${TOP_INCDIR}/afs/pterror.h \
+	${TOP_INCDIR}/afs/ptint.h \
+	${TOP_INCDIR}/afs/ptserver.h
+
+${TOP_LIBDIR}/libprot.a: libprot.a
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/afs/prclient.h: ptclient.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/afs/prerror.h: pterror.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/afs/print.h: ptint.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/afs/prserver.h: ptserver.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/afs/ptclient.h: ptclient.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/afs/ptuser.h: ptuser.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/afs/pterror.h: pterror.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/afs/ptint.h: ptint.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/afs/ptserver.h: ptserver.h
+	${INSTALL_DATA} $? $@
+
+#
+# Build targets
+#
+ptserver: ptserver.o ptutils.o ptprocs.o ptint.ss.o ptint.xdr.o utils.o $(LIBS) ${TOP_LIBDIR}/libaudit.a map.o
+	$(CC) ${CFLAGS} -o ptserver ptserver.o ptutils.o ptprocs.o ptint.ss.o ptint.xdr.o utils.o map.o $(LIBS) ${XLIBS} ${TOP_LIBDIR}/libaudit.a
+
+ptserver.o: ptserver.c ${INCLS} AFS_component_version_number.c
+
+# When supergroups is enabled, some parts of ptserver cast between
+# incompatible structs.
+ptutils.o: ptutils.c ${INCLS}
+	$(CCOBJ) $(CFLAGS) @CFLAGS_NOSTRICT@ -c ${srcdir}/ptutils.c
+
+ptprocs.o: ptprocs.c ${INCLS}
+	$(CCOBJ) $(CFLAGS) @CFLAGS_NOSTRICT@ -c ${srcdir}/ptprocs.c
+
+utils.o: utils.c ${INCLS} 
+
+map.o: map.c ${INCLS}
+
+ptint.ss.o: ptint.ss.c ptint.xdr.c ptint.xg
+ptint.cs.o: ptint.cs.c ptint.xdr.c ptint.xg
+ptint.xdr.o: ptint.xdr.c ptint.h ptint.xg
+
+ptint.cs.c: ptint.xg
+	${RXGEN} -A -x -C -u -o $@ ${srcdir}/ptint.xg
+
+ptint.ss.c: ptint.xg
+	${RXGEN} -A -x -S -o $@ ${srcdir}/ptint.xg
+
+ptint.xdr.c: ptint.xg
+	${RXGEN} -A -x -c -o $@ ${srcdir}/ptint.xg
+
+ptint.h: ptint.xg
+	${RXGEN} -A -x -h -u -o $@ ${srcdir}/ptint.xg
+
+ptint.cs.c: ptint.h
+ptint.ss.c: ptint.h
+ptint.xdr.c: ptint.h
+
+Kptint.cs.c: ptint.xg Kptint.h
+	${RXGEN} -A -x -k -C -o Kptint.cs.c ${srcdir}/ptint.xg
+
+Kptint.xdr.c: ptint.xg
+	${RXGEN} -A -x -k -c -o Kptint.xdr.c ${srcdir}/ptint.xg
+
+Kptint.h: ptint.xg
+	${RXGEN} -A -x -k -h -o Kptint.h ${srcdir}/ptint.xg
+
+display.o: display.c ${INCLS}
+
+db_verify.o: db_verify.c ${INCLS} AFS_component_version_number.c
+
+db_verify: db_verify.o pterror.o display.o $(LIBS)
+	$(CC) ${CFLAGS} -o db_verify db_verify.o display.o pterror.o $(LIBS) ${XLIBS}
+
+ptclient: ptclient.o display.o libprot.a $(LIBS)
+	$(CC) ${CFLAGS} -o ptclient ptclient.o display.o libprot.a $(LIBS) ${XLIBS}
+
+ptclient.o: ptclient.c ${INCLS} AFS_component_version_number.c
+
+ptuser.o: ptuser.c ${LINCLS}
+
+pterror.h pterror.c: pterror.et
+	$(RM) -f pterror.h pterror.c
+	${COMPILE_ET} -p ${srcdir} pterror
+
+libprot.a: ptuser.o pterror.o ptint.cs.o ptint.xdr.o AFS_component_version_number.o
+	$(RM) -f $@
+	$(AR) crv $@ ptuser.o pterror.o ptint.cs.o ptint.xdr.o AFS_component_version_number.o
+	$(RANLIB) $@
+
+pts: pts.o libprot.a ${TOP_LIBDIR}/libcmd.a $(LIBS)
+	$(CC) ${CFLAGS} -o pts pts.o ${TOP_LIBDIR}/libcmd.a libprot.a ${LIBS} ${XLIBS}
+
+pts.o: pts.c ${LINCLS} ${TOP_INCDIR}/afs/cmd.h AFS_component_version_number.c
+
+readgroup: readgroup.o libprot.a $(LIBS)
+	$(CC) ${CFLAGS} -o readgroup readgroup.o libprot.a ${LIBS} ${XLIBS}
+
+readgroup.o: readgroup.c ${LINCLS} AFS_component_version_number.c
+
+readpwd: readpwd.o libprot.a $(LIBS)
+	$(CC) ${CFLAGS} -o readpwd readpwd.o libprot.a ${LIBS} ${XLIBS}
+
+readpwd.o: readpwd.c ${LINCLS} AFS_component_version_number.c
+
+testpt: testpt.o libprot.a ${TOP_LIBDIR}/libcmd.a $(LIBS)
+	case "$(SYS_NAME)" in \
+	*_darwin_12 ) \
+		$(CC) ${CFLAGS} -o testpt testpt.o ${TOP_LIBDIR}/libcmd.a libprot.a $(LIBS) ;; \
+	* ) \
+		$(CC) ${CFLAGS} -o testpt testpt.o -lm ${TOP_LIBDIR}/libcmd.a libprot.a $(LIBS) ${XLIBS} ;; \
+	esac
+
+testpt.o: testpt.c ${INCLS} ${TOP_INCDIR}/afs/cmd.h AFS_component_version_number.c
+
+pt_util: pt_util.o ptutils.o ubik.o utils.o map.o libprot.a $(LIBS)
+	$(CC) ${CFLAGS} -o pt_util pt_util.o ptutils.o ubik.o utils.o map.o libprot.a ${TOP_LIBDIR}/libcmd.a $(LIBS) ${XLIBS}
+
+ubik.o: ubik.c ${INCLS}
+
+prerror.h: pterror.h
+	${INSTALL_DATA} $? $@
+	echo '#define ERROR_TABLE_BASE_pr ERROR_TABLE_BASE_PT' >> $@
+
+#
+# Installation targets
+#
+install: ptserver pts pt_util db_verify libprot.a ptclient.h pterror.h \
+		ptint.h ptserver.h
+	${INSTALL} -d ${DESTDIR}${afssrvlibexecdir}
+	${INSTALL} -d ${DESTDIR}${afssrvbindir}
+	${INSTALL} -d ${DESTDIR}${afssrvsbindir}
+	${INSTALL} -d ${DESTDIR}${bindir}
+	${INSTALL} -d ${DESTDIR}${libdir}/afs
+	${INSTALL} -d ${DESTDIR}${includedir}/afs
+	if [ "x$(ENABLE_PTHREADED_UBIK)" != "xyes" ] ; then \
+		${INSTALL_PROGRAM} ptserver ${DESTDIR}${afssrvlibexecdir}/ptserver; \
+		${INSTALL_PROGRAM} pts ${DESTDIR}${afssrvbindir}/pts; \
+		${INSTALL_PROGRAM} pts ${DESTDIR}${bindir}/pts; \
+		${INSTALL_PROGRAM} pt_util ${DESTDIR}${afssrvsbindir}/pt_util; \
+		${INSTALL_PROGRAM} db_verify ${DESTDIR}${afssrvsbindir}/prdb_check; \
+	fi
+	${INSTALL_DATA} libprot.a ${DESTDIR}${libdir}/afs/libprot.a
+	${INSTALL_DATA} ${srcdir}/ptclient.h ${DESTDIR}${includedir}/afs/prclient.h
+	${INSTALL_DATA} pterror.h ${DESTDIR}${includedir}/afs/prerror.h
+	${INSTALL_DATA} ptint.h ${DESTDIR}${includedir}/afs/print.h
+	${INSTALL_DATA} ${srcdir}/ptserver.h ${DESTDIR}${includedir}/afs/prserver.h
+	${INSTALL_DATA} ${srcdir}/ptclient.h ${DESTDIR}${includedir}/afs/ptclient.h
+	${INSTALL_DATA} ${srcdir}/ptuser.h ${DESTDIR}${includedir}/afs/ptuser.h
+	${INSTALL_DATA} pterror.h ${DESTDIR}${includedir}/afs/pterror.h
+	${INSTALL_DATA} ptint.h ${DESTDIR}${includedir}/afs/ptint.h
+	${INSTALL_DATA} ${srcdir}/ptserver.h ${DESTDIR}${includedir}/afs/ptserver.h
+
+dest: ptserver pts pt_util db_verify libprot.a ptclient.h pterror.h \
+		ptint.h ptserver.h
+	${INSTALL} -d ${DEST}/root.server/usr/afs/bin
+	${INSTALL} -d ${DEST}/bin
+	${INSTALL} -d ${DEST}/etc
+	${INSTALL} -d ${DEST}/lib/afs
+	${INSTALL} -d ${DEST}/include/afs
+	if [ "x$(ENABLE_PTHREADED_UBIK)" != "xyes" ] ; then \
+		${INSTALL_PROGRAM} ptserver ${DEST}/root.server/usr/afs/bin/ptserver; \
+		${INSTALL_PROGRAM} pts ${DEST}/root.server/usr/afs/bin/pts; \
+		${INSTALL_PROGRAM} pts ${DEST}/bin/pts; \
+		${INSTALL_PROGRAM} pt_util ${DEST}/root.server/usr/afs/bin/pt_util; \
+		${INSTALL_PROGRAM} db_verify ${DEST}/etc/prdb_check; \
+	fi;
+	${INSTALL_DATA} libprot.a ${DEST}/lib/afs/libprot.a
+	${INSTALL_DATA} ${srcdir}/ptclient.h ${DEST}/include/afs/prclient.h
+	${INSTALL_DATA} pterror.h ${DEST}/include/afs/prerror.h
+	${INSTALL_DATA} ptint.h ${DEST}/include/afs/print.h
+	${INSTALL_DATA} ${srcdir}/ptserver.h ${DEST}/include/afs/prserver.h
+	${INSTALL_DATA} ${srcdir}/ptclient.h ${DEST}/include/afs/ptclient.h
+	${INSTALL_DATA} ${srcdir}/ptuser.h ${DEST}/include/afs/ptuser.h
+	${INSTALL_DATA} pterror.h ${DEST}/include/afs/pterror.h
+	${INSTALL_DATA} ptint.h ${DEST}/include/afs/ptint.h
+	${INSTALL_DATA} ${srcdir}/ptserver.h ${DEST}/include/afs/ptserver.h
+
+#
+# Misc. targets
+#
+clean:
+	$(RM) -f *.a *.o ptserver ptint.cs.c ptint.ss.c ptclient ptint.xdr.c ptint.h \
+	libprot.a pts readgroup readpwd db_verify testpt pt_util pterror.h pterror.c \
+	core AFS_component_version_number.c Kptint.cs.c Kptint.h Kptint.xdr.c
+
+include ../config/Makefile.version

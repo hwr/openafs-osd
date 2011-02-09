@@ -1,0 +1,103 @@
+/*
+ * Copyright (c) 2006, Hartmut Reuter,
+ * RZG, Max-Planck-Institut f. Plasmaphysik.
+ * All Rights Reserved.
+ *
+ */
+
+/*
+ *  vol_osd.xg:
+ *      persistent metadata layout as used for OSD-files in AFS
+ *      The meta-data-file starts with a version number
+ *	and there after follows a serialized osd_p_fileList
+ *	created by xdr_osd_p_fileList(). 
+ */
+
+%#include <afsconfig.h>
+%#ifdef AFS_RXOSD_SUPPORT
+%#ifndef VOL_OSD_XG
+
+/* prototypes for routines in vol_osdutil.c */
+%struct osdMetadataHandle *alloc_osd_metadata(afs_int32 length, char **data);
+%void free_osd_metadata(struct osdMetadataHandle *mh);
+%afs_int32 print_osd_metadata(struct osdMetadataHandle *mh);
+
+%#define OSD_P_OBJ_MAGIC 0x03032004
+struct osd_p_obj {
+    afs_uint64 obj_id;
+    afs_uint64 part_id;
+    afs_uint32 osd_id;
+    afs_uint32 stripe;
+    afs_uint32 magic;
+    afs_uint32 spare[3];
+};
+typedef struct osd_p_obj osd_p_objList <>;
+
+%#define OSD_P_SEGM_MAGIC 0x24011977
+struct osd_p_segm {
+    afs_uint64 length;
+    afs_uint64 offset;
+    afs_uint32 raid_level;
+    afs_uint32 nstripes;
+    afs_uint32 stripe_size;
+    afs_uint32 copies;
+    afs_uint32 magic;
+    afs_uint32 spare[3];
+    struct osd_p_objList objList;
+};
+typedef struct osd_p_segm osd_p_segmList <>;
+
+%#define OSD_P_META_MAGIC 0x28051947
+%#define OSD_P_META_MD5	1
+struct osd_p_meta {
+    afs_uint32 type;
+    afs_uint32 time;
+    afs_uint32 magic;
+    afs_uint32 data[4];
+};
+typedef struct osd_p_meta osd_p_metaList <>;
+
+%#define OSD_P_FILE_CURRENT_VERSION 3
+%#define OSD_P_FILE_MAGIC 0x09101944
+struct osd_p_file {
+    afs_uint32 archiveVersion;
+    afs_uint32 archiveTime;
+    afs_uint32 magic;
+    afs_uint32 flags;
+    afs_uint32 fetchTime;
+    afs_uint32 nFetches;
+    struct osd_p_segmList segmList;
+    struct osd_p_metaList metaList;
+};
+typedef struct osd_p_file osd_p_fileList <>;
+%#define RESTORE_IN_PROGRESS	1
+%#define ARCHIVE_CHECKED    	2
+
+struct v2_osd_p_file {
+    afs_uint32 archiveVersion;
+    afs_uint32 archiveTime;
+    afs_uint32 magic;
+    afs_uint32 flags;
+    afs_uint32 spare[2];
+    afs_uint32 md5[4];
+    struct osd_p_segmList segmList;
+};
+typedef struct v2_osd_p_file v2_osd_p_fileList <>;
+
+struct v1_osd_p_file {
+    afs_uint32 archiveVersion;
+    afs_uint32 archiveTime;
+    afs_uint32 magic;
+    afs_uint32 spare[3];
+    struct osd_p_segmList segmList;
+};
+typedef struct v1_osd_p_file v1_osd_p_fileList <>;
+
+struct osdobject {
+    afs_uint64 oid;
+    afs_uint64 pid;
+    afs_uint32 osd;
+};
+typedef struct osdobject osdobjectList <>;
+%#endif /* VOL_OSD_XG */
+%#endif /* AFS_RXOSD_SUPPORT */

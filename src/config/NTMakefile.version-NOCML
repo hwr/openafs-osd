@@ -1,0 +1,48 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+# This makefile creates the AFS_component_version_number.c header file
+# for binaries. It is invoked from the NTMakefile in the binary's tree. Hence
+# the paths are correct for those trees.
+
+!IFNDEF VERSFILE
+VERSFILE=AFS_component_version_number
+!ENDIF
+
+$(VERSFILE).c:
+        echo #include "wchar.h" >$(VERSFILE).c
+	echo unsigned char $(CML_PREFIX)cml_version_number[]="@(#)OpenAFS_$(AFSPRODUCT_VERSION)"; >>$(VERSFILE).c
+	echo unsigned char* AFSVersion = "OpenAFS_$(AFSPRODUCT_VERSION)";  >>$(VERSFILE).c
+	echo wchar_t w$(CML_PREFIX)cml_version_number[]=L"@(#)OpenAFS_$(AFSPRODUCT_VERSION)"; >>$(VERSFILE).c
+	echo wchar_t* wAFSVersion = L"OpenAFS_$(AFSPRODUCT_VERSION)";  >>$(VERSFILE).c
+
+$(VERSFILE).h:
+	echo #define AFS_VERINFO_BUILD "OpenAFS_$(AFSPRODUCT_VERSION)" >$(VERSFILE).h
+	echo #define AFS_VERINFO_FILEVER $(AFSPRODUCT_FILE_VERSION) >>$(VERSFILE).h
+        echo #define AFSPRODUCT_VERSION "$(AFSPRODUCT_VERSION)" >> $(VERSFILE).h
+        echo #define AFSPRODUCT_VERSION_MAJOR $(AFSPRODUCT_VER_MAJOR) >> $(VERSFILE).h
+        echo #define AFSPRODUCT_VERSION_MINOR $(AFSPRODUCT_VER_MINOR) >> $(VERSFILE).h
+        echo #define AFSPRODUCT_VERSION_PATCH $(AFSPRODUCT_VER_PATCH) >> $(VERSFILE).h
+        echo #define AFSPRODUCT_VERSION_BUILD $(AFSPRODUCT_VER_BUILD) >> $(VERSFILE).h
+        echo #ifdef AFS_VERSION_STRINGS >> $(VERSFILE).h
+        echo extern unsigned char $(CML_PREFIX)cml_version_number[]; >> $(VERSFILE).h
+        echo extern unsigned char* AFSVersion; >> $(VERSFILE).h
+        echo extern wchar_t w$(CML_PREFIX)cml_version_number[]; >> $(VERSFILE).h
+        echo extern wchar_t* wAFSVersion; >> $(VERSFILE).h
+        echo #endif >> $(VERSFILE).h
+
+$(VERSFILE).txt:
+	echo OpenAFS_$(AFSPRODUCT_VERSION)>$(VERSFILE).txt
+
+$(VERSFILE).xml:
+        echo <<$(VERSFILE).xml > NUL
+<?xml version="1.0" encoding="UTF-8"?>
+<revision>
+<revnumber>$(AFSPRODUCT_VERSION)</revnumber>
+<date></date>
+</revision>
+<<KEEP

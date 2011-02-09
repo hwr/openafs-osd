@@ -1,0 +1,99 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+AFSDEV_AUXCDEFINES = -DFSSYNC_BUILD_SERVER
+
+RELDIR=viced
+!INCLUDE ..\config\NTMakefile.$(SYS_NAME)
+!INCLUDE ..\config\NTMakefile.version
+
+############################################################################
+# Definitions for installing header files
+
+INCFILEDIR = $(DESTDIR)\include\afs
+
+INCFILES =\
+	$(INCFILEDIR)\fs_stats.h
+
+
+
+############################################################################
+# Build the fileserver
+# This is now done in tviced
+
+EXEFILE = $(DESTDIR)\root.server\usr\afs\bin\fileserver.exe
+
+EXERES = $(OUT)\fileserver.res
+
+EXEOBJS =\
+	$(OUT)\afsfileprocs.obj \
+	$(OUT)\callback.obj \
+	$(OUT)\host.obj \
+	$(OUT)\physio.obj \
+	$(OUT)\viced.obj \
+	$(OUT)\AFS_component_version_number.obj
+
+EXELIBS = \
+	$(DESTDIR)\lib\afs\afscmd.lib \
+	$(DESTDIR)\lib\afs\afsvol.lib \
+	$(DESTDIR)\lib\afs\afsutil.lib \
+	$(DESTDIR)\lib\afs\afsdir.lib \
+	$(DESTDIR)\lib\afs\afsvol.lib \
+	$(DESTDIR)\lib\afs\afsaudit.lib \
+	$(DESTDIR)\lib\afs\afsauth.lib \
+	$(DESTDIR)\lib\afs\afsvldb.lib \
+	$(DESTDIR)\lib\afs\afsprot.lib \
+	$(DESTDIR)\lib\afs\afskauth.lib \
+	$(DESTDIR)\lib/afs/afscom_err.lib \
+	$(DESTDIR)\lib\afsubik.lib \
+	$(DESTDIR)\lib\afsrxkad.lib \
+	$(DESTDIR)\lib\afsdes.lib \
+	$(DESTDIR)\lib\afs\afsint.lib \
+	$(DESTDIR)\lib\afsrx.lib \
+	$(DESTDIR)\lib\afslwp.lib \
+	$(DESTDIR)\lib\afs\afsacl.lib \
+	$(DESTDIR)\lib\afs\afsreg.lib \
+	$(DESTDIR)\lib\afs\afsprocmgmt.lib \
+	$(DESTDIR)\lib\afs\afseventlog.lib \
+        $(DESTDIR)\lib\afs\afspioctl.lib
+
+$(EXEFILE): $(EXEOBJS) $(EXERES) $(EXELIBS)
+	$(EXECONLINK)
+        $(_VC_MANIFEST_EMBED_EXE)
+	$(EXEPREP) 
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+############################################################################
+# Build cbd - not generally distributed debugging program
+CBD = $(DESTDIR)\root.server\usr\afs\bin\cbd.exe
+
+CBDRES = $(OUT)\cbd.res
+
+$(OUT)\cbd.obj: callback.c AFS_component_version_number.h
+	$(C2OBJ) callback.c -DINTERPRET_DUMP
+
+$(CBD): $(OUT)\cbd.obj $(CBDRES)
+	$(EXECONLINK)
+        $(_VC_MANIFEST_EMBED_EXE)
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+############################################################################
+# generate versioninfo resources
+$(EXERES): fileserver.rc AFS_component_version_number.h
+
+$(CBDRES): cbd.rc AFS_component_version_number.h
+
+install:  $(INCFILES) $(CBD)
+
+mkdir:
+	
+clean::
+	$(DEL) $(EXERES)
+	$(DEL) $(CBDRES)
+

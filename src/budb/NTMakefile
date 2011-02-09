@@ -1,0 +1,140 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+RELDIR=budb
+AFSDEV_AUXCDEFINES = $(AFSDEV_AUXCDEFINES) -DNOGDI -DWIN32_LEAN_AND_MEAN
+!INCLUDE ..\config\NTMakefile.$(SYS_NAME)
+!INCLUDE ..\config\NTMakefile.version
+
+############################################################################
+# install headers
+INCFILEDIR = $(DESTDIR)\include\afs  # header file install directory
+
+INCFILES =\
+	$(INCFILEDIR)\budb.h \
+	$(INCFILEDIR)\budb_errs.h \
+	$(INCFILEDIR)\budb_client.h \
+	$(INCFILEDIR)\budb_prototypes.h
+	
+
+
+############################################################################
+# Definitions for building a static library
+
+LIBFILE = $(DESTDIR)\lib\afs\afsbudb.lib
+
+LIBOBJS =\
+	$(OUT)\budb_errs.obj \
+	$(OUT)\budb.cs.obj \
+	$(OUT)\budb.xdr.obj \
+	$(OUT)\struct_ops.obj \
+	$(OUT)\AFS_component_version_number.obj
+
+$(LIBFILE): $(LIBOBJS) 
+	$(LIBARCH) 
+
+
+############################################################################
+# Definitions for building a EXE.
+
+EXEFILE = $(DESTDIR)\root.server\usr\afs\bin\buserver.exe
+
+EXEOBJS =\
+	$(OUT)\database.obj \
+	$(OUT)\db_alloc.obj \
+	$(OUT)\db_dump.obj \
+	$(OUT)\db_hash.obj \
+	$(OUT)\struct_ops.obj \
+	$(OUT)\ol_verify.obj \
+	$(OUT)\budb.ss.obj \
+	$(OUT)\budb.xdr.obj \
+	$(OUT)\dbs_dump.obj \
+	$(OUT)\db_lock.obj \
+	$(OUT)\db_text.obj \
+	$(OUT)\procs.obj \
+	$(OUT)\budb_errs.obj \
+	$(OUT)\server.obj \
+	$(OUT)\buserver.res
+
+
+EXELIBS =\
+	$(DESTDIR)\lib\afs\afsbubasics.lib \
+        $(DESTDIR)\lib\afs\afsprot.lib \
+        $(DESTDIR)\lib\afsrx.lib \
+        $(DESTDIR)\lib\afslwp.lib \
+        $(DESTDIR)\lib\afs\afscom_err.lib \
+	$(DESTDIR)\lib\afs\afsaudit.lib \
+	$(DESTDIR)\lib\afsdes.lib \
+	$(DESTDIR)\lib\afsrxkad.lib \
+	$(DESTDIR)\lib\afs\afskauth.lib \
+	$(DESTDIR)\lib\afs\afsauth.lib \
+	$(DESTDIR)\lib\afs\afscmd.lib \
+	$(DESTDIR)\lib\afs\afsutil.lib \
+	$(DESTDIR)\lib\afsubik.lib \
+	$(DESTDIR)\lib\afs\afseventlog.lib \
+	$(DESTDIR)\lib\afs\afsreg.lib \
+	$(DESTDIR)\lib\afs\afsprocmgmt.lib \
+	$(DESTDIR)\lib\libafsconf.lib \
+        $(DESTDIR)\lib\afs\afspioctl.lib
+
+$(EXEFILE): $(EXEOBJS)  $(EXELIBS)
+	$(EXECONLINK) dnsapi.lib mpr.lib iphlpapi.lib shell32.lib
+        $(_VC_MANIFEST_EMBED_EXE)
+	$(EXEPREP) 
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+############################################################################
+# Definitions for generating versioninfo resources
+
+$(OUT)\buserver.res: AFS_component_version_number.h
+
+############################################################################
+# rxgen budb.rg
+
+budb.cs.c: budb.rg budb.h
+	$(RXGEN) -u -C -o $@ budb.rg
+
+budb.ss.c: budb.rg budb.h
+	$(RXGEN) -S -o $@ budb.rg
+
+budb.xdr.c: budb.rg budb.h
+	$(RXGEN) -c -o $@ budb.rg
+
+budb.h: budb.rg
+	$(RXGEN) -u -h -o budb.h budb.rg
+
+$(INCFILEDIR)\budb.h: budb.h
+	$(COPY) budb.h $(INCFILEDIR)\budb.h 
+
+############################################################################
+# compile_et on budb_errs.et
+$(INCFILEDIR)\budb_errs.h : budb_errs.et
+	$(COMPILE_ET) budb_errs -h budb_errs
+	$(COPY) budb_errs.h $(INCFILEDIR)\budb_errs.h
+
+budb_errs.c $(INCFILEDIR)\budb_client.h: budb_errs.et budb_client.p.h
+	$(DEL) budb_client.h budb_errs.c
+	$(COMPILE_ET) budb_errs -h budb_client
+	$(COPY) budb_client.h $(INCFILEDIR)\budb_client.h
+
+############################################################################
+# install 
+
+install: $(INCFILES) $(LIBFILE) $(EXEFILE)
+
+
+############################################################################
+# Local clean target; augments predefined clean target
+
+clean::
+        $(DEL) $(INCFILES)
+	$(DEL) budb_errs.c budb_errs.h budb.h budb_client.h	
+	$(DEL) budb.cs.c budb.ss.c budb.xdr.c
+
+mkdir:
+	

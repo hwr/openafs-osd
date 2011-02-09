@@ -1,0 +1,200 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+srcdir=@srcdir@
+include @TOP_OBJDIR@/src/config/Makefile.config
+INSTALL = @INSTALL@
+INSTALL_DATA = @INSTALL_DATA@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_SCRIPT = @INSTALL_SCRIPT@
+
+CFLAGS=${COMMON_CFLAGS} ${XCFLAGS} ${ARCHFLAGS} ${RXDEBUG}
+
+#
+# Generic xdr objects (or, at least, xdr stuff that's not newly defined for rx).
+# Really the xdr stuff should be in its own directory.
+#
+XDROBJS_common = xdr.o xdr_array.o xdr_rx.o xdr_mem.o xdr_len.o xdr_afsuuid.o
+
+XDROBJS = xdr_arrayn.o ${XDROBJS_common}
+
+RXOBJS_common = rx_clock.o rx_event.o rx_user.o rx_lwp.o rx.o rx_null.o \
+	rx_globals.o rx_getaddr.o rx_misc.o rx_packet.o rx_rdwr.o rx_trace.o \
+	rx_conncache.o xdr_int32.o xdr_int64.o xdr_update.o xdr_refernce.o
+
+RXOBJS = ${RXOBJS_common} 
+
+MULTIOBJS = rx_multi.o
+
+LIBOBJS = ${RXOBJS} ${MULTIOBJS} ${XDROBJS}
+
+BASICINCLS=${TOP_INCDIR}/lwp.h ${TOP_INCDIR}/lock.h \
+	     rx_clock.h rx_queue.h rx_event.h
+
+LIBS=librx.a ${TOP_LIBDIR}/liblwp.a ${TOP_LIBDIR}/libcmd.a \
+	       ${TOP_LIBDIR}/util.a
+
+all: \
+	includes \
+	${TOP_LIBDIR}/librx.a
+
+depinstall: includes
+
+RX_component_version_number.c: AFS_component_version_number.c
+	sed 's/cml_version/rx_cml_version/' <AFS_component_version_number.c >RX_component_version_number.c
+
+RX_component_version_number.o: RX_component_version_number.c
+
+${RXOBJS}: ${BASICINCLS} rx.h rx_user.h rx_globals.h rx_prototypes.h
+
+${MULTIOBJS}: rx.h rx_multi.h rx_prototypes.h
+
+${XDROBJS}: xdr.h xdr_prototypes.h
+
+rx_user.o: rx.h rx_user.h rx_prototypes.h
+
+rx_packet.o: rx_packet.c rx_packet.h rx.h
+
+rx_rdwr.o: rx_rdwr.c rx.h rx_prototypes.h
+
+rx.o: rx.h rx_user.h rx_prototypes.h
+
+rx_conncache.o: rx.h rx_prototypes.h
+
+rx_trace.o: rx_trace.h
+
+rx_getaddr.o: rx.h rx_getaddr.c rx_prototypes.h
+
+rx_globals.o: rx.h rx_user.h rx_globals.h rx_prototypes.h
+
+xdr_rx.o: xdr.h rx.h xdr_prototypes.h rx_prototypes.h
+
+xdr_refernce.o: xdr_refernce.c xdr.h xdr_prototypes.h
+
+librx.a: ${LIBOBJS} RX_component_version_number.o
+	-$(RM) -f $@
+	$(AR) crv $@ ${LIBOBJS} RX_component_version_number.o
+	$(RANLIB) $@
+
+#
+# Install targets
+#
+includes: \
+	${TOP_INCDIR}/rx/rx_packet.h \
+	${TOP_INCDIR}/rx/rx_prototypes.h \
+	${TOP_INCDIR}/rx/rx.h \
+	${TOP_INCDIR}/rx/rx_user.h \
+	${TOP_INCDIR}/rx/rx_event.h \
+	${TOP_INCDIR}/rx/rx_queue.h \
+	${TOP_INCDIR}/rx/rx_globals.h \
+	${TOP_INCDIR}/rx/rx_clock.h \
+	${TOP_INCDIR}/rx/rx_multi.h \
+	${TOP_INCDIR}/rx/rx_pthread.h \
+	${TOP_INCDIR}/rx/rx_lwp.h \
+	${TOP_INCDIR}/rx/rx_misc.h \
+	${TOP_INCDIR}/rx/rx_null.h \
+	${TOP_INCDIR}/rx/xdr.h \
+	${TOP_INCDIR}/rx/xdr_prototypes.h
+
+${TOP_LIBDIR}/librx.a: librx.a
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/rx/rx_packet.h: rx_packet.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/rx/rx_prototypes.h: rx_prototypes.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/rx/rx.h: rx.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/rx/rx_user.h: rx_user.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/rx/rx_event.h: rx_event.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/rx/rx_queue.h: rx_queue.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/rx/rx_globals.h: rx_globals.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/rx/rx_clock.h: rx_clock.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/rx/rx_multi.h: rx_multi.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/rx/rx_pthread.h: rx_pthread.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/rx/rx_lwp.h: rx_lwp.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/rx/rx_misc.h: rx_misc.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/rx/rx_null.h: rx_null.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/rx/xdr.h: xdr.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/rx/xdr_prototypes.h: xdr_prototypes.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/rx/rx_xmit_nt.h: rx_xmit_nt.h 
+	${INSTALL_DATA} $? $@
+
+install: librx.a
+	${INSTALL} -d ${DESTDIR}${libdir}
+	${INSTALL} -d ${DESTDIR}${includedir}/rx
+	${INSTALL_DATA} librx.a ${DESTDIR}${libdir}/librx.a
+	${INSTALL_DATA} ${srcdir}/rx_packet.h ${DESTDIR}${includedir}/rx/rx_packet.h
+	${INSTALL_DATA} ${srcdir}/rx_prototypes.h ${DESTDIR}${includedir}/rx/rx_prototypes.h
+	${INSTALL_DATA} ${srcdir}/rx.h ${DESTDIR}${includedir}/rx/rx.h
+	${INSTALL_DATA} ${srcdir}/rx_user.h ${DESTDIR}${includedir}/rx/rx_user.h
+	${INSTALL_DATA} ${srcdir}/rx_event.h ${DESTDIR}${includedir}/rx/rx_event.h
+	${INSTALL_DATA} ${srcdir}/rx_queue.h ${DESTDIR}${includedir}/rx/rx_queue.h
+	${INSTALL_DATA} ${srcdir}/rx_globals.h ${DESTDIR}${includedir}/rx/rx_globals.h
+	${INSTALL_DATA} ${srcdir}/rx_clock.h ${DESTDIR}${includedir}/rx/rx_clock.h
+	${INSTALL_DATA} ${srcdir}/rx_multi.h ${DESTDIR}${includedir}/rx/rx_multi.h
+	${INSTALL_DATA} ${srcdir}/rx_pthread.h ${DESTDIR}${includedir}/rx/rx_pthread.h
+	${INSTALL_DATA} ${srcdir}/rx_lwp.h ${DESTDIR}${includedir}/rx/rx_lwp.h
+	${INSTALL_DATA} ${srcdir}/rx_misc.h ${DESTDIR}${includedir}/rx/rx_misc.h
+	${INSTALL_DATA} ${srcdir}/rx_null.h ${DESTDIR}${includedir}/rx/rx_null.h
+	${INSTALL_DATA} ${srcdir}/xdr.h ${DESTDIR}${includedir}/rx/xdr.h
+	${INSTALL_DATA} ${srcdir}/xdr_prototypes.h ${DESTDIR}${includedir}/rx/xdr_prototypes.h
+
+dest: librx.a
+	${INSTALL} -d ${DEST}/lib
+	${INSTALL} -d ${DEST}/include/rx
+	${INSTALL_DATA} librx.a ${DEST}/lib/librx.a
+	${INSTALL_DATA} ${srcdir}/rx_packet.h ${DEST}/include/rx/rx_packet.h
+	${INSTALL_DATA} ${srcdir}/rx_prototypes.h ${DEST}/include/rx/rx_prototypes.h
+	${INSTALL_DATA} ${srcdir}/rx.h ${DEST}/include/rx/rx.h
+	${INSTALL_DATA} ${srcdir}/rx_user.h ${DEST}/include/rx/rx_user.h
+	${INSTALL_DATA} ${srcdir}/rx_event.h ${DEST}/include/rx/rx_event.h
+	${INSTALL_DATA} ${srcdir}/rx_queue.h ${DEST}/include/rx/rx_queue.h
+	${INSTALL_DATA} ${srcdir}/rx_globals.h ${DEST}/include/rx/rx_globals.h
+	${INSTALL_DATA} ${srcdir}/rx_clock.h ${DEST}/include/rx/rx_clock.h
+	${INSTALL_DATA} ${srcdir}/rx_multi.h ${DEST}/include/rx/rx_multi.h
+	${INSTALL_DATA} ${srcdir}/rx_pthread.h ${DEST}/include/rx/rx_pthread.h
+	${INSTALL_DATA} ${srcdir}/rx_lwp.h ${DEST}/include/rx/rx_lwp.h
+	${INSTALL_DATA} ${srcdir}/rx_misc.h ${DEST}/include/rx/rx_misc.h
+	${INSTALL_DATA} ${srcdir}/rx_null.h ${DEST}/include/rx/rx_null.h
+	${INSTALL_DATA} ${srcdir}/xdr.h ${DEST}/include/rx/xdr.h
+	${INSTALL_DATA} ${srcdir}/xdr_prototypes.h ${DEST}/include/rx/xdr_prototypes.h
+
+#
+# Misc. targets
+#
+clean:
+	$(RM) -f *.o *.a core *_component_version_number.c
+
+include ../config/Makefile.version

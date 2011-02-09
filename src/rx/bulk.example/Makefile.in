@@ -1,0 +1,36 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+srcdir=@srcdir@
+include @TOP_OBJDIR@/src/config/Makefile.config
+INSTALL = @INSTALL@
+INSTALL_DATA = @INSTALL_DATA@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_SCRIPT = @INSTALL_SCRIPT@
+
+
+SRCDIR=@srcdir@
+LIBRX=@TOP_OBJDIR@/lib/librx.a
+DESTDIR=@srcdir@
+LIBS=${LIBRX} ${TOP_OBJDIR}/lib/liblwp.a ${TOP_OBJDIR}/lib/libafsutil.a
+CFLAGS=-g ${COMMON_INCL} -DDEBUG ${XCFLAGS} ${ARCHFLAGS}
+
+all: bulk_client bulk_server
+
+bulk_client: bulk_client.o bulk_io.o ${LIBS} bulk.cs.o
+	${CC} ${CFLAGS} -o bulk_client bulk_client.o bulk_io.o bulk.cs.o ${LIBS}
+
+bulk_server: bulk_server.o bulk_io.o bulk.ss.o ${LIBS}
+	${CC} ${CFLAGS} -o bulk_server bulk_server.o bulk_io.o bulk.ss.o ${LIBS}
+
+bulk_client.o bulk_server.o bulk_io.o:	bulk.h
+
+bulk.cs.c bulk.ss.c bulk.er.c bulk.h: bulk.xg
+	${RXGEN} bulk.xg
+
+clean:
+	rm -f *.o bulk.cs.c bulk.ss.c bulk.xdr.c bulk.h bulk_client bulk_server *~

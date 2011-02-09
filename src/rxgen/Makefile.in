@@ -1,0 +1,55 @@
+#
+# @(#)Makefile	1.2 87/11/09 3.9 RPCSRC
+#
+# Makefile for rpc protocol compiler
+# Copyright (C) 1987, Sun Microsystems, Inc.
+#
+srcdir=@srcdir@
+include @TOP_OBJDIR@/src/config/Makefile.config
+INSTALL = @INSTALL@
+INSTALL_DATA = @INSTALL_DATA@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_SCRIPT = @INSTALL_SCRIPT@
+
+SRCS= rpc_main.c rpc_hout.c rpc_cout.c rpc_parse.c rpc_scan.c rpc_util.c \
+	rpc_svcout.c rpc_clntout.c
+HDRS= rpc_util.h rpc_parse.h rpc_scan.h
+OBJS= rpc_main.o rpc_hout.o rpc_cout.o rpc_parse.o rpc_scan.o rpc_util.o \
+	rpc_svcout.o rpc_clntout.o
+
+all: rxgen ${TOP_INCDIR}/afs/rxgen_consts.h
+
+buildtools: rxgen
+
+${TOP_INCDIR}/afs/rxgen_consts.h: rxgen_consts.h
+	${INSTALL_DATA} $? $@
+
+rxgen: $(OBJS) AFS_component_version_number.c $(HDRS)
+	$(CC) $(CFLAGS) $(OBJS) $(XLIBS) -o $@
+
+rpc_main.o: rpc_main.c
+	$(CCOBJ) $(CFLAGS) -c ${srcdir}/rpc_main.c -DPATH_CPP="\"$(PATH_CPP)\""
+
+#
+# Install targets
+#
+install: rxgen rxgen_consts.h
+	${INSTALL} -d ${DESTDIR}${bindir}
+	${INSTALL} -d ${DESTDIR}${includedir}/afs
+	${INSTALL_PROGRAM} rxgen ${DESTDIR}${bindir}/rxgen
+	${INSTALL_DATA} ${srcdir}/rxgen_consts.h \
+		${DESTDIR}${includedir}/afs/rxgen_consts.h
+
+dest: rxgen rxgen_consts.h
+	${INSTALL} -d ${DEST}/bin
+	${INSTALL} -d ${DEST}/include/afs
+	${INSTALL_PROGRAM} rxgen ${DEST}/bin/rxgen
+	${INSTALL_DATA} ${srcdir}/rxgen_consts.h ${DEST}/include/afs/rxgen_consts.h
+
+#
+# Misc. targets
+#
+clean:
+	$(RM) -f *.o rxgen core AFS_component_version_number.c
+
+include ../config/Makefile.version

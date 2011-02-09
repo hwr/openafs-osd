@@ -1,0 +1,58 @@
+#
+# This Makefile in in the public domain
+#
+
+srcdir=@srcdir@
+include @TOP_OBJDIR@/src/config/Makefile.config
+INSTALL = @INSTALL@
+INSTALL_DATA = @INSTALL_DATA@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_SCRIPT = @INSTALL_SCRIPT@
+
+XCFLAGS=@XCFLAGS@ @KRB5_CPPFLAGS@ -DALLOW_REGISTER
+AKLIBS = ${LIBS} @KRB5_LDFLAGS@ @KRB5_LIBS@
+AFSLIBS = ${TOP_LIBDIR}/libprot.a ${TOP_LIBDIR}/libauth.a \
+	  ${TOP_LIBDIR}/libubik.a ${TOP_LIBDIR}/librxkad.a \
+	  ${TOP_LIBDIR}/libsys.a ${TOP_LIBDIR}/librx.a \
+	  ${TOP_LIBDIR}/libsys.a ${TOP_LIBDIR}/liblwp.a \
+	  ${TOP_LIBDIR}/libdes.a ${TOP_LIBDIR}/libcom_err.a \
+	  ${TOP_LIBDIR}/libcmd.a ${TOP_LIBDIR}/libafsutil.a
+
+SRCS=	aklog.c krb_util.c linked_list.c
+OBJS=   aklog.o krb_util.o linked_list.o
+
+all: aklog asetkey klog
+
+aklog:	${OBJS} ${AFSLIBS}
+	${CC} -o $@ ${CFLAGS} ${OBJS} ${AKLIBS} ${AFSLIBS} ${XLIBS}
+
+asetkey: asetkey.o ${AFSLIBS}
+	${CC} -o $@ ${CFLAGS} asetkey.o ${AKLIBS} ${AFSLIBS} ${XLIBS}
+
+klog:	klog.o skipwrap.o ${AFSLIBS}
+	${CC} -o $@ ${CFLAGS} klog.o skipwrap.o ${AKLIBS} ${AFSLIBS} ${XLIBS}
+
+#
+# Installation targets
+#
+install: aklog asetkey klog
+	${INSTALL} -d ${DESTDIR}${bindir}
+	${INSTALL_PROGRAM} aklog ${DESTDIR}${bindir}/aklog
+	${INSTALL_PROGRAM} klog ${DESTDIR}${bindir}/klog.krb5
+	${INSTALL} -d ${DESTDIR}${afssrvbindir}
+	${INSTALL_PROGRAM} asetkey ${DESTDIR}${afssrvbindir}/asetkey 
+
+dest: aklog asetkey klog
+	${INSTALL} -d ${DEST}/bin
+	${INSTALL_PROGRAM} aklog ${DEST}/bin/aklog
+	${INSTALL_PROGRAM} klog ${DEST}/bin/klog.krb5
+	${INSTALL} -d ${DEST}/root.server/usr/afs/bin
+	${INSTALL_PROGRAM} asetkey ${DEST}/root.server/usr/afs/bin/asetkey
+
+#
+# Misc. targets
+#
+clean:
+	$(RM) -f *.o ${OBJS} aklog asetkey klog
+
+include ../config/Makefile.version

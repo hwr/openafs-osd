@@ -1,0 +1,226 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+AFSDEV_AUXCDEFINES = -DAFS_PTHREAD_ENV
+
+RELDIR=libadmin\adminutil
+!include ..\..\config\NTMakefile.$(SYS_NAME)
+!include ..\..\config\NTMakefile.version
+
+RXKAD = ..\..\rxkad
+AUTH = ..\..\auth
+BOZO = ..\..\bozo
+CMD = ..\..\cmd
+KAUTH = ..\..\kauth
+PTSERVER = ..\..\ptserver
+UBIK = ..\..\ubik
+VLSERVER = ..\..\vlserver
+VOLSER = ..\..\volser
+
+INCFILEDIR=$(DESTDIR)\include\afs
+
+INCFILES= $(INCFILEDIR)\afs_AdminCommonErrors.h \
+	$(INCFILEDIR)\afs_AdminBosErrors.h \
+	$(INCFILEDIR)\afs_AdminCfgErrors.h \
+	$(INCFILEDIR)\afs_AdminClientErrors.h \
+	$(INCFILEDIR)\afs_AdminKasErrors.h \
+	$(INCFILEDIR)\afs_AdminMiscErrors.h \
+	$(INCFILEDIR)\afs_AdminPtsErrors.h \
+	$(INCFILEDIR)\afs_AdminUtilErrors.h \
+ 	$(INCFILEDIR)\afs_AdminVosErrors.h
+
+$(INCFILES):$$(@F)
+	 $(COPY)  $** $(INCFILEDIR)\.
+
+afs_AdminBosErrors.h afs_AdminBosErrors.c : afs_AdminBosErrors.et
+        $(DEL) afs_AdminBosErrors.h afs_AdminBosErrors.c
+        $(COMPILE_ET) afs_AdminBosErrors -h afs_AdminBosErrors
+
+afs_AdminCfgErrors.h afs_AdminCfgErrors.c : afs_AdminCfgErrors.et
+        $(DEL) afs_AdminCfgErrors.h afs_AdminCfgErrors.c
+        $(COMPILE_ET) afs_AdminCfgErrors -h afs_AdminCfgErrors
+ 
+afs_AdminClientErrors.h afs_AdminClientErrors.c : afs_AdminClientErrors.et
+        $(DEL) afs_AdminClientErrors.h afs_AdminClientErrors.c
+        $(COMPILE_ET) afs_AdminClientErrors -h afs_AdminClientErrors
+ 
+afs_AdminCommonErrors.h afs_AdminCommonErrors.c: afs_AdminCommonErrors.et
+        $(DEL) afs_AdminCommonErrors.h afs_AdminCommonErrors.c
+        $(COMPILE_ET) afs_AdminCommonErrors -h afs_AdminCommonErrors
+ 
+afs_AdminKasErrors.h afs_AdminKasErrors.c : afs_AdminKasErrors.et
+        $(DEL) afs_AdminKasErrors.h afs_AdminKasErrors.c
+        $(COMPILE_ET) afs_AdminKasErrors -h afs_AdminKasErrors
+ 
+afs_AdminMiscErrors.h afs_AdminMiscErrors.c : afs_AdminMiscErrors.et
+        $(DEL) afs_AdminMiscErrors.h afs_AdminMiscErrors.c
+        $(COMPILE_ET) afs_AdminMiscErrors -h afs_AdminMiscErrors
+ 
+afs_AdminPtsErrors.h afs_AdminPtsErrors.c : afs_AdminPtsErrors.et
+        $(DEL) afs_AdminPtsErrors.h afs_AdminPtsErrors.c
+        $(COMPILE_ET) afs_AdminPtsErrors -h afs_AdminPtsErrors
+ 
+afs_AdminUtilErrors.h afs_AdminUtilErrors.c : afs_AdminUtilErrors.et
+        $(DEL) afs_AdminUtilErrors.h afs_AdminUtilErrors.c
+        $(COMPILE_ET) afs_AdminUtilErrors -h afs_AdminUtilErrors
+ 
+afs_AdminVosErrors.h afs_AdminVosErrors.c : afs_AdminVosErrors.et
+        $(DEL) afs_AdminVosErrors.h afs_AdminVosErrors.c
+        $(COMPILE_ET) afs_AdminVosErrors -h afs_AdminVosErrors
+
+ERRORSOBJS = \
+	$(OUT)\afs_AdminBosErrors.obj \
+	$(OUT)\afs_AdminCfgErrors.obj \
+	$(OUT)\afs_AdminClientErrors.obj \
+	$(OUT)\afs_AdminCommonErrors.obj \
+	$(OUT)\afs_AdminKasErrors.obj \
+	$(OUT)\afs_AdminMiscErrors.obj \
+	$(OUT)\afs_AdminPtsErrors.obj \
+	$(OUT)\afs_AdminUtilErrors.obj \
+	$(OUT)\afs_AdminVosErrors.obj
+
+AUTHOBJS=\
+	$(OUT)\ktc_errors.obj \
+	$(OUT)\acfg_errors.obj
+
+BOZOOBJS=\
+	$(OUT)\boserr.obj
+
+KAUTHOBJS=\
+	$(OUT)\kaerrors.obj 
+	
+CMDOBJS=\
+	$(OUT)\cmd_errors.obj 
+
+PTSERVEROBJS=\
+	$(OUT)\pterror.obj 
+
+UBIKOBJS=\
+	$(OUT)\uerrors.obj
+
+RXKADOBJS=\
+	$(OUT)\rxkad_errs.obj
+
+VOLSEROBJS=\
+	$(OUT)\volerr.obj
+
+VLSERVEROBJS=\
+	$(OUT)\vl_errors.obj
+
+ADMINOBJS = \
+	$(OUT)\afs_utilAdmin.obj
+
+DLLOBJS =\
+	$(ADMINOBJS) \
+	$(ERRORSOBJS) \
+	$(AUTHOBJS) \
+	$(BOZOOBJS) \
+	$(KAUTHOBJS) \
+	$(CMDOBJS) \
+	$(PTSERVEROBJS) \
+	$(VLSERVEROBJS) \
+	$(VOLSEROBJS) \
+	$(UBIKOBJS) \
+	$(RXKADOBJS) \
+	$(OUT)\afsadminutil.res
+
+LIBINCLUDES = \
+	$(DESTDIR)\include\afs\afs_utilAdmin.h \
+	$(DESTDIR)\include\afs\afs_AdminErrors.h
+
+DLLFILE = $(DESTDIR)\root.server\usr\afs\bin\afsadminutil.dll
+ILIBDIR = $(DESTDIR)\lib\afs
+
+DLLLIBS =\
+	$(DESTDIR)\lib\afspthread.lib \
+	$(DESTDIR)\lib\afsrpc.lib \
+        $(DESTDIR)\lib\afs\afsutil.lib \
+	$(DESTDIR)\lib\afsauthent.lib \
+        $(DESTDIR)\lib\afs\afsreg.lib
+
+!IF "$(CPU)" == "IA64" || "$(CPU)" == "AMD64" || "$(CPU)" == "ALPHA64"
+KFWLIBS = \
+    $(AFSROOT)\src\WINNT\kfw\lib\$(CPU)\krb5_64.lib \
+    $(AFSROOT)\src\WINNT\kfw\lib\$(CPU)\comerr64.lib \
+    dnsapi.lib mpr.lib delayimp.lib shell32.lib
+LINKOPTS = /DELAYLOAD:krb5_64.dll /DELAYLOAD:comerr64.dll
+!else
+KFWLIBS = \
+    $(AFSROOT)\src\WINNT\kfw\lib\$(CPU)\krb5_32.lib \
+    $(AFSROOT)\src\WINNT\kfw\lib\$(CPU)\comerr32.lib \
+    dnsapi.lib mpr.lib delayimp.lib shell32.lib
+LINKOPTS = /DELAYLOAD:krb5_32.dll /DELAYLOAD:comerr32.dll
+!endif
+afscflags = -I$(AFSROOT)\src\WINNT\kfw\inc\krb5 $(afscflags)
+
+$(DLLFILE): $(DLLOBJS) $(DLLLIBS)
+	$(DLLCONLINK) /DEF:afsadminutil.def $(KFWLIBS)
+        $(_VC_MANIFEST_EMBED_DLL)
+	$(DLLPREP)
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+	$(MAKECYGLIB) --input-def afsadminutil.def
+	$(COPY) $*.lib $(ILIBDIR)
+	$(DEL) $*.lib $*.exp
+
+install: $(INCFILES) afs_AdminCommonErrors.c \
+	afs_AdminBosErrors.c \
+	afs_AdminCfgErrors.c \
+	afs_AdminClientErrors.c \
+	afs_AdminKasErrors.c \
+	afs_AdminMiscErrors.c \
+	afs_AdminPtsErrors.c \
+	afs_AdminUtilErrors.c \
+	afs_AdminVosErrors.c \
+	$(LIBINCLUDES) \
+	$(DLLFILE)
+
+# Definitions for generating versioninfo resources
+$(OUT)\afsadminutil.res: AFS_component_version_number.h
+
+$(AUTHOBJS): $(AUTH)\$$(@B).c
+	$(C2OBJ) -I$*(*D) $**
+
+$(BOZOOBJS): $(BOZO)\$$(@B).c
+	$(C2OBJ) -I$*(*D) $**
+
+$(KAUTHOBJS): $(KAUTH)\$$(@B).c
+	$(C2OBJ) -I$*(*D) $**
+
+$(PTSERVEROBJS): $(PTSERVER)\$$(@B).c
+	$(C2OBJ) -I$*(*D) $**
+
+$(CMDOBJS): $(CMD)\$$(@B).c
+	$(C2OBJ) -I$*(*D) $**
+
+$(UBIKOBJS): $(UBIK)\$$(@B).c
+	$(C2OBJ) -I$*(*D) $**
+
+$(RXKADOBJS): $(RXKAD)\$$(@B).c
+	$(C2OBJ) -I$*(*D) $**
+
+$(VOLSEROBJS): $(VOLSER)\$$(@B).c
+	$(C2OBJ) -I$*(*D) $**
+
+$(VLSERVEROBJS): $(VLSERVER)\$$(@B).c
+	$(C2OBJ) -I$*(*D) $**
+
+clean::
+	$(DEL) afs_AdminBosErrors.c afs_AdminBosErrors.h $(OUT)\afs_AdminBosErrors.obj
+	$(DEL) afs_AdminCfgErrors.c afs_AdminCfgErrors.h $(OUT)\afs_AdminCfgErrors.obj
+	$(DEL) afs_AdminClientErrors.c afs_AdminClientErrors.h $(OUT)\afs_AdminClientErrors.obj
+	$(DEL) afs_AdminCommonErrors.c afs_AdminCommonErrors.h $(OUT)\afs_AdminCommonErrors.obj
+	$(DEL) afs_AdminKasErrors.c afs_AdminKasErrors.h $(OUT)\afs_AdminKasErrors.obj
+	$(DEL) afs_AdminMiscErrors.c afs_AdminMiscErrors.h $(OUT)\afs_AdminMiscErrors.obj
+	$(DEL) afs_AdminPtsErrors.c afs_AdminPtsErrors.h $(OUT)\afs_AdminPtsErrors.obj
+	$(DEL) afs_AdminUtilErrors.c afs_AdminUtilErrors.h $(OUT)\afs_AdminUtilErrors.obj
+	$(DEL) afs_AdminVosErrors.c afs_AdminVosErrors.h $(OUT)\afs_AdminVosErrors.obj
+	$(DEL) $(INCFILES)
+	$(DEL) $(DLLOBJS)
+	$(DEL) $(DLLFILE)
+mkdir:
+	

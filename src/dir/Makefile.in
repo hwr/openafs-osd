@@ -1,0 +1,64 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+srcdir=@srcdir@
+include @TOP_OBJDIR@/src/config/Makefile.config
+INSTALL = @INSTALL@
+INSTALL_DATA = @INSTALL_DATA@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_SCRIPT = @INSTALL_SCRIPT@
+
+all: \
+	${TOP_LIBDIR}/libdir.a \
+	depinstall
+
+depinstall: \
+	${TOP_INCDIR}/afs/dir.h 
+
+${TOP_INCDIR}/afs/dir.h: dir.h
+	${INSTALL_DATA} $? $@
+
+${TOP_LIBDIR}/libdir.a: libdir.a
+	${INSTALL_DATA} $? $@
+
+libdir.a: buffer.o dir.o salvage.o AFS_component_version_number.o
+	$(RM) -f $@
+	$(AR) crv $@ buffer.o dir.o salvage.o  AFS_component_version_number.o
+	$(RANLIB) $@
+
+test: 
+	cd test; $(MAKE)
+
+buffer.o: buffer.c
+
+dir.o: dir.c dir.h
+
+salvage.o: salvage.c dir.h
+
+
+#
+# Install targets
+#
+install: libdir.a dir.h
+	${INSTALL} -d ${DESTDIR}${libdir}/afs
+	${INSTALL} -d ${DESTDIR}${includedir}/afs
+	${INSTALL_DATA} libdir.a ${DESTDIR}${libdir}/afs/libdir.a
+	${INSTALL_DATA} ${srcdir}/dir.h ${DESTDIR}${includedir}/afs/dir.h
+
+dest: libdir.a dir.h
+	${INSTALL} -d ${DEST}/lib/afs
+	${INSTALL} -d ${DEST}/include/afs
+	${INSTALL_DATA} libdir.a ${DEST}/lib/afs/libdir.a
+	${INSTALL_DATA} ${srcdir}/dir.h ${DEST}/include/afs/dir.h
+
+#
+# Misc. targets
+#
+clean:
+	$(RM) -f *.o *.a core AFS_component_version_number.c
+
+include ../config/Makefile.version

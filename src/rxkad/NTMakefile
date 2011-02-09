@@ -1,0 +1,71 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+RELDIR=rxkad
+!INCLUDE ..\config\NTMakefile.$(SYS_NAME)
+!INCLUDE ..\config\NTMakefile.version
+
+INCFILEDIR = $(DESTDIR)\include\rx  # header file install directory
+
+INCFILES =\
+	$(INCFILEDIR)\rxkad_prototypes.h \
+	$(INCFILEDIR)\asn1_err.h \
+        $(INCFILEDIR)\v5gen.h \
+        $(INCFILEDIR)\hash.h\
+        $(INCFILEDIR)\md4.h \
+        $(INCFILEDIR)\md5.h \
+	$(INCFILEDIR)\rxkad.h
+
+# build afsrxkad.lib
+LIBOBJS =\
+	$(OUT)\rxkad_client.obj \
+	$(OUT)\rxkad_server.obj \
+	$(OUT)\rxkad_common.obj \
+	$(OUT)\ticket.obj \
+	$(OUT)\rxkad_errs.obj \
+	$(OUT)\AFS_component_version_number.obj \
+	$(OUT)\bg-fcrypt.obj \
+	$(OUT)\ticket5.obj \
+	$(OUT)\crc.obj \
+        $(OUT)\md4.obj \
+        $(OUT)\md5.obj \
+	$(OUT)\crypt_conn.obj 
+
+$(LIBOBJS):
+
+# afsrxkad.lib
+LIBFILE = $(DESTDIR)\lib\afsrxkad.lib
+
+$(LIBFILE): $(LIBOBJS)
+	$(LIBARCH)  
+
+# generate rxkad.h and rxkad_errs.c from rxkad_errs.et
+
+$(INCFILES):$$(@F)
+	 $(COPY)  $** $(INCFILEDIR)\.
+	 $(COPY)  fcrypt.h $(INCFILEDIR)\.
+
+rxkad.h rxkad_errs.c : rxkad_errs.et rxkad.p.h
+	$(DEL) rxkad_errs.c 
+	$(COMPILE_ET) rxkad_errs -h rxkad
+
+$(OUT)\fcrypt.obj: fcrypt.c fcrypt.h sboxes.h rxkad.h rxkad_prototypes.h
+	$(C2OBJ) fcrypt.c
+
+$(OUT)\crypt_conn.obj: crypt_conn.c fcrypt.h private_data.h
+	$(C2OBJ) crypt_conn.c
+
+install: $(INCFILES) $(LIBFILE)
+
+install9x: install
+
+clean::
+	$(DEL) rxkad.h rxkad_errs.c $(INCFILES) $(INCFILEDIR)\fcrypt.h
+	$(DEL) $(LIBFILE)
+
+mkdir:
+	

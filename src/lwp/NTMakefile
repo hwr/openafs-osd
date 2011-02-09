@@ -1,0 +1,55 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+# nmake Makefile for NT build of LWP. 
+
+RELDIR=lwp
+!include ..\config\NTMakefile.$(SYS_NAME)
+!include ..\config\NTMakefile.version
+
+LIBOBJS = $(OUT)\lock.obj \
+	  $(OUT)\lwp_nt.obj \
+	  $(OUT)\iomgr.obj \
+	  $(OUT)\timer.obj\
+	  $(OUT)\fasttime.obj \
+	  $(OUT)\waitkey.obj \
+	  $(OUT)\threadname.obj \
+	  $(OUT)\AFS_component_version_number.obj
+
+$(LIBOBJS): $$(@B).c
+    $(C2OBJ) $**
+
+LIBFILE = $(DESTDIR)\lib\afslwp.lib
+
+INCFILES = \
+	$(DESTDIR)\include\lock.h \
+	$(DESTDIR)\include\lwp.h \
+	$(DESTDIR)\include\preempt.h \
+	$(DESTDIR)\include\timer.h
+
+install_headers: $(INCFILES)
+
+install: install_headers $(LIBFILE) 
+
+install9x: install
+
+$(LIBFILE): $(LIBOBJS)
+	$(LIBARCH)
+
+tests: $(OUT)\rw.exe
+
+$(OUT)\rw.exe: $(OUT)\rw.obj $(LIBFILE) $(DESTDIR)\lib\afs\afsutil.lib
+	$(EXECONLINK)
+        $(_VC_MANIFEST_EMBED_EXE)
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+clean::
+	$(DEL) $(LIBFILE)
+
+mkdir:
+	

@@ -1,0 +1,183 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+# Override default definitions in NTMakefile.$(SYS_NAME) before including.
+
+RELDIR=vlserver
+!INCLUDE ..\config\NTMakefile.$(SYS_NAME)
+!include ..\config\NTMakefile.version
+
+############################################################################
+# Definitions for installing header files
+
+INCFILEDIR = $(DESTDIR)\include\afs
+
+INCFILES = \
+	$(INCFILEDIR)\vl_opcodes.h \
+	$(INCFILEDIR)\vlserver.h \
+	$(INCFILEDIR)\vldbint.h
+
+$(INCFILEDIR)\vl_opcodes.h: vl_opcodes.h
+	$(COPY) vl_opcodes.h $(INCFILEDIR)\vl_opcodes.h
+        
+############################################################################
+# build afsvldb.lib
+
+LIBFILE = $(DESTDIR)\lib\afs\afsvldb.lib
+
+LIBOBJS =\
+	$(OUT)\vl_errors.obj \
+	$(OUT)\vldbint.cs.obj \
+	$(OUT)\vldbint.xdr.obj \
+	$(OUT)\AFS_component_version_number.obj
+
+$(LIBFILE): $(LIBOBJS)  
+	$(LIBARCH) 
+
+############################################################################
+# build mtafsvldb.lib
+
+MT_LIBFILE = $(DESTDIR)\lib\afs\mtafsvldb.lib
+
+MT_LIBOBJS =\
+	$(OUT)\vl_errors_mt.obj \
+	$(OUT)\vldbint.cs_mt.obj \
+	$(OUT)\vldbint.xdr_mt.obj \
+	$(OUT)\AFS_component_version_number.obj
+
+$(OUT)\vl_errors_mt.obj:vl_errors.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV
+
+$(OUT)\vldbint.cs_mt.obj:vldbint.cs.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV
+
+$(OUT)\vldbint.xdr_mt.obj:vldbint.xdr.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV
+
+$(MT_LIBFILE): $(MT_LIBOBJS)  
+	$(LIBARCH) 
+
+############################################################################
+# build vlserver.exe
+
+VLSERVER = $(DESTDIR)\root.server\usr\afs\bin\vlserver.exe
+
+VLSERVER_EXEOBJS =\
+	$(OUT)\vldbint.ss.obj \
+	$(OUT)\vldbint.xdr.obj \
+	$(OUT)\vlprocs.obj \
+	$(OUT)\vlserver.obj \
+	$(OUT)\vlutils.obj \
+	$(OUT)\vlserver.res
+
+VLSERVER_EXECLIBS = \
+	$(DESTDIR)\lib\afsubik.lib \
+	$(DESTDIR)\lib\afs\afsauth.lib \
+	$(DESTDIR)\lib\afsrxkad.lib \
+	$(DESTDIR)\lib\afsrxstat.lib \
+	$(DESTDIR)\lib\afsrx.lib \
+	$(DESTDIR)\lib\afslwp.lib \
+	$(DESTDIR)\lib\afsdes.lib \
+	$(DESTDIR)\lib\afs\afscom_err.lib \
+	$(DESTDIR)\lib\afs\afsutil.lib \
+	$(DESTDIR)\lib\afs\afsaudit.lib \
+	$(DESTDIR)\lib\afs\afseventlog.lib \
+	$(DESTDIR)\lib\afs\afsreg.lib \
+	$(DESTDIR)\lib\afs\afsprocmgmt.lib \
+	$(DESTDIR)\lib\libafsconf.lib \
+        $(DESTDIR)\lib\afs\afspioctl.lib
+
+$(VLSERVER): $(VLSERVER_EXEOBJS) $(LIBFILE) $(VLSERVER_EXECLIBS)
+	$(EXECONLINK) dnsapi.lib mpr.lib iphlpapi.lib shell32.lib
+        $(_VC_MANIFEST_EMBED_EXE)
+	$(EXEPREP) 
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+############################################################################
+# generate versioninfo resources
+$(OUT)\vlserver.res: AFS_component_version_number.h
+#	$(RC) $*.rc
+
+############################################################################
+# rxgen on vldbint.xg
+
+vldbint.cs.c: vldbint.xg vldbint.h
+	$(RXGEN) -u -x -C -o $@ vldbint.xg
+
+vldbint.ss.c: vldbint.xg vldbint.h
+	$(RXGEN) -x -S -o $@ vldbint.xg
+
+vldbint.xdr.c: vldbint.xg vldbint.h
+	$(RXGEN) -x -c -o $@ vldbint.xg
+
+vldbint.h: vldbint.xg
+	$(RXGEN) -u -x -h -o $@ vldbint.xg
+
+$(INCFILEDIR)\vldbint.h: vldbint.h
+	$(COPY) vldbint.h $(INCFILEDIR)\vldbint.h
+
+############################################################################
+# Definitions for generating files via COMPILE_ET
+# Need an explicit copy here, since we've fussed with the general rule.
+
+vlserver.h vl_errors.c: vl_errors.et vlserver.p.h
+	$(DEL) vlserver.h vl_errors.c
+	$(COMPILE_ET) vl_errors  -h vlserver
+
+$(INCFILEDIR)\vlserver.h: vlserver.h
+	$(COPY) vlserver.h $(INCFILEDIR)\vlserver.h
+
+############################################################################
+# build local vldb_check
+
+VLDB_CHECK_LIBS =\
+	$(DESTDIR)\lib\afs\afsutil.lib 	\
+	$(DESTDIR)\lib\afs\afsreg.lib \
+	$(DESTDIR)\lib\afs\afseventlog.lib \
+	$(DESTDIR)\lib\afs\afscmd.lib
+
+$(OUT)\vldb_check.exe: $(OUT)\vldb_check.obj $(VLDB_CHECK_LIBS)
+	$(EXECONLINK)
+        $(_VC_MANIFEST_EMBED_EXE)
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+############################################################################
+# build local vlclient
+VLCLIENT_LIBS = \
+	$(DESTDIR)\lib\afs\afscmd.lib \
+	$(DESTDIR)\lib\afs\afspioctl.lib
+
+$(OUT)\vlclient.exe: $(OUT)\vlclient.obj  $(LIBFILE) $(VLSERVER_EXECLIBS) $(VLCLIENT_LIBS)
+	$(EXECONLINK) dnsapi.lib mpr.lib iphlpapi.lib shell32.lib
+        $(_VC_MANIFEST_EMBED_EXE)
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+
+############################################################################
+# install vlserver components
+
+install: $(INCFILES) $(LIBFILE) $(VLSERVER) $(OUT)\vldb_check.exe $(OUT)\vlclient.exe \
+	 $(MT_LIBFILE)
+
+install9x: install
+
+install_libutils: $(INCFILES) $(LIBFILE)
+
+install_headers: $(INCFILES)
+
+############################################################################
+# clean up
+
+clean::
+	$(DEL) vldbint.cs.c vldbint.ss.c vldbint.xdr.c vldbint.h
+	$(DEL) vlserver.h vl_errors.c $(INCFILES)
+
+mkdir:
+

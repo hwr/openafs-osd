@@ -1,0 +1,16 @@
+# After changing this file, please run
+#     git ls-files -i --exclude-standard
+# to check that you haven't inadvertently ignored any tracked files.
+
+/MSG00409.bin
+/afsd_eventmessages.h
+/afsd_eventmessages.rc
+/afsrpc.h
+/afsrpc_c.c
+/afsrpc_s.c
+/ms-srvsvc.h
+/ms-srvsvc_c.c
+/ms-srvsvc_s.c
+/ms-wkssvc.h
+/ms-wkssvc_c.c
+/ms-wkssvc_s.c

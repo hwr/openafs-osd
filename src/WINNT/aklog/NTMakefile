@@ -1,0 +1,99 @@
+# Copyright 2004, OpenAFS.ORG and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+# include the primary makefile
+AFSDEV_AUXCDEFINES = $(AFSDEV_AUXCDEFINES)  -DHAVE_KRB5_CREDS_KEYBLOCK=1
+RELDIR=WINNT\aklog
+!INCLUDE ..\..\config\NTMakefile.$(SYS_NAME)
+!INCLUDE ..\..\config\NTMakefile.version
+
+############################################################################
+#
+# BUILD TARGETS
+#
+
+AKLOG = $(DESTDIR)\root.client\usr\vice\etc\aklog.exe
+
+AKLOGOBJS = \
+	$(OUT)\aklog.obj \
+	$(OUT)\linked_list.obj
+
+PTERROBJS=$(OUT)\pterror.obj
+
+$(PTERROBJS): $(AFSROOT)\src\ptserver\pterror.c
+	$(C2OBJ) /Fo$@ $**
+
+ASETKEY = $(DESTDIR)\root.server\usr\afs\bin\asetkey.exe
+
+ASETKEYOBJS = \
+	$(OUT)\asetkey.obj
+
+EXELIBS = \
+	$(DESTDIR)\lib\afs\afspioctl.lib \
+        $(DESTDIR)\lib\afsauthent.lib \
+        $(DESTDIR)\lib\afs\afskauth.lib \
+        $(DESTDIR)\lib\afs\afscom_err.lib \
+        $(DESTDIR)\lib\afs\afsutil.lib
+
+!IF "$(CPU)" == "IA64" || "$(CPU)" == "AMD64" || "$(CPU)" == "ALPHA64"
+OTHERLIBS = \
+    ..\kfw\lib\$(CPU)\krb5_64.lib \
+    ..\kfw\lib\$(CPU)\comerr64.lib \
+    dnsapi.lib mpr.lib delayimp.lib
+LINKOPTS = /DELAYLOAD:krb5_64.dll /DELAYLOAD:comerr64.dll
+!else
+OTHERLIBS = \
+    ..\kfw\lib\$(CPU)\krbv4w32.lib \
+    ..\kfw\lib\$(CPU)\krb5_32.lib \
+    ..\kfw\lib\$(CPU)\comerr32.lib \
+    dnsapi.lib mpr.lib delayimp.lib
+LINKOPTS = /DELAYLOAD:krbv4w32.dll /DELAYLOAD:krb5_32.dll /DELAYLOAD:comerr32.dll
+!endif
+afscflags = -I..\kfw\inc\krb5 -I..\kfw\inc\krb4 $(afscflags)
+
+$(AKLOGOBJS): $$(@B).c
+	$(C2OBJ) $**
+
+$(ASETKEYOBJS): $$(@B).c
+	$(C2OBJ) $**
+
+############################################################################
+
+$(AKLOG) : $(AKLOGOBJS) $(PTERROBJS) $(EXELIBS) $(OUT)\aklog.res
+	$(EXECONLINK) $(EXELIBS) $(OTHERLIBS) $(LINKOPTS)
+        $(_VC_MANIFEST_EMBED_EXE)
+	$(EXEPREP) 
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+$(ASETKEY) : $(ASETKEYOBJS) $(EXELIBS) $(OUT)\asetkey.res
+	$(EXECONLINK) $(EXELIBS) $(OTHERLIBS) $(LINKOPTS)
+        $(_VC_MANIFEST_EMBED_EXE)
+	$(EXEPREP) 
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+install : $(COPYHEADERS) $(AKLOG) $(ASETKEY)
+
+############################################################################
+#
+# Dependencies
+#
+
+$(OUT)\aklog.res : aklog.rc AFS_component_version_number.h
+
+$(OUT)\asetkey.res : asetkey.rc AFS_component_version_number.h
+
+$(OUT)\k5log.res : k5log.rc AFS_component_version_number.h
+
+mkdir:
+	-mkdir $(OUT)\lang
+	cd lang
+	nmake /nologo /f ntmakefile SRC=$(SRC) OBJ=$(OBJ) mkdir
+	cd ..
+
+                                             

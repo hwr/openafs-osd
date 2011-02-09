@@ -1,0 +1,118 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+srcdir=@srcdir@
+include @TOP_OBJDIR@/src/config/Makefile.config
+INSTALL = @INSTALL@
+INSTALL_DATA = @INSTALL_DATA@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_SCRIPT = @INSTALL_SCRIPT@
+
+CFLAGS=${DBG} ${OPTMZ} -I${TOP_INCDIR} ${XCFLAGS} ${ARCHFLAGS}
+
+INST=$(RM) -f $@; $(CP) $? $@
+
+all: config mkvers \
+	${TOP_INCDIR}/afs/param.h \
+	${TOP_INCDIR}/afs/stds.h \
+	${TOP_INCDIR}/afs/afs_sysnames.h \
+	${TOP_INCDIR}/afs/afs_args.h \
+	${TOP_INCDIR}/afs/icl.h \
+	${TOP_INCDIR}/afs/venus.h \
+	${TOP_INCDIR}/afs/vioc.h
+
+buildtools: \
+	config \
+	mkvers \
+	${TOP_INCDIR}/afs/param.h \
+	${TOP_INCDIR}/afs/afs_sysnames.h \
+	${TOP_INCDIR}/afs/stds.h
+
+Makefile.version: Makefile.version-CML Makefile.version-NOCML
+	$(RM) -f Makefile.version
+	if	[ -r @TOP_SRCDIR@/CML/state ] ; \
+	then	$(CP) Makefile.version-CML Makefile.version ; \
+	else	$(CP) Makefile.version-NOCML Makefile.version ; \
+	fi
+
+#
+# AFS component version string file generation targets
+#
+AFS_component_version_number.c: Makefile.version
+	$(MAKE) -f Makefile.version AFS_component_version_number.c
+
+#
+# App build/install targets
+#
+config: config.o mc.o
+	$(CC) $(CFLAGS) -o config config.o mc.o
+
+mkvers: ${srcdir}/mkvers.c
+	$(CC) $(CFLAGS) -o mkvers ${srcdir}/mkvers.c
+
+mc.o: ${srcdir}/mc.c
+	$(CC) $(CFLAGS) -I. -c ${srcdir}/mc.c
+
+config.o: ${srcdir}/config.c AFS_component_version_number.c
+	$(CC) $(CFLAGS) -I. -c ${srcdir}/config.c
+
+#
+# Include installation targets
+#
+
+# XXX inlined INST
+${DEST}/include/afs/param.h ${DESTDIR}${includedir}/afs/param.h ${TOP_INCDIR}/afs/param.h: ${srcdir}/param.${SYS_NAME}.h ${AFS_PARAM_COMMON}
+	if [ "X${AFS_PARAM_COMMON}" != "X" ] ; then \
+		cat ${srcdir}/${AFS_PARAM_COMMON} ${srcdir}/param.${SYS_NAME}.h > param.h.new ; \
+		$(RM) -f $@; \
+		 $(CP) param.h.new $@ ; \
+	else \
+		$(RM) -f $@; $(CP) ${srcdir}/param.${SYS_NAME}.h $@ ; \
+	fi
+
+${DEST}/include/afs/afs_sysnames.h ${DESTDIR}${includedir}/afs/afs_sysnames.h ${TOP_INCDIR}/afs/afs_sysnames.h: ${srcdir}/afs_sysnames.h
+	$(INST)
+
+${DEST}/include/afs/stds.h ${DESTDIR}${includedir}/afs/stds.h ${TOP_INCDIR}/afs/stds.h: ${srcdir}/stds.h
+	$(INST)
+
+${DEST}/include/afs/icl.h ${DESTDIR}${includedir}/afs/icl.h ${TOP_INCDIR}/afs/icl.h: ${srcdir}/icl.h 
+	$(INST)
+
+${DEST}/include/afs/afs_args.h ${DESTDIR}${includedir}/afs/afs_args.h ${TOP_INCDIR}/afs/afs_args.h: ${srcdir}/afs_args.h 
+	$(INST)
+
+${DEST}/include/afs/venus.h ${DESTDIR}${includedir}/afs/venus.h ${TOP_INCDIR}/afs/venus.h: ${srcdir}/venus.h 
+	$(INST)
+
+${DEST}/include/afs/vioc.h ${DESTDIR}${includedir}/afs/vioc.h ${TOP_INCDIR}/afs/vioc.h: ${srcdir}/vioc.h 
+	$(INST)
+
+# these are needed to compile the kernel.  Config is necessary to
+# convert the MakefileProto in libafs and the kernel links provide the
+# kernel include environment.  param.h is, well, param.h.  The afs_sysnames.h
+# file is needed by param.h to create unique identifiers for each SYS_TYPE.
+
+install: ${DESTDIR}${includedir}/afs/param.h \
+	${DESTDIR}${includedir}/afs/stds.h \
+	${DESTDIR}${includedir}/afs/afs_sysnames.h \
+	${DESTDIR}${includedir}/afs/afs_args.h \
+	${DESTDIR}${includedir}/afs/icl.h \
+	${DESTDIR}${includedir}/afs/venus.h \
+	${DESTDIR}${includedir}/afs/vioc.h
+
+clean:
+	$(RM) -f *.o config mkvers core xprt AFS_component_version_number.c param.h.new Makefile.version.in
+
+dest: ${DEST}/include/afs/param.h \
+	${DEST}/include/afs/stds.h \
+	${DEST}/include/afs/afs_sysnames.h \
+	${DEST}/include/afs/afs_args.h \
+	${DEST}/include/afs/icl.h \
+	${DEST}/include/afs/venus.h \
+	${DEST}/include/afs/vioc.h
+

@@ -1,0 +1,102 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+RELDIR=bubasics
+!INCLUDE ..\config\NTMakefile.$(SYS_NAME)
+!INCLUDE ..\config\NTMakefile.version
+
+############################################################################
+# Install headers
+
+INCFILEDIR = $(DESTDIR)\include\afs
+
+INCFILES =\
+	$(INCFILEDIR)\bubasics.h \
+	$(INCFILEDIR)\butc.h \
+	$(INCFILEDIR)\bumon.h \
+	$(INCFILEDIR)\butm.h \
+	$(INCFILEDIR)\butx.h \
+	$(INCFILEDIR)\tcdata.h
+
+
+############################################################################
+# build afsbubasics.lib
+
+LIBFILE = $(DESTDIR)\lib\afs\afsbubasics.lib
+
+LIBOBJS =\
+	$(OUT)\butc.ss.obj \
+	$(OUT)\butc.cs.obj \
+	$(OUT)\butc.xdr.obj \
+	$(OUT)\bumon.ss.obj \
+	$(OUT)\bumon.cs.obj \
+	$(OUT)\bumon.xdr.obj \
+	$(OUT)\butc_errs.obj \
+	$(OUT)\butm_errs.obj \
+	$(OUT)\butx_errs.obj \
+	$(OUT)\AFS_component_version_number.obj
+
+$(LIBFILE): $(LIBOBJS) 
+	$(LIBARCH) 
+
+############################################################################
+# rxgen on butc.xg and bumon.xg
+
+butc.xdr.c: butc.xg butc.h
+	$(RXGEN) -c -o $@ butc.xg
+
+butc.ss.c: butc.xg butc.h
+	$(RXGEN) -S -o $@ butc.xg
+
+butc.cs.c: butc.xg butc.h
+	$(RXGEN) -C -o $@ butc.xg
+
+butc.h: butc.xg
+	$(RXGEN) -h -o $@ butc.xg
+
+bumon.xdr.c: bumon.xg bumon.h
+	$(RXGEN) -c -o $@ bumon.xg
+
+bumon.ss.c: bumon.xg bumon.h
+	$(RXGEN) -S -o $@ bumon.xg
+
+bumon.cs.c: bumon.xg bumon.h
+	$(RXGEN) -C -o $@ bumon.xg
+
+bumon.h: bumon.xg
+	$(RXGEN) -h -o $@ bumon.xg
+
+############################################################################
+# compile_et on butm_errs.et and butc_errs.et 
+
+butm.h butm_errs.c: butm_errs.et butm.p.h
+	$(DEL) butm.h butm_errs.c
+	$(COMPILE_ET) butm_errs -h butm
+	
+tcdata.h butc_errs.c: butc_errs.et tcdata.p.h butm.h
+	$(DEL) tcdata.h butc_errs.c
+	$(COMPILE_ET) butc_errs -h tcdata
+
+butx_errs.c butx.h: butx_errs.et
+	$(DEL) butx.h butx_errs.c
+	$(COMPILE_ET) butx_errs -h butx
+
+############################################################################
+# install targets
+
+install: $(LIBFILE) $(INCFILES)
+
+
+############################################################################
+# Local clean target; augments predefined clean target
+
+clean::
+ 	$(DEL) *.xdr.c *.ss.c *.cs.c butc.h bumon.h butm.h tcdata.h butx.h \
+		butc_errs.c butm_errs.c	butx_errs.c
+
+mkdir:
+	

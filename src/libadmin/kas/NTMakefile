@@ -1,0 +1,64 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+AFSDEV_AUXCDEFINES = -DAFS_PTHREAD_ENV
+
+RELDIR=libadmin\kas
+!include ..\..\config\NTMakefile.$(SYS_NAME)
+!include ..\..\config\NTMakefile.version
+
+KAUTH = ..\..\kauth
+RX = ..\..\rx
+
+RXOBJS = $(OUT)\xdr_int32.obj $(OUT)\xdr_int64.obj
+
+KAUTHOBJS = \
+	$(OUT)\kauth.cs.obj $(OUT)\kauth.xdr.obj $(OUT)\kaaux.obj
+
+ADMINOBJS = \
+	$(OUT)\afs_kasAdmin.obj \
+	$(OUT)\afskasadmin.res
+
+DLLOBJS = $(ADMINOBJS) $(KAUTHOBJS) $(RXOBJS)
+
+LIBINCLUDES = \
+	$(DESTDIR)\include\afs\afs_kasAdmin.h
+
+DLLFILE = $(DESTDIR)\root.server\usr\afs\bin\afskasadmin.dll
+ILIBDIR = $(DESTDIR)\lib\afs
+
+DLLLIBS =\
+	$(DESTDIR)\lib\afs\afsadminutil.lib \
+	$(DESTDIR)\lib\afsauthent.lib \
+	$(DESTDIR)\lib\afsrpc.lib \
+	$(DESTDIR)\lib\afspthread.lib \
+	$(DESTDIR)\lib\afs\afsutil.lib
+
+$(DLLFILE): $(DLLOBJS) $(DLLLIBS)
+	$(DLLCONLINK) /DEF:kasadmin.def
+        $(_VC_MANIFEST_EMBED_DLL)
+	$(DLLPREP)
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+	$(MAKECYGLIB) --input-def kasadmin.def
+	$(COPY) $*.lib $(ILIBDIR)
+	$(DEL) $*.lib $*.exp
+
+
+install: $(DLLFILE) $(LIBINCLUDES)
+
+$(KAUTHOBJS): $(KAUTH)\$$(@B).c
+	$(C2OBJ) -I$(KAUTH) $**
+
+$(RXOBJS): $(RX)\$$(@B).c
+	$(C2OBJ) -I$(RX) $**
+
+# Definitions for generating versioninfo resources
+$(OUT)\afskasadmin.res: AFS_component_version_number.h
+
+mkdir:
+	

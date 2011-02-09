@@ -1,0 +1,42 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+AFSDEV_AUXCDEFINES = $(AFSDEV_AUXCDEFINES) -I..\WINNT\kfw\inc\loadfuncs -I..\WINNT\kfw\inc\krb5 \
+        -I$(DESTDIR)\include\afs -I$(DESTDIR)\include\rx
+RELDIR=sys
+!INCLUDE ..\config\NTMakefile.$(SYS_NAME)
+!INCLUDE ..\config\NTMakefile.version
+
+############################################################################
+# Header files to install
+
+INCFILES =\
+	$(DESTDIR)\include\afs\afssyscalls.h \
+	$(DESTDIR)\include\afs\pioctl_nt.h \
+	$(DESTDIR)\include\afs\sys_prototypes.h
+
+# Library to install
+
+LIBFILE = $(DESTDIR)\lib\afs\afspioctl.lib
+
+LIBOBJS =\
+	$(OUT)\pioctl_nt.obj
+
+$(LIBFILE): $(LIBOBJS) $(DESTDIR)\lib\lanahelper.lib
+	$(LIBARCH) $(DESTDIR)\lib\lanahelper.lib secur32.lib
+
+############################################################################
+# Install target; primary makefile target
+
+install: $(INCFILES) $(LIBFILE)
+install9x: install
+
+############################################################################
+# Local clean target; augments predefined clean target
+
+clean::
+   $(DEL) $(LIBFILE)

@@ -1,0 +1,69 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+srcdir=@srcdir@
+include @TOP_OBJDIR@/src/config/Makefile.config
+INSTALL = @INSTALL@
+INSTALL_DATA = @INSTALL_DATA@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_SCRIPT = @INSTALL_SCRIPT@
+
+CFLAGS=${COMMON_CFLAGS} ${MT_CFLAGS}
+CCRULE = ${CC} ${CFLAGS} -c $?
+
+UBIKOBJS=\
+	ubik_int.cs.o \
+	ubik_int.xdr.o
+
+CFGOBJS=\
+	cfgclient.o \
+	cfgdb.o \
+	cfghost.o \
+	cfgservers.o \
+	cfginternal.o
+
+LIBOBJS =\
+	${UBIKOBJS} \
+	${CFGOBJS}
+
+all: ${TOP_INCDIR}/afs/afs_cfgAdmin.h ${TOP_LIBDIR}/libcfgadmin.a
+
+${TOP_INCDIR}/afs/afs_cfgAdmin.h: afs_cfgAdmin.h
+	${INSTALL_DATA} $? $@
+
+${TOP_LIBDIR}/libcfgadmin.a: libcfgadmin.a
+	${INSTALL_DATA} $? $@
+
+install: libcfgadmin.a afs_cfgAdmin.h
+	${INSTALL} -d ${DESTDIR}${includedir}/afs
+	${INSTALL} -d ${DESTDIR}${libdir}/afs
+	${INSTALL_DATA} ${srcdir}/afs_cfgAdmin.h ${DESTDIR}${includedir}/afs/afs_cfgAdmin.h
+	${INSTALL_DATA} libcfgadmin.a ${DESTDIR}${libdir}/afs/libcfgadmin.a
+
+dest: libcfgadmin.a afs_cfgAdmin.h
+	${INSTALL} -d ${DEST}/include/afs
+	${INSTALL} -d ${DEST}/lib/afs
+	${INSTALL_DATA} ${srcdir}/afs_cfgAdmin.h ${DEST}/include/afs/afs_cfgAdmin.h
+	${INSTALL_DATA} libcfgadmin.a ${DEST}/lib/afs/libcfgadmin.a
+
+libcfgadmin.a: ${LIBOBJS}
+	-$(RM) -f $@
+	$(AR) crv $@ ${LIBOBJS}
+	${RANLIB} $@
+
+UBIKDIR=../../ubik
+
+ubik_int.cs.o: ${UBIKDIR}/ubik_int.cs.c
+	${CCRULE}
+
+ubik_int.xdr.o: ${UBIKDIR}/ubik_int.xdr.c
+	${CCRULE}
+
+${CFGOBJS}: afs_cfgAdmin.h
+
+clean:
+	$(RM) -f *.o libcfgadmin*

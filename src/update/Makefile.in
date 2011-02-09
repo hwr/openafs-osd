@@ -1,0 +1,78 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+srcdir=@srcdir@
+include @TOP_OBJDIR@/src/config/Makefile.config
+INSTALL = @INSTALL@
+INSTALL_DATA = @INSTALL_DATA@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_SCRIPT = @INSTALL_SCRIPT@
+
+LIBS=${TOP_LIBDIR}/libauth.a \
+	${TOP_LIBDIR}/librxkad.a \
+	${TOP_LIBDIR}/libdes.a \
+	${TOP_LIBDIR}/librx.a \
+	${TOP_LIBDIR}/libsys.a \
+	${TOP_LIBDIR}/librx.a \
+	${TOP_LIBDIR}/liblwp.a \
+	${TOP_LIBDIR}/libcom_err.a \
+	${TOP_LIBDIR}/util.a
+
+all: upserver upclient
+
+generated: update.cs.c update.ss.c update.xdr.c update.h
+
+#
+# Build targets
+#
+upclient: client.o update.cs.o utils.o ${LIBS} 
+	${CC} ${CFLAGS} -o upclient client.o update.cs.o utils.o ${LIBS} ${XLIBS}
+
+upserver: server.o utils.o update.ss.o ${LIBS}
+	${CC} ${CFLAGS} -o upserver server.o utils.o update.ss.o ${LIBS} ${XLIBS}
+
+utils.o: utils.c update.h global.h
+
+client.o server.o: update.h global.h AFS_component_version_number.c
+
+update.cs.c: update.xg
+	${RXGEN} -A -u -C -o $@ ${srcdir}/update.xg
+
+update.ss.c: update.xg
+	${RXGEN} -A -S -o $@ ${srcdir}/update.xg
+
+update.xdr.c: update.xg
+	${RXGEN} -A -c -o $@ ${srcdir}/update.xg
+
+update.h: update.xg
+	${RXGEN} -A -u -h -o $@ ${srcdir}/update.xg
+
+update.cs.c: update.h
+update.ss.c: update.h
+update.er.c: update.h
+
+#
+# Installation targets
+#
+install: upserver upclient
+	${INSTALL} -d ${DESTDIR}${afssrvlibexecdir}
+	${INSTALL_PROGRAM} upserver ${DESTDIR}${afssrvlibexecdir}/upserver
+	${INSTALL_PROGRAM} upclient ${DESTDIR}${afssrvlibexecdir}/upclient
+
+dest: upserver upclient
+	${INSTALL} -d ${DEST}/root.server/usr/afs/bin
+	${INSTALL_PROGRAM} upserver ${DEST}/root.server/usr/afs/bin/upserver
+	${INSTALL_PROGRAM} upclient ${DEST}/root.server/usr/afs/bin/upclient
+
+#
+# Misc. targets
+#
+clean: 
+	$(RM) -f *.o upclient upserver update.ss.c update.cs.c update.xdr.c update.h core \
+	AFS_component_version_number.c
+
+include ../config/Makefile.version

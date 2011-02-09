@@ -1,0 +1,115 @@
+#!/usr/bin/env pagsh
+
+if [ -f /usr/afs/logs/ArchiveLog ]; then
+    mv /usr/afs/logs/ArchiveLog /usr/afs/logs/ArchiveLog.`date +"%"`
+fi
+
+exec > /usr/afs/logs/ArchiveLog 2>&1
+
+#echo Archiver started for following AFS servers: ${1} ${2} ${3} ${4} ${5} ${6} ${7} ${8} ${9} ${10} ${11} ${12} ${13} ${14} ${15} ${16} 
+
+servers=`grep openafs /afs/ipp/backups/servers | awk '{print $1}'`
+
+PATH=/usr/afs/bin:${PATH}
+minpriority=48
+interval=1800
+
+startday=`date +%d`
+
+while [ 1 ]
+do
+    starttime=`date +%s`
+    IamSyncsite=`udebug localhost 7012 | grep -c "I am sync site"`
+    if [ $IamSyncsite -ne 0 ]; then
+        localauth
+	tokens
+        authtime=`date +%s`
+	error=0
+        archosds=`osd l -v | grep "up   arch" | awk '{print $1}'`
+        for a in $archosds
+        do
+	    eval `osd osd $a | awk '{
+	        if ($1 == "minSize") {
+		    printf("minSize['$a']=%u;\n", $3 * 1024)
+	        }
+	        if ($1 == "maxSize") {
+		    printf("maxSize['$a']=%u;\n", $3 * 1024)
+ 	        }
+	        if ($1 == "alprior") {
+		    print "prior['$a']="$3";"
+	        }
+	    }'`
+        done
+#       for s in ${1} ${2} ${3} ${4} ${5} ${6} ${7} ${8} ${9} ${10} ${11} ${12} ${13} ${14} ${15} ${16} 
+	for s in $servers
+        do
+	    echo `date` Server $s
+	    fids=`vos arch $s -localauth | grep -v Fid |grep -v Tot |  awk '{print $1}'`
+	    while [ "x$fids" != "x" ]
+	    do
+	        for f in $fids
+	        do 	
+		    fs checkserver
+		    echo `date` processing $f
+		    for a in $archosds
+		    do
+		        found[$a]=0
+		    done
+		    eval `fs fidlistarch $f | awk '{
+		        if ($1 == "Length") {
+			    print "length="$3";"
+		        }
+		        if ($1 == "ArchiveOsd") {
+			    print "found["$3"]=1;"
+		        }
+		    }'`
+		    for a in $archosds
+		    do
+			min=${minSize[$a]}
+			max=${maxSize[$a]}
+		        if [ $min -le $length ]; then
+			    if [ $max -gt $length ]; then
+			        if [ ${prior[$a]} -gt $minpriority ]; then
+				    if [ ${found[$a]} -eq 0 ]; then
+				        echo `date` fs fidarchive $f
+				        fs fidarchive $f
+					error=$?
+				    fi
+			        fi
+			    fi
+		        fi
+    			now=`date +%s`
+    			tokenlife=`expr $now - $authtime`
+    			if [ $tokenlife -gt 1800 ]; then
+				echo token already $tokenlife seconds old
+				localauth
+				tokens
+    				authtime=`date +%s`
+    			fi
+		    done
+	        done
+		if [ $error == 0 ]; then
+	        	fids=`vos arch $s | grep -v Fid |grep -v Tot |  awk '{print $1}'`
+		else
+			fids=
+		fi
+		today=`date +%d`
+		if [ "$today" != "$startday" ]; then
+			/usr/afs/bin/bos restart localhost archiver -localauth
+			echo Enough for today
+			exit
+		fi 
+	    done
+        done
+    else
+	echo `date` I am not syncsite
+    fi
+    endtime=`date +%s`
+    sleeptime=`expr $starttime + $interval - $endtime`
+    if [ $sleeptime -gt 0 ]; then
+	echo `date` now sleeping $sleeptime seconds
+	sleep $sleeptime
+    else
+	echo `date` no time to sleep!
+    fi
+done

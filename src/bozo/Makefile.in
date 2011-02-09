@@ -1,0 +1,161 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+srcdir=@srcdir@
+include @TOP_OBJDIR@/src/config/Makefile.config
+INSTALL = @INSTALL@
+INSTALL_DATA = @INSTALL_DATA@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_SCRIPT = @INSTALL_SCRIPT@
+
+RPCINCLS=${TOP_INCDIR}/lwp.h ${TOP_INCDIR}/rx/rx.h bosint.h
+
+INCLS=bnode.h \
+	${RPCINCLS} \
+	${TOP_INCDIR}/afs/auth.h \
+	${TOP_INCDIR}/afs/keys.h \
+	${TOP_INCDIR}/afs/cellconfig.h \
+	${TOP_INCDIR}/afs/cmd.h \
+	${TOP_INCDIR}/afs/ktime.h
+
+# EH 12/18/90 - have to search librx.a twice on Ultrix 4.0
+LIBS=${TOP_LIBDIR}/librx.a \
+	${TOP_LIBDIR}/liblwp.a \
+	${TOP_LIBDIR}/libcmd.a \
+	${TOP_LIBDIR}/libkauth.a \
+	${TOP_LIBDIR}/libvolser.a \
+	${TOP_LIBDIR}/libvldb.a \
+	${TOP_LIBDIR}/libauth.a \
+	${TOP_LIBDIR}/librxstat.a \
+	${TOP_LIBDIR}/librxkad.a \
+	${TOP_LIBDIR}/libdes.a \
+	${TOP_LIBDIR}/libubik.a \
+	${TOP_LIBDIR}/librx.a \
+	${TOP_LIBDIR}/libcom_err.a \
+	${TOP_LIBDIR}/util.a \
+	${TOP_LIBDIR}/libsys.a \
+	${TOP_LIBDIR}/libprocmgmt.a
+
+OBJS=bosserver.o bnode.o ezbnodeops.o fsbnodeops.o bosint.ss.o bosint.xdr.o \
+bosoprocs.o cronbnodeops.o
+
+all: bosserver ${TOP_INCDIR}/afs/bosint.h bos ${TOP_LIBDIR}/libbos.a bos_util
+
+generated: bosint.ss.c bosint.xdr.c bosint.cs.c bosint.h bnode.h boserr.c
+
+${TOP_INCDIR}/afs/bosint.h: bosint.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/afs/bnode.h: bnode.h
+	${INSTALL_DATA} $? $@
+
+${TOP_LIBDIR}/libbos.a: libbos.a
+	${INSTALL_DATA} $? $@
+
+$(OBJS) bosint.xdr.o bosint.cs.o boserr.o: $(INCLS)
+
+bosint.ss.o: bosint.ss.c ${RPCINCLS}
+bosint.xdr.o: bosint.xdr.c ${RPCINCLS}
+bosint.cs.o: bosint.cs.c ${RPCINCLS}
+
+bosint.cs.c: bosint.xg
+	${RXGEN} -x -A -C -o $@ ${srcdir}/bosint.xg
+
+bosint.ss.c: bosint.xg
+	${RXGEN} -x -A -S -o $@ ${srcdir}/bosint.xg
+
+bosint.xdr.c: bosint.xg
+	${RXGEN} -x -A -c -o $@ ${srcdir}/bosint.xg
+
+bosint.h: bosint.xg
+	${RXGEN} -x -A -h -o $@ ${srcdir}/bosint.xg
+
+bosint.cs.c: bosint.h
+bosint.ss.c: bosint.h
+bosint.xdr.c: bosint.h
+
+bnode.h: boserr.c
+
+boserr.c: bnode.p.h boserr.et
+	$(RM) -f boserr.c bnode.h
+	${COMPILE_ET} -p ${srcdir} boserr -h bnode
+
+bosserver.o: bosserver.c ${INCLS} AFS_component_version_number.o
+
+cronbnodeops.o: cronbnodeops.c ${INCLS}
+
+bnode.o: bnode.c ${INCLS}
+
+bosoprocs.o: bosoprocs.c ${INCLS}
+
+bos.o: bos.c ${INCLS} AFS_component_version_number.o
+	$(CC) $(CFLAGS) -c ${srcdir}/bos.c
+
+bos: bos.o $(LIBS) libbos.a
+	${CC} ${CFLAGS} -o bos bos.o libbos.a $(LIBS)  ${XLIBS}
+
+bos_util.o: bos_util.c ${INCLS} AFS_component_version_number.o ${TOP_INCDIR}/afs/bnode.h
+	$(CC) $(CFLAGS) -c ${srcdir}/bos_util.c
+
+bos_util: bos_util.o $(LIBS) 
+	${CC} ${CFLAGS} -o bos_util bos_util.o $(LIBS)  ${XLIBS}
+
+ezbnodeops.o: ezbnodeops.c ${INCLS}
+
+fsbnodeops.o: fsbnodeops.c ${INCLS}
+
+libbos.a: bosint.xdr.o bosint.cs.o boserr.o AFS_component_version_number.o
+	-$(RM) -f $@
+	$(AR) crv $@ bosint.xdr.o bosint.cs.o boserr.o AFS_component_version_number.o
+	$(RANLIB) $@
+
+bosserver: $(OBJS) $(LIBS)
+	${CC} $(CFLAGS) -o bosserver $(OBJS) ${TOP_LIBDIR}/libaudit.a $(LIBS)  ${XLIBS} 
+
+#
+# Install targets
+#
+install: bosserver bos bos_util libbos.a bosint.h bnode.h
+	${INSTALL} -d ${DESTDIR}${afssrvbindir}
+	${INSTALL} -d ${DESTDIR}${afssrvsbindir}
+	${INSTALL} -d ${DESTDIR}${bindir}
+	${INSTALL} -d ${DESTDIR}${includedir}/afs
+	${INSTALL} -d ${DESTDIR}${libdir}/afs
+	${INSTALL_PROGRAM} bosserver ${DESTDIR}${afssrvsbindir}/bosserver
+	${INSTALL_DATA} bosint.h ${DESTDIR}${includedir}/afs/bosint.h
+	${INSTALL_PROGRAM} bos ${DESTDIR}${bindir}/bos
+	${INSTALL_PROGRAM} bos ${DESTDIR}${afssrvbindir}/bos
+	${INSTALL_PROGRAM} bos_util ${DESTDIR}${afssrvsbindir}/bos_util
+	${INSTALL_DATA} libbos.a ${DESTDIR}${libdir}/afs/libbos.a
+	${INSTALL_DATA} bnode.h ${DESTDIR}${includedir}/afs/bnode.h
+
+dest: bosserver bos bos_util libbos.a bosint.h bnode.h
+	${INSTALL} -d ${DEST}/bin
+	${INSTALL} -d ${DEST}/include/afs
+	${INSTALL} -d ${DEST}/lib/afs
+	${INSTALL} -d ${DEST}/root.server/usr/afs/bin
+	${INSTALL_PROGRAM} bosserver ${DEST}/root.server/usr/afs/bin/bosserver
+	${INSTALL_DATA} bosint.h ${DEST}/include/afs/bosint.h
+	${INSTALL_PROGRAM} bos ${DEST}/bin/bos
+	${INSTALL_PROGRAM} bos ${DEST}/root.server/usr/afs/bin/bos
+	${INSTALL_PROGRAM} bos_util ${DEST}/root.server/usr/afs/bin/bos_util
+	${INSTALL_DATA} libbos.a ${DEST}/lib/afs/libbos.a
+	${INSTALL_DATA} bnode.h ${DEST}/include/afs/bnode.h
+
+#
+# Misc. targets
+#
+clean:
+	$(RM) -f  *.a *.o bos bosserver testproc bos_util \
+		bosint.cs.c bosint.ss.c bosint.xdr.c bosint.h \
+		core boserr.c bnode.h AFS_component_version_number.c 
+
+test: 
+	cd test; $(MAKE) 
+
+include ../config/Makefile.version
+

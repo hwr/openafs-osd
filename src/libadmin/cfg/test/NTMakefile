@@ -1,0 +1,30 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+AFSDEV_AUXCDEFINES = -DAFS_PTHREAD_ENV
+
+RELDIR=libadmin\cfg\test
+!INCLUDE ..\..\..\config\NTMakefile.$(SYS_NAME)
+
+tests: $(OUT)\cfgtest.exe
+
+CFGTEST_EXELIBS =\
+	$(DESTDIR)\lib\afspthread.lib \
+	$(DESTDIR)\lib\afs\afsadminutil.lib \
+	$(DESTDIR)\lib\afs\afsclientadmin.lib \
+	$(DESTDIR)\lib\afs\afscfgadmin.lib \
+	$(DESTDIR)\lib\afsrpc.lib \
+	$(DESTDIR)\lib\afs\afscmd.lib  # static library
+
+$(OUT)\cfgtest.exe: $(OUT)\cfgtest.obj $(CFGTEST_EXELIBS)
+	$(EXECONLINK)
+        $(_VC_MANIFEST_EMBED_EXE)
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+mkdir:
+	

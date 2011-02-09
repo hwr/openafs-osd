@@ -1,0 +1,167 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+# This is a pthread safe library containing ubikclient, auth, kauth.
+
+
+AFSDEV_AUXCDEFINES = $(AFSDEV_AUXCDEFINES) -DAFS_PTHREAD_ENV -I..\WINNT\kfw\inc\loadfuncs \
+        -I..\WINNT\kfw\inc\krb5 -I$(DESTDIR)\include\afs -I$(DESTDIR)\include\rx
+
+RELDIR=libafsauthent
+!include ..\config\NTMakefile.$(SYS_NAME)
+!include ..\config\NTMakefile.version
+
+AUDIT = ..\audit
+AUTH = ..\auth
+KAUTH = ..\kauth
+UBIK = ..\ubik
+UTIL = ..\util
+RXKAD = ..\rxkad
+PTSERVER = ..\ptserver
+SYS = ..\sys
+WINNTAFSD = ..\WINNT\afsd
+RX = ..\rx
+
+LIBFILE = $(DESTDIR)\lib\afsauthent.dll
+
+RXOBJS = $(OUT)\xdr_int32.obj $(OUT)\xdr_int64.obj
+
+AUDITOBJS = \
+        $(OUT)\audit.obj \
+        $(OUT)\audit-file.obj
+
+AUTHOBJS = \
+	$(OUT)\cellconfig.obj \
+	$(OUT)\userok.obj \
+	$(OUT)\writeconfig.obj \
+	$(OUT)\authcon.obj \
+	$(OUT)\ktc_errors.obj \
+	$(OUT)\ktc_nt.obj \
+	$(OUT)\acfg_errors.obj
+
+KAUTHOBJS = \
+	$(OUT)\kauth.xdr.obj \
+	$(OUT)\kauth.cs.obj \
+	$(OUT)\kaaux.obj \
+	$(OUT)\client.obj \
+	$(OUT)\authclient.obj \
+	$(OUT)\token.obj \
+	$(OUT)\kautils.obj \
+	$(OUT)\kalocalcell.obj \
+	$(OUT)\kaerrors.obj \
+	$(OUT)\user_nt.obj
+
+UBIKOBJS = \
+	$(OUT)\uinit.obj \
+	$(OUT)\ubikclient.obj \
+	$(OUT)\uerrors.obj \
+	$(OUT)\ubik_int.cs.obj \
+	$(OUT)\ubik_int.xdr.obj
+
+UTILOBJS = \
+	$(OUT)\pthread_glock.obj \
+	$(OUT)\get_krbrlm.obj \
+	$(OUT)\casestrcpy.obj \
+	$(OUT)\fileutil.obj \
+	$(OUT)\dirpath.obj \
+	$(OUT)\readdir_nt.obj
+
+RXKADOBJS = \
+	$(OUT)\rxkad_errs.obj
+
+PTSERVEROBJS = \
+	$(OUT)\ptclient.obj \
+	$(OUT)\ptint.cs.obj \
+	$(OUT)\ptint.xdr.obj \
+	$(OUT)\ptuser.obj \
+	$(OUT)\display.obj \
+	$(OUT)\pterror.obj
+
+SYSOBJS = \
+	$(OUT)\pioctl_nt.obj
+
+WINNTAFSDOBJS =\
+	$(OUT)\afsrpc_c.obj
+
+DLLOBJS =\
+	$(AUTHOBJS) \
+	$(KAUTHOBJS) \
+	$(UBIKOBJS) \
+	$(UTILOBJS) \
+	$(RXKADOBJS) \
+	$(PTSERVEROBJS) \
+	$(SYSOBJS) \
+	$(WINNTAFSDOBJS) \
+	$(AUDITOBJS) \
+	$(OUT)\afsauthent.res
+
+$(RXOBJS): $(RX)\$$(@B).c
+	$(C2OBJ) -I$(RX) $**
+
+$(AUTHOBJS): $(AUTH)\$$(@B).c
+	$(C2OBJ) -I$(AUTH) $**
+
+$(KAUTHOBJS): $(KAUTH)\$$(@B).c
+	$(C2OBJ) -I$(KAUTH) $**
+
+$(UBIKOBJS): $(UBIK)\$$(@B).c
+	$(C2OBJ) -I$(UBIK) $**
+
+$(UTILOBJS): $(UTIL)\$$(@B).c
+	$(C2OBJ) -I$(UTIL) $**
+
+$(RXKADOBJS): $(RXKAD)\$$(@B).c
+	$(C2OBJ) -I$(RXKAD) $**
+
+$(PTSERVEROBJS): $(PTSERVER)\$$(@B).c
+	$(C2OBJ) -I$(PTSERVER) $**
+
+$(WINNTAFSDOBJS): $(WINNTAFSD)\$$(@B).c
+	$(C2OBJ) -I$(WINNTAFSD) $**
+
+$(AUDITOBJS): $(AUDIT)\$$(@B).c
+	$(C2OBJ) -I$(AUDIT) $**
+
+$(SYSOBJS): $(SYS)\$$(@B).c
+	$(C2OBJ) -I$(SYS) $**
+
+DLLLIBS =\
+!IF (("$(SYS_NAME)"=="i386_win95" ) || ("$(SYS_NAME)"=="I386_WIN95" ))
+	$(DESTDIR)\lib\win95\afspthread.lib \
+!ELSE
+	$(DESTDIR)\lib\afspthread.lib \
+!ENDIF
+	$(DESTDIR)\lib\afsrpc.lib \
+	$(DESTDIR)\lib\afsdes.lib \
+	$(DESTDIR)\lib\afs\afsutil.lib \
+	$(DESTDIR)\lib\afs\afsreg.lib \
+	$(DESTDIR)\lib\afs\afseventlog.lib \
+        $(DESTDIR)\lib\afs\afsprocmgmt.lib \
+        $(DESTDIR)\lib\afslwp.lib \
+        $(DESTDIR)\lib\lanahelper.lib \
+	$(DESTDIR)\lib\libafsconf.lib
+
+$(LIBFILE): $(DLLOBJS) $(DLLLIBS) $(RXOBJS)
+	$(DLLCONLINK) /DEF:afsauthent.def rpcrt4.lib dnsapi.lib mpr.lib secur32.lib shell32.lib
+        $(_VC_MANIFEST_EMBED_DLL)
+	$(DLLPREP)
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+	$(MAKECYGLIB) --input-def afsauthent.def
+
+# Definitions for generating versioninfo resources
+$(OUT)\afsauthent.res: AFS_component_version_number.h
+
+install: $(LIBFILE)
+
+install9x: install
+
+clean ::
+	$(DEL) $(LIBFILE)
+
+mkdir:
+	

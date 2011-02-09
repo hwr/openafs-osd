@@ -1,0 +1,57 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+RELDIR=butm
+!INCLUDE ..\config\NTMakefile.$(SYS_NAME)
+!INCLUDE ..\config\NTMakefile.version
+
+############################################################################
+# install headers
+INCFILES =\
+	$(DESTDIR)\include\afs\butm_prototypes.h
+
+############################################################################
+# Definitions for building a static library
+
+LIBFILE = $(DESTDIR)\lib\afs\afsbutm.lib
+
+LIBOBJS =\
+	$(OUT)\file_tm.obj \
+	$(OUT)\AFS_component_version_number.obj
+
+$(LIBFILE): $(LIBOBJS) 
+	$(LIBARCH) 
+
+############################################################################
+# Install target; primary makefile target
+
+install: $(INCFILES) $(LIBFILE) $(OUT)\test_ftm.exe
+
+
+############################################################################
+# Local clean target; augments predefined clean target
+
+clean::
+	$(DEL) test_ftm.exe 
+
+############################################################################
+# Auxiliary build targets not built by default; e.g. test programs
+
+TESTLIBS = $(DESTDIR)\lib\afslwp.lib \
+	$(DESTDIR)\lib\afs\afscom_err.lib \
+	$(DESTDIR)\lib\afs\afsusd.lib \
+	$(DESTDIR)\lib\afs\afsutil.lib \
+	$(DESTDIR)\lib\afs\afsbubasics.lib
+
+$(OUT)\test_ftm.exe: $(OUT)\test_ftm.obj $(LIBFILE) $(TESTLIBS)
+	$(EXECONLINK)
+        $(_VC_MANIFEST_EMBED_EXE)
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+mkdir:
+	

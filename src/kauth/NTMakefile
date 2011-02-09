@@ -1,0 +1,253 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+# Override default definitions in NTMakefile.$(SYS_NAME) before including.
+
+RELDIR=kauth
+AFSDEV_AUXCDEFINES = $(AFSDEV_AUXCDEFINES) -I$(DESTDIR)\include\afs
+!INCLUDE ..\config\NTMakefile.$(SYS_NAME)
+!include ..\config\NTMakefile.version
+
+############################################################################
+# Definitions for installing header files
+
+INCFILEDIR = $(DESTDIR)\include\afs
+
+INCFILES =\
+	$(INCFILEDIR)\kautils.h \
+	$(INCFILEDIR)\kauth.h \
+	$(INCFILEDIR)\kaport.h
+
+
+############################################################################
+# build afskauth.lib
+
+KAUTH_LIBFILE = $(DESTDIR)\lib\afs\afskauth.lib
+
+KAUTH_LIBOBJS =\
+	$(OUT)\kauth.xdr.obj \
+	$(OUT)\kauth.cs.obj \
+	$(OUT)\kaaux.obj \
+	$(OUT)\client.obj \
+	$(OUT)\authclient.obj \
+	$(OUT)\token.obj \
+	$(OUT)\kautils.obj \
+	$(OUT)\kalocalcell.obj \
+	$(OUT)\kaerrors.obj \
+	$(OUT)\user_nt.obj \
+	$(OUT)\krb_tf.obj \
+	$(OUT)\AFS_component_version_number.obj
+
+$(KAUTH_LIBFILE): $(KAUTH_LIBOBJS) 
+	$(LIBARCH)  
+
+############################################################################
+# build afskauth.krb.lib
+
+KAUTH_KRB_LIBFILE = $(DESTDIR)\lib\afs\afskauth.krb.lib
+
+KAUTH_KRB_LIBOBJS =\
+	$(OUT)\kauth.xdr.obj \
+	$(OUT)\kauth.cs.obj \
+	$(OUT)\kaaux.obj \
+	$(OUT)\client.obj \
+	$(OUT)\authclient.obj \
+	$(OUT)\token.obj \
+	$(OUT)\kautils.obj \
+	$(OUT)\kalocalcell.obj \
+	$(OUT)\kaerrors.obj \
+	$(OUT)\user.krb.obj \
+	$(OUT)\krb_tf.obj \
+	$(OUT)\AFS_component_version_number.obj
+
+$(KAUTH_KRB_LIBFILE): $(KAUTH_KRB_LIBOBJS) 
+	$(LIBARCH)  
+
+#make user.krb.obj
+
+user_nt.c : $(INCFILES) $(DESTDIR)/include/afs/vice.h
+
+$(OUT)\user.krb.obj: user_nt.c
+	$(C2OBJ) $**  -DAFS_KERBEROS_ENV
+
+
+# common libs
+AFSLIBDIR = $(DESTDIR)\lib\afs
+AFSLIBS =  \
+	$(AFSLIBDIR)\afsprot.lib \
+	$(AFSLIBDIR)\afsauth.lib \
+	$(AFSLIBDIR)\afscmd.lib \
+	$(AFSLIBDIR)\afscom_err.lib \
+	$(AFSLIBDIR)\afsutil.lib \
+	$(AFSLIBDIR)\afsaudit.lib \
+	$(DESTDIR)\lib\afs\afsreg.lib \
+	$(DESTDIR)\lib\afslwp.lib \
+	$(DESTDIR)\lib\afsdes.lib \
+	$(DESTDIR)\lib\afsrxstat.lib \
+	$(DESTDIR)\lib\afsrx.lib \
+	$(DESTDIR)\lib\afsubik.lib \
+	$(DESTDIR)\lib\afs\afseventlog.lib \
+	$(DESTDIR)\lib\afsrxkad.lib \
+	$(DESTDIR)\lib\libafsconf.lib
+	
+TOKENLIB = $(DESTDIR)\lib\afs\afspioctl.lib
+
+############################################################################
+# build kaserver
+
+KASERVER = $(DESTDIR)\root.server\usr\afs\bin\kaserver.exe
+
+KASERVER_OBJS =\
+	$(OUT)\kaserver.obj \
+	$(OUT)\kautils.obj \
+	$(OUT)\kalocalcell.obj \
+	$(OUT)\kadatabase.obj \
+	$(OUT)\krb_udp.obj \
+	$(OUT)\kaprocs.obj \
+	$(OUT)\kalog.obj \
+	$(OUT)\kauth.ss.obj \
+	$(OUT)\kauth.xdr.obj \
+	$(OUT)\kaaux.obj \
+	$(OUT)\kaauxdb.obj \
+	$(OUT)\kaserver.res
+
+KASERVER_EXELIBS =\
+	$(DESTDIR)\lib\afs\afsprocmgmt.lib \
+        $(DESTDIR)\lib\afs\afspioctl.lib
+
+$(KASERVER): $(KASERVER_OBJS) $(AFSLIBS) $(KASERVER_EXELIBS)
+	$(EXECONLINK) dnsapi.lib mpr.lib iphlpapi.lib shell32.lib
+        $(_VC_MANIFEST_EMBED_EXE)
+	$(EXEPREP) 
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+#build $(OUT)\kadatabase.obj
+
+$(OUT)\kadatabase.obj: kadatabase.c 
+	$(C2OBJ) $**  /DSPECIAL=1
+
+#build $(OUT)\kaprocs.obj
+$(OUT)\kaprocs.obj: kaprocs.c
+	$(C2OBJ) $**  /DSPECIAL=1
+
+############################################################################
+# build kas
+
+KAS = $(DESTDIR)\root.server\usr\afs\bin\kas.exe
+
+KAS_OBJS =\
+	$(OUT)\kas.obj \
+	$(OUT)\admin_tools.obj \
+	$(OUT)\kkids.obj \
+	$(OUT)\kas.res
+	
+$(KAS): $(KAS_OBJS) $(AFSLIBS) $(KAUTH_LIBFILE) $(TOKENLIB)
+	$(EXECONLINK) dnsapi.lib mpr.lib iphlpapi.lib shell32.lib
+        $(_VC_MANIFEST_EMBED_EXE)
+	$(EXEPREP) 
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+########### Misc Exes #######################################################
+#kpasswd.exe
+KPASSWD_EXEFILE = $(DESTDIR)\bin\kpasswd.exe
+
+KPASSWD_OBJS =\
+	$(OUT)\kpasswd.obj \
+	$(OUT)\kkids.obj \
+	$(OUT)\kpasswd.res
+
+$(KPASSWD_EXEFILE): $(KPASSWD_OBJS) $(AFSLIBS) $(KAUTH_LIBFILE) $(TOKENLIB)
+	$(EXECONLINK) dnsapi.lib mpr.lib iphlpapi.lib shell32.lib
+        $(_VC_MANIFEST_EMBED_EXE)
+	$(EXEPREP)
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+#kpwvalid.exe
+$(OUT)\kpwvalid.exe: $(OUT)\kpwvalid.obj $(AFSLIBS) $(KAUTH_LIBFILE)
+	$(EXECONLINK) dnsapi.lib mpr.lib iphlpapi.lib shell32.lib
+        $(_VC_MANIFEST_EMBED_EXE)
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+#kdb.exe - Not implemented for NT - because dbm not available on NT
+#kdb.exe: $(OUT)\kdb.obj $(AFSLIBS) $(KAUTH_LIBFILE) 
+#	$(EXECONLINK) dnsapi.lib mpr.lib iphlpapi.lib shell32.lib
+#       $(_VC_MANIFEST_EMBED_EXE)
+#        $(CODESIGN_USERLAND)
+#        $(SYMSTORE_IMPORT)
+
+#rebuild.exe 
+$(OUT)\rebuild.exe: $(OUT)\rebuild.obj $(OUT)\kautils.obj $(AFSLIBS) 
+	$(EXECONLINK) dnsapi.lib mpr.lib iphlpapi.lib shell32.lib
+        $(_VC_MANIFEST_EMBED_EXE)
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+############################################################################
+# Definitions for generating versioninfo resources
+
+$(OUT)\kaserver.res: AFS_component_version_number.h
+
+$(OUT)\kas.res: AFS_component_version_number.h
+
+$(OUT)\kpasswd.res: AFS_component_version_number.h
+
+$(INCFILES):$$(@F)
+	 $(COPY)  $** $(INCFILEDIR)\.
+
+############################################################################
+# rxgen on kauth.rg
+
+kauth.cs.c: kauth.rg kauth.h
+	$(RXGEN) -u -x -C -o $@ kauth.rg
+
+kauth.ss.c: kauth.rg kauth.h
+	$(RXGEN) -x -S -o $@ kauth.rg
+
+kauth.xdr.c: kauth.rg kauth.h
+	$(RXGEN) -x -c -o $@ kauth.rg
+
+kauth.h: kauth.rg
+	$(RXGEN) -u -x -h -o $@ kauth.rg
+
+############################################################################
+# compile_et on kaerrors.c 
+
+kaerrors.c kautils.h: kaerrors.et kautils.p.h
+	$(DEL) kautils.h kaerrors.c
+	$(COMPILE_ET) kaerrors -h kautils
+
+############################################################################
+# install 
+
+install: $(INCFILES) $(KAUTH_LIBFILE) $(KAUTH_KRB_LIBFILE) $(KASERVER) $(KAS) \
+	$(KPASSWD_EXEFILE) \
+	$(OUT)\kpwvalid.exe $(OUT)\rebuild.exe  \
+	$(DESTDIR)\etc\kas.exe
+
+install9X: $(INCFILES) $(KAUTH_LIBFILE) $(KAUTH_KRB_LIBFILE) \
+	$(KPASSWD_EXEFILE) 
+
+# installation targets that depend on local targets
+$(DESTDIR)\etc\kas.exe:  $(DESTDIR)\root.server\usr\afs\bin\kas.exe
+	$(COPY) $(DESTDIR)\root.server\usr\afs\bin\kas.exe \
+					$(DESTDIR)\etc\kas.exe
+
+
+############################################################################
+# Local clean target; augments predefined clean target
+
+clean::
+	$(DEL) $(KPASSWD_EXEFILE) $(INCFILES)
+	$(DEL) kauth.cs.c kauth.h kauth.ss.c kauth.xdr.c kautils.h
+	$(DEL) kaerrors.c
+
+mkdir:
+	

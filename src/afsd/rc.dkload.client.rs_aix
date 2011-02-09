@@ -1,0 +1,24 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+echo 'Loading AFS ...'>/dev/console
+# Load AFS into the kernel
+cd /usr/vice/etc/dkload
+./cfgexport -a /usr/vice/etc/dkload/export.ext.nonfs
+if [ $? -eq 0 ]; then
+    echo "32-bit kernel found"
+    ./cfgafs -a /usr/vice/etc/dkload/afs.ext.32
+else
+    echo "64-bit kernel assumed"
+    ./cfgexport64 -a /usr/vice/etc/dkload/export64.ext.nonfs
+    ./cfgafs64 -a /usr/vice/etc/dkload/afs.ext.64
+fi
+if [ $? -ne 0 ]; then
+  /bin/echo "Unable to load AFS extensions into kernel."
+  exit 1
+fi
+

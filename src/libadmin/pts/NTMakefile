@@ -1,0 +1,69 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+AFSDEV_AUXCDEFINES = -DAFS_PTHREAD_ENV
+
+RELDIR=libadmin\pts
+!include ..\..\config\NTMakefile.$(SYS_NAME)
+!include ..\..\config\NTMakefile.version
+
+PTSERVER = ..\..\ptserver
+RX = ..\..\rx
+
+RXOBJS = $(OUT)\xdr_int32.obj $(OUT)\xdr_int64.obj
+
+PTSERVEROBJS = \
+	$(OUT)\ptint.xdr.obj $(OUT)\ptint.cs.obj
+
+ADMINOBJS = \
+	$(OUT)\afs_ptsAdmin.obj
+
+DLLOBJS =\
+	$(ADMINOBJS) \
+	$(PTSERVEROBJS) \
+	$(RXOBJS) \
+	$(OUT)\afsptsadmin.res
+
+LIBINCLUDES = \
+	$(DESTDIR)\include\afs\afs_ptsAdmin.h
+
+DLLFILE = $(DESTDIR)\root.server\usr\afs\bin\afsptsadmin.dll
+ILIBDIR = $(DESTDIR)\lib\afs
+
+DLLLIBS =\
+	$(DESTDIR)\lib\afs\afsadminutil.lib \
+	$(DESTDIR)\lib\afsauthent.lib \
+	$(DESTDIR)\lib\afsrpc.lib \
+	$(DESTDIR)\lib\afspthread.lib \
+	$(DESTDIR)\lib\afs\afsutil.lib
+
+$(DLLFILE): $(DLLOBJS) $(DLLLIBS)
+	$(DLLCONLINK) /DEF:ptsadmin.def
+        $(_VC_MANIFEST_EMBED_DLL)
+	$(DLLPREP)
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+	$(MAKECYGLIB) --input-def ptsadmin.def
+	$(COPY) $*.lib $(ILIBDIR)
+	$(DEL) $*.lib $*.exp
+
+
+
+install: $(DLLFILE) $(LIBINCLUDES)
+
+$(RXOBJS): $(RX)\$$(@B).c
+	$(C2OBJ) -I$(RX) $**
+
+$(PTSERVEROBJS): $(PTSERVER)\$$(@B).c
+	$(C2OBJ) $**
+
+# Definitions for generating versioninfo resources
+
+$(OUT)\afsptsadmin.res: AFS_component_version_number.h
+
+mkdir:
+	

@@ -1,0 +1,112 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+RELDIR=fsint
+!INCLUDE ..\config\NTMakefile.$(SYS_NAME)
+!IF (EXIST(..\config\NTMakefile.version))
+!INCLUDE ..\config\NTMakefile.version
+!ENDIF
+
+# Definitions for installing header files
+
+INCFILEDIR = $(DESTDIR)\include\afs
+
+INCFILES =\
+	$(INCFILEDIR)\afsint.h \
+	$(INCFILEDIR)\afscbint.h
+
+# afsint.lib
+
+LIBFILE = $(DESTDIR)\lib\afs\afsint.lib
+
+LIBOBJS =\
+	$(OUT)\afscbint.cs.obj \
+	$(OUT)\afscbint.ss.obj \
+	$(OUT)\afscbint.xdr.obj \
+	$(OUT)\afsint.cs.obj 	\
+	$(OUT)\afsint.ss.obj 	\
+	$(OUT)\afsint.xdr.obj 	\
+	$(OUT)\afsaux.obj      \
+	$(OUT)\AFS_component_version_number.obj
+
+$(LIBFILE): $(LIBOBJS)
+	$(LIBARCH)  
+
+# use rxgen on afscbint.xg and afsint.xg
+afscbint.cs.c: common.xg afscbint.xg afsint.h afscbint.h 
+	$(RXGEN) -x -C -o afscbint.cs.c afscbint.xg
+
+afscbint.ss.c: common.xg afscbint.xg afsint.h afscbint.h
+	$(RXGEN) -x -S -o afscbint.ss.c afscbint.xg
+
+afscbint.xdr.c: common.xg afscbint.xg afsint.h afscbint.h
+	$(RXGEN) -x -y -c -o afscbint.xdr.c afscbint.xg
+
+afscbint.h: common.xg afscbint.xg
+	$(RXGEN) -x -h -o afscbint.h afscbint.xg
+
+afsint.cs.c: common.xg afsint.xg afsint.h
+	$(RXGEN) -x -C -o afsint.cs.c afsint.xg
+
+afsint.ss.c: common.xg afsint.xg afsint.h
+	$(RXGEN) -x -S -o afsint.ss.c afsint.xg
+
+afsint.xdr.c: common.xg afsint.xg
+	$(RXGEN) -x -c -o afsint.xdr.c afsint.xg
+
+afsint.h: common.xg afsint.xg
+	$(RXGEN) -x -h -o afsint.h afsint.xg
+
+
+# mtafsint.lib
+
+MT_LIBFILE = $(DESTDIR)\lib\afs\mtafsint.lib
+
+MT_LIBOBJS =\
+	$(OUT)\afscbint.cs_mt.obj \
+	$(OUT)\afscbint.ss_mt.obj \
+	$(OUT)\afscbint.xdr_mt.obj \
+	$(OUT)\afsint.cs_mt.obj 	\
+	$(OUT)\afsint.ss_mt.obj 	\
+	$(OUT)\afsint.xdr_mt.obj 	\
+	$(OUT)\afsaux_mt.obj      \
+	$(OUT)\AFS_component_version_number.obj
+
+
+$(OUT)\afscbint.cs_mt.obj:afscbint.cs.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV 
+
+$(OUT)\afscbint.ss_mt.obj:afscbint.ss.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV 
+
+$(OUT)\afscbint.xdr_mt.obj:afscbint.xdr.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV 
+
+$(OUT)\afsint.cs_mt.obj:afsint.cs.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV 
+
+$(OUT)\afsint.ss_mt.obj:afsint.ss.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV 
+
+$(OUT)\afsint.xdr_mt.obj:afsint.xdr.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV 
+
+$(OUT)\afsaux_mt.obj:afsaux.c
+	$(C2OBJ) $** -DAFS_PTHREAD_ENV 
+
+$(MT_LIBFILE): $(MT_LIBOBJS)
+	$(LIBARCH)  
+
+install: $(LIBFILE) $(INCFILES) $(MT_LIBFILE)
+
+install9x: install
+
+clean::
+	$(DEL) *.cs.c *.ss.c *.xdr.c afsint.h afscbint.h
+	$(DEL) $(LIBFILE) $(MT_LIBFILE)
+mkdir:
+	

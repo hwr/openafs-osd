@@ -1,0 +1,316 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+srcdir=@srcdir@
+include @TOP_OBJDIR@/src/config/Makefile.config
+INSTALL = @INSTALL@
+INSTALL_DATA = @INSTALL_DATA@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_SCRIPT = @INSTALL_SCRIPT@
+
+INCLS=${TOP_INCDIR}/ubik.h \
+             ${TOP_INCDIR}/lwp.h \
+             ${TOP_INCDIR}/lock.h  \
+             ${TOP_INCDIR}/rx/rx.h \
+             ${TOP_INCDIR}/rx/xdr.h \
+	     ${TOP_INCDIR}/rx/rxkad.h \
+	     ${TOP_INCDIR}/afs/com_err.h \
+	kaserver.h kauth.h kautils.h
+
+LIBS=${TOP_LIBDIR}/libubik.a \
+	${TOP_LIBDIR}/libprot.a \
+	${TOP_LIBDIR}/libauth.a \
+	${TOP_LIBDIR}/librxkad.a \
+	${TOP_LIBDIR}/libsys.a \
+	${TOP_LIBDIR}/librxstat.a \
+	${TOP_LIBDIR}/librx.a \
+	${TOP_LIBDIR}/libsys.a  \
+	${TOP_LIBDIR}/liblwp.a \
+	${TOP_LIBDIR}/libdes.a \
+	${TOP_LIBDIR}/libcmd.a \
+	${TOP_LIBDIR}/libcom_err.a \
+	${TOP_LIBDIR}/libafsutil.a \
+	$(DBM)
+
+UKSRCS=authclient.c user.c kautils.h kaserver.h kaaux.c token.c \
+       kalocalcell.c client.c kaerrors.c
+
+KLIBS=${TOP_LIBDIR}/libubik.a \
+	${TOP_LIBDIR}/libprot.a \
+	${TOP_LIBDIR}/libauth.krb.a \
+	${TOP_LIBDIR}/librxkad.a \
+	${TOP_LIBDIR}/libsys.a \
+	${TOP_LIBDIR}/librx.a \
+	${TOP_LIBDIR}/libsys.a  \
+	${TOP_LIBDIR}/liblwp.a \
+	${TOP_LIBDIR}/libdes.a \
+	${TOP_LIBDIR}/libcmd.a \
+	${TOP_LIBDIR}/libcom_err.a \
+	${TOP_LIBDIR}/libafsutil.a
+
+OBJS=kauth.xdr.o kauth.cs.o kaaux.o client.o authclient.o token.o kautils.o kalocalcell.o kaerrors.o user.o krb_tf.o 
+KOBJS=kauth.xdr.o kauth.cs.o kaaux.o client.o authclient.o token.o kautils.o kalocalcell.o kaerrors.o user.krb.o krb_tf.o
+
+all: kaserver kas kpwvalid klog klog.krb knfs kpasswd rebuild kdb ka-forwarder \
+	${TOP_LIBDIR}/libkauth.a \
+	${TOP_LIBDIR}/libkauth.krb.a \
+	depinstall
+
+depinstall: \
+	kaerrors.c kauth.cs.c kauth.xdr.c \
+	${TOP_INCDIR}/afs/kautils.h \
+	${TOP_INCDIR}/afs/kauth.h \
+	${TOP_INCDIR}/afs/kaport.h 
+
+generated: \
+	kaerrors.c kautils.h \
+	kauth.cs.c kauth.ss.c kauth.xdr.c kauth.h
+
+${TOP_LIBDIR}/libkauth.a: libkauth.a
+	${INSTALL_DATA} $? $@
+
+${TOP_LIBDIR}/libkauth.krb.a: libkauth.krb.a
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/afs/kautils.h: kautils.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/afs/kauth.h: kauth.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/afs/kaport.h: kaport.h
+	${INSTALL_DATA} $? $@
+
+test tests: all
+	cd test; $(MAKE)
+
+kaserver: kautils.o kalocalcell.o kadatabase.o kaprocs.o kalog.o kauth.ss.o kauth.xdr.o kaserver.o kaaux.o krb_udp.o kaauxdb.o $(LIBS) 
+	${CC} ${LDFLAGS} -o kaserver kaserver.o kautils.o kalocalcell.o kadatabase.o krb_udp.o kaprocs.o kalog.o kauth.ss.o kauth.xdr.o kaaux.o kaauxdb.o $(LIBS) ${XLIBS} ${TOP_LIBDIR}/libaudit.a
+
+kaserver.o: kaserver.c ${INCLS} AFS_component_version_number.o
+
+kautils.o: kautils.c ${INCLS}
+
+kalocalcell.o: kalocalcell.c ${INCLS}
+
+kadatabase.o: kadatabase.c ${INCLS}
+	${CC} ${CFLAGS} -c ${srcdir}/kadatabase.c 
+
+kaprocs.o: kaprocs.c ${INCLS} kaport.h
+	${CC} ${CFLAGS} -c ${srcdir}/kaprocs.c
+
+authclient.o: authclient.c ${INCLS}
+
+kaauxdb.o: kaauxdb.c
+
+kaerrors.o: kaerrors.c
+
+kautils.h: kaerrors.c
+
+kaerrors.c: kaerrors.et kautils.p.h
+	$(RM) -f kautils.h kaerrors.c
+	${COMPILE_ET} -p ${srcdir} kaerrors -h kautils
+
+kauth.ss.o: kauth.ss.c
+kauth.cs.o: kauth.cs.c
+kauth.xdr.o: kauth.xdr.c kauth.h
+
+$(UKSRCS): kauth.h
+
+kauth.cs.c: kauth.rg
+	${RXGEN} -A -u -x -C -o $@ ${srcdir}/kauth.rg
+
+kauth.ss.c: kauth.rg
+	${RXGEN} -A -x -S -o $@ ${srcdir}/kauth.rg
+
+kauth.xdr.c: kauth.rg
+	${RXGEN} -A -x -c -o $@ ${srcdir}/kauth.rg
+
+kauth.h: kauth.rg
+	${RXGEN} -A -u -x -h -o $@ ${srcdir}/kauth.rg
+
+kauth.xdr.c: kauth.h
+kauth.cs.c: kauth.h
+kauth.ss.c: kauth.h
+
+Kkauth.cs.c: kauth.rg Kkauth.h
+	${RXGEN} -A -x -k -C -o Kkauth.cs.c ${srcdir}/kauth.rg
+
+Kkauth.xdr.c: kauth.rg
+	${RXGEN} -A -x -k -c -o Kkauth.xdr.c ${srcdir}/kauth.rg
+
+Kkauth.h: kauth.rg
+	${RXGEN} -A -x -k -h -o Kkauth.h ${srcdir}/kauth.rg
+
+libkauth.a: $(OBJS) AFS_component_version_number.o
+	-$(RM) -f $@
+	$(AR) crv $@ $(OBJS) AFS_component_version_number.o
+	$(RANLIB) $@
+
+libkauth.krb.a: $(KOBJS) AFS_component_version_number.o
+	-$(RM) -f $@
+	$(AR) crv $@ $(KOBJS) AFS_component_version_number.o
+	$(RANLIB) $@
+
+read_passwd.o: read_passwd.c
+	${CC} ${CFLAGS} -c read_passwd.c
+
+token.o: token.c ${INCLS}
+
+client.o: client.c ${INCLS} AFS_component_version_number.o
+
+kas.o: kas.c ${INCLS} AFS_component_version_number.o
+	$(CC) $(CFLAGS) -c ${srcdir}/kas.c
+
+admin_tools.o: admin_tools.c ${INCLS} kaport.h
+	$(CC) $(CFLAGS) @CFLAGS_NOERROR@ -c ${srcdir}/admin_tools.c
+
+kkids.o: kkids.c ${INCLS}
+
+krb_tf.o: krb_tf.c ${INCLS}
+
+kas: kauth.h kautils.h admin_tools.o libkauth.a $(LIBS) kas.o kkids.o
+	${CC} ${LDFLAGS} -o kas kas.o admin_tools.o kkids.o libkauth.a \
+			${LIBS} ${XLIBS}
+
+klog: AFS_component_version_number.o kauth.h kautils.h libkauth.a $(LIBS) \
+	klog.o
+	${CC} ${LDFLAGS} -o klog klog.o libkauth.a ${LIBS} ${XLIBS}
+
+klog.o: klog.c kauth.h kautils.h AFS_component_version_number.o
+
+klog.krb: kauth.h kautils.h libkauth.krb.a $(KLIBS) klog.o
+	${CC} ${LDFLAGS} -o klog.krb klog.o libkauth.krb.a ${KLIBS} ${XLIBS}
+
+knfs: kauth.h kautils.h libkauth.a $(LIBS) knfs.o
+	${CC} ${LDFLAGS} -o knfs knfs.o libkauth.a ${LIBS} ${XLIBS}
+
+knfs.o: knfs.c AFS_component_version_number.o
+
+klogin.o: klogin.c ${INCLS} AFS_component_version_number.o
+	${CC} ${CFLAGS} -c ${srcdir}/klogin.c -DKAUTH
+
+klogin: libkauth.a $(LIBS) klogin.o
+	${CC} ${LDFLAGS} -o klogin klogin.o libkauth.a ${LIBS} ${XLIBS}
+
+klogin.krb: libkauth.a $(KLIBS) klogin.o
+	${CC} ${LDFLAGS} -o klogin.krb klogin.o libkauth.krb.a ${KLIBS} ${XLIBS}
+
+kpasswd.o: kauth.h kautils.h ${INCLS} kpasswd.c AFS_component_version_number.o
+	${CC} ${CFLAGS} -c ${srcdir}/kpasswd.c 
+
+kpasswd: kauth.h kautils.h libkauth.a $(LIBS) kpasswd.o kkids.o
+	${CC} ${LDFLAGS} -o kpasswd kpasswd.o kkids.o libkauth.a ${LIBS} ${XLIBS}
+
+kpwvalid.o: kpwvalid.c AFS_component_version_number.o
+	${CC} ${CFLAGS} -c ${srcdir}/kpwvalid.c
+
+kpwvalid: kpwvalid.o $(LIBS)
+	${CC} ${LDFLAGS} -o kpwvalid kpwvalid.o ${LIBS} ${XLIBS}
+
+user.krb.o: user.c ${INCLS} ${TOP_INCDIR}/afs/vice.h
+	${CCOBJ} ${CFLAGS} -DAFS_KERBEROS_ENV -c ${srcdir}/user.c -o user.krb.o
+
+user.o: user.c ${INCLS} ${TOP_INCDIR}/afs/vice.h
+	${CCOBJ} ${CFLAGS} -c ${srcdir}/user.c
+
+kdb: kdb.o ${INCLS} ${LIBS} libkauth.a
+	${CC} ${LDFLAGS} -o kdb kdb.o libkauth.a ${LIBS} ${XLIBS}
+
+kdb.o: kdb.c AFS_component_version_number.o
+
+krb_udp.o: krb_udp.c kaserver.h kautils.h kauth.h prot.h ${TOP_INCDIR}/lwp.h AFS_component_version_number.o
+	$(CC) $(CFLAGS) -c ${srcdir}/krb_udp.c
+
+krb_udp: krb_udp.o libkauth.a $(KLIBS)
+	${CC} ${LDFLAGS} -o krb_udp krb_udp.o libkauth.a $(KLIBS)
+
+ka-forwarder.o: ka-forwarder.c
+
+ka-forwarder: ka-forwarder.o
+	${CC} -o $@ ${CFLAGS} ka-forwarder.o ${LIBS} ${XLIBS}
+
+rebuild.o: rebuild.c $(INCLS) AFS_component_version_number.o
+
+rebuild: rebuild.o kautils.o $(LIBS)
+	${CC} ${LDFLAGS} -o rebuild rebuild.o kautils.o $(LIBS) ${XLIBS}
+
+#
+# Install targets
+#
+install: kaserver kas kpwvalid kas klog klog.krb knfs kpasswd libkauth.a \
+		libkauth.krb.a rebuild kdb ka-forwarder kautils.h kauth.h \
+		kaport.h
+	${INSTALL} -d ${DESTDIR}${afssrvlibexecdir}
+	${INSTALL} -d ${DESTDIR}${bindir}
+	${INSTALL} -d ${DESTDIR}${sbindir}
+	${INSTALL} -d ${DESTDIR}${afssrvbindir}
+	${INSTALL} -d ${DESTDIR}${afssrvsbindir}
+	${INSTALL} -d ${DESTDIR}${libdir}/afs
+	${INSTALL} -d ${DESTDIR}${includedir}/afs
+	${INSTALL_PROGRAM} kaserver ${DESTDIR}${afssrvlibexecdir}/kaserver
+	${INSTALL_PROGRAM} kas ${DESTDIR}${sbindir}/kas
+	${INSTALL_PROGRAM} kpwvalid ${DESTDIR}${sbindir}/kpwvalid
+	${INSTALL_PROGRAM} kas ${DESTDIR}${afssrvsbindir}/kas
+	${INSTALL_PROGRAM} kpwvalid ${DESTDIR}${afssrvsbindir}/kpwvalid
+	${INSTALL_PROGRAM} klog ${DESTDIR}${bindir}/klog
+	${INSTALL_PROGRAM} klog.krb ${DESTDIR}${bindir}/klog.krb
+	${INSTALL_PROGRAM} klog ${DESTDIR}${afssrvbindir}/klog
+	${INSTALL_PROGRAM} klog.krb ${DESTDIR}${afssrvbindir}/klog.krb
+	${INSTALL_PROGRAM} knfs ${DESTDIR}${bindir}/knfs
+	${INSTALL_PROGRAM} kpasswd ${DESTDIR}${bindir}/kpasswd
+	${INSTALL_PROGRAM} kpwvalid ${DESTDIR}${bindir}/kpwvalid
+	${INSTALL_DATA} libkauth.a ${DESTDIR}${libdir}/afs/libkauth.a
+	${INSTALL_DATA} libkauth.krb.a ${DESTDIR}${libdir}/afs/libkauth.krb.a
+	${INSTALL_PROGRAM} rebuild ${DESTDIR}${afssrvsbindir}/kadb_check
+	${INSTALL_PROGRAM} kdb ${DESTDIR}${afssrvsbindir}/kdb
+	${INSTALL_PROGRAM} ka-forwarder ${DESTDIR}${afssrvsbindir}/ka-forwarder
+	${INSTALL_DATA} kautils.h ${DESTDIR}${includedir}/afs/kautils.h
+	${INSTALL_DATA} kauth.h ${DESTDIR}${includedir}/afs/kauth.h
+	${INSTALL_DATA} ${srcdir}/kaport.h ${DESTDIR}${includedir}/afs/kaport.h
+
+dest: kaserver kas kpwvalid kas klog klog.krb knfs kpasswd libkauth.a \
+		libkauth.krb.a rebuild kdb ka-forwarder kautils.h kauth.h \
+		kaport.h
+	${INSTALL} -d ${DEST}/root.server/usr/afs/bin
+	${INSTALL} -d ${DEST}/etc
+	${INSTALL} -d ${DEST}/bin
+	${INSTALL} -d ${DEST}/lib/afs
+	${INSTALL} -d ${DEST}/include/afs
+	${INSTALL_PROGRAM} kaserver ${DEST}/root.server/usr/afs/bin/kaserver
+	${INSTALL_PROGRAM} kas ${DEST}/etc/kas
+	${INSTALL_PROGRAM} kpwvalid ${DEST}/etc/kpwvalid
+	${INSTALL_PROGRAM} kas ${DEST}/root.server/usr/afs/bin/kas
+	${INSTALL_PROGRAM} kpwvalid ${DEST}/root.server/usr/afs/bin/kpwvalid
+	${INSTALL_PROGRAM} klog ${DEST}/bin/klog
+	${INSTALL_PROGRAM} klog.krb ${DEST}/bin/klog.krb
+	${INSTALL_PROGRAM} klog ${DEST}/root.server/usr/afs/bin/klog
+	${INSTALL_PROGRAM} klog.krb ${DEST}/root.server/usr/afs/bin/klog.krb
+	${INSTALL_PROGRAM} knfs ${DEST}/bin/knfs
+	${INSTALL_PROGRAM} kpasswd ${DEST}/bin/kpasswd
+	${INSTALL_PROGRAM} kpwvalid ${DEST}/bin/kpwvalid
+	${INSTALL_DATA} libkauth.a ${DEST}/lib/afs/libkauth.a
+	${INSTALL_DATA} libkauth.krb.a ${DEST}/lib/afs/libkauth.krb.a
+	${INSTALL_PROGRAM} kdb ${DEST}/etc/kdb
+	${INSTALL_PROGRAM} rebuild ${DEST}/etc/kadb_check
+	${INSTALL_PROGRAM} ka-forwarder ${DEST}/root.server/usr/afs/bin/ka-forwarder
+	${INSTALL_DATA} kautils.h ${DEST}/include/afs/kautils.h
+	${INSTALL_DATA} kauth.h ${DEST}/include/afs/kauth.h
+	${INSTALL_DATA} ${srcdir}/kaport.h ${DEST}/include/afs/kaport.h
+
+#
+# Misc. targets
+#
+clean:
+	$(RM) -f *.o *.a *.xdr.c *.cs.c *.ss.c core \
+		kaserver kas klog multiklog kpasswd klogin rebuild \
+		ka-forwarder \
+		kauth.h kautils.h kaerrors.c kpwvalid \
+		AFS_component_version_number.c \
+		klog.krb knfs klogin.krb kdb Kkauth.h
+
+include ../config/Makefile.version

@@ -1,0 +1,45 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+RELDIR=WINNT\pthread
+!INCLUDE ..\..\config\NTMakefile.$(SYS_NAME)
+!INCLUDE ..\..\config\NTMakefile.version
+
+############################################################################
+# Export header files
+
+LIBINCLUDES = \
+	$(DESTDIR)\include\pthread.h
+
+############################################################################
+# Build standard afspthread.dll
+
+PTHR_DLLFILE = $(DESTDIR)\lib\afspthread.dll
+
+$(OUT)\pthread.res: pthread.rc AFS_component_version_number.h
+	$(RC) /fo$*.res $(*F).rc 
+
+PTHR_DLLOBJS = \
+	$(OUT)\pthread.obj \
+	$(OUT)\pthread.res
+
+$(PTHR_DLLFILE): $(PTHR_DLLOBJS)
+	$(DLLCONLINK) /DEF:pthread.def
+        $(_VC_MANIFEST_EMBED_DLL)
+	$(DLLPREP)
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+	$(MAKECYGLIB) --input-def pthread.def
+
+install: $(PTHR_DLLFILE) $(LIBINCLUDES)
+
+install9x: install
+
+clean::
+
+mkdir:
+	

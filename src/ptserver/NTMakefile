@@ -1,0 +1,264 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+# Override default definitions in NTMakefile.$(SYS_NAME) before including.
+
+RELDIR=ptserver
+!INCLUDE ..\config\NTMakefile.$(SYS_NAME)
+!include ..\config\NTMakefile.version
+AFSDEV_AUXCDEFINES = -DAFS_USE_GETTIMEOFDAY -DSUPERGROUPS
+
+############################################################################
+# Definitions for installing header files
+
+INCFILEDIR = $(DESTDIR)\include 
+
+INCFILES =\
+	$(INCFILEDIR)\afs\ptserver.h \
+	$(INCFILEDIR)\afs\ptint.h \
+	$(INCFILEDIR)\afs\pterror.h \
+	ptopcodes.h \
+	$(INCFILEDIR)\afs\ptclient.h \
+	$(INCFILEDIR)\afs\ptuser.h
+
+############################################################################
+# build afsprot.lib
+
+LIBFILE = $(DESTDIR)\lib\afs\afsprot.lib
+
+LIBOBJS =\
+	$(OUT)\ptuser.obj \
+	$(OUT)\pterror.obj \
+	$(OUT)\ptint.cs.obj \
+	$(OUT)\ptint.xdr.obj \
+	$(OUT)\AFS_component_version_number.obj
+
+$(LIBFILE):  $(LIBOBJS)
+	$(LIBARCH) 
+
+############################################################################
+# build ptserver.exe
+
+PTSERVER = $(DESTDIR)\root.server\usr\afs\bin\ptserver.exe
+
+PTSERVER_EXEOBJS =\
+	$(OUT)\ptint.ss.obj \
+	$(OUT)\ptint.xdr.obj \
+	$(OUT)\ptserver.obj \
+	$(OUT)\ptutils.obj \
+	$(OUT)\ptprocs.obj \
+	$(OUT)\utils.obj \
+        $(OUT)\map.obj \
+	$(OUT)\ptserver.res
+
+
+PTSERVER_EXELIBS =\
+	$(DESTDIR)\lib\afsubik.lib \
+	$(DESTDIR)\lib\afs\afsauth.lib \
+	$(DESTDIR)\lib\afsrxkad.lib \
+	$(DESTDIR)\lib\afsrxstat.lib \
+	$(DESTDIR)\lib\afsrx.lib \
+	$(DESTDIR)\lib\afslwp.lib \
+	$(DESTDIR)\lib\afsdes.lib \
+	$(DESTDIR)\lib\afs\afscom_err.lib \
+	$(DESTDIR)\lib\afs\afsutil.lib \
+	$(DESTDIR)\lib\afs\afsaudit.lib \
+	$(DESTDIR)\lib\afs\afseventlog.lib \
+	$(DESTDIR)\lib\afs\afsreg.lib \
+	$(DESTDIR)\lib\libafsconf.lib \
+        $(DESTDIR)\lib\afs\afspioctl.lib
+
+!IF (("$(SYS_NAME)"!="i386_win95" ) && ("$(SYS_NAME)"!="I386_WIN95" ))
+PTSERVER_EXELIBS =$(PTSERVER_EXELIBS) $(DESTDIR)\lib\afs\afsprocmgmt.lib
+!ENDIF
+
+$(PTSERVER): $(PTSERVER_EXEOBJS) $(RXKADOBJS) $(PTSERVER_EXELIBS)
+	$(EXECONLINK) dnsapi.lib mpr.lib iphlpapi.lib shell32.lib
+        $(_VC_MANIFEST_EMBED_EXE)
+	$(EXEPREP) 
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+############################################################################
+# build pts.exe
+
+PTS = $(DESTDIR)\bin\pts.exe
+PTCLIENT = $(DESTDIR)\bin\ptclient.exe
+PT_UTIL  = $(DESTDIR)\bin\pt_util.exe
+
+PTS_EXEOBJS =\
+	$(OUT)\pts.obj \
+	$(OUT)\pts.res
+
+PTCLIENT_EXEOBJS =\
+	$(OUT)\ptclient.obj \
+        $(OUT)\display.obj \
+	$(OUT)\ptclient.res
+
+PT_UTIL_EXEOBJS = \
+        $(OUT)\pt_util.obj \
+        $(OUT)\ptutils.obj \
+        $(OUT)\ubik.obj \
+        $(OUT)\utils.obj \
+        $(OUT)\map.obj \
+        $(OUT)\pt_util.res
+
+PTS_EXELIBS =\
+	$(DESTDIR)\lib\afsubik.lib \
+	$(DESTDIR)\lib\afs\afsauth.lib \
+	$(DESTDIR)\lib\afsrxkad.lib \
+	$(DESTDIR)\lib\afsrx.lib \
+	$(DESTDIR)\lib\afslwp.lib \
+	$(DESTDIR)\lib\afsdes.lib \
+	$(DESTDIR)\lib\afs\afscom_err.lib \
+	$(DESTDIR)\lib\afs\afsutil.lib \
+	$(DESTDIR)\lib\afs\afsprot.lib \
+	$(DESTDIR)\lib\afs\afscmd.lib \
+	$(DESTDIR)\lib\afs\afsreg.lib \
+	$(DESTDIR)\lib\afs\afseventlog.lib \
+	$(DESTDIR)\lib\afs\afspioctl.lib \
+	$(DESTDIR)\lib\libafsconf.lib
+
+$(PTS): $(PTS_EXEOBJS) $(PTS_EXELIBS) 
+	$(EXECONLINK) dnsapi.lib mpr.lib iphlpapi.lib shell32.lib
+        $(_VC_MANIFEST_EMBED_EXE)
+	$(EXEPREP) 
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+$(PTCLIENT): $(PTCLIENT_EXEOBJS) $(PTS_EXELIBS)
+	$(EXECONLINK) dnsapi.lib mpr.lib iphlpapi.lib shell32.lib
+        $(_VC_MANIFEST_EMBED_EXE)
+	$(EXEPREP) 
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+$(PT_UTIL): $(PT_UTIL_EXEOBJS) $(PTS_EXELIBS)
+	$(EXECONLINK) dnsapi.lib mpr.lib iphlpapi.lib shell32.lib
+        $(_VC_MANIFEST_EMBED_EXE)
+	$(EXEPREP) 
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+
+############################################################################
+# generate versioninfo resources
+
+$(OUT)\ptserver.res: AFS_component_version_number.h
+
+$(OUT)\pts.res: AFS_component_version_number.h
+
+$(OUT)\ptclient.res: AFS_component_version_number.h
+
+$(OUT)\pt_util.res: AFS_component_version_number.h
+
+############################################################################
+# rxgen on pting.xg
+
+$(INCFILEDIR)\afs\ptint.h : ptint.h
+
+ptint.cs.c: ptint.xg ptint.h
+	$(RXGEN) -x -C -u -o $@ ptint.xg
+
+ptint.ss.c: ptint.xg ptint.h
+	$(RXGEN) -x -S -o $@ ptint.xg
+
+ptint.xdr.c: ptint.xg ptint.h
+	$(RXGEN) -x -c -o $@ ptint.xg
+
+ptint.h: ptint.xg
+	$(RXGEN) -x -h -u -o $@ ptint.xg
+
+############################################################################
+# Definitions for generating files via COMPILE_ET
+
+$(DESTDIR)\include\afs\pterror.h: pterror.h
+
+pterror.h pterror.c: pterror.et
+	$(DEL) pterror.h pterror.c
+	$(COMPILE_ET) pterror  -h pterror
+
+############################################################################
+# install pts, ptserver and afsprot.lib
+
+install: $(INCFILES) ptint.ss.c ptint.cs.c ptint.xdr.c $(LIBFILE) $(PTSERVER) $(PTS) $(PTCLIENT) $(PT_UTIL) $(OUT)\readgroup.exe \
+	$(OUT)\readpwd.exe  $(OUT)\testpt.exe $(OUT)\db_verify.exe  \
+	$(DESTDIR)\root.server\usr\afs\bin\pts.exe \
+	$(DESTDIR)\root.server\usr\afs\bin\ptclient.exe \
+	$(DESTDIR)\root.server\usr\afs\bin\pt_util.exe \
+	$(INCFILEDIR)\afs\prserver.h $(INCFILEDIR)\afs\print.h \
+	$(INCFILEDIR)\afs\prerror.h $(INCFILEDIR)\afs\prclient.h
+
+install9X: $(INCFILES) $(LIBFILE) $(PTS) \
+	$(DESTDIR)\root.server\usr\afs\bin\pts.exe \
+	$(INCFILEDIR)\afs\prserver.h $(INCFILEDIR)\afs\print.h \
+	$(INCFILEDIR)\afs\prerror.h $(INCFILEDIR)\afs\prclient.h
+
+install_libutils: $(INCFILES) $(LIBFILE) $(PTS)
+
+# install various exe's and header files
+$(DESTDIR)\root.server\usr\afs\bin\pts.exe: $(PTS)
+	$(COPY) $(PTS) $(DESTDIR)\root.server\usr\afs\bin\pts.exe
+
+$(DESTDIR)\root.server\usr\afs\bin\ptclient.exe: $(PTCLIENT)
+	$(COPY) $(PTCLIENT) $(DESTDIR)\root.server\usr\afs\bin\ptclient.exe
+
+$(DESTDIR)\root.server\usr\afs\bin\pt_util.exe: $(PT_UTIL)
+	$(COPY) $(PT_UTIL) $(DESTDIR)\root.server\usr\afs\bin\pt_util.exe
+
+$(INCFILEDIR)\afs\prserver.h: $(INCFILEDIR)\afs\ptserver.h
+	$(COPY)	$(INCFILEDIR)\afs\ptserver.h $(INCFILEDIR)\afs\prserver.h
+
+$(INCFILEDIR)\afs\print.h: $(INCFILEDIR)\afs\ptint.h 
+	$(COPY)	$(INCFILEDIR)\afs\ptint.h    $(INCFILEDIR)\afs\print.h
+
+$(INCFILEDIR)\afs\prerror.h: $(INCFILEDIR)\afs\pterror.h
+	$(COPY)	$(INCFILEDIR)\afs\pterror.h  $(INCFILEDIR)\afs\prerror.h
+
+$(INCFILEDIR)\afs\prclient.h: $(INCFILEDIR)\afs\ptclient.h
+	$(COPY)	$(INCFILEDIR)\afs\ptclient.h $(INCFILEDIR)\afs\prclient.h
+	$(ECHO) #define ERROR_TABLE_BASE_pr ERROR_TABLE_BASE_PT >> $(INCFILEDIR)\afs\prclient.h
+
+############################################################################
+# clean up
+
+clean::
+	$(DEL) ptint.cs.c ptint.ss.c ptint.xdr.c ptint.h
+	$(DEL) $(OUT)\readgroup.exe $(OUT)\readpwd.exe $(OUT)\db_verify.exe $(OUT)\testpt.exe 
+	$(DEL) pterror.h pterror.c
+	$(DEL) $(PTS) $(PTCLIENT) $(PT_UTIL)
+
+############################################################################
+# tests?
+TEST_LIBS = $(PTS_EXELIBS)
+
+$(OUT)\readgroup.exe: $(OUT)\readgroup.obj $(LIBFILE) $(TEST_LIBS)
+	$(EXECONLINK) dnsapi.lib mpr.lib iphlpapi.lib shell32.lib
+        $(_VC_MANIFEST_EMBED_EXE)
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+$(OUT)\readpwd.exe: $(OUT)\readpwd.obj $(LIBFILE) $(TEST_LIBS)
+	$(EXECONLINK) dnsapi.lib mpr.lib iphlpapi.lib shell32.lib
+        $(_VC_MANIFEST_EMBED_EXE)
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+$(OUT)\testpt.exe: $(OUT)\testpt.obj $(LIBFILE) $(TEST_LIBS)
+	$(EXECONLINK) dnsapi.lib mpr.lib iphlpapi.lib shell32.lib 
+        $(_VC_MANIFEST_EMBED_EXE)
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+$(OUT)\db_verify.exe: $(OUT)\db_verify.obj $(OUT)\pterror.obj $(OUT)\display.obj $(LIBFILE) $(TEST_LIBS)
+	$(EXECONLINK) dnsapi.lib mpr.lib iphlpapi.lib shell32.lib
+        $(_VC_MANIFEST_EMBED_EXE)
+        $(CODESIGN_USERLAND)
+        $(SYMSTORE_IMPORT)
+
+mkdir:
+	
