@@ -123,6 +123,7 @@ PrintDCacheEntries(struct rx_connection *aconn)
 	    code = RXAFSCB_GetDCacheEntry(aconn, i, &dc);
 	    if (!code && dc.chunk >= 0) {
                 time_t t = dc.modTime;
+		i = dc.index;
 		printf("index %d, Fid %u.%u.%u.%u versionNo %llu",
 			dc.index, dc.cell, dc.netFid.Volume,
 			dc.netFid.Vnode, dc.netFid.Unique,

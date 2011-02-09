@@ -326,6 +326,12 @@ SRXAFSCB_GetDCacheEntry(struct rx_call *a_call, afs_int32 index,
     AFS_STATCNT(SRXAFSCB_GetDCacheEntry);
 
     tdc = afs_indexTable[index];
+    for (; index<afs_cacheFiles; index++) {
+	tdc = afs_indexTable[index];
+	if (tdc && tdc->f.fid.Fid.Volume)
+	    break;
+	tdc = NULL;
+    }
     if (tdc) {
         a_result->cell = tdc->f.fid.Cell;
         a_result->netFid.Volume = tdc->f.fid.Fid.Volume;
