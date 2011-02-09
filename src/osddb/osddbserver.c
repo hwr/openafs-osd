@@ -119,7 +119,7 @@ read_header(struct ubik_trans *trans)
     if (header.entrySize && header.entrySize != OSDDB_ENTRY_LENGTH) {
 	ViceLog(0,("**** header.entrySize != %u ****\n", OSDDB_ENTRY_LENGTH));
         if (ubeacon_AmSyncSite())  { /* Try to fix */
-            struct osddb_entry *e;
+            struct oe *e;
             afs_uint32 offset, i;
             afs_uint32 nEntries = header.eofPtr - OSDDB_HEADER_SIZE;
             if (nEntries % header.entrySize) {
@@ -132,7 +132,7 @@ read_header(struct ubik_trans *trans)
 		ViceLog(0,("**** Too few ubik buffers to convert database. Restart osddbserver with option '-ubikbuffers  %d\n", i+5));
 		return EIO;
 	    }
-            e = malloc(nEntries*sizeof(struct osddb_entry));
+            e = malloc(nEntries*sizeof(struct oe));
             if (!e) {
                 ViceLog(0,("**** couldn't allocate buffers for conversion ***\n"));
                 return EIO;
@@ -144,10 +144,10 @@ read_header(struct ubik_trans *trans)
                     ViceLog(0,("**** couldn't read entry no. %u ***\n", i));
                     return EIO;
                 }
-                if (e[i].nextId)
-                    e[i].nextId = (((e[i].nextId-OSDDB_HEADER_SIZE)/header.entrySize)*OSDDB_ENTRY_LENGTH)+OSDDB_HEADER_SIZE;
-                if (e[i].nextName)
-                    e[i].nextName = (((e[i].nextName-OSDDB_HEADER_SIZE)/header.entrySize)*OSDDB_ENTRY_LENGTH)+OSDDB_HEADER_SIZE;
+                if (e[i].oe_u.t3.nextId)
+                    e[i].oe_u.t3.nextId = (((e[i].oe_u.t3.nextId-OSDDB_HEADER_SIZE)/header.entrySize)*OSDDB_ENTRY_LENGTH)+OSDDB_HEADER_SIZE;
+                if (e[i].oe_u.t3.nextName)
+                    e[i].oe_u.t3.nextName = (((e[i].oe_u.t3.nextName-OSDDB_HEADER_SIZE)/header.entrySize)*OSDDB_ENTRY_LENGTH)+OSDDB_HEADER_SIZE;
             }
             for (i=0; i<OSDDB_HASHSIZE; i++) {
                 if (header.osdNameHash[i])
@@ -288,7 +288,7 @@ CheckInit(trans, builddb)
     /* now, if can't read, or header is wrong, write a new header */
     if (ubcode || header.osddbversion == 0) {
         if (builddb) {
-	    struct osddb_entry *e = NULL;
+	    struct oe *e = NULL;
 	    afs_int32 offs;
 
             ViceLog(0,("Can't read OSDDB header, re-initialising...\n"));
@@ -302,7 +302,7 @@ CheckInit(trans, builddb)
                 ViceLog(0,("Can't write database header (code = %d)\n", code));
                 return code;
             }
-    	    e = malloc(sizeof(struct osddb_entry));
+    	    e = malloc(sizeof(struct oe));
 	    if (!e)
 		return ENOMEM;
     	    offs = AllocBlock(trans, e);
@@ -310,15 +310,15 @@ CheckInit(trans, builddb)
                 ViceLog(0,("Can't allocate entry for local_disk\n"));
         	return EIO;
     	    }
-    	    memset(e, 0, sizeof(struct osddb_entry));
-    	    e->entryversion = OSDDB_ENTRY_VERSION;
-    	    e->id = 1;
-    	    strcpy((char *)&e->name, "local_disk");
-    	    e->t.type = OSDDB_OSD;
-	    e->t.etype_u.osd.minSize = 0;
-	    e->t.etype_u.osd.maxSize = 1024; 	/* 1 MB */
-	    e->t.etype_u.osd.alprior = 64; 	
-	    e->t.etype_u.osd.rdprior = 100;	
+    	    memset(e, 0, sizeof(struct oe));
+    	    e->vsn = OSDDB_ENTRY_VERSION;
+    	    e->oe_u.t3.id = 1;
+    	    strcpy((char *)&e->oe_u.t3.name, "local_disk");
+    	    e->oe_u.t3.t.type = OSDDB_OSD;
+	    e->oe_u.t3.t.etype_u.osd.minSize = 0;
+	    e->oe_u.t3.t.etype_u.osd.maxSize = 1024; 	/* 1 MB */
+	    e->oe_u.t3.t.etype_u.osd.alprior = 64; 	
+	    e->oe_u.t3.t.etype_u.osd.rdprior = 100;	
     	    code = write_entry(trans, offs, e);
     	    if (code) {
                 ViceLog(0,("Can't write entry for local_disk (code = %d)\n", 
@@ -418,7 +418,7 @@ db_write(struct ubik_trans *trans, afs_int32 offs, char *b)
 }
 
 afs_int32
-read_entry(struct ubik_trans *trans, afs_int32 offs, struct osddb_entry *e)
+read_entry(struct ubik_trans *trans, afs_int32 offs, struct oe *e)
 {
     char *b = malloc(OSDDB_ENTRY_LENGTH);
     afs_int32 code;
@@ -430,10 +430,17 @@ read_entry(struct ubik_trans *trans, afs_int32 offs, struct osddb_entry *e)
     if (!code) {
         XDR xdr;
   	xdrmem_create(&xdr, b, OSDDB_ENTRY_LENGTH, XDR_DECODE);
-	memset(e, 0, sizeof(osddb_entry));
-	if (!xdr_osddb_entry(&xdr, e)) 
+	memset(e, 0, sizeof(struct oe));
+	if (!xdr_oe(&xdr, e)) 
 	    code = EIO;
         xdr_destroy(&xdr);
+	if (e->vsn != OSDDB_ENTRY_VERSION) {
+	    ViceLog(0, ("read_entry strange version %d at offest %u for %u %s\n",
+			e->vsn, offs, e->oe_u.t3.id, e->oe_u.t3.name));
+	    if (e->vsn == 2 && OSDDB_ENTRY_VERSION == 3) {
+	    	e->vsn = 3; /* Don't know what else needs to be done */
+	    }
+	} 
     }
     free(b);
     return code;
@@ -442,14 +449,14 @@ read_entry(struct ubik_trans *trans, afs_int32 offs, struct osddb_entry *e)
 afs_uint32 maxEntryLength = 0;
 
 afs_int32
-write_entry(struct ubik_trans *trans, afs_int32 offs, struct osddb_entry *e)
+write_entry(struct ubik_trans *trans, afs_int32 offs, struct oe *e)
 {
     char *b = NULL;
     XDR xdr;
     afs_int32 code, len;
 
     xdrlen_create(&xdr);
-    if (!xdr_osddb_entry(&xdr, e)) {
+    if (!xdr_oe(&xdr, e)) {
 	code = EIO;
 	goto out;
     }
@@ -471,7 +478,7 @@ write_entry(struct ubik_trans *trans, afs_int32 offs, struct osddb_entry *e)
     /* clear the whole the disk buffer */
     memset(b, 0, header.entrySize);
     xdrmem_create(&xdr, b, len, XDR_ENCODE);
-    if (!xdr_osddb_entry(&xdr, e)) {
+    if (!xdr_oe(&xdr, e)) {
 	code = EIO;
 	goto out;
     }
@@ -485,20 +492,20 @@ out:
 
 /* needed for policies, frees inner data structures, does NOT free e itself! */
 afs_int32
-free_entry(struct osddb_entry *e)
+free_entry(struct oe *e)
 {
     XDR xdr;
     xdrmem_create(&xdr, NULL, 0, XDR_FREE);
-    if ( !xdr_osddb_entry(&xdr, e) ) {
+    if ( !xdr_oe(&xdr, e) ) {
 	ViceLog(0, ("XDR_FREE failed for osddb_entry of type %d, ID %d\n",
-			e->t.type, e->id));
+			e->oe_u.t3.t.type, e->oe_u.t3.id));
 	return EIO;
     }
     return 0;
 }
 
 afs_int32
-AllocBlock(struct ubik_trans *trans, struct osddb_entry *e)
+AllocBlock(struct ubik_trans *trans, struct oe *e)
 {
     afs_int32 blockindex = 0;
     afs_int32 code;
@@ -506,10 +513,10 @@ AllocBlock(struct ubik_trans *trans, struct osddb_entry *e)
     if (header.freePtr) {
 	code = read_entry(trans, header.freePtr, e);
         if (code)
-	    header.freePtr = NULL;
+	    header.freePtr = 0;
 	else {
 	    blockindex = header.freePtr;
-            header.freePtr = e->nextId;
+            header.freePtr = e->oe_u.t3.nextId;
 	}
     } 
     if (!blockindex) {
@@ -519,14 +526,14 @@ AllocBlock(struct ubik_trans *trans, struct osddb_entry *e)
     code = write_header(trans);
     if (code)
 	blockindex = 0;
-    memset(e, 0, sizeof(struct osddb_entry));        /* zero new entry */
+    memset(e, 0, sizeof(struct oe));        /* zero new entry */
     return blockindex;
 }
 
 int
 FreeBlock(struct ubik_trans *trans, afs_int32 blockindex)
 {
-    struct osddb_entry *e = NULL;
+    struct oe *e = NULL;
     afs_int32 code;
 
     if (blockindex >= header.eofPtr)
@@ -535,12 +542,12 @@ FreeBlock(struct ubik_trans *trans, afs_int32 blockindex)
 	return EINVAL;
     if ((blockindex - OSDDB_HEADER_SIZE) % OSDDB_ENTRY_LENGTH)
 	return EINVAL;
-    e = malloc(sizeof(struct osddb_entry));
+    e = malloc(sizeof(struct oe));
     if (!e)
 	return ENOMEM;
-    memset(e, 0, sizeof(struct osddb_entry));
-    e->nextId = header.freePtr;
-    e->t.type   = OSDDB_FREE;
+    memset(e, 0, sizeof(struct oe));
+    e->oe_u.t3.nextId = header.freePtr;
+    e->oe_u.t3.t.type   = OSDDB_FREE;
     code = write_entry(trans, blockindex, e);
     if (!code) {
         header.freePtr = blockindex;
@@ -553,7 +560,7 @@ FreeBlock(struct ubik_trans *trans, afs_int32 blockindex)
 
 afs_int32
 FindById(struct ubik_trans *trans, afs_int32 what, afs_int32 id,
-	 struct osddb_entry *e, afs_uint32 *offs)
+	 struct oe *e, afs_uint32 *offs)
 {
     afs_int32 hashindex, i, code;
 
@@ -576,15 +583,15 @@ FindById(struct ubik_trans *trans, afs_int32 what, afs_int32 id,
 	    ViceLog(0,("FindById: unknown type %d\n", what));
 	    return EINVAL;
     }
-    for (; i; i=e->nextId) {
+    for (; i; i=e->oe_u.t3.nextId) {
 	code = read_entry(trans, i, e);
 	if (code)
 	    return code;
-	if (e->t.type != what) {
+	if (e->oe_u.t3.t.type != what) {
 	    ViceLog(0,("wrong entry in %d IdHash[%u]\n", what, hashindex));
 	    return EIO;
 	}
-	if (e->id == id)
+	if (e->oe_u.t3.id == id)
 	    break;
 	free_entry(e);
     }
@@ -596,7 +603,7 @@ FindById(struct ubik_trans *trans, afs_int32 what, afs_int32 id,
 
 afs_int32
 FindByName(struct ubik_trans *trans, afs_int32 what, char *name, 
-	   struct osddb_entry *e, afs_int32 *offs)
+	   struct oe *e, afs_int32 *offs)
 {
     afs_int32 hashindex, i, code;
 
@@ -619,15 +626,15 @@ FindByName(struct ubik_trans *trans, afs_int32 what, char *name,
 	    ViceLog(0,("FindByName: unknown type %d\n", what));
 	    return EINVAL;
     }
-    for (; i; i=e->nextName) {
+    for (; i; i=e->oe_u.t3.nextName) {
 	code = read_entry(trans, i, e);
 	if (code)
 	    return code;
-	if (e->t.type != what) {
+	if (e->oe_u.t3.t.type != what) {
 	    ViceLog(0,("wrong entry in %d NameHash[%u]\n", what, hashindex));
 	    return EIO;
 	}
-	if (!strcmp((char *)&e->name, (char *)name))
+	if (!strcmp((char *)&e->oe_u.t3.name, (char *)name))
 	    break;
 	free_entry(e);
     }
@@ -639,7 +646,7 @@ FindByName(struct ubik_trans *trans, afs_int32 what, char *name,
 
 afs_int32 
 DeleteEntry(struct ubik_trans *trans, afs_int32 what, char *name, 
-	    afs_uint32 id, struct osddb_entry *e)
+	    afs_uint32 id, struct oe *e)
 {
     afs_int32 hashindex, i;
     afs_int32 code;
@@ -648,8 +655,8 @@ DeleteEntry(struct ubik_trans *trans, afs_int32 what, char *name,
     code = FindById(trans, what, id, e, &offs);
     if (code)
 	return code;
-    nextId = e->nextId;
-    nextName = e->nextName;
+    nextId = e->oe_u.t3.nextId;
+    nextName = e->oe_u.t3.nextName;
 
     hashindex = NameHash(name);
     switch (what) {
@@ -688,19 +695,19 @@ DeleteEntry(struct ubik_trans *trans, afs_int32 what, char *name,
     if (code) 
 	return code;
 	
-    for (i=i; i; i=e->nextName) {
+    for (i=i; i; i=e->oe_u.t3.nextName) {
 	free_entry(e);
 	code = read_entry(trans, i, e);
 	if (code)
 	    break;
-	if (e->t.type != what) {
+	if (e->oe_u.t3.t.type != what) {
 	    ViceLog(0,("wrong entry %d in %d NameHash[%u]\n",
-	    		e->t.type, what, hashindex));
+	    		e->oe_u.t3.t.type, what, hashindex));
 	    code = EIO;
 	    break;
 	}
-	if (e->nextName == offs) {
-	    e->nextName = nextName;
+	if (e->oe_u.t3.nextName == offs) {
+	    e->oe_u.t3.nextName = nextName;
 	    code = write_entry(trans, i, e);
 	    break;
 	}
@@ -745,18 +752,18 @@ DeleteEntry(struct ubik_trans *trans, afs_int32 what, char *name,
     if (code) 
 	return code;
 	
-    for (i=i; i; i=e->nextId) {
+    for (i=i; i; i=e->oe_u.t3.nextId) {
 	free_entry(e);
 	code = read_entry(trans, i, e);
 	if (code)
 	    break;
-	if (e->t.type != what) {
+	if (e->oe_u.t3.t.type != what) {
 	    ViceLog(0,("wrong entry in %d NameHash[%u]\n", what, hashindex));
 	    code = EIO;
 	    break;
 	}
-	if (e->nextId == offs) {
-	    e->nextId = nextId;
+	if (e->oe_u.t3.nextId == offs) {
+	    e->oe_u.t3.nextId = nextId;
 	    code = write_entry(trans, i, e);
 	    break;
 	}
@@ -812,6 +819,25 @@ afs_int32 check_osd_tab(struct osddb_osd_tab *in)
 	ViceLog(0,("check_osd_tab: unknown type %d\n", in->type));
 	return EINVAL;
     }
+    if (in->service_port) {
+        afs_int32 service = (in->service_port >> 16);
+        afs_int32 port = in->service_port & 0xffff;
+        if (port < 1024 || port > 49151) {
+            ViceLog(0,("check_osd_tab: port number outside IANA registered ports: %d\n",
+                                port));
+            return EINVAL;
+        }
+        if (port >= 7000 && port <= 7009) {
+            ViceLog(0,("check_osd_tab: port number conflict with AFS: %d\n",
+                                port));
+            return EINVAL;
+        }
+        if (service <= 0) {
+            ViceLog(0,("check_osd_tab: illegal service number %d\n",
+                                service));
+            return EINVAL;
+        }
+    }
     return 0;
 }
 
@@ -827,17 +853,17 @@ fill_list_from_database(struct ubik_trans *trans,
 {
     int i, j, k = 0;
     afs_int32 code;
-    struct osddb_entry e;
+    struct oe e;
     struct Osd *s;
 
     for (i=0; i<OSDDB_HASHSIZE; i++) {
-	for (j=id_hash[i]; j; j=e.nextId) {
+	for (j=id_hash[i]; j; j=e.oe_u.t3.nextId) {
 	    code = read_entry(trans, j, &e);
 	    if (code)
 		return code;
-	    if (e.t.type != entry_type) {
+	    if (e.oe_u.t3.t.type != entry_type) {
 		ViceLog(0, ("fill_list_from_database: wrong type %u instead of %u found\n",
-				e.t.type, entry_type));
+				e.oe_u.t3.t.type, entry_type));
 		return EIO;
 	    }
 	    if (k >= list->OsdList_len) {
@@ -845,9 +871,9 @@ fill_list_from_database(struct ubik_trans *trans,
 		return EIO;
 	    }
 	    s = &list->OsdList_val[k];
-	    s->id = e.id;
-	    strcpy((char *)&s->name, (char *)&e.name);
-	    s->t = e.t;
+	    s->id = e.oe_u.t3.id;
+	    strcpy((char *)&s->name, (char *)&e.oe_u.t3.name);
+	    s->t = e.oe_u.t3.t;
 	    if (s->id == 1)
 		s->t.etype_u.osd.unavail = 0;
 	    k++;
@@ -857,22 +883,23 @@ fill_list_from_database(struct ubik_trans *trans,
 }
 
 void
-fill_entry_from_osd_tab(struct osddb_entry *e, struct osddb_osd_tab *in)
+fill_entry_from_osd_tab(struct oe *e, struct osddb_osd_tab *in)
 {
-    e->t.etype_u.osd.minSize = in->minSize;
-    e->t.etype_u.osd.maxSize = in->maxSize;
-    e->t.etype_u.osd.ip = in->ip;
-    e->t.etype_u.osd.lun = in->lun;
-    e->t.etype_u.osd.alprior = in->alprior;
-    e->t.etype_u.osd.rdprior = in->rdprior;
-    e->t.etype_u.osd.newestWiped = in->newestWiped;
-    e->t.etype_u.osd.owner = in->owner;
-    e->t.etype_u.osd.flags = in->flags;
-    e->t.etype_u.osd.unavail = in->unavail;
-    e->t.etype_u.osd.location = in->location;
-    e->t.etype_u.osd.highWaterMark = in->highWaterMark;
-    e->t.etype_u.osd.minWipeSize = in->minWipeSize;
-    e->t.etype_u.osd.type = in->type;
+    e->oe_u.t3.t.etype_u.osd.minSize = in->minSize;
+    e->oe_u.t3.t.etype_u.osd.maxSize = in->maxSize;
+    e->oe_u.t3.t.etype_u.osd.ip = in->ip;
+    e->oe_u.t3.t.etype_u.osd.lun = in->lun;
+    e->oe_u.t3.t.etype_u.osd.alprior = in->alprior;
+    e->oe_u.t3.t.etype_u.osd.rdprior = in->rdprior;
+    e->oe_u.t3.t.etype_u.osd.newestWiped = in->newestWiped;
+    e->oe_u.t3.t.etype_u.osd.owner = in->owner;
+    e->oe_u.t3.t.etype_u.osd.flags = in->flags;
+    e->oe_u.t3.t.etype_u.osd.unavail = in->unavail;
+    e->oe_u.t3.t.etype_u.osd.location = in->location;
+    e->oe_u.t3.t.etype_u.osd.highWaterMark = in->highWaterMark;
+    e->oe_u.t3.t.etype_u.osd.minWipeSize = in->minWipeSize;
+    e->oe_u.t3.t.etype_u.osd.type = in->type;
+    e->oe_u.t3.t.etype_u.osd.service_port = in->service_port;
 }
 
 /* this works only if there were no cycles in the used_policies before 
@@ -882,17 +909,17 @@ policy_will_use(struct ubik_trans *trans,
 		afs_uint32 start_id,
 		afs_uint32 search_id)
 {
-    struct osddb_entry e;
+    struct oe e;
     osddb_policy pol;
     int offset;
     int i = 0;
     afs_int32 code = 0;
 
-    memset(&e, 0, sizeof(struct osddb_entry));
+    memset(&e, 0, sizeof(struct oe));
     code = FindById(trans, OSDDB_POLICY, start_id, &e, &offset);
     if ( code )
 	goto leave_policy_will_use;
-    pol = e.t.etype_u.pol; 
+    pol = e.oe_u.t3.t.etype_u.pol; 
     for ( i = 0 ; i < pol.rules.pol_ruleList_len ; i++ ) {
 	afs_uint32 next;
 	if ( next = pol.rules.pol_ruleList_val[i].used_policy ) {
@@ -1092,7 +1119,7 @@ AddOsd(struct rx_call *call, struct osddb_osd_tab *in)
 {
     struct ubik_trans *trans;
     afs_int32 code, offs;
-    struct osddb_entry *e = NULL;
+    struct oe *e = NULL;
 
     if (!afsconf_SuperUser(osddb_confdir, call, NULL))
         return EPERM;
@@ -1103,7 +1130,7 @@ AddOsd(struct rx_call *call, struct osddb_osd_tab *in)
     if (code = init_dbase(&trans, LOCKWRITE))
 	return code;
 
-    e = malloc(sizeof(struct osddb_entry));
+    e = malloc(sizeof(struct oe));
     if (!e)
 	return ENOMEM;
 
@@ -1123,17 +1150,17 @@ AddOsd(struct rx_call *call, struct osddb_osd_tab *in)
         code = EIO;
         goto abort;
     }
-    memset(e, 0, sizeof(struct osddb_entry));
+    memset(e, 0, sizeof(struct oe));
 
-    e->entryversion = OSDDB_ENTRY_VERSION;
-    e->nextId = header.osdIdHash[IDHash(in->id)];
-    e->nextName = header.osdNameHash[NameHash(in->name)];
-    e->id = in->id;
-    strcpy((char *)&e->name, (char *)&in->name);
-    e->t.type = OSDDB_OSD;
+    e->vsn = OSDDB_ENTRY_VERSION;
+    e->oe_u.t3.nextId = header.osdIdHash[IDHash(in->id)];
+    e->oe_u.t3.nextName = header.osdNameHash[NameHash(in->name)];
+    e->oe_u.t3.id = in->id;
+    strcpy((char *)&e->oe_u.t3.name, (char *)&in->name);
+    e->oe_u.t3.t.type = OSDDB_OSD;
     
     fill_entry_from_osd_tab(e, in);
-    e->t.etype_u.osd.unavail = OSDDB_OSD_DEAD;
+    e->oe_u.t3.t.etype_u.osd.unavail = OSDDB_OSD_DEAD;
     
     code = write_entry(trans, offs, e);
     if (code) {
@@ -1201,7 +1228,7 @@ GetOsdList(struct rx_call *call, struct OsdList *list)
 {
     struct ubik_trans *trans;
     afs_int32 code, i, j;
-    struct osddb_entry e;
+    struct oe e;
     struct Osd *s;
 
     list->OsdList_len = 0;
@@ -1271,6 +1298,7 @@ fill_osd_tab_from_Osd(struct osddb_osd_tab *out,
     out->highWaterMark = t.etype_u.osd.highWaterMark;
     out->minWipeSize = t.etype_u.osd.minWipeSize;
     out->type = t.etype_u.osd.type;
+    out->service_port = t.etype_u.osd.service_port;
 }
 
 afs_int32
@@ -1280,14 +1308,14 @@ GetOsd(struct rx_call *call, afs_uint32 id, char *name,
     struct ubik_trans *trans;
     afs_int32 code;
     afs_uint32 offs;
-    struct osddb_entry *e = NULL;
+    struct oe *e = NULL;
 
     if (!id && !strlen(name)) 
 	return EINVAL;
 
     if (code = init_dbase(&trans, LOCKREAD))
 	return code;
-    e = malloc(sizeof(struct osddb_entry));
+    e = malloc(sizeof(struct oe));
     if (!e)
 	return ENOMEM;
 
@@ -1298,7 +1326,7 @@ GetOsd(struct rx_call *call, afs_uint32 id, char *name,
     if (code)
 	goto abort;
 
-    fill_osd_tab_from_Osd(out, e->id, e->name, e->t);
+    fill_osd_tab_from_Osd(out, e->oe_u.t3.id, e->oe_u.t3.name, e->oe_u.t3.t);
     
     code = ubik_EndTrans(trans);
     if (e)
@@ -1341,7 +1369,7 @@ SetOsd(struct rx_call *call, struct osddb_osd_tab *in)
 {
     struct ubik_trans *trans;
     afs_int32 code, offs;
-    struct osddb_entry *e = NULL;
+    struct oe *e = NULL;
 
     if (call && !afsconf_SuperUser(osddb_confdir, call, NULL)) {
         return EPERM;
@@ -1352,44 +1380,44 @@ SetOsd(struct rx_call *call, struct osddb_osd_tab *in)
 
     if (code = init_dbase(&trans, LOCKWRITE))
 	return code;
-    e = malloc(sizeof(struct osddb_entry));
+    e = malloc(sizeof(struct oe));
     if (!e)
 	return ENOMEM;
     code = FindByName(trans, OSDDB_OSD, in->name, e, &offs);
     if (!code) {
-	if (in->id != e->id)
+	if (in->id != e->oe_u.t3.id)
 	    code = EEXIST;
     } else
         code = FindById(trans, OSDDB_OSD, in->id, e, &offs);
     if (code)
 	goto abort;
     fill_entry_from_osd_tab(e, in);
-    if (strcmp((char *)&in->name, (char *)&e->name)) {
+    if (strcmp((char *)&in->name, (char *)&e->oe_u.t3.name)) {
 	afs_int32 oldhash, newhash;
-	oldhash = NameHash(e->name);
-	strcpy((char *)&e->name, (char *)&in->name);
-	newhash = NameHash(e->name);
+	oldhash = NameHash(e->oe_u.t3.name);
+	strcpy((char *)&e->oe_u.t3.name, (char *)&in->name);
+	newhash = NameHash(e->oe_u.t3.name);
 	if (oldhash != newhash) {
 	    if (header.osdNameHash[oldhash] == offs) {
-		header.osdNameHash[oldhash] = e->nextName;
-		e->nextName = header.osdNameHash[newhash];
+		header.osdNameHash[oldhash] = e->oe_u.t3.nextName;
+		e->oe_u.t3.nextName = header.osdNameHash[newhash];
 		header.osdNameHash[newhash] = offs;
 	    } else {
-		struct osddb_entry *t = malloc(sizeof(struct osddb_entry));
+		struct oe *t = malloc(sizeof(struct oe));
     		if (!t) {
 		    code = ENOMEM;
 		    goto abort;
 		}	
 		afs_int32 i;
-		for (i=header.osdNameHash[oldhash]; i; i=t->nextName) {
+		for (i=header.osdNameHash[oldhash]; i; i=t->oe_u.t3.nextName) {
 		    code = read_entry(trans, i, t);
 		    if (code) {
 			free(t);
 			goto abort;
 		    }
-		    if (t->nextName == offs) {
-			t->nextName = e->nextName;
-			e->nextName = header.osdNameHash[newhash];
+		    if (t->oe_u.t3.nextName == offs) {
+			t->oe_u.t3.nextName = e->oe_u.t3.nextName;
+			e->oe_u.t3.nextName = header.osdNameHash[newhash];
 			header.osdNameHash[newhash] = offs;
 			code = write_entry(trans, i, t);
 		        if (code) {
@@ -1415,11 +1443,11 @@ SetOsd(struct rx_call *call, struct osddb_osd_tab *in)
     if (ubeacon_AmSyncSite() && osds.OsdList_val) {
 	int i;
 	for (i=0; i<osds.OsdList_len; i++) {
-	    if (e->id == osds.OsdList_val[i].id) {
+	    if (e->oe_u.t3.id == osds.OsdList_val[i].id) {
 		afs_uint32 timestamp = 
 				osds.OsdList_val[i].t.etype_u.osd.timeStamp;
-		memcpy(&osds.OsdList_val[i].name, &e->name, OSDDB_MAXNAMELEN);
-		osds.OsdList_val[i].t = e->t; 
+		memcpy(&osds.OsdList_val[i].name, &e->oe_u.t3.name, OSDDB_MAXNAMELEN);
+		osds.OsdList_val[i].t = e->oe_u.t3.t; 
 		osds.OsdList_val[i].t.etype_u.osd.timeStamp = timestamp;
 		break;
 	    }
@@ -1466,7 +1494,7 @@ SetOsdUsage(struct rx_call *call, afs_uint32 id, afs_uint32 bsize,
 {
     struct ubik_trans *trans;
     afs_int32 code, i, offs;
-    struct osddb_entry e;
+    struct oe e;
     afs_uint64 b, f;
     afs_int32 pmUsed = 0, pmFilesUsed = 0, update = 0;
     struct timeval now;
@@ -1544,18 +1572,18 @@ SetOsdUsage(struct rx_call *call, afs_uint32 id, afs_uint32 bsize,
     code = FindById(trans, OSDDB_OSD, id, &e, &offs);
     if (code) 
 	goto abort;
-    e.t.etype_u.osd.totalSize = b;   		/* mbytes */
+    e.oe_u.t3.t.etype_u.osd.totalSize = b;   		/* mbytes */
     if (blocks)
-        e.t.etype_u.osd.pmUsed = ((blocks - blocksFree) * 1000) / blocks;
+        e.oe_u.t3.t.etype_u.osd.pmUsed = ((blocks - blocksFree) * 1000) / blocks;
     else 
-	e.t.etype_u.osd.pmUsed = 0;
-    e.t.etype_u.osd.totalFiles = (files >> 20); /* M files */
+	e.oe_u.t3.t.etype_u.osd.pmUsed = 0;
+    e.oe_u.t3.t.etype_u.osd.totalFiles = (files >> 20); /* M files */
     if (files)
-        e.t.etype_u.osd.pmFilesUsed = ((files - filesFree) * 1000) / files;
+        e.oe_u.t3.t.etype_u.osd.pmFilesUsed = ((files - filesFree) * 1000) / files;
     else 
-	e.t.etype_u.osd.pmFilesUsed = 0;
-    e.t.etype_u.osd.timeStamp = now.tv_sec;
-    e.t.etype_u.osd.unavail &= ~OSDDB_OSD_DEAD;
+	e.oe_u.t3.t.etype_u.osd.pmFilesUsed = 0;
+    e.oe_u.t3.t.etype_u.osd.timeStamp = now.tv_sec;
+    e.oe_u.t3.t.etype_u.osd.unavail &= ~OSDDB_OSD_DEAD;
     code = write_entry(trans, offs, &e);
     if (code)
 	goto abort;
@@ -1585,7 +1613,7 @@ AddServer(struct rx_call *call, struct osddb_server_tab *in)
 {
     struct ubik_trans *trans;
     afs_int32 code, offs;
-    struct osddb_entry *e = NULL;
+    struct oe *e = NULL;
 
     if (!afsconf_SuperUser(osddb_confdir, call, NULL)) {
         return EPERM;
@@ -1598,7 +1626,7 @@ AddServer(struct rx_call *call, struct osddb_server_tab *in)
 
     if (code = init_dbase(&trans, LOCKWRITE))
         return code;
-    e = malloc(sizeof(struct osddb_entry));
+    e = malloc(sizeof(struct oe));
     if (!e) {
 	code = ENOMEM;
 	goto abort;
@@ -1621,19 +1649,19 @@ AddServer(struct rx_call *call, struct osddb_server_tab *in)
         code = EIO;
         goto abort;
     }
-    memset(e, 0, sizeof(struct osddb_entry));
+    memset(e, 0, sizeof(struct oe));
 
-    e->entryversion = OSDDB_ENTRY_VERSION;
-    e->nextId = header.srvIdHash[IDHash(in->id)];
-    e->nextName = header.srvNameHash[NameHash(in->name)];
-    e->id = in->id;
-    strcpy((char *)&e->name, (char *)&in->name);
-    e->t.type = OSDDB_SERVER;
+    e->vsn = OSDDB_ENTRY_VERSION;
+    e->oe_u.t3.nextId = header.srvIdHash[IDHash(in->id)];
+    e->oe_u.t3.nextName = header.srvNameHash[NameHash(in->name)];
+    e->oe_u.t3.id = in->id;
+    strcpy((char *)&e->oe_u.t3.name, (char *)&in->name);
+    e->oe_u.t3.t.type = OSDDB_SERVER;
 
-    e->t.etype_u.srv.owner = in->owner;
-    e->t.etype_u.srv.location = in->location;
-    e->t.etype_u.srv.bonus = in->bonus;
-    e->t.etype_u.srv.malus = in->malus;
+    e->oe_u.t3.t.etype_u.srv.owner = in->owner;
+    e->oe_u.t3.t.etype_u.srv.location = in->location;
+    e->oe_u.t3.t.etype_u.srv.bonus = in->bonus;
+    e->oe_u.t3.t.etype_u.srv.malus = in->malus;
 
     code = write_entry(trans, offs, e);
     if (code) {
@@ -1692,7 +1720,7 @@ SetServer(struct rx_call *call, afs_uint32 id, char *name,
 {
     struct ubik_trans *trans;
     afs_int32 code, offs;
-    struct osddb_entry *e = NULL;
+    struct oe *e = NULL;
 
     if (call && !afsconf_SuperUser(osddb_confdir, call, NULL)) {
         return EPERM;
@@ -1705,49 +1733,49 @@ SetServer(struct rx_call *call, afs_uint32 id, char *name,
 
     if (code = init_dbase(&trans, LOCKWRITE))
 	return code;
-    e = malloc(sizeof(struct osddb_entry));
+    e = malloc(sizeof(struct oe));
     if (!e) {
 	code = ENOMEM;
 	goto abort;
     }
     code = FindByName(trans, OSDDB_SERVER, in->name, e, &offs);
     if (!code) {
-	if (in->id != e->id)
+	if (in->id != e->oe_u.t3.id)
 	    code = EEXIST;
     } else
         code = FindById(trans, OSDDB_SERVER, in->id, e, &offs);
     if (code)
 	goto abort;
-    e->t.etype_u.srv.owner = in->owner;
-    e->t.etype_u.srv.location = in->location;
-    e->t.etype_u.srv.bonus = in->bonus;
-    e->t.etype_u.srv.malus = in->malus;
-    if (strcmp((char *)&in->name, (char *)&e->name)) {
+    e->oe_u.t3.t.etype_u.srv.owner = in->owner;
+    e->oe_u.t3.t.etype_u.srv.location = in->location;
+    e->oe_u.t3.t.etype_u.srv.bonus = in->bonus;
+    e->oe_u.t3.t.etype_u.srv.malus = in->malus;
+    if (strcmp((char *)&in->name, (char *)&e->oe_u.t3.name)) {
 	afs_int32 oldhash, newhash;
-	oldhash = NameHash(e->name);
-	strcpy((char *)&e->name, (char *)&in->name);
-	newhash = NameHash(e->name);
+	oldhash = NameHash(e->oe_u.t3.name);
+	strcpy((char *)&e->oe_u.t3.name, (char *)&in->name);
+	newhash = NameHash(e->oe_u.t3.name);
 	if (oldhash != newhash) {
 	    if (header.srvNameHash[oldhash] == offs) {
-		header.srvNameHash[oldhash] = e->nextName;
-		e->nextName = header.srvNameHash[newhash];
+		header.srvNameHash[oldhash] = e->oe_u.t3.nextName;
+		e->oe_u.t3.nextName = header.srvNameHash[newhash];
 		header.srvNameHash[newhash] = offs;
 	    } else {
-		struct osddb_entry *t = malloc(sizeof(struct osddb_entry));
+		struct oe *t = malloc(sizeof(struct oe));
     		if (!t) {
 		    code = ENOMEM;
 		    goto abort;
     		}
 		afs_int32 i;
-		for (i=header.srvNameHash[oldhash]; i; i=t->nextName) {
+		for (i=header.srvNameHash[oldhash]; i; i=t->oe_u.t3.nextName) {
 		    code = read_entry(trans, i, t);
 		    if (code) {
 			free(t);
 			goto abort;
 		    }
-		    if (t->nextName == offs) {
-			t->nextName = e->nextName;
-			e->nextName = header.srvNameHash[newhash];
+		    if (t->oe_u.t3.nextName == offs) {
+			t->oe_u.t3.nextName = e->oe_u.t3.nextName;
+			e->oe_u.t3.nextName = header.srvNameHash[newhash];
 			header.srvNameHash[newhash] = offs;
 			code = write_entry(trans, i, t);
 		        if (code) {
@@ -1809,12 +1837,12 @@ GetServer(struct rx_call *call, afs_uint32 id, char *name,
 {
     struct ubik_trans *trans;
     afs_int32 code, offs;
-    struct osddb_entry *e = NULL;
+    struct oe *e = NULL;
 
     if (code = init_dbase(&trans, LOCKREAD))
 	return code;
     memset(out, 0, sizeof(struct osddb_server_tab));
-    e = malloc(sizeof(struct osddb_entry));
+    e = malloc(sizeof(struct oe));
     if (!e)
 	return ENOMEM;
     if (id)
@@ -1824,11 +1852,11 @@ GetServer(struct rx_call *call, afs_uint32 id, char *name,
     if (code) 
 	goto abort;
 
-    out->id = e->id;
-    strcpy(out->name, e->name);
-    out->location = e->t.etype_u.srv.location;
-    out->bonus = e->t.etype_u.srv.bonus;
-    out->malus = e->t.etype_u.srv.malus;
+    out->id = e->oe_u.t3.id;
+    strcpy(out->name, e->oe_u.t3.name);
+    out->location = e->oe_u.t3.t.etype_u.srv.location;
+    out->bonus = e->oe_u.t3.t.etype_u.srv.bonus;
+    out->malus = e->oe_u.t3.t.etype_u.srv.malus;
     code = ubik_EndTrans(trans);
     if (e)
 	free(e);
@@ -1869,7 +1897,7 @@ ServerList(struct rx_call *call, struct OsdList *list)
 {
     struct ubik_trans *trans;
     afs_int32 code, i, j;
-    struct osddb_entry e;
+    struct oe e;
     struct Osd *s;
 
     list->OsdList_len = 0;
@@ -1925,7 +1953,7 @@ DeleteServer(struct rx_call *call, struct osddb_server_tab *in)
 {
     struct ubik_trans *trans;
     afs_int32 code, offs;
-    struct osddb_entry *e = NULL;
+    struct oe *e = NULL;
     char myName[OSDDB_MAXNAMELEN];
     afs_uint32 myId;
 
@@ -1935,7 +1963,7 @@ DeleteServer(struct rx_call *call, struct osddb_server_tab *in)
 
     if (code = init_dbase(&trans, LOCKWRITE))
 	return code;
-    e = malloc(sizeof(struct osddb_entry));
+    e = malloc(sizeof(struct oe));
     if (!e) {
 	code = ENOMEM;
 	goto abort;
@@ -1947,8 +1975,8 @@ DeleteServer(struct rx_call *call, struct osddb_server_tab *in)
     if (code)
 	goto abort;
 
-    myId = e->id;
-    memcpy(&myName, &e->name, OSDDB_MAXNAMELEN);
+    myId = e->oe_u.t3.id;
+    memcpy(&myName, &e->oe_u.t3.name, OSDDB_MAXNAMELEN);
     code = DeleteEntry(trans, OSDDB_SERVER, myName, myId, e);
     code = ubik_EndTrans(trans);
     free(e);
@@ -1988,7 +2016,7 @@ AddPolicy(struct rx_call *call, afs_uint32 id, char *name,
 { 
     struct ubik_trans *trans;
     afs_int32 code, offs;
-    struct osddb_entry *e = NULL;
+    struct oe *e = NULL;
     int i, r;
 
     if (!afsconf_SuperUser(osddb_confdir, call, NULL)) {
@@ -2017,12 +2045,12 @@ AddPolicy(struct rx_call *call, afs_uint32 id, char *name,
 	goto abort;
     }
 
-    e = malloc(sizeof(struct osddb_entry));
+    e = malloc(sizeof(struct oe));
     if (!e) {
 	code = ENOMEM;
 	goto abort;
     }
-    memset(e, 0, sizeof(struct osddb_entry));
+    memset(e, 0, sizeof(struct oe));
     code = FindById(trans, OSDDB_POLICY, id, e, &offs);
     if (!code) {
 	code = EEXIST;
@@ -2046,16 +2074,16 @@ AddPolicy(struct rx_call *call, afs_uint32 id, char *name,
         goto abort;
     }
 
-    memset(e, 0, sizeof(struct osddb_entry));
+    memset(e, 0, sizeof(struct oe));
 
-    e->entryversion = OSDDB_ENTRY_VERSION;
-    e->nextId = header.polIdHash[IDHash(id)];
-    e->nextName = header.polNameHash[NameHash(name)];
-    e->id = id;
-    strcpy(e->name, name);
-    e->t.type = OSDDB_POLICY;
+    e->vsn = OSDDB_ENTRY_VERSION;
+    e->oe_u.t3.nextId = header.polIdHash[IDHash(id)];
+    e->oe_u.t3.nextName = header.polNameHash[NameHash(name)];
+    e->oe_u.t3.id = id;
+    strcpy(e->oe_u.t3.name, name);
+    e->oe_u.t3.t.type = OSDDB_POLICY;
 
-    e->t.etype_u.pol.rules = *rules;
+    e->oe_u.t3.t.etype_u.pol.rules = *rules;
     
     code = write_entry(trans, offs, e);
     if ( code ) {
@@ -2122,7 +2150,7 @@ PolicyList(struct rx_call *call, struct OsdList *list)
 {
     struct ubik_trans *trans;
     afs_int32 code, i, j;
-    struct osddb_entry e;
+    struct oe e;
     struct Osd *s;
 
     list->OsdList_len = 0;
@@ -2181,7 +2209,7 @@ DeletePolicy(struct rx_call *call, afs_uint32 id)
 {
     struct ubik_trans *trans;
     afs_int32 code, offs;
-    struct osddb_entry *e = NULL;
+    struct oe *e = NULL;
     char myName[OSDDB_MAXNAMELEN];
     afs_uint32 myId;
     int i;
@@ -2192,18 +2220,18 @@ DeletePolicy(struct rx_call *call, afs_uint32 id)
 
     if (code = init_dbase(&trans, LOCKWRITE))
 	return code;
-    e = malloc(sizeof(struct osddb_entry));
+    e = malloc(sizeof(struct oe));
     if (!e) {
 	code = ENOMEM;
 	goto abort;
     }
-    memset(e, 0, sizeof(struct osddb_entry));
+    memset(e, 0, sizeof(struct oe));
     code = FindById(trans, OSDDB_POLICY, id, e, &offs);
     if (code)
 	goto abort;
 
-    myId = e->id;
-    memcpy(myName, e->name, OSDDB_MAXNAMELEN);
+    myId = e->oe_u.t3.id;
+    memcpy(myName, e->oe_u.t3.name, OSDDB_MAXNAMELEN);
     free_entry(e);
     if ( code = DeleteEntry(trans, OSDDB_POLICY, myName, myId, e) )
 	goto abort;
@@ -2249,7 +2277,7 @@ GetPolicyID(struct rx_call *call,char *name, afs_uint32 *id)
 {
     struct ubik_trans *trans;
     afs_int32 code, offset;
-    osddb_entry e;
+    struct oe e;
 
     if (code = init_dbase(&trans, ubeacon_AmSyncSite()? LOCKWRITE : LOCKREAD))
 	return code;
@@ -2257,7 +2285,7 @@ GetPolicyID(struct rx_call *call,char *name, afs_uint32 *id)
     code = FindByName(trans, OSDDB_POLICY, name, &e, &offset);
     if (code)
 	goto leave;
-    *id = e.id;
+    *id = e.oe_u.t3.id;
     free_entry(&e);
     
 leave:
@@ -2519,7 +2547,7 @@ main(argc, argv)
     /* get list of servers */
     code =
 	afsconf_GetExtendedCellInfo(tdir, NULL, AFSCONF_VLDBSERVICE, &info,
-				    &clones);
+				    clones);
     if (code) {
 	printf("osddb: Couldn't get cell server list for 'afsvldb'.\n");
 	exit(2);
@@ -2561,7 +2589,7 @@ main(argc, argv)
     ubik_CheckRXSecurityProc = afsconf_CheckAuth;
     ubik_CheckRXSecurityRock = (char *)tdir;
     code =
-	ubik_ServerInitByInfo(myHost, htons(AFSCONF_OSDDBPORT), &info, &clones,
+	ubik_ServerInitByInfo(myHost, htons(AFSCONF_OSDDBPORT), &info, clones,
 			      osd_dbaseName, &OSD_dbase);
     if (code) {
 	printf("osddb: Ubik init for port %u failed with code %d\n",

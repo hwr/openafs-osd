@@ -513,12 +513,16 @@ MinOsdWipeMB(afs_uint32 osd)
 
 afs_int32
 FindOsdType(afs_uint32 id, afs_uint32 *ip, afs_uint32 *lun, afs_int32 ignore,
-		afs_uint32 *type)
+		afs_uint32 *type, afs_int32 *service, afs_int32 *port)
 {
     afs_int32 i, code = ENOENT;
  
     *ip = 0;
     *lun = 0;
+    if (service)
+	*service = 900;
+    if (port)
+	*port = 7011;
 #ifdef ALLOW_FAKEOSD
     if (id == 1) {              /* special case for fake osd fileserver */
         if (!local_host)
@@ -539,6 +543,12 @@ retry:
         if (id == o->id) {
             *ip =  o->t.etype_u.osd.ip;
             *lun =  o->t.etype_u.osd.lun;
+	    if (o->t.etype_u.osd.service_port) {
+		if (service && (o->t.etype_u.osd.service_port >> 16) != 0)
+		    *service = o->t.etype_u.osd.service_port >> 16;
+		if (port && (o->t.etype_u.osd.service_port & 65535) != 0)
+		    *port = o->t.etype_u.osd.service_port & 65535;
+	    }
 	    if (type)
 		*type = o->t.etype_u.osd.type;
 	    if (o->t.etype_u.osd.unavail && !ignore) 
@@ -568,7 +578,17 @@ FindOsd(afs_uint32 id, afs_uint32 *ip, afs_uint32 *lun, afs_int32 ignore)
 {
     afs_int32 code;
 
-    code = FindOsdType(id, ip, lun, ignore, 0);
+    code = FindOsdType(id, ip, lun, ignore, 0, 0, 0);
+    return code;
+}
+
+afs_int32
+FindOsdPort(afs_uint32 id, afs_uint32 *ip, afs_uint32 *lun, afs_int32 ignore,
+	    afs_uint32 *service, afs_uint32 *port)
+{
+    afs_int32 code;
+
+    code = FindOsdType(id, ip, lun, ignore, 0, service, port);
     return code;
 }
 

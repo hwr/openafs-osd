@@ -57,7 +57,7 @@ struct osddb_osd {
 	afs_uint32 totalFiles;  /* M Files */
 	afs_uint32 pmFilesUsed; /* per mille of inodes used */
 	afs_uint32 ip;		/* for single homed osds */
-	afs_uint32 server;	/* ref. to server entry for mh-osds */
+	afs_uint32 service_port;  /* serviceId << 16 | port, both HBO */
 	afs_uint32 lun;		/* partition id: /vicepa == 0 ... */
 	afs_int32 alprior;	/* priority for allocation */
 	afs_int32 rdprior;	/* priority for read */
@@ -189,13 +189,19 @@ case OSDDB_SERVER:
 };
 typedef etype etypeList<>;
 
-struct osddb_entry {			
-	afs_uint32 entryversion;
-	afs_uint32 nextId;
-	afs_uint32 nextName;
-	afs_uint32 id;
-	char name[OSDDB_MAXNAMELEN];
-	etype t;
+struct osddb_entry3 {
+    afs_uint32 nextId;
+    afs_uint32 nextName;
+    afs_uint32 id;
+    char name[OSDDB_MAXNAMELEN];
+    etype t;
+};
+
+union oe switch (afs_int32 vsn) {
+case 2:
+    struct osddb_entry3 t2;
+case 3:
+    struct osddb_entry3 t3;
 };
 			
 /**********************************************/
@@ -228,7 +234,7 @@ struct osddb_osd_tab {
 	afs_uint32 highWaterMark;
 	afs_uint32 minWipeSize;
 	afs_uint32 type;   /* fully T10 or reduced protocol (Capabilities only)*/
-	afs_uint32 spare3;
+	afs_uint32 service_port;
 	afs_uint32 spare4;
 };
 
