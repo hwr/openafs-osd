@@ -6873,10 +6873,24 @@ SplitVolume(struct cmd_syndesc *as, void *arock)
     if (code) {
 	return code;
     }
+
     if (strlen(as->parms[1].items->data) > 22) {
         fprintf(stderr, "New volume name is too long: %s, aborting.\n",
                 as->parms[1].items->data);
         return EINVAL;
+    }
+    code = ubik_VL_SetLock(cstruct, 0, volid, RWVOL, VLOP_SPLIT);
+    if (code) {
+	if (code == 363542) {
+	    /* Old vldebserver doesn't understand VLOP_SALVAGE, use VLOP_DUMP instead */
+    	    code = ubik_VL_SetLock(cstruct, 0, volid, RWVOL, VLOP_DUMP);
+	}
+	if (code) {
+	    fprintf(STDERR,
+	    	    "Could not lock volume %lu, aborting\n",
+		    (unsigned long)(volid));
+	    return (code);
+	}
     }
     code =
 	UV_CreateVolume2(htonl(entry.serverUnique[i]), 
@@ -6885,6 +6899,9 @@ SplitVolume(struct cmd_syndesc *as, void *arock)
 			pntr->filequota, &newvolid);
     if (code) {
 	PrintDiagnostics("create", code);
+        ubik_VL_ReleaseLock(cstruct, 0, volid, -1,
+                                (LOCKREL_OPCODE | LOCKREL_AFSID |
+                                 LOCKREL_TIMESTAMP));
 	return code;
     }
     rx_SetRxDeadTime(60 * 10);
@@ -6925,6 +6942,9 @@ SplitVolume(struct cmd_syndesc *as, void *arock)
 	   	fprintf(stderr, "RPC failed with code %d\n", code);
 	}
     }
+    ubik_VL_ReleaseLock(cstruct, 0, volid, -1,
+                                (LOCKREL_OPCODE | LOCKREL_AFSID |
+                                 LOCKREL_TIMESTAMP));
     return code;
 }
 

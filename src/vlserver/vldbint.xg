@@ -184,6 +184,7 @@ const VLOP_BACKUP      = 0x40;
 const VLOP_DELETE      = 0x80;
 const VLOP_DUMP        = 0x100;
 const VLOP_SALVAGE     = 0x200;
+const VLOP_SPLIT       = 0x400;
 
 %#define VLOP_ALLOPERS ( VLOP_MOVE | VLOP_RELEASE | VLOP_BACKUP | VLOP_DELETE | VLOP_DUMP | VLOP_SALVAGE)
 
