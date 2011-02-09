@@ -9,7 +9,7 @@ prefix S
 %#include <rx/rx_null.h>
 #include "../fsint/fs_rxosd_common.xg"
 
-%#define NEW_OSD_FILE 1	 /* not yet because our fileservers don't understand it */
+/* %#define NEW_OSD_FILE 1	 not yet because our fileservers don't understand it */
 
 /* prototype for pseudo-RPC call */
 %char *RXOSD_TranslateOpCode(afs_int32 code);
