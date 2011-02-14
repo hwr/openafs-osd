@@ -1379,8 +1379,6 @@ namei_GetLinkCount2(FdHandle_t * h, Inode ino, int lockit, int fixup, int nowrit
 
     rc = read(h->fd_fd, buf, length);
     if ((rc == 0 || !((row >> index) & NAMEI_TAGMASK)) && fixup && nowrite) {
-        if (lockit)
-            FLOCK(h, LOCK_UN);
         return 1;
     }
     if (rc == 0 && fixup) {
@@ -1414,8 +1412,6 @@ namei_GetLinkCount2(FdHandle_t * h, Inode ino, int lockit, int fixup, int nowrit
 	    goto bad_getLinkByte;
     }
  
-    if (lockit)
-        FLOCK(h, LOCK_UN);
     return ((row >> index) & NAMEI_TAGMASK);
 
   bad_getLinkByte:
