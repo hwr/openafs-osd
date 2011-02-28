@@ -1,6 +1,22 @@
 %#if  !defined(_RXGEN_AFSINT_) || !defined(_RXGEN_RXOSD_)
 
+struct udpa4ps {
+    afs_uint32 ipv4;
+    afs_uint32 port;		/* 32 bit because there is no xdr for 16 bits */
+    afs_uint32 service;
+};
+
+struct tcpa4ps {
+    afs_uint32 ipv4;
+    afs_uint32 port;		/* 32 bit because there is no xdr for 16 bits */
+    afs_uint32 service;
+};
+
 union ipadd switch(afs_int32 vsn) {
+case 1:
+	struct udpa4ps udp;
+case 2:
+	struct tcpa4ps tcp;
 case 4:
 	afs_uint32 ipv4;
 case 6:
@@ -204,6 +220,21 @@ struct storeWparm {
     afs_uint64 filelength;
 };
 
+struct fetchRWparmFlag {
+    afs_uint64 offset;
+    afs_uint64 length;
+    afs_int32 flag;
+
+};
+struct storeWparmFlag {
+    afs_uint64 offset;
+    afs_uint64 length;
+    afs_uint64 filelength;
+    afs_int32 flag;
+};
+
+%#define SEND_PORT_SERVICE	2
+
 union RWparm switch(afs_int32 type) {
     case 1:
 	struct simpleRWparm p1;
@@ -213,6 +244,10 @@ union RWparm switch(afs_int32 type) {
 	struct atimeWparm p3;
     case 4:
 	struct storeWparm p4;
+    case 5:
+	struct fetchRWparmFlag p5;
+    case 6:
+	struct storeWparmFlag p6;
 };
 
 /* Not used on the wire, used only to save fetch queue on disk */

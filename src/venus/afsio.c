@@ -171,6 +171,7 @@ static struct ubik_client *uclient;
 struct asyncError aE;
 afs_uint32 replaceOSD[MAXOSDSTRIPES];
 afs_int32 nreplace = 0;
+afs_int32 synthesize = 0;
 #define BUFFLEN 65536
 #define WRITEBUFFLEN 1024*1024*64
 
@@ -275,6 +276,7 @@ main (int argc, char **argv)
     cmd_AddParm(ts, "-verbose", CMD_FLAG, CMD_OPTIONAL, (char *) 0); 
     cmd_AddParm(ts, "-md5", CMD_FLAG, CMD_OPTIONAL, "calculate md5 checksum"); 
     cmd_AddParm(ts, "-rxstats", CMD_FLAG, CMD_OPTIONAL, (char *) 0); 
+    cmd_AddParm(ts, "-synthesized", CMD_FLAG, CMD_OPTIONAL, "check synthesized file instead writing it to stdout"); 
 
     ts = cmd_CreateSyntax("fidread", readFile, CMD_REQUIRED, 
 			  "read on a non AFS-client a file from AFS");
@@ -284,6 +286,7 @@ main (int argc, char **argv)
     cmd_AddParm(ts, "-verbose", CMD_FLAG, CMD_OPTIONAL, (char *) 0); 
     cmd_AddParm(ts, "-md5", CMD_FLAG, CMD_OPTIONAL, "calculate md5 checksum"); 
     cmd_AddParm(ts, "-rxstats", CMD_FLAG, CMD_OPTIONAL, (char *) 0); 
+    cmd_AddParm(ts, "-synthesized", CMD_FLAG, CMD_OPTIONAL, "check synthesized file instead writing it to stdout"); 
 
     ts = cmd_CreateSyntax("write", writeFile, CMD_REQUIRED, 
 			  "write a file into AFS");
@@ -1339,10 +1342,37 @@ osd_io(struct osd_file *file, afs_uint64 offset, afs_int64 length,
                     count += tmpcount;
                     b += tmpcount;
                 }
+		count = 0;
 		if (md5sum)
 	    	    MD5_Update(&md5, buffer, tlen);
-                count = write(1, buffer, tlen);
+		if (synthesize) {
+		    afs_uint32 tlow, thigh, low, high;
+		    afs_int32 fields;
+		    afs_uint64 ll;
+		    for (ll = 0; ll < tlen; ll += 4096) {
+			fields = sscanf (&buffer[ll], "Offset (0x%x, 0x%x)\n",
+					&high, &low);
+			thigh = ((offset + ll) >> 32);
+			tlow = (offset + ll) & 0xffffffff;
+			if (fields != 2) {
+			    char string[17];
+			    strncpy(string, &buffer[ll], 16);
+			    string[16] = 0;
+			    fprintf(stderr,"sscanf failed at offset (0x%x, 0x%x) data '%s'\n",
+					    thigh, tlow, string);
+			    goto bad;
+			}
+			if (low != tlow || high != thigh) {
+                	    printf("wrong offset found: (0x%x, 0x%x) instead of (0x%x, 0x%x)\n",
+                        		high, low, thigh, tlow);
+			    goto bad;
+            		}
+		    }
+		    count = tlen;
+		} else
+                    count = write(1, buffer, tlen);
 	    }
+bad:
             if (count != tlen) {
                 fprintf(stderr, "DataXchange: write failed\n");
                 code = EIO;
@@ -1548,6 +1578,7 @@ readAFSFile(AFSFid *Fid, afs_int32 *hosts, afs_int32 fd,
 	        exit(1);
 	    }
 	    while (!code && NonZeroInt64(length)) {
+		afs_int32 count = 0;
 	        if (length > bufflen)
 		    len = bufflen;
 	        else
@@ -1558,8 +1589,41 @@ readAFSFile(AFSFid *Fid, afs_int32 *hosts, afs_int32 fd,
 	        }
 		if (md5sum) 
 	    	    MD5_Update(&md5, buf, len);
-	        if (!code)
-		    write(fd, buf, len);
+	        if (!code) {
+		    if (synthesize) {
+			afs_uint64 offset = xfered;
+		        afs_uint32 tlow, thigh, low, high;
+		        afs_int32 fields;
+		        afs_uint64 ll;
+		        for (ll = 0; ll < len; ll += 4096) {
+			    fields = sscanf (&buf[ll], "Offset (0x%x, 0x%x)\n",
+					    &high, &low);
+			    thigh = ((offset + ll) >> 32);
+			    tlow = (offset + ll) & 0xffffffff;
+			    if (fields != 2) {
+				char string[17];
+				strncpy(string, &buf[ll], 16);
+				string[16] = 0;
+			        fprintf(stderr,"scanf failed at offset (0x%x, 0x%x) data '%s'\n",
+					    thigh, tlow, string);
+                	        goto bad;
+			    }
+			    if (low != tlow || high != thigh) {
+                	        printf("wrong offset found: (0x%x, 0x%x) instead of (0x%x, 0x%x)\n",
+                        		    high, low, thigh, tlow);
+                	        goto bad;
+            		    }
+		        }
+			count = len;
+		    } else
+		        count = write(fd, buf, len);
+		}
+bad:
+		if (count != len) {
+		    fprintf(stderr, "wrote only %d bytes instead of %d\n", count, len);
+		    code = EIO;
+		    break;
+		}
 	        length -= len;
 		xfered += len;
     	        gettimeofday(&now, &Timezone);
@@ -1651,6 +1715,8 @@ readFile(struct cmd_syndesc *as, void *unused)
     }
     if (as->parms[4].items)
 	rxstats = 1;
+    if (as->parms[5].items)
+	synthesize = 1;
 
     CBServiceNeeded = 1;
     InitializeCBService();
@@ -1671,7 +1737,7 @@ readFile(struct cmd_syndesc *as, void *unused)
     code = readAFSFile(&Fid, &hosts, 1, cell, fname);
     if (code)
 	fprintf(stderr, "%s failed with code %d\n", 
-				(char *) &as->name, code);
+				as->name, code);
     return code;
 }
 
@@ -1698,7 +1764,6 @@ writeFile(struct cmd_syndesc *as, void *unused)
     afs_int64 bytes;
     int worstCode = 0;
     int append = 0;
-    int synthesize = 0;
     afs_int32 byteswritten;
     struct wbuf *bufchain = 0;
     struct wbuf *previous, *tbuf;

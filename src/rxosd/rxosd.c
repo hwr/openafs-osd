@@ -620,7 +620,8 @@ extern afs_int32 dataVersionHigh;
 static void     FiveMinuteCheckLWP();
 static void     CheckFetchProc();
 extern int SystemId;
-static struct rx_connection *GetConnection(afs_uint32 ip, afs_uint32 limit, short port);
+static struct rx_connection *GetConnection(afs_uint32 ip, afs_uint32 limit,
+					   short port, afs_int32 service);
 
 int LogLevel = 0;
 int supported = 1;
@@ -720,6 +721,8 @@ setActive(afs_int32 num, struct rx_call *call, struct oparmFree *o, afs_int32 ex
 	    if (IsActive[i].num == num 
 	      && oparmFree_equal(&IsActive[i].o.ometa_u.f, o)) { 
 		ACTIVE_UNLOCK;
+		ViceLog(0,("setActive denying access to %s for %d\n",
+		    sprint_oparmFree(o, string, sizeof(string)), num));
 		return -1;
 	    }
 	}
@@ -748,8 +751,10 @@ setActive(afs_int32 num, struct rx_call *call, struct oparmFree *o, afs_int32 ex
 	    if (o) {
 		IsActive[i].o.vsn = 2;
 	        IsActive[i].o.ometa_u.f = *o;
-	    } else
+	    } else {
 		memset(&IsActive[i].o, 0, sizeof(struct ometa));
+		IsActive[i].o.vsn = 2;
+	    }
             ViceLog(1,("SetActive(%u, %u.%u.%u.%u, Fid %s) returns %d\n",
                 IsActive[i].num,
                 (IsActive[i].ip.ipadd_u.ipv4 >> 24) & 0xff,
@@ -833,8 +838,8 @@ afs_uint32 HostAddr_HBO = 0;
 afs_uint32 HostAddrs[ADDRSPERSITE], HostAddr_cnt=0;
 
 struct RemoteConnection {
-    afs_int32 host;
-    short     port;
+    afs_int32 host;	/* HBO */
+    short     port;	/* NBO */
     struct rx_connection *conn;
     struct RemoteConnection *next;
 };
@@ -1492,7 +1497,7 @@ XferData(struct fetch_entry *f)
 	    f->state = SET_FILE_READY;
 	    oh_release(f->oh);
 	    f->oh = 0;
-	    conn = GetConnection(f->d.fileserver, 1, htons(7000));
+	    conn = GetConnection(f->d.fileserver, 1, htons(7000), 1);
 	    code = RXAFS_SetOsdFileReady(conn, &fid, &new_md5.c);
 	    if (code)
 	        f->error = code;
@@ -2048,10 +2053,11 @@ bad:
 }
 
 static
-struct rx_connection *GetConnection(afs_uint32 host,  afs_uint32 limit, short port)
+struct rx_connection *GetConnection(afs_uint32 host,  afs_uint32 limit, short port,
+				    afs_int32 service)
 {
     static afs_int32 scIndex = 0;
-    afs_int32 code, service;
+    afs_int32 code;
     afs_int32 i;
     afs_int32 nConnections = 0;
     static struct rx_securityClass *sc;
@@ -2093,10 +2099,12 @@ struct rx_connection *GetConnection(afs_uint32 host,  afs_uint32 limit, short po
             return 0;
         }
     }
-    if (port == OSD_SERVER_PORT)
-	service = OSD_SERVICE_ID;
-    else
-	service = 1;
+    if (!service) {
+        if (port == OSD_SERVER_PORT)
+	    service = OSD_SERVICE_ID;
+        else
+	    service = 1;
+    }
     Connection = rx_NewConnection(htonl(host), port, service, sc, scIndex);
     if (Connection == 0)
         return (Connection);
@@ -2109,6 +2117,26 @@ struct rx_connection *GetConnection(afs_uint32 host,  afs_uint32 limit, short po
     tc->next = RemoteConnections;
     RemoteConnections = tc;
     return Connection;
+}
+
+static
+struct rx_connection *GetConnFromUnion(struct ipadd *info)
+{
+    struct rx_connection *tc = NULL;
+    afs_uint32 ip;
+    afs_int32 service = 0;
+    short port = OSD_SERVER_PORT;
+
+    if (info->vsn == 1) {
+	ip = info->ipadd_u.udp.ipv4;
+	port = htonl(info->ipadd_u.udp.port);
+	service = info->ipadd_u.udp.service;
+    } else if (info->vsn == 4) {
+	ip = info->ipadd_u.ipv4;
+    } else {
+    }
+    tc = GetConnection(ip, 1, port, service);
+    return tc;    
 }
 
 static struct afs_buffer {
@@ -3209,7 +3237,7 @@ int writePS(struct rx_call *call, t10rock *rock,
             ViceLog(0,("SRXOSD_writePS: link count was %d.\n", linkCount));
 	    if (!code) {
 		struct rx_connection *conn;
-	        conn = GetConnection(fs_host, 1, fs_port);
+	        conn = GetConnection(fs_host, 1, fs_port, 1);
 		if (conn) {
 		    code = RXAFS_UpdateOSDmetadata(conn, &old, &new);
 		    if (code)
@@ -3466,9 +3494,11 @@ SRXOSD_write(struct rx_call *call, t10rock *rock, struct RWparm *p,
     } else if (o->vsn == 2) {
 	struct oparmT10 o1;
 	code = convert_ometa_2_1(&o->ometa_u.f, &o1);
-	if (!code)
+	if (!code) {
             code = writePS(call, rock, &o1, *offP, *lngP, stripe_size,
 		           nStripes, myStripe, atime, mtime);
+	    convert_ometa_1_2(&o1, &o->ometa_u.f);
+	}
     }
 
 bad:
@@ -4482,7 +4512,7 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
             ViceLog(0, ("SRXOSD_copy: FindOSD failed for %s\n",
 		sprint_oparmT10(from, string, sizeof(string))));
         }
-        conn = GetConnection(ip, 1, OSD_SERVER_PORT);
+        conn = GetConnection(ip, 1, OSD_SERVER_PORT, 0);
         tcall = rx_NewCall(conn);
 	struct ometa ometa;
 	ometa.vsn = 1;
@@ -4938,8 +4968,7 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
 	    obj = &list->osd_segm_descList_val[0].objList.osd_obj_descList_val[0];
 	    if (OsdHasAccessToHSM(obj->o.ometa_u.t.osd_id) {
 		struct oparmT10 o1;
-		struct rx_connection * tcon =
-			GetConnection(obj->ip.ipadd_u.ipv4, 1, OSD_SERVER_PORT);
+		struct rx_connection *tcon = GetConnFromUnion(&obj->ip);
         	FDH_REALLYCLOSE(fdP);
 		fdP = 0;
 		o1.part_id = o->part_id;
@@ -5000,7 +5029,7 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
                     afs_uint32 h;
 		    struct RWparm p;
 		    struct rx_connection * tcon =
-			GetConnection(obj->ip.ipadd_u.ipv4, 1, OSD_SERVER_PORT);
+			GetConnFromUnion(&obj->ip);
 		    if (!tcon) 
 			continue;
 retry:
@@ -5332,8 +5361,7 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 	    struct osd_obj_desc *obj;
 	    obj = &list->osd_segm_descList_val[0].objList.osd_obj_descList_val[0];
 	    if (OsdHasAccessToHSM(obj->id)) {
-		struct rx_connection * tcon =
-			GetConnection(obj->ip.ipadd_u.ipv4, 1, OSD_SERVER_PORT);
+		struct rx_connection * tcon = GetConnFromUnion(&obj->ip);
 		code = RXOSD_read_from_hpss(tcon, o, list, output);
 		if (!code) {
 		    unlock_file(fd);
@@ -5389,8 +5417,7 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 		struct osd_obj_desc *obj = &seg->objList.osd_obj_descList_val[k];
 		if (obj->stripe == j) {
 		    struct RWparm p;
-		    struct rx_connection * tcon =
-			GetConnection(obj->ip.ipadd_u.ipv4, 1, OSD_SERVER_PORT);
+		    struct rx_connection * tcon = GetConnFromUnion(&obj->ip);
 		    if (!tcon) 
 			continue;
 		    rcall[j] = rx_NewCall(tcon);
@@ -6942,6 +6969,14 @@ main(int argc, char *argv[])
 							RXOSD_ExecuteRequest);
     if (!service)
 	Quit("Failed to initialize RX");
+#ifdef notdef
+    /* Alternative port 7017 */
+#define OSD_SERVICE_ID_7017 901
+    service = rx_NewServiceHost(HostAddr_NBO, htons(7017), OSD_SERVICE_ID_7017,
+				 "OSD-7017", sc, 4, RXOSD_ExecuteRequest);
+    if (!service)
+	ViceLog(0,("Failed to initialize RX on port 7017"));
+#endif
 	
     rx_SetMinProcs(service, 2);
     rx_SetMaxProcs(service, lwps);

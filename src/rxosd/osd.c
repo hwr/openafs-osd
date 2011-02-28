@@ -2344,9 +2344,9 @@ SetOsd(struct cmd_syndesc *as, void *rock)
     if (as->parms[1].items) {			/* name */
 	strcpy((char *)&u.name, as->parms[1].items->data);
     }
-    if (as->parms[16].items) 			/* cell */
-        cellp = as->parms[16].items->data;
-    if (as->parms[17].items)                   /* -localauth */
+    if (as->parms[18].items) 			/* cell */
+        cellp = as->parms[18].items->data;
+    if (as->parms[19].items)                   /* -localauth */
 	localauth = 1;
     code = init_osddb_client();
     if (code) 
@@ -2510,6 +2510,30 @@ SetOsd(struct cmd_syndesc *as, void *rock)
 	else
             u.flags &= ~OSDDB_HSM_ACCESS;
     }
+    if (as->parms[16].items) {			/* port */
+	afs_int32 val;
+        code = util_GetInt32(as->parms[16].items->data, &val);
+	if (!code) {
+	    if (val < 0 || val> 65535) {
+		fprintf(stderr, "Invalid port number %d\n", val);
+		return EINVAL;
+	    }
+	    u.service_port &= 0xffff0000;
+	    u.service_port |= val;
+	}	
+    }
+    if (as->parms[17].items) {			/* service */
+	afs_int32 val;
+        code = util_GetInt32(as->parms[17].items->data, &val);
+	if (!code) {
+	    if (val < 0 || val> 65535) {
+		fprintf(stderr, "Invalid service id %d\n", val);
+		return EINVAL;
+	    }
+	    u.service_port &= 0xffff;
+	    u.service_port |= (val << 16);
+	}	
+    }
     u.unavail &= ~OSDDB_OSD_OBSOLETE;
     code = ubik_Call(OSDDB_SetOsd, osddb_client, 0, &u);
     if (code == RXGEN_OPCODE)
@@ -2629,8 +2653,12 @@ ShowOsd(struct cmd_syndesc *as, void *rock)
 			(l.OsdList_val[i].t.etype_u.osd.ip >> 16) & 0xff,
 			(l.OsdList_val[i].t.etype_u.osd.ip >> 8) & 0xff,
 			l.OsdList_val[i].t.etype_u.osd.ip & 0xff);
-    	    printf("\tserver		= %u\n", 
-				l.OsdList_val[i].t.etype_u.osd.server);
+	    if (l.OsdList_val[i].t.etype_u.osd.service_port) {
+    	        printf("\tservice		= %u\n", 
+				l.OsdList_val[i].t.etype_u.osd.service_port >> 16);
+		printf("\tport		= %u\n",
+				l.OsdList_val[i].t.etype_u.osd.service_port & 65535);
+	    }
     	    printf("\tlun		= %u\n", 
 				l.OsdList_val[i].t.etype_u.osd.lun);
     	    printf("\talprior		= %d\n", 
@@ -2920,7 +2948,7 @@ printfetchq0(struct FetchEntry0List *q, struct Osd *o)
         printf("%4u %s\t%u.%u.%u\t",
                 i+1, userid,
                 f->Volume, f->Vnode, f->Uniquifier);
-	seconds = f->TimeStamp / 10000000;
+	seconds = f->TimeStamp;
         PrintTime(&seconds);
         printf(" %4u ", f->rank);
         if (f->caller) 
@@ -3008,7 +3036,7 @@ Fetchq(struct cmd_syndesc *as, void *rock)
 	    		q0.FetchEntry0List_val = 0;
 	    		code = RXOSD_fetchqueue280(Conn, &q0);
 	    		if (!code)
-	        	    printfetchq0(&q0, 0);
+	        	    printfetchq0(&q0, &l.OsdList_val[i]);
 		        if (q0.FetchEntry0List_len)
 		            free(q0.FetchEntry0List_val);
 		    }
@@ -3198,8 +3226,11 @@ Threads(struct cmd_syndesc *as, void *rock)
 	}
     }
 #ifdef ALLOW_OLD
-    if (code == RXGEN_OPCODE)
+    if (code == RXGEN_OPCODE) {
+	l0.activerpc0List_len = 0;
+	l0.activerpc0List_val = 0;
         code = RXOSD_threads300(Conn, &l0);
+    }
 #endif
     if (code) 
 	fprintf(stderr,"RXOSD_threads failed with code %d\n", code);
@@ -4008,6 +4039,8 @@ int main (int argc, char **argv)
     cmd_AddParm(ts, "-location", CMD_SINGLE, CMD_OPTIONAL, "max 3 characters");
     cmd_AddParm(ts, "-newestwiped", CMD_SINGLE, CMD_OPTIONAL, "seconds since 1970");
     cmd_AddParm(ts, "-hsmaccess", CMD_SINGLE, CMD_OPTIONAL, "whether OSD has direct access to HSM system (0|1)");
+    cmd_AddParm(ts, "-port", CMD_SINGLE, CMD_OPTIONAL, "OSD port number (default 7011)");
+    cmd_AddParm(ts, "-service", CMD_SINGLE, CMD_OPTIONAL, "OSD service id (default 900)");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
     cmd_AddParm(ts, "-localauth", CMD_FLAG, CMD_OPTIONAL, "");
 

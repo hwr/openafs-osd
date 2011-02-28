@@ -2488,6 +2488,8 @@ struct rxosd_host {
     struct rxosd_host *next;
     struct rxosd_conn *connections;
     afs_uint32 ip;
+    afs_uint32 service;
+    afs_uint16 port;
 };
 
 struct rxosd_addr {
@@ -2518,14 +2520,14 @@ static afs_uint32  local_host = 0;
 struct rxosd_conn * FindOsdConnection(afs_uint32 id)
 {
     afs_int32 code, i;
-    afs_uint32 tip, ip, lun;
+    afs_uint32 tip, ip, lun, service, port;
     struct rxosd_host *h;
     struct rxosd_conn *c;
     static struct rx_securityClass *sc;
     static afs_int32 scIndex = 2;
     static struct afsconf_dir *tdir = 0;
 
-    code = FindOsd(id, &ip, &lun, 0);
+    code = FindOsdPort(id, &ip, &lun, 0, &service, &port);
     if (code) 
 	return (struct rxosd_conn *)0;
 #ifdef AFS_PTHREAD_ENV
@@ -2557,6 +2559,8 @@ struct rxosd_conn * FindOsdConnection(afs_uint32 id)
     if (!h) {
         h = (struct rxosd_host *) malloc(sizeof(struct rxosd_host));
         h->ip = ip;
+        h->port = port;
+	h->service = service;
         h->connections = NULL;
         if (!rxosd_hosts) {
             if (!tdir)
@@ -2586,8 +2590,7 @@ struct rxosd_conn * FindOsdConnection(afs_uint32 id)
     }
     c = (struct rxosd_conn *) malloc(sizeof(struct rxosd_conn));
     c->usecount = 1;
-    c->conn = rx_NewConnection(htonl(h->ip), OSD_SERVER_PORT, OSD_SERVICE_ID,
-                                                        sc, scIndex);
+    c->conn = rx_NewConnection(htonl(h->ip), htons(h->port), h->service, sc, scIndex);
     code = RXOSD_ProbeServer(c->conn);
     if (code)
         Log("RXOSD_ProbeServer failed to %u.%u.%u.%u\n",
@@ -4312,9 +4315,16 @@ restart:
 	    obj->osd_flag = 0; /* not yet used */
 	    if (!(flag & FS_OSD_COMMAND)) {
 	        afs_uint32 tlun;
-		obj->ip.vsn = 4;
-                FindOsdType(obj->osd_id, &obj->ip.ipadd_u.ipv4, &tlun, 1,
-			    &obj->osd_type);
+		if (flag & SEND_PORT_SERVICE) {
+		    obj->ip.vsn = 1;
+                    FindOsdType(obj->osd_id, &obj->ip.ipadd_u.udp.ipv4, &tlun, 1,
+			        &obj->osd_type, &obj->ip.ipadd_u.udp.service,
+			        &obj->ip.ipadd_u.udp.port);
+		} else {
+		    obj->ip.vsn = 4;
+                    FindOsdType(obj->osd_id, &obj->ip.ipadd_u.ipv4, &tlun, 1,
+			        &obj->osd_type, NULL, NULL);
+		}
 	        if (obj->osd_type == 2) {
 		    struct t10cap *cap = 
 			    (struct t10cap *) malloc(sizeof(struct t10cap));
@@ -4403,7 +4413,8 @@ restart:
 	    obj->osd_flag = 0; /* not yet used */
 	    if (!(flag & FS_OSD_COMMAND)) {
 	        afs_uint32 tlun;
-                FindOsdType(obj->osd_id, &obj->osd_ip, &tlun, 1, &obj->osd_type);
+                FindOsdType(obj->osd_id, &obj->osd_ip, &tlun, 1, &obj->osd_type,
+			    NULL, NULL);
 	        if (obj->osd_type == 2) {
 		    struct t10cap *cap = 
 			    (struct t10cap *) malloc(sizeof(struct t10cap));

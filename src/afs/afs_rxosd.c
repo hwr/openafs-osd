@@ -69,6 +69,9 @@ extern int cacheDiskType;
 extern struct cm_initparams cm_initParams;
 extern afs_uint32 afs_protocols;
 
+afs_int32 afs_dontRecallFromHSM = 0;
+afs_int32 afs_asyncRecallFromHSM = 0;
+
 #ifdef NEW_OSD_FILE
 #define osd_obj osd_obj1
 #define osd_objList osd_obj1List
@@ -171,6 +174,64 @@ struct rxosd_Variables {
 #define FREE_RXOSD(p, s) if (sizeof(s) > AFS_SMALLOCSIZ) afs_osi_Free(p,sizeof(s)); else osi_FreeSmallSpace(p)
 
 static afs_int32
+getRxosdConn(struct rxosd_Variables *v, struct osd_obj *o,
+	     struct server **ts, struct afs_conn **conn)
+{
+    afs_uint32 ip;
+    afs_uint16 port = AFS_RXOSDPORT;
+    afs_int32 code = 0, service = 0;
+#ifdef NEW_OSD_FILE
+   if (o->ip.vsn == 1) {
+	ip = htonl(o->ip.ipadd_u.udp.ipv4);
+	port = o->ip.ipadd_u.udp.port;
+	port = htons(port);
+	service = o->ip.ipadd_u.udp.service;
+    } else if (o->ip.vsn == 4) {
+        ip = htonl(o->ip.ipadd_u.ipv4);
+    } else {
+        afs_warn("check_for_vicep_access: found IPv6 addr, not yet supported\n");
+        code = EIO;
+	return code;
+    }
+#else
+    ip = o->osd_ip;
+#endif
+    *ts = afs_GetServer(&ip, 1, v->avc->f.fid.Cell, port,
+			WRITE_LOCK, (afsUUID *)0, 0);
+    if (!*ts) { 
+        code = EIO;
+        return code;
+    }
+    /* we  set here force_if_down to avoid inconsistencies.
+     * StoreMini would transfer file length to fileserver even
+     * if that file was not really written to OSD.
+     */ 
+    if (cryptall) {
+  	struct unixuser *tu;
+	tu = afs_GetUser(v->areq->uid, v->avc->f.fid.Cell, SHARED_LOCK);
+	if (service)
+            *conn = afs_ConnBySAsrv((*ts)->addr, port, service, v->avc->f.fid.Cell,
+	 		   tu, 1, 1, SHARED_LOCK);
+	else
+            *conn = afs_ConnBySA((*ts)->addr, port, v->avc->f.fid.Cell,
+	 		   tu, 1, 1, SHARED_LOCK);
+	afs_PutUser(tu, SHARED_LOCK);
+    } else {
+	if (service)
+            *conn = afs_ConnBySAsrv((*ts)->addr, port, service, v->avc->f.fid.Cell,
+		    (struct unixuser *)&dummyuser, 1, 1, SHARED_LOCK);
+	else
+            *conn = afs_ConnBySA((*ts)->addr, port, v->avc->f.fid.Cell,
+		    (struct unixuser *)&dummyuser, 1, 1, SHARED_LOCK);
+    }
+    if (!*conn) {
+    	afs_PutServer(*ts, WRITE_LOCK);
+	code = EIO;
+    }
+    return code;
+}
+
+static afs_int32
 check_for_vicep_access(struct rxosd_Variables *v, int writing, afs_uint32 *osd_id)
 {
     afs_int32 code = ENOENT;
@@ -186,7 +247,7 @@ check_for_vicep_access(struct rxosd_Variables *v, int writing, afs_uint32 *osd_i
         }
 	if (afs_check_for_visible_osd(v->avc, o->osd_id)) {
 	    struct exam e;
-	    afs_int32 ip, mask = WANTS_PATH;
+	    afs_int32 mask = WANTS_PATH;
     	    struct server *ts;
     	    struct afs_conn *tc2;
 #ifndef NEW_OSD_FILE
@@ -195,33 +256,8 @@ check_for_vicep_access(struct rxosd_Variables *v, int writing, afs_uint32 *osd_i
 	    p.ometa_u.t.part_id = o->part_id;
 	    p.ometa_u.t.obj_id = o->obj_id;
 #endif
-	    if (o->ip.vsn == 4)
-	        ip = htonl(o->ip.ipadd_u.ipv4);
-	    else {
-	        afs_warn("check_for_vicep_access: found IPv6 addr, not yet supported\n");
-	        code = EIO;
-		return code;
-	    }
-	    ts = afs_GetServer(&ip, 1, v->avc->f.fid.Cell, AFS_RXOSDPORT,
-				WRITE_LOCK, (afsUUID *)0, 0);
-	    if (!ts) { 
-	        code = EIO;
-	        return code;
-	    }
-	    /* we  set here force_if_down to avoid inconsistencies.
-	     * StoreMini would transfer file length to fileserver even
-	     * if that file was not really written to OSD.
-	     */ 
-	    if (cryptall) {
-	  	struct unixuser *tu;
-		tu = afs_GetUser(v->areq->uid, v->avc->f.fid.Cell, SHARED_LOCK);
-	        tc2 = afs_ConnBySA(ts->addr, AFS_RXOSDPORT, v->avc->f.fid.Cell,
-		 		   tu, 1, 1, SHARED_LOCK);
-		afs_PutUser(tu, SHARED_LOCK);
-	    } else
-	        tc2 = afs_ConnBySA(ts->addr, AFS_RXOSDPORT, v->avc->f.fid.Cell,
-			    (struct unixuser *)&dummyuser, 1, 1, SHARED_LOCK);
-	    if (!tc2) { 
+	    code = getRxosdConn(v, o, &ts, &tc2);
+	    if (code) { 
 	        code = EIO;
 	        return code;
 	    }
@@ -323,10 +359,11 @@ rxosd_Destroy(void **r, afs_int32 error)
 static void
 adaptNumberOfStreams(struct rxosd_Variables *v)
 {
-    afs_int32 ip, rtt;
+    afs_int32 rtt;
     struct server *ts;
     struct afs_conn *tc;
     struct osd_segm *segm;
+    afs_int32 code;
 
     v->doFakeStriping = 0;
     if (fakeStripes < 2)
@@ -335,25 +372,10 @@ adaptNumberOfStreams(struct rxosd_Variables *v)
    	return;
 	
     segm = &v->osd_file->segmList.osd_segmList_val[v->segmindex];
-#ifdef NEW_OSD_FILE
-    if (segm->objList.osd_objList_val[0].ip.vsn == 4)
-	ip = htonl(segm->objList.osd_objList_val[0].ip.ipadd_u.ipv4);
-    else {
-	afs_warn("adaptNumberOfStreams: found IPv6 addr, not yet supported\n");
+    code = getRxosdConn(v, &segm->objList.osd_objList_val[0], &ts, &tc);
+    if (code)
 	return;
-    }
-#else
-    ip = htonl(segm->objList.osd_objList_val[0].osd_ip);
-#endif
-    ts = afs_GetServer(&ip, 1, v->avc->f.fid.Cell, AFS_RXOSDPORT,
-				WRITE_LOCK, (afsUUID *)0, 0);
-    if (!ts)
-	return;
-    tc = afs_ConnBySA(ts->addr, AFS_RXOSDPORT, v->avc->f.fid.Cell,
-			(struct unixuser *)&dummyuser, 1, 1, SHARED_LOCK);
     afs_PutServer(ts, WRITE_LOCK);
-    if (!tc)
-	return;
     rtt = tc->id->peer->rtt;
     afs_PutConn(tc, SHARED_LOCK);
     if (rtt < 80)
@@ -480,7 +502,6 @@ start_store(struct rxosd_Variables *v, afs_uint64 offset)
         for (l=0; l < v->stripes; l++) {
 	    struct server *ts;
 	    struct afs_conn *tc;
-	    afs_int32 ip;
 	    if (v->doFakeStriping)
 		j = 0;
 	    else {
@@ -500,37 +521,9 @@ start_store(struct rxosd_Variables *v, afs_uint64 offset)
 	        }
 	    }
 	    lc = k + m * v->stripes;
-#ifdef NEW_OSD_FILE
-    	    if (segm->objList.osd_objList_val[j].ip.vsn == 4)
-		ip = htonl(segm->objList.osd_objList_val[j].ip.ipadd_u.ipv4);
-    	    else {
-		afs_warn("start_store: found IPv6 addr, not yet supported\n");
-		continue;
-    	    }
-#else
-	    ip = htonl(segm->objList.osd_objList_val[j].osd_ip);
-#endif
+	    code = getRxosdConn(v, &segm->objList.osd_objList_val[j], &ts, &tc);
 	    v->osd[lc] = segm->objList.osd_objList_val[j].osd_id;
-	    ts = afs_GetServer(&ip, 1, v->avc->f.fid.Cell, AFS_RXOSDPORT,
-				WRITE_LOCK, (afsUUID *)0, 0);
-	    if (!ts) { 
-	        code = EIO;
-	        goto bad;
-	    }
-	    /* we  set here force_if_down to avoid inconsistencies.
-	     * StoreMini would transfer file length to fileserver even
-	     * if that file was not really written to OSD.
-	     */ 
-	    if (cryptall) {
-		struct unixuser *tu;
-		tu = afs_GetUser(v->areq->uid, v->avc->f.fid.Cell, SHARED_LOCK);
-	        tc = afs_ConnBySA(ts->addr, AFS_RXOSDPORT, v->avc->f.fid.Cell,
-			tu, 1, 1, SHARED_LOCK);
-		afs_PutUser(tu, SHARED_LOCK);
-	    } else
-	        tc = afs_ConnBySA(ts->addr, AFS_RXOSDPORT, v->avc->f.fid.Cell,
-			(struct unixuser *)&dummyuser, 1, 1, SHARED_LOCK);
-	    if (!tc) { 
+	    if (code) { 
 	        code = EIO;
 	        goto bad;
 	    }
@@ -777,7 +770,7 @@ handleError(struct rxosd_Variables *v, afs_int32 i, afs_int32 error)
         RX_AFS_GLOCK();
         ts = afs_GetServer(
 			&v->call[i]->conn->peer->host,	
-			1, v->avc->f.fid.Cell, AFS_RXOSDPORT,
+			1, v->avc->f.fid.Cell, v->call[i]->conn->peer->port,
 			WRITE_LOCK, (afsUUID *)0, 0);
     	if (error == RXGEN_OPCODE) {
 	    if (ts->flags & SRVR_USEOLDRPCS)
@@ -1138,10 +1131,11 @@ rxosd_storeInit(struct vcache *avc, struct afs_conn *tc, afs_offs_t base,
 	v->a.async_u.l2.osd_fileList_len = 0;
 	v->a.async_u.l2.osd_fileList_val = NULL;
 #endif
-	p.type = 4;
-	p.RWparm_u.p4.offset = base;
-	p.RWparm_u.p4.length = bytes;
-	p.RWparm_u.p4.filelength = avc->f.m.Length;
+	p.type = 6;
+	p.RWparm_u.p6.offset = base;
+	p.RWparm_u.p6.length = bytes;
+	p.RWparm_u.p6.filelength = avc->f.m.Length;
+	p.RWparm_u.p6.flag = SEND_PORT_SERVICE;
 	startTime = osi_Time();
 	code = RXAFS_StartAsyncStore(tc->id, (struct AFSFid *) &avc->f.fid.Fid,
 				&p, &v->a, &v->maxlength, &v->transid, &v->expires, 
@@ -1268,22 +1262,27 @@ rxosd_serverUp(struct rxosd_Variables *v, struct osd_obj *o)
     afs_int32 up = 1;
     afs_uint32 ip; 
     struct server *ts;
+    afs_int16 port = AFS_RXOSDPORT;
     
 #ifdef NEW_OSD_FILE
-    if (o->ip.vsn == 4) {
+    if (o->ip.vsn == 1) {
+        ip = htonl(o->ip.ipadd_u.udp.ipv4);
+        port = o->ip.ipadd_u.udp.port;
+        port = htons(port);
+    } else if (o->ip.vsn == 4) {
         ip = htonl(o->ip.ipadd_u.ipv4);
-#else
-	ip = htonl(o->osd_ip);
-#endif
-        ts = afs_GetServer(&ip, 1, v->avc->f.fid.Cell, AFS_RXOSDPORT, 
-			WRITE_LOCK, (afsUUID *)0, 0);
-        if (ts->flags & SRVR_ISDOWN) 
-	    up = 0;
-        afs_PutServer(ts, WRITE_LOCK);
-#ifdef NEW_OSD_FILE
-    } else
+    } else {
 	afs_warn("rxosd_serverUp: IPv6 found, not yet supoported\n");
+	return 0;
+    }
+#else
+    ip = htonl(o->osd_ip);
 #endif
+    ts = afs_GetServer(&ip, 1, v->avc->f.fid.Cell, port, 
+			WRITE_LOCK, (afsUUID *)0, 0);
+    if (ts->flags & SRVR_ISDOWN) 
+	up = 0;
+    afs_PutServer(ts, WRITE_LOCK);
     return up;
 }
 
@@ -1315,7 +1314,6 @@ start_fetch(struct rxosd_Variables *v, afs_uint64 offset)
 	struct server *ts;
 	struct afs_conn *tc;
 	afs_int32 retry = 10;
-	afs_int32 ip;
 	int checkUp = 0;
 	if (v->doFakeStriping)
 	    j = 0;
@@ -1373,39 +1371,11 @@ start_fetch(struct rxosd_Variables *v, afs_uint64 offset)
                    ICL_TYPE_STRING, __FILE__,
                    ICL_TYPE_INT32, __LINE__, ICL_TYPE_INT32, j);
 
-#ifdef NEW_OSD_FILE
-	if (segm->objList.osd_objList_val[j].ip.vsn == 4)
-	    ip = htonl(segm->objList.osd_objList_val[j].ip.ipadd_u.ipv4);
-	else {
-	    afs_warn("start_fetch: found IPv6 addr, not yet supported\n");
-	    continue;
-	}
-#else
-	ip = htonl(segm->objList.osd_objList_val[j].osd_ip);
-#endif
+        tc = 0;
 	v->osd[k] = segm->objList.osd_objList_val[j].osd_id;
-	ts = afs_GetServer(&ip, 1, v->avc->f.fid.Cell, AFS_RXOSDPORT,
-				WRITE_LOCK, (afsUUID *)0, 0);
-	if (!ts) {
-            afs_Trace3(afs_iclSetp, CM_TRACE_WASHERE,
-                   	ICL_TYPE_STRING, __FILE__,
-                   	ICL_TYPE_INT32, __LINE__, ICL_TYPE_INT32, j);
-	    continue;
-	}
-	tc = 0;
 	while (!tc && retry) {
-	    int force_if_down = 1;
-	    if (cryptall) {
-	        struct unixuser *tu;
-	        tu = afs_GetUser(v->areq->uid, v->avc->f.fid.Cell, SHARED_LOCK);
-	        tc = afs_ConnBySA(ts->addr, AFS_RXOSDPORT, v->avc->f.fid.Cell,
-			tu, 1, force_if_down, SHARED_LOCK);
-	        afs_PutUser(tu, SHARED_LOCK);
-	    } else
-	        tc = afs_ConnBySA(ts->addr, AFS_RXOSDPORT, v->avc->f.fid.Cell,
-			(struct unixuser *)&dummyuser, 1, force_if_down, 
-			SHARED_LOCK);
-	    if (!tc) { /* probably never happens */
+	    code = getRxosdConn(v, &segm->objList.osd_objList_val[j], &ts, &tc);
+	    if (code) {
 		afs_warn("rxosd start_fetch: afs_ConnBySA to 0x%x failed\n",
 			ts->addr->sa_ip);
 		if (!afs_soft_mounted)
@@ -2022,9 +1992,10 @@ rxosd_fetchInit(struct afs_conn *tc, struct vcache *avc, afs_offs_t base,
     while (1) {
     	struct RWparm p;
 	startTime = osi_Time();
-	p.type = 1;
-	p.RWparm_u.p1.offset = base;
-	p.RWparm_u.p1.length = bytes;
+	p.type = 5;
+	p.RWparm_u.p5.offset = base;
+	p.RWparm_u.p5.length = bytes;
+	p.RWparm_u.p5.flag = SEND_PORT_SERVICE;
 #ifdef NEW_OSD_FILE
         v->a.type = 1;
 	v->a.async_u.l1.osd_file1List_len = 0;
@@ -2205,6 +2176,8 @@ rxosd_bringOnline(struct vcache *avc, struct vrequest *areq)
     struct afs_conn *tc;
     afs_int32 waitcount = 0;
 
+    if (afs_dontRecallFromHSM)
+	return ENODEV;
     tc = afs_Conn(&avc->f.fid, areq, SHARED_LOCK);
     if (!tc) 
 	return -1;
@@ -2224,6 +2197,8 @@ rxosd_bringOnline(struct vcache *avc, struct vrequest *areq)
         RX_AFS_GLOCK();
 	if (code != OSD_WAIT_FOR_TAPE && code != VBUSY && code != VRESTARTING) 
 	    break;
+        if (code == OSD_WAIT_FOR_TAPE && afs_asyncRecallFromHSM)
+            return EAGAIN;
 	if (waitcount == 0) {
 	    if (code == VBUSY)
 	        afs_warnuser("waiting for busy volume %u\n", avc->f.fid.Fid.Volume);
