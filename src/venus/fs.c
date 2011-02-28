@@ -101,10 +101,12 @@
 #endif
 #define VICEP_ACCESS    	4               /* as in src/afs/afs.h */
 #define RX_OSD          	2               /* as in src/afs/afs.h */
+#define NO_HSM_RECALL           0x20000         /* as in src/afs/afs.h */
 #define VICEP_NOSYNC            0x40000         /* as in src/afs/afs.h */
 #define RX_ENABLE_IDLEDEAD      0x80000         /* as in src/afs/afs.h */
 #define VPA_USE_LUSTRE_HACK     0x100000        /* as in src/afs/afs.h */
 #define VPA_FAST_READ           0x200000        /* as in src/afs/afs.h */
+#define ASYNC_HSM_RECALL        0x400000        /* as in src/afs/afs.h */
 #define RX_OSD_SOFT             0x800000        /* as in src/afs/afs.h */
 #define RX_OSD_NOT_ONLINE       0x1000000 	/* as in src/afs/afs.h */
 
@@ -3112,6 +3114,16 @@ ProtocolCmd(struct cmd_syndesc *as, void *arock)
             protocol |= RX_OSD;
             blob.in_size = sizeof(afs_uint32);
         } else 
+        if (strncmp(ti->data,"NOHSMRECALL",strlen(ti->data)) == 0
+        || strncmp(ti->data,"nohsmrecall",strlen(ti->data)) == 0) {
+            protocol |= NO_HSM_RECALL;
+            blob.in_size = sizeof(afs_uint32);
+        } else 
+        if (strncmp(ti->data,"ASYNCHSMRECALL",strlen(ti->data)) == 0
+        || strncmp(ti->data,"aysnchsmrecall",strlen(ti->data)) == 0) {
+            protocol |= ASYNC_HSM_RECALL;
+            blob.in_size = sizeof(afs_uint32);
+        } else 
 	if (strncmp(ti->data,"SOFT",strlen(ti->data)) == 0
 	  || strncmp(ti->data,"soft",strlen(ti->data)) == 0) {
 	    protocol |= RX_OSD_SOFT;
@@ -3157,6 +3169,16 @@ ProtocolCmd(struct cmd_syndesc *as, void *arock)
         if (strncmp(ti->data,"RXOSD",strlen(ti->data)) == 0
         || strncmp(ti->data,"rxosd",strlen(ti->data)) == 0) {
             protocol &= ~RX_OSD;
+            blob.in_size = sizeof(afs_uint32);
+        } else 
+        if (strncmp(ti->data,"NOHSMRECALL",strlen(ti->data)) == 0
+        || strncmp(ti->data,"nohsmrecall",strlen(ti->data)) == 0) {
+            protocol &= ~NO_HSM_RECALL;
+            blob.in_size = sizeof(afs_uint32);
+        } else 
+        if (strncmp(ti->data,"ASYNCHSMRECALL",strlen(ti->data)) == 0
+        || strncmp(ti->data,"asynchsmrecall",strlen(ti->data)) == 0) {
+            protocol &= ~ASYNC_HSM_RECALL;
             blob.in_size = sizeof(afs_uint32);
         } else 
 	if (strncmp(ti->data,"SOFT",strlen(ti->data)) == 0
@@ -3239,6 +3261,8 @@ ProtocolCmd(struct cmd_syndesc *as, void *arock)
 	}
         if (protocol & RX_OSD) 
             printf(" RXOSD");
+	if (protocol & NO_HSM_RECALL)
+	    printf(" (no HSM recalls)");
 	if (protocol & RX_OSD_SOFT)
 	    printf(" soft mounted");
 	if (streams) 
@@ -5567,7 +5591,7 @@ afs_int32 osd_parms(struct cmd_syndesc *as, void *arock)
 #ifdef NEW_OSD_FILE
 	a.type = 1;
 #else
-	a.ype = 2;
+	a.type = 2;
 #endif
         code = RXAFS_StartAsyncFetch(RXConn, &Fid, &p, &a, &transId,
 				     &expires, &OutStatus, &CallBack);

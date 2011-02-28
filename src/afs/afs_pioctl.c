@@ -36,6 +36,8 @@ extern afs_int32 vicep_fastread;
 extern afs_int32 lustre_hack;
 extern afs_int32 rx_enableIdleDead;
 extern afs_int32 vicep_nosync;
+extern afs_int32 afs_dontRecallFromHSM;
+extern afs_int32 afs_asyncRecallFromHSM;
 
 struct VenusFid afs_rootFid;
 afs_int32 afs_waitForever = 0;
@@ -5298,35 +5300,52 @@ DECL_PIOCTL(PSetProtocols)
     if (afs_pd_getUint(ain, &mask) == 0) {
         if (!afs_osi_suser(*acred))
             return EACCES;
-        if (mask & VICEP_ACCESS) {
+
+        if (mask & VICEP_ACCESS)
             afs_protocols |= VICEP_ACCESS;
-        } else {
+        else
             afs_protocols &= ~VICEP_ACCESS;
-	}
+	 
         if (mask & VPA_USE_LUSTRE_HACK)
             lustre_hack = 1;
         else
             lustre_hack = 0;
+
         if (mask & VPA_FAST_READ)
             vicep_fastread = 1;
         else
             vicep_fastread = 0;
+
         if (mask & RX_OSD)
             afs_protocols |= RX_OSD;
         else
             afs_protocols &= ~RX_OSD;
+
         if (mask & RX_OSD_SOFT)
             afs_soft_mounted = 1;
         else
             afs_soft_mounted = 0;
+
         if (mask & RX_ENABLE_IDLEDEAD)
             rx_enableIdleDead = 1;
         else
             rx_enableIdleDead = 0;
+
         if (mask & VICEP_NOSYNC)
             vicep_nosync = 1;
         else
             vicep_nosync = 0;
+
+        if (mask & NO_HSM_RECALL)
+            afs_dontRecallFromHSM = 1;
+        else
+            afs_dontRecallFromHSM = 0;
+
+        if (mask & ASYNC_HSM_RECALL)
+            afs_asyncRecallFromHSM = 1;
+        else
+            afs_asyncRecallFromHSM = 0;
+
         streams = mask >> 24;
         if (streams == 1 || streams == 2 || streams == 4 || streams == 8) {
             fakeStripes = streams;
@@ -5349,6 +5368,10 @@ DECL_PIOCTL(PSetProtocols)
 	mask |= RX_ENABLE_IDLEDEAD;
     if (vicep_nosync)
 	mask |= VICEP_NOSYNC;
+    if (afs_dontRecallFromHSM)
+	mask |= NO_HSM_RECALL;
+    if (afs_asyncRecallFromHSM)
+	mask |= ASYNC_HSM_RECALL;
     return afs_pd_putInt(aout, mask);
 #endif /* UKERNEL */
     return 0;

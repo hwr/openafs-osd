@@ -884,10 +884,12 @@ struct vcache {
 					   before storing data */
 #define RX_OSD_NOT_ONLINE       0x1000000
 #endif
+#define NO_HSM_RECALL     	0x20000
 #define VICEP_NOSYNC      	0x40000
 #define RX_ENABLE_IDLEDEAD      0x80000
 #define VPA_USE_LUSTRE_HACK     0x100000
 #define VPA_FAST_READ           0x200000
+#define ASYNC_HSM_RECALL     	0x400000
 #define RX_OSD_SOFT             0x800000
 
 #define DONT_PROCESS_FS         0xffffffff
