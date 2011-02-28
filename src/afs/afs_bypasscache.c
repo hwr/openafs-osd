@@ -380,9 +380,11 @@ afs_PrefetchNoCache(struct vcache *avc,
 	if (tc) { 
 	    avc->callback = tc->srvr->server;
 	    i = osi_Time();
+	    ObtainReadLock(&avc->lock);
 	    code = afs_FetchProc(tc, NULL, areq, bparms->offset, NULL,
 					avc, bparms->length, 
 				        (void *)bparms, tcallspec);
+	    ReleaseReadLock(&avc->lock);
 	} else
 	    code = -1;
 
