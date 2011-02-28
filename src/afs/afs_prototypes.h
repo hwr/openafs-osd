@@ -176,6 +176,11 @@ extern afs_rwlock_t afs_xconn;
 extern struct afs_conn *afs_Conn(struct VenusFid *afid,
 			     struct vrequest *areq,
 			     afs_int32 locktype);
+extern struct afs_conn *afs_ConnBySAsrv(struct srvAddr *sap,
+				 unsigned short aport, afs_int32 service,
+				 afs_int32 acell, struct unixuser *tu,
+				 int force_if_down, afs_int32 create,
+				 afs_int32 locktype);
 extern struct afs_conn *afs_ConnBySA(struct srvAddr *sap, unsigned short aport,
 				 afs_int32 acell, struct unixuser *tu,
 				 int force_if_down, afs_int32 create,
@@ -1399,7 +1404,7 @@ extern afs_int32 afs_fast_vpac_check(struct vcache *avc, struct afs_conn *tc,
                 afs_int32 storing, afs_uint32 *osd);
 extern void vpac_fsync(struct vcache *avc);
 extern afs_int32 afs_set_serveruuid(long parm2, long parm3, long parm4,
-                long parrm5);
+                long parm5);
 extern afs_int32 afs_set_visible_osd(long parm2, long parm3, long parm4,
                 long parm5);
 extern afs_int32 vpac_checkPolicy(struct vcache *avc, struct afs_conn *tc,
