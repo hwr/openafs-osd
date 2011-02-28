@@ -203,8 +203,6 @@ extern afs_uint32 local_host;
 #define RX_OSD_NOT_ONLINE   		0x1000000
 #define MAX_MOVE_OSD_SIZE   		1024*1024
 
-#define RXOSD_SERVER_PORT (htons(7011))
-#define OSD_SERVICE_ID    900   /* same as REMIOSRV for MR-AFS */
 extern afs_int64 minOsdFileSize;
 #endif /* AFS_RXOSD_SUPPORT */
 
@@ -249,12 +247,19 @@ struct afsconf_dir *tdir = 0;
 afs_int64	inverseLookupTime = 0;
 afs_int64	policyTime = 0;
 #endif
+#define LEGACY 1
+#define MAX_LEGATHY_REQUESTS_PER_CLIENT 3
+
+afs_uint32 maxLegacyThreadsPerClient = MAX_LEGATHY_REQUESTS_PER_CLIENT;
+
 
 struct activecall {
         afs_uint32 num;
         afs_uint32 volume;
         afs_uint32 vnode;
         afs_uint32 ip;
+	afs_uint32 timeStamp;
+	afs_uint32 flag;
 };
 
 struct activecall IsActive[MAX_FILESERVER_THREAD];
@@ -305,6 +310,8 @@ char ExportedVariables[] =
     EXP_VAR_SEPARATOR
     "FindOsdUsePrior"
     EXP_VAR_SEPARATOR
+    "maxLexLegacyThreadsPerClient"
+    EXP_VAR_SEPARATOR
 #endif
     ""
     ;
@@ -314,6 +321,7 @@ afs_int32 setActive(struct rx_call *call, afs_uint32 num, AFSFid * fid)
 {
     afs_int32 i;
     static int inited = 0;
+    afs_uint32 now = FT_ApproxTime();
     
     if (!inited) {
 #ifdef AFS_PTHREAD_ENV
@@ -359,6 +367,8 @@ afs_int32 setActive(struct rx_call *call, afs_uint32 num, AFSFid * fid)
     for (i=0; i<MAX_FILESERVER_THREAD; i++) {
         if (!IsActive[i].num) {
             IsActive[i].num = num;
+            IsActive[i].flag = 0;
+            IsActive[i].timeStamp = now;
             ACTIVE_UNLOCK;
 	    memset(&IsActive[i].volume, 0, 3 * sizeof(afs_uint32));
 	    if (fid) {
@@ -388,6 +398,25 @@ setInActive(afs_int32 i)
 {
     if (i >= 0)
         memset(&IsActive[i], 0 , sizeof(struct activecall));
+}
+
+static afs_int32
+setLegacyFetch(afs_int32 i)
+{
+    afs_int32 j, legacy = 0, code = 0;
+    afs_uint32 myIp;
+    ACTIVE_LOCK;
+    myIp = IsActive[i].ip;
+    for (j=0; j<MAX_FILESERVER_THREAD; j++) {
+	if (IsActive[j].num && IsActive[j].ip == myIp && IsActive[j].flag & LEGACY)
+	    legacy++;
+    }
+    if (legacy < maxLegacyThreadsPerClient)
+	IsActive[i].flag |= LEGACY;
+    else
+	code = ENODEV;
+    ACTIVE_UNLOCK;
+    return code;
 }
 
 #define SETTHREADACTIVE(c,n,f) \
@@ -450,7 +479,7 @@ afs_int32 MaybeStore_OSD(Volume * volptr, Vnode * targetptr,
 afs_int32 FetchData_OSD(Volume * volptr, Vnode **targetptr,
 		struct rx_call * Call, afs_sfsize_t Pos,
 		afs_sfsize_t Len, afs_int32 Int64Mode,
-		int client_vice_id);
+		int client_vice_id, afs_int32 MyThreadEntry);
 
 #ifdef AFS_SGI_XFS_IOPS_ENV
 #include <afs/xfsattrs.h>
@@ -3470,7 +3499,7 @@ common_FetchData64(struct rx_call *acall, struct AFSFid *Fid,
                    afs_sfsize_t Pos, afs_sfsize_t Len,
                    struct AFSFetchStatus *OutStatus,
                    struct AFSCallBack *CallBack, struct AFSVolSync *Sync,
-                   int Int64Mode)
+                   int Int64Mode, afs_int32 MyThreadEntry)
 {
     Vnode *targetptr = 0;	/* pointer to vnode to fetch */
     Vnode *parentwhentargetnotdir = 0;	/* parent vnode if vptr is a file */
@@ -3614,8 +3643,8 @@ common_FetchData64(struct rx_call *acall, struct AFSFid *Fid,
 			    Fid->Volume, Fid->Vnode, Fid->Unique, Pos, Len,
 			    inet_ntoa(logHostAddr)));
 	}
-	errorCode = FetchData_OSD(volptr, &targetptr, acall,
-			    Pos, Len, Int64Mode, client->ViceId);
+	errorCode = FetchData_OSD(volptr, &targetptr, acall, Pos, Len, 
+				  Int64Mode, client->ViceId, MyThreadEntry);
 	if ( errorCode )
 	    goto Bad_FetchData;
 	goto Good_FetchData;
@@ -3771,9 +3800,10 @@ SRXAFS_FetchData(struct rx_call * acall, struct AFSFid * Fid, afs_int32 Pos,
     Len64.low = Len;
 #endif /* AFS_64BIT_ENV */
     code = common_FetchData64 (acall, Fid, Pos64, Len64, OutStatus, CallBack, Sync,
-				0);
+				0, MyThreadEntry);
 #else /* AFS_LARGEFILE_ENV */
-    code = common_FetchData64 (acall, Fid, Pos, Len, OutStatus, CallBack, Sync, 0);
+    code = common_FetchData64 (acall, Fid, Pos, Len, OutStatus, CallBack, Sync, 
+				0, MyThreadEntry);
 #endif /* AFS_LARGEFILE_ENV */
     SETTHREADINACTIVE();
     return code;
@@ -3800,7 +3830,7 @@ SRXAFS_FetchData64(struct rx_call * acall, struct AFSFid * Fid, afs_int64 Pos,
 
     code =
         common_FetchData64(acall, Fid, tPos, tLen, OutStatus, CallBack, Sync,
-                           1);
+                           1, MyThreadEntry);
     SETTHREADINACTIVE();
     return code;
 }
@@ -9482,7 +9512,7 @@ afs_int32
 FetchData_OSD(Volume * volptr, Vnode **targetptr,
 		struct rx_call * Call, afs_sfsize_t Pos,
 		afs_sfsize_t Len, afs_int32 Int64Mode,
-		int client_vice_id)
+		int client_vice_id, afs_int32 MyThreadEntry)
 {
     afs_int64 targLen;
     afs_uint32 hi, lo;
@@ -9512,6 +9542,21 @@ FetchData_OSD(Volume * volptr, Vnode **targetptr,
 	rx_Write(Call, (char *)&lo, sizeof(lo));
 	total_bytes_sent += 4;
 	return 0;
+    }
+    if (!((*targetptr)->disk.osdFileOnline)) {
+	errorCode = setLegacyFetch(MyThreadEntry);
+	if (errorCode) {
+            struct rx_peer *peer = Call->conn->peer;
+            ViceLog(0, ("FetchData_OSD denying tape fetch for %u.%u.%u requested from %u.%u.%u.%u:%u\n",
+                        V_id(volptr), (*targetptr)->vnodeNumber,
+                        (*targetptr)->disk.uniquifier,
+			(ntohl(peer->host) >> 24) & 0xff,
+                        (ntohl(peer->host) >> 16) & 0xff,
+                        (ntohl(peer->host) >> 8) & 0xff,
+                        ntohl(peer->host) & 0xff,
+                        ntohs(peer->port)));
+	    return errorCode;
+	}
     }
     VN_GET_LEN(targLen, *targetptr);
     if (Pos + Len > targLen) 
@@ -9598,7 +9643,7 @@ SRXAFS_GetPath(struct rx_call *acall, AFSFid *Fid, struct async *a)
     case 1: 	/* Called from rxosd_bringOnline in the cache manager */
     case 2: 	/* Called from rxosd_bringOnline in the cache manager */
         errorCode = get_osd_location(volptr, targetptr, 0, client->ViceId,
-				0, 0, 0, acall->conn->peer, tuuid, &maxlen, a);
+				0, 0, 0, acall->conn->peer, tuuid, maxlen, a);
 	break;
     case 3: 
         {
@@ -9639,6 +9684,7 @@ SRXAFS_StartAsyncFetch(struct rx_call *acall, AFSFid *Fid, struct RWparm *p,
 {
     afs_int32 errorCode = RXGEN_OPCODE;
     afs_uint64 offset, length;
+    afs_int32 flag = 0;
     SETTHREADACTIVE(acall, 65584, Fid);
     ViceLog(1,("StartAsyncFetch for %u.%u.%u type %d\n", 
 			Fid->Volume, Fid->Vnode, Fid->Unique, a->type));
@@ -9648,6 +9694,10 @@ SRXAFS_StartAsyncFetch(struct rx_call *acall, AFSFid *Fid, struct RWparm *p,
     } else if (p->type == 4) {
 	offset = p->RWparm_u.p4.offset;
 	length = p->RWparm_u.p4.length;
+    } else if (p->type == 5) {
+	offset = p->RWparm_u.p5.offset;
+	length = p->RWparm_u.p5.length;
+	flag = p->RWparm_u.p5.flag;
     } else {
 	errorCode = RXGEN_SS_UNMARSHAL;
 	goto bad;
@@ -9672,7 +9722,7 @@ SRXAFS_StartAsyncFetch(struct rx_call *acall, AFSFid *Fid, struct RWparm *p,
 #ifdef AFS_RXOSD_SUPPORT
     if (a->type == 1 || a->type == 2) {
 	errorCode = GetOSDlocation(acall, Fid, offset, length, 0, 
-				CALLED_FROM_START_ASYNC,
+				flag | CALLED_FROM_START_ASYNC,
 				OutStatus, CallBack, a);
     } else
 #endif /* AFS_RXOSD_SUPPORT */
@@ -9782,12 +9832,18 @@ SRXAFS_StartAsyncStore(struct rx_call *acall, AFSFid *Fid, struct RWparm *p,
 {
     afs_int32 errorCode = RXGEN_OPCODE;
     afs_uint64 offset, length, filelength;
+    afs_int32 flag = 0;
     SETTHREADACTIVE(acall, 65585, Fid);
 
     if (p->type == 4) {
 	offset = p->RWparm_u.p4.offset;
 	length = p->RWparm_u.p4.length;
 	filelength = p->RWparm_u.p4.filelength;
+    } else if (p->type == 6) {
+	offset = p->RWparm_u.p6.offset;
+	length = p->RWparm_u.p6.length;
+	filelength = p->RWparm_u.p6.filelength;
+	flag = p->RWparm_u.p6.flag;
     } else {
 	errorCode = RXGEN_SS_UNMARSHAL;
 	goto bad;
@@ -9815,7 +9871,7 @@ SRXAFS_StartAsyncStore(struct rx_call *acall, AFSFid *Fid, struct RWparm *p,
 #ifdef AFS_RXOSD_SUPPORT
     if (a->type == 1 || a->type == 2) {
 	errorCode = GetOSDlocation(acall, Fid, offset, length, filelength, 
-		CALLED_FROM_START_ASYNC | OSD_WRITING, OutStatus, NULL, a);
+		flag | CALLED_FROM_START_ASYNC | OSD_WRITING, OutStatus, NULL, a);
     } else
 #endif /* AFS_RXOSD_SUPPORT */
 #ifdef AFS_ENABLE_VICEP_ACCESS
@@ -10648,6 +10704,9 @@ Variable(struct rx_call *acall, afs_int32 cmd, char *name,
 	} else if (!strcmp(name, "max_move_osd_size")) {
 	    *result = max_move_osd_size;
 	    code = 0;
+	} else if (!strcmp(name, "maxLegacyThreadsPerClient")) {
+	    *result = maxLegacyThreadsPerClient;
+	    code = 0;
 #endif
 #if defined(AFS_RXOSD_SUPPORT) || defined(AFS_ENABLE_VICEP_ACCESS)
 	} else if (!strcmp(name, "activeFiles")) {
@@ -10752,6 +10811,14 @@ Variable(struct rx_call *acall, afs_int32 cmd, char *name,
         } else if (!strcmp(name, "FindOsdUsePrior")) {
 	    FindOsdUsePrior = value;
             *result = FindOsdUsePrior;
+            code = 0;
+        } else if (!strcmp(name, "maxLegacyThreadsPerClient")) {
+	    if (value < 0 || value > 32) {
+		code = EINVAL;
+		goto finis;
+	    }
+	    maxLegacyThreadsPerClient = value;
+            *result = maxLegacyThreadsPerClient;
             code = 0;
 #endif
         } else
