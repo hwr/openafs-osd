@@ -641,6 +641,11 @@ afs_CacheStoreDCaches(struct vcache *avc, struct dcache **dclist,
  * \param amaxStoredLength Ptr to the amount of that is actually stored
  *
  * \note Environment: Nothing interesting.
+ *
+ * Locks held when called from afs_StoreAllSegments (afs_segments,c):
+ *
+ * Shared lock on avc->lock
+ *
  */
 int
 afs_CacheStoreVCache(struct dcache **dcList, struct vcache *avc,
@@ -1342,6 +1347,14 @@ rxfs_fetchInit(struct afs_conn *tc, struct vcache *avc, afs_offs_t base,
  * \param tsmall Ptr to the afs_FetchOutput structure.
  *
  * \note Environment: Nothing interesting.
+ *
+ * Locks held when called from afs_GetDCache (afs_dcache.c):
+ *     avc->lock(R) if setLocks && !slowPass
+ *     avc->lock(W) if !setLocks || slowPass
+ *     tdc->lock(W)
+ *
+ * Locks held when called from afs_PrefetchNoCache (afs_bypass.c)
+ *     avc->lock(R) 
  */
 int
 afs_FetchProc(struct afs_conn *tc, struct osi_file *fP, 
