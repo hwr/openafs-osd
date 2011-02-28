@@ -194,14 +194,13 @@ afs_Conn(struct VenusFid *afid, struct vrequest *areq,
  * @return The new connection.
  */
 struct afs_conn *
-afs_ConnBySA(struct srvAddr *sap, unsigned short aport, afs_int32 acell,
-	     struct unixuser *tu, int force_if_down, afs_int32 create,
-	     afs_int32 locktype)
+afs_ConnBySAsrv(struct srvAddr *sap, unsigned short aport, afs_int32 service,
+		afs_int32 acell, struct unixuser *tu, int force_if_down,
+		 afs_int32 create, afs_int32 locktype)
 {
     struct afs_conn *tc = 0;
     struct rx_securityClass *csec;	/*Security class object */
     int isec;			/*Security index */
-    int service;
 
     if (!sap || ((sap->sa_flags & SRVR_ISDOWN) && !force_if_down)) {
 	/* sa is known down, and we don't want to force it.  */
@@ -287,20 +286,8 @@ afs_ConnBySA(struct srvAddr *sap, unsigned short aport, afs_int32 acell,
 	    rx_DestroyConnection(tc->id);
 	    AFS_GLOCK();
 	}
-	/*
-	 * Stupid hack to determine if using vldb service or file system
-	 * service.
-	 */
-	if (aport == sap->server->cell->vlport)
-	    service = 52;
-	else if (aport == AFS_RXOSDPORT)
-	    service = 900;
-	else
-	    service = 1;
 	isec = 0;
-
 	csec = afs_pickSecurityObject(tc, &isec);
-
 	AFS_GUNLOCK();
 	tc->id = rx_NewConnection(sap->sa_ip, aport, service, csec, isec);
 	AFS_GLOCK();
@@ -328,6 +315,27 @@ afs_ConnBySA(struct srvAddr *sap, unsigned short aport, afs_int32 acell,
 
     ReleaseSharedLock(&afs_xconn);
     return tc;
+}
+
+struct afs_conn *
+afs_ConnBySA(struct srvAddr *sap, unsigned short aport, afs_int32 acell,
+	     struct unixuser *tu, int force_if_down, afs_int32 create,
+	     afs_int32 locktype)
+{
+    afs_int32 service;
+
+    /*
+     * Stupid hack to determine if using vldb service or file system
+     * service.
+     */
+    if (aport == sap->server->cell->vlport)
+	service = 52;
+    else if (aport == AFS_RXOSDPORT)
+	service = 900;
+    else
+	service = 1;
+    return afs_ConnBySAsrv(sap, aport, service, acell, tu, force_if_down,
+			  create, locktype);
 }
 
 /**
