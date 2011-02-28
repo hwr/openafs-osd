@@ -506,14 +506,16 @@ vpacDestroy(void **rock, afs_int32 error)
     }
     if (v->tbuffer)
 	osi_FreeLargeSpace(v->tbuffer);
-    if (v->vpacRock && v->vpacRock->refCnt > 0) {
-/*     printf("vpac_destroy decr'ing refCnt for %u.%u.%u from %d to %d\n",
+    if (v->vpacRock) {
+	if (v->vpacRock->refCnt > 0) {
+/*         printf("vpac_destroy decr'ing refCnt for %u.%u.%u from %d to %d\n",
 		v->avc->f.fid.Fid.Volume,
 		v->avc->f.fid.Fid.Vnode,
 		v->avc->f.fid.Fid.Unique,
 		v->vpacRock->refCnt,
 		v->vpacRock->refCnt -1); */
-	v->vpacRock->refCnt--;
+	    v->vpacRock->refCnt--;
+	}
 	if (v->vpacRock->closeMe && v->vpacRock->refCnt == 0) {
 	    afs_close_vicep_file(v->avc, NULL, v->avc->lock.excl_locked? 1:0);
 	}
