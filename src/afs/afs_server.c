@@ -647,6 +647,12 @@ afs_CheckServers(int adown, struct cell *acellp)
 	    || (adown && !(sa->sa_flags & SRVADDR_ISDOWN)))
 	    continue;
 
+	/* check rxosd with special code */
+	if (sa->sa_portal == AFS_RXOSDPORT) {
+	    CheckRxosdServer(sa, &treq);
+	    continue;
+ 	}
+
 	/* check vlserver with special code */
 	if (sa->sa_portal == AFS_VLPORT) {
 	    CheckVLServer(sa, &treq);
