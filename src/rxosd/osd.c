@@ -1757,6 +1757,9 @@ int md5sum(struct cmd_syndesc *as, void *rock)
     if (as->parms[3].items)   		/* -cell   */
         cellp = as->parms[3].items->data;
 
+    if (as->parms[4].items)   		/* -localauth   */
+        localauth = 1;
+
     scan_osd_or_host();
     GetConnection();
     if (!Conn) {
@@ -3098,6 +3101,8 @@ WipeCand(struct cmd_syndesc *as, void *rock)
     }
     if (as->parms[6].items) 					/* -cell */
         cellp = as->parms[6].items->data;
+    if (as->parms[7].items)                                     /* -localauth */
+        localauth = 1;
     scan_osd_or_host();
     GetConnection();
     q.WipeCandidateList_len = 0;
@@ -3977,7 +3982,7 @@ int main (int argc, char **argv)
     cmd_AddParm(ts, "-path", CMD_FLAG, CMD_OPTIONAL, "show path in OSD partition");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
     cmd_AddParm(ts, "-localauth", CMD_FLAG, CMD_OPTIONAL,
-	        "get ticket from server key-file ");
+	        "get ticket from server key-file");
 
     ts = cmd_CreateSyntax("md5sum", md5sum, NULL, "get md5 sum");
     cmd_AddParm(ts, "-osd", CMD_SINGLE, CMD_REQUIRED,
@@ -3987,6 +3992,7 @@ int main (int argc, char **argv)
     cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL,
 	        "0 for /vicepa, 1 for /vicepb ...");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
+    cmd_AddParm(ts, "-localauth", CMD_FLAG, CMD_OPTIONAL, "get ticket from server key-file");
 
     ts = cmd_CreateSyntax("listosds", ListOsds, NULL, "list osds");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
@@ -4042,7 +4048,7 @@ int main (int argc, char **argv)
     cmd_AddParm(ts, "-port", CMD_SINGLE, CMD_OPTIONAL, "OSD port number (default 7011)");
     cmd_AddParm(ts, "-service", CMD_SINGLE, CMD_OPTIONAL, "OSD service id (default 900)");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
-    cmd_AddParm(ts, "-localauth", CMD_FLAG, CMD_OPTIONAL, "");
+    cmd_AddParm(ts, "-localauth", CMD_FLAG, CMD_OPTIONAL, "get ticket from server key-file");
 
     ts = cmd_CreateSyntax("deleteosd", DeleteOsd, NULL, "delete osd entry in odddb");
     cmd_AddParm(ts, "-id", CMD_SINGLE, CMD_REQUIRED, "osd id");
@@ -4127,12 +4133,13 @@ int main (int argc, char **argv)
     cmd_AddParm(ts, "-minMB", CMD_SINGLE, CMD_OPTIONAL, "minimum file size in MB");
     cmd_AddParm(ts, "-seconds", CMD_FLAG, CMD_OPTIONAL, "for -crit 0 give atime in seconds since 1970");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
+    cmd_AddParm(ts, "-localauth", CMD_FLAG, CMD_OPTIONAL, "get ticket from server key-file");
 
 
     ts = cmd_CreateSyntax("statistic", Statistic, NULL, "get rpc statistic");
     cmd_AddParm(ts, "-osd", CMD_SINGLE, CMD_REQUIRED, "osd or name or IP-address of server");
     cmd_AddParm(ts, "-reset", CMD_FLAG, CMD_OPTIONAL, "all counters to 0");
-    cmd_AddParm(ts, "-localauth", CMD_FLAG, CMD_OPTIONAL, "");
+    cmd_AddParm(ts, "-localauth", CMD_FLAG, CMD_OPTIONAL, "get ticket from server key-file");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
     cmd_AddParm(ts, "-verbose", CMD_FLAG, CMD_OPTIONAL, 
 				"show tranfer rates around the clock");
@@ -4140,7 +4147,7 @@ int main (int argc, char **argv)
     ts = cmd_CreateSyntax("osddbstatistic", OsddbStatistic, NULL, "get rpc statistic for osddb");
     cmd_AddParm(ts, "-server", CMD_SINGLE, CMD_REQUIRED, "name or IP-address of server");
     cmd_AddParm(ts, "-reset", CMD_FLAG, CMD_OPTIONAL, "all counters to 0");
-    cmd_AddParm(ts, "-localauth", CMD_FLAG, CMD_OPTIONAL, "");
+    cmd_AddParm(ts, "-localauth", CMD_FLAG, CMD_OPTIONAL, "get ticket from server key-file");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
 
     code = cmd_Dispatch(argc, argv);
