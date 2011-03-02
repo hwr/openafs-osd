@@ -86,7 +86,7 @@ static u_long GetHost(char *hostname)
     u_long host;
     hostent = gethostbyname(hostname);
     if (!hostent) {
-	printf("host %s not found", hostname);
+	printf("host %s not found.\n", hostname);
 	exit(1);
     }
     if (hostent->h_length == sizeof(u_int)) 
