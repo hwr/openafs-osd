@@ -57,6 +57,7 @@ afs_int32 scIndex;
 char * thost = "localhost";
 char cell[MAXCELLCHARS];
 int localauth = 0;
+int noauth = 0;
 struct afsconf_dir *tdir;
 char rock[T10_CDB_SIZE];
 t10rock dummyrock = {0, 0};
@@ -1912,7 +1913,7 @@ init_osddb_client()
     if (osddb_client)
 	return 0;
     memset(&serverconns, 0, sizeof(serverconns));
-    code = ugen_ClientInit(0, AFSDIR_CLIENT_ETC_DIRPATH, cellp, localauth, &cstruct, 
+    code = ugen_ClientInit(noauth, AFSDIR_CLIENT_ETC_DIRPATH, cellp, localauth, &cstruct, 
 				0, "osddb", 1, 13,
 				(char *)0, 10, server, OSDDB_SERVER_PORT, 
 				OSDDB_SERVICE_ID);
@@ -2013,6 +2014,9 @@ ListOsds(struct cmd_syndesc *as, void *rock)
 	struct hostent *he;
 	he = hostutil_GetHostByName(as->parms[8].items->data);
 	memcpy(&server, he->h_addr, 4);
+    }
+    if (as->parms[9].items) {    /* noauth */
+        noauth=1;
     }
     
     code = init_osddb_client();
@@ -4010,6 +4014,7 @@ int main (int argc, char **argv)
     cmd_AddParm(ts, "-columns", CMD_LIST, CMD_OPTIONAL,
 	        "specify columns of the table");
     cmd_AddParm(ts, "-server", CMD_SINGLE, CMD_OPTIONAL, "osddbserver to contact");
+    cmd_AddParm(ts, "-noauth", CMD_FLAG, CMD_OPTIONAL, "don't authenticate");
 
     ts = cmd_CreateSyntax("createosd", CreateOsd, NULL, "create osd entry in osddb");
     cmd_AddParm(ts, "-id", CMD_SINGLE, CMD_REQUIRED, "osd id");
