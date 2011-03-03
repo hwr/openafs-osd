@@ -5360,7 +5360,7 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 	  && list->osd_segm_descList_val[0].objList.osd_obj_descList_len == 1) {
 	    struct osd_obj_desc *obj;
 	    obj = &list->osd_segm_descList_val[0].objList.osd_obj_descList_val[0];
-	    if (OsdHasAccessToHSM(obj->id)) {
+	    if (OsdHasAccessToHSM(obj->osd_id)) {
 		struct rx_connection * tcon = GetConnFromUnion(&obj->ip);
 		code = RXOSD_read_from_hpss(tcon, o, list, output);
 		if (!code) {
@@ -6308,8 +6308,7 @@ write_to_hpss(struct rx_call *call, struct oparmT10 *o,
     struct timezone tz;
     afs_uint64 datarate;
     afs_uint32 diff;
-    struct osd_obj_desc *odsc = &list->osd_segm_descList_val[0].objList.osd_obj_descList
-_val[0];
+    struct osd_obj_desc *odsc = &list->osd_segm_descList_val[0].objList.osd_obj_descList_val[0];
     struct oparmT10 oin;
     char string[FIDSTRLEN];
 
