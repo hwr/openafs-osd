@@ -5360,7 +5360,7 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 	  && list->osd_segm_descList_val[0].objList.osd_obj_descList_len == 1) {
 	    struct osd_obj_desc *obj;
 	    obj = &list->osd_segm_descList_val[0].objList.osd_obj_descList_val[0];
-	    if (OsdHasAccessToHSM(obj->osd_id)) {
+	    if (OsdHasAccessToHSM(obj->o.ometa_u.t.osd_id)) {
 		struct rx_connection * tcon = GetConnFromUnion(&obj->ip);
 		code = RXOSD_read_from_hpss(tcon, o, list, output);
 		if (!code) {
