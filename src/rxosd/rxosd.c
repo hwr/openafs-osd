@@ -4966,7 +4966,7 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
 	  && list->osd_segm_descList_val[0].objList.osd_obj_descList_len == 1) {
 	    struct osd_obj_desc *obj;
 	    obj = &list->osd_segm_descList_val[0].objList.osd_obj_descList_val[0];
-	    if (OsdHasAccessToHSM(obj->o.ometa_u.t.osd_id) {
+	    if (OsdHasAccessToHSM(obj->o.ometa_u.t.osd_id)) {
 		struct oparmT10 o1;
 		struct rx_connection *tcon = GetConnFromUnion(&obj->ip);
         	FDH_REALLYCLOSE(fdP);
@@ -5371,7 +5371,7 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 		} else {
 		    ViceLog(0,("RXOSD_read_from_hpss for %s by %u failed with %d, proceeding the old way\n",
 				sprint_oparmT10(o, string, sizeof(string)),
-				o->obj->id, code));
+				o->osd_id, code));
 		}
 	    }
 	}
@@ -6308,15 +6308,17 @@ write_to_hpss(struct rx_call *call, struct oparmT10 *o,
     struct timezone tz;
     afs_uint64 datarate;
     afs_uint32 diff;
-    struct osd_obj_desc *odsc;
+    struct osd_obj_desc *odsc = &list->osd_segm_descList_val[0].objList.osd_obj_descList
+_val[0];
     struct oparmT10 oin;
+    char string[FIDSTRLEN];
 
     if (!afsconf_SuperUser(confDir, call, (char *)0)) {
         code = EACCES;
 	goto finis;
     }
-    oin.part_id = odsc->part_id;
-    oin.obj_id = odsc->obj_id;
+    oin.part_id = odsc->o.ometa_u.t.part_id;
+    oin.obj_id = odsc->o.ometa_u.t.obj_id;
     vid = o->part_id & 0xffffffff;
     tpart_id = ((afs_uint64)hpssDev << 32) | vid;
     oh = oh_init(tpart_id, o->obj_id);
@@ -6327,8 +6329,8 @@ write_to_hpss(struct rx_call *call, struct oparmT10 *o,
 	goto finis;
     }
     output->o.vsn = 1;
-    output->o.ometa_u.obj_id = o->obj_id;
-    output->o.ometa_u.part_id = o->part_id;
+    output->o.ometa_u.t.obj_id = o->obj_id;
+    output->o.ometa_u.t.part_id = o->part_id;
     output->size = 0;
     fd = IH_OPEN(oh->ih);
     if (!fd) {
@@ -6337,9 +6339,9 @@ write_to_hpss(struct rx_call *call, struct oparmT10 *o,
 	code = EIO;
 	goto bad;
     }
-    lock_file(fdP, LOCK_EX);
+    lock_file(fd, LOCK_EX);
     odsc = &list->osd_segm_descList_val[0].objList.osd_obj_descList_val[0];
-    ohin = oh_init(o->pid, o->oid);
+    ohin = oh_init(o->part_id, o->obj_id);
     fdin = IH_OPEN(ohin->ih);
     if (!fdin) {
         ViceLog(0,("write_to_hpss: couldn't open local file %s\n",
@@ -6362,7 +6364,7 @@ write_to_hpss(struct rx_call *call, struct oparmT10 *o,
 	bytes = FDH_READ(fdin, buf, tlen);	
 	if (bytes != tlen) {
 	    ViceLog(0,("write_to_hpss: read only %d bytes from %s instead of %d\n",
-                	bytes, sprint_oparmT10(&oin, string, sizeof(string)), writelen));
+                	bytes, sprint_oparmT10(&oin, string, sizeof(string)),
 				bytes, tlen));
 	    code = EIO;
 	    goto bad;
@@ -6541,8 +6543,8 @@ read_from_hpss(struct rx_call *call, struct oparmT10 *o,
     }
     lock_file(fd, LOCK_SH);
     odsc = &list->osd_segm_descList_val[0].objList.osd_obj_descList_val[0];
-    oout.part_id = odsc->part_id;
-    oout.obj_id = odsc->obj_id;
+    oout.part_id = odsc->o.ometa_u.t.part_id;
+    oout.obj_id = odsc->o.ometa_u.t.obj_id;
     ohout = oh_init_oparmT10(&oout);
     fdout = IH_OPEN(ohout->ih);
     if (!fdout) {
