@@ -2984,12 +2984,19 @@ int examine(struct rx_call *call, t10rock *rock, struct oparmT10 *o,
     if ((mask & WANTS_SIZE) && sizep)
         *sizep = tstat.st_size;
     if ((mask & WANTS_HSM_STATUS) && statusp) {
-	char input[100];
-	*statusp = 0;
+#ifdef AFS_RXOSD_SPECIAL
+        if (h.ih_ops->stat_tapecopies)
+            result = h.ih_ops->stat_tapecopies(name.n_path, statusp, sizep);
+        else
+#endif
+	{
+	    char input[100];
+	    *statusp = 0;
 #ifdef AFS_TSM_HSM_ENV
-    	sprintf(input, DSMLS, name.n_path);
-    	code = Command(input, CHK_STDOUT, check_dsmls, statusp);
+    	    sprintf(input, DSMLS, name.n_path);
+    	    code = Command(input, CHK_STDOUT, check_dsmls, statusp);
 #endif /* AFS_TSM_HSM_SEN */
+	}
     }
 #ifdef AFS_TSM_HSM_ENV
     blocks = tstat.st_blocks;

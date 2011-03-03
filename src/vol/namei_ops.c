@@ -131,10 +131,15 @@ struct ih_posix_ops ih_namei_ops = {
     closedir,
     link,
 #if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
-    afs_statvfs
+    afs_statvfs,
 #else
-    afs_statfs
+    afs_statfs,
 #endif
+    pread,
+    pwrite,
+    NULL,
+    NULL,
+    NULL
 };
 #ifdef AFS_DCACHE_SUPPORT
 afs_int32 dcache = 0;
