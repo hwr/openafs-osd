@@ -99,6 +99,36 @@ static u_long GetHost(char *hostname)
     return host;
 } /* GetHost */
 
+int get_lun_from_string(char *s) {
+    int lun;
+    int offset=0;
+    if ( strlen(s) < 1 || strlen(s) > 8 ) {
+        fprintf(stderr, "Invalid lun: %s\n",s);
+        exit(EINVAL);
+    }
+    /* check for /vicep */
+    if ( strncmp( s, "/vicep", 6) == 0) {
+        offset=6;
+    } else if ( strncmp( s, "vicep", 5) == 0) {
+        offset=5;
+    }
+    if ( strlen(s)-offset == 1 )  {
+        lun=s[offset]-'a';
+    } else  {
+       if ( strlen(s)-offset == 2 ) {
+        lun = (s[offset]-'a'+1)*26 + s[offset+1]-'a';
+       } else { /* illegal string */
+          fprintf(stderr, "Invalid lun: %s\n",s);
+          exit(EINVAL);
+       }
+    }
+    if (lun < 0 || lun > 255) {
+        fprintf(stderr, "Invalid lun: %s\n", s);
+        exit(EINVAL);
+    }
+
+    return lun;
+} /* get_lun_from_string */
 
 #ifdef ALLOW_OLD
 static int scan_fid(char *s) 
@@ -234,11 +264,8 @@ static int create(struct cmd_syndesc *as, void *rock)
 #endif
     if (as->parms[2].items) {  		/* -lun */
         code = util_GetInt32(as->parms[2].items->data, &lun);
-        if (code) {
-	    fprintf(stderr, "Invalid lun: %s\n", 
-		    as->parms[2].items->data);
-	    return EINVAL;     
-        }
+        if (code)
+            lun = get_lun_from_string(as->parms[2].items->data);
         if (Oprm.vsn == 2)
 	    Oprm.ometa_u.f.lun = lun;
     }
@@ -309,10 +336,8 @@ static int incrlc_obj(struct cmd_syndesc *as, void *rock)
 #endif
     if (as->parms[2].items) {  		/* -lun */
         code = util_GetInt32(as->parms[2].items->data, &lun);
-        if (code) {
-	    fprintf(stderr, "Invalid lun: %s\n", as->parms[2].items->data);
-	    return EINVAL;     
-        }
+        if (code)
+            lun = get_lun_from_string(as->parms[2].items->data);
 	if (Oprm.vsn == 2)
 	    Oprm.ometa_u.f.lun = lun;
     }
@@ -377,10 +402,8 @@ static int decrlc_obj(struct cmd_syndesc *as, void *rock)
 #endif
     if (as->parms[2].items) {  		/* -lun */
         code = util_GetInt32(as->parms[2].items->data, &lun);
-        if (code) {
-	    fprintf(stderr, "Invalid lun: %s\n", as->parms[2].items->data);
-	    return EINVAL;     
-        }
+        if (code)
+            lun = get_lun_from_string(as->parms[2].items->data);
 	if (Oprm.vsn == 2)
 	    Oprm.ometa_u.f.lun = lun;
     }
@@ -493,11 +516,8 @@ int psread_obj(struct cmd_syndesc *as, void *rock)
     }
     if (as->parms[5].items) {  		/* -lun */
         code = util_GetInt32(as->parms[5].items->data, &lun);
-        if (code) {
-	    fprintf(stderr, "Invalid lun: %s\n", 
-		    as->parms[5].items->data);
-	    return EINVAL;     
-        }
+        if (code)
+            lun = get_lun_from_string(as->parms[5].items->data);
     }
     if (as->parms[6].items)   		/* -cell   */
         cellp = as->parms[6].items->data;
@@ -790,11 +810,8 @@ int read_obj(struct cmd_syndesc *as, void *rock)
     }
     if (as->parms[5].items) {  		/* -lun */
         code = util_GetInt32(as->parms[5].items->data, &lun);
-        if (code) {
-	    fprintf(stderr, "Invalid lun: %s\n", 
-		    as->parms[5].items->data);
-	    return EINVAL;     
-        }
+        if (code)
+            lun = get_lun_from_string(as->parms[5].items->data);
     }
     if (as->parms[6].items)   		/* -cell   */
         cellp = as->parms[6].items->data;
@@ -1000,10 +1017,8 @@ int pswrite_obj(struct cmd_syndesc *as, void *rock)
     }
     if (as->parms[5].items) {  		/* -lun */
         code = util_GetInt32(as->parms[5].items->data, &lun);
-        if (code) {
-	    fprintf(stderr, "Invalid lun: %s\n", as->parms[5].items->data);
-	    return EINVAL;     
-        }
+        if (code)
+            lun = get_lun_from_string(as->parms[5].items->data);
     }
     if (as->parms[6].items)    		/* -cell   */
         cellp = as->parms[6].items->data;
@@ -1283,11 +1298,8 @@ int write_obj(struct cmd_syndesc *as, void *rock)
     }
     if (as->parms[5].items) {  		/* -lun */
         code = util_GetInt32(as->parms[5].items->data, &lun);
-        if (code) {
-	    fprintf(stderr, "Invalid lun: %s\n", 
-		    as->parms[5].items->data);
-	    return EINVAL;     
-        }
+        if (code)
+            lun = get_lun_from_string(as->parms[5].items->data);
     }
     if (as->parms[6].items)    		/* -cell   */
         cellp = as->parms[6].items->data;
@@ -1406,11 +1418,8 @@ int objects(struct cmd_syndesc *as, void *rock)
     Oprm.ometa_u.f.rwvol = vid;
     if (as->parms[2].items) {  		/* -lun */
         code = util_GetInt32(as->parms[2].items->data, &lun);
-        if (code) {
-	    fprintf(stderr, "Invalid lun: %s\n", 
-		    as->parms[2].items->data);
-	    return EINVAL;     
-        }
+        if (code)
+            lun = get_lun_from_string(as->parms[2].items->data);
 	Oprm.ometa_u.f.lun = lun;
     }
     if (as->parms[3].items)   		/* -cell   */
@@ -1563,11 +1572,8 @@ static int examine(struct cmd_syndesc *as, void *rock)
 #endif
     if (as->parms[2].items) {  		/* -lun */
         code = util_GetInt32(as->parms[2].items->data, &lun);
-        if (code) {
-	    fprintf(stderr, "Invalid lun: %s\n", 
-		    as->parms[2].items->data);
-	    return EINVAL;     
-        }
+        if (code)
+            lun = get_lun_from_string(as->parms[2].items->data);
     }
     if (as->parms[3].items)   		/* -dsmls   */
         mask |= WANTS_HSM_STATUS;
@@ -1749,11 +1755,8 @@ int md5sum(struct cmd_syndesc *as, void *rock)
 #endif
     if (as->parms[2].items) {  		/* -lun */
         code = util_GetInt32(as->parms[2].items->data, &lun);
-        if (code) {
-	    fprintf(stderr, "Invalid lun: %s\n", 
-		    as->parms[2].items->data);
-	    return EINVAL;     
-        }
+        if (code)
+            lun = get_lun_from_string(as->parms[2].items->data);
     }
     if (as->parms[3].items)   		/* -cell   */
         cellp = as->parms[3].items->data;
@@ -1817,10 +1820,8 @@ int volumes(struct cmd_syndesc *as, void *rock)
     thost = as->parms[0].items->data;
     if (as->parms[1].items) {  		/* -lun */
         code = util_GetInt32(as->parms[1].items->data, &lun);
-        if (code) {
-	    fprintf(stderr, "Invalid lun: %s\n", as->parms[1].items->data);
-	    return EINVAL;     
-        }
+        if (code)
+            lun = get_lun_from_string(as->parms[1].items->data);
 	Oprm.ometa_u.f.lun = lun;
     }
     if (as->parms[2].items)    		/* -cell   */
@@ -3069,11 +3070,8 @@ WipeCand(struct cmd_syndesc *as, void *rock)
         thost = as->parms[0].items->data;
     if (as->parms[1].items) {  					/* -lun */
         code = util_GetInt32(as->parms[1].items->data, &lun);
-        if (code) {
-	    fprintf(stderr, "Invalid lun: %s\n", 
-		    as->parms[1].items->data);
-	    return EINVAL;     
-        }
+        if (code)
+            lun = get_lun_from_string(as->parms[1].items->data);
     }
     if (as->parms[2].items) {  					/* -max */
         code = util_GetInt32(as->parms[2].items->data, &max);
@@ -3872,8 +3870,7 @@ int main (int argc, char **argv)
 	        "osd or name or IP-address of server");
     cmd_AddParm(ts, "-fid", CMD_SINGLE, CMD_REQUIRED,
 	        "file-id: volume.vnode.uniquifier[.tag]");
-    cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL,
-	        "0 for /vicepa, 1 for /vicepb ...");
+    cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL, "lun number or name (0==/vicepa, 1==/vicepb ...)");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
 
     ts = cmd_CreateSyntax("incrlinkcount", incrlc_obj, NULL,
@@ -3882,8 +3879,7 @@ int main (int argc, char **argv)
 	        "osd or name or IP-address of server");
     cmd_AddParm(ts, "-fid", CMD_SINGLE, CMD_REQUIRED,
 	        "file-id: volume.vnode.uniquifier[.tag]");
-    cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL,
-	        "0 for /vicepa, 1 for /vicepb ...");
+    cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL, "lun number or name (0==/vicepa, 1==/vicepb ...)");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
 
     ts = cmd_CreateSyntax("decrlinkcount", decrlc_obj, NULL,
@@ -3892,16 +3888,14 @@ int main (int argc, char **argv)
 	        "osd or name or IP-address of server");
     cmd_AddParm(ts, "-fid", CMD_SINGLE, CMD_REQUIRED,
 	        "file-id: volume.vnode.uniquifier[.tag]");
-    cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL,
-	        "0 for /vicepa, 1 for /vicepb ...");
+    cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL, "lun number or name (0==/vicepa, 1==/vicepb ...)");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
 
     ts = cmd_CreateSyntax("volumes", volumes, NULL,
 			  "list volumes");
     cmd_AddParm(ts, "-osd", CMD_SINGLE, CMD_REQUIRED,
 	        "osd or name or IP-address of server");
-    cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL,
-	        "0 for /vicepa, 1 for /vicepb ...");
+    cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL, "lun number or name (0==/vicepa, 1==/vicepb ...)");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
     cmd_AddParm(ts, "-localauth", CMD_FLAG, CMD_OPTIONAL,
 	        "get ticket from server key-file ");
@@ -3910,8 +3904,7 @@ int main (int argc, char **argv)
     cmd_AddParm(ts, "-osd", CMD_SINGLE, CMD_REQUIRED,
 	        "osd or name or IP-address of server");
     cmd_AddParm(ts, "-volume", CMD_SINGLE, CMD_REQUIRED, "volume-id");
-    cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL,
-	        "0 for /vicepa, 1 for /vicepb ...");
+    cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL, "lun number or name (0==/vicepa, 1==/vicepb ...)");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
     cmd_AddParm(ts, "-localauth", CMD_FLAG, CMD_OPTIONAL,
 	        "get ticket from server key-file ");
@@ -3924,8 +3917,7 @@ int main (int argc, char **argv)
     cmd_AddParm(ts, "-offset", CMD_SINGLE, CMD_OPTIONAL, "volume-id");
     cmd_AddParm(ts, "-length", CMD_SINGLE, CMD_OPTIONAL, "length");
     cmd_AddParm(ts, "-from", CMD_SINGLE, CMD_OPTIONAL, "source file name");
-    cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL,
-	        "0 for /vicepa, 1 for /vicepb ...");
+    cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL, "lun number or name (0==/vicepa, 1==/vicepb ...)");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
     cmd_AddParm(ts, "-rxdebug", CMD_SINGLE, CMD_OPTIONAL, "rxdebug file");
 
@@ -3937,8 +3929,7 @@ int main (int argc, char **argv)
     cmd_AddParm(ts, "-offset", CMD_SINGLE, CMD_OPTIONAL, "volume-id");
     cmd_AddParm(ts, "-length", CMD_SINGLE, CMD_OPTIONAL, "length");
     cmd_AddParm(ts, "-from", CMD_SINGLE, CMD_OPTIONAL, "source file name");
-    cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL,
-	        "0 for /vicepa, 1 for /vicepb ...");
+    cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL, "lun number or name (0==/vicepa, 1==/vicepb ...)");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
     cmd_AddParm(ts, "-stripesize", CMD_SINGLE, CMD_OPTIONAL, "stripe size");
     cmd_AddParm(ts, "-nstripes", CMD_SINGLE, CMD_OPTIONAL, "number of stripes");
@@ -3952,8 +3943,7 @@ int main (int argc, char **argv)
     cmd_AddParm(ts, "-offset", CMD_SINGLE, CMD_OPTIONAL, "offset");
     cmd_AddParm(ts, "-length", CMD_SINGLE, CMD_OPTIONAL, "length");
     cmd_AddParm(ts, "-to", CMD_SINGLE, CMD_OPTIONAL, "sink file name");
-    cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL,
-	        "0 for /vicepa, 1 for /vicepb ...");
+    cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL, "lun number or name (0==/vicepa, 1==/vicepb ...)");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
     cmd_AddParm(ts, "-rxdebug", CMD_SINGLE, CMD_OPTIONAL, "rxdebug file");
 
@@ -3966,8 +3956,7 @@ int main (int argc, char **argv)
     cmd_AddParm(ts, "-offset", CMD_SINGLE, CMD_OPTIONAL, "offset");
     cmd_AddParm(ts, "-length", CMD_SINGLE, CMD_OPTIONAL, "length");
     cmd_AddParm(ts, "-to", CMD_SINGLE, CMD_OPTIONAL, "sink file name");
-    cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL,
-	        "0 for /vicepa, 1 for /vicepb ...");
+    cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL, "lun number or name (0==/vicepa, 1==/vicepb ...)");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
     cmd_AddParm(ts, "-stripesize", CMD_SINGLE, CMD_OPTIONAL, "stripe size");
     cmd_AddParm(ts, "-nstripes", CMD_SINGLE, CMD_OPTIONAL, "number of stripes");
@@ -3978,8 +3967,7 @@ int main (int argc, char **argv)
 	        "osd or server name or IP-address");
     cmd_AddParm(ts, "-fid", CMD_SINGLE, CMD_REQUIRED,
 	        "file-id: volume.vnode.uniquifier[.tag]");
-    cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL,
-	        "0 for /vicepa, 1 for /vicepb ...");
+    cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL, "lun number or name (0==/vicepa, 1==/vicepb ...)");
     cmd_AddParm(ts, "-dsmls", CMD_FLAG, CMD_OPTIONAL, "do dsmls to get status");
     cmd_AddParm(ts, "-atime", CMD_FLAG, CMD_OPTIONAL, "show atime instead of mtime");
     cmd_AddParm(ts, "-ctime", CMD_FLAG, CMD_OPTIONAL, "show ctime instead of mtime");
@@ -3993,8 +3981,7 @@ int main (int argc, char **argv)
 	        "osd or name or IP-address of server");
     cmd_AddParm(ts, "-fid", CMD_SINGLE, CMD_REQUIRED,
 	        "file-id: volume.vnode.uniquifier[.tag]");
-    cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL,
-	        "0 for /vicepa, 1 for /vicepb ...");
+    cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL, "lun number or name (0==/vicepa, 1==/vicepb ...)");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
     cmd_AddParm(ts, "-localauth", CMD_FLAG, CMD_OPTIONAL, "get ticket from server key-file");
 
@@ -4020,7 +4007,7 @@ int main (int argc, char **argv)
     cmd_AddParm(ts, "-id", CMD_SINGLE, CMD_REQUIRED, "osd id");
     cmd_AddParm(ts, "-name", CMD_SINGLE, CMD_REQUIRED, "osd name");
     cmd_AddParm(ts, "-ip", CMD_SINGLE, CMD_OPTIONAL, "IP address");
-    cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL, "part.no. /vicepa == 0");
+    cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL, "lun number or name (0==/vicepa, 1==/vicepb ...)");
     cmd_AddParm(ts, "-minsize", CMD_SINGLE, CMD_OPTIONAL, "minimal size");
     cmd_AddParm(ts, "-maxsize", CMD_SINGLE, CMD_OPTIONAL, "maximal size");
     cmd_AddParm(ts, "-wrprior", CMD_SINGLE, CMD_OPTIONAL, "write priority");
@@ -4037,7 +4024,7 @@ int main (int argc, char **argv)
     cmd_AddParm(ts, "-id", CMD_SINGLE, CMD_REQUIRED, "osd id");
     cmd_AddParm(ts, "-name", CMD_SINGLE, CMD_OPTIONAL, "osd name");
     cmd_AddParm(ts, "-ip", CMD_SINGLE, CMD_OPTIONAL, "IP address");
-    cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL, "part.no. /vicepa == 0");
+    cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL, "lun number or name (0==/vicepa, 1==/vicepb ...)");
     cmd_AddParm(ts, "-minsize", CMD_SINGLE, CMD_OPTIONAL, "minimal size");
     cmd_AddParm(ts, "-maxsize", CMD_SINGLE, CMD_OPTIONAL, "maximal size");
     cmd_AddParm(ts, "-wrprior", CMD_SINGLE, CMD_OPTIONAL, "write priority");
@@ -4084,7 +4071,7 @@ int main (int argc, char **argv)
     cmd_AddParm(ts, "-id", CMD_SINGLE, CMD_REQUIRED, "server name or ip-address");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
 
-    cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL, "0 for /vicepa, 1 for /vicepb ...");
+    cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL, "lun number or name (0==/vicepa, 1==/vicepb ...)");
     cmd_AddParm(ts, "-max", CMD_SINGLE, CMD_OPTIONAL, "number of candidates, default 100 ");
     cmd_AddParm(ts, "-criteria", CMD_SINGLE, CMD_OPTIONAL, "0:age, 1:size, 2:age*size");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
@@ -4132,7 +4119,7 @@ int main (int argc, char **argv)
 
     ts = cmd_CreateSyntax("wipecandidates", WipeCand, NULL, "get candidates for wipeing");
     cmd_AddParm(ts, "-osd", CMD_SINGLE, CMD_REQUIRED, "osd or name or IP-address of server");
-    cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL, "0 for /vicepa, 1 for /vicepb ...");
+    cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL, "lun number or name (0==/vicepa, 1==/vicepb ...)");
     cmd_AddParm(ts, "-max", CMD_SINGLE, CMD_OPTIONAL, "number of candidates, default 100 ");
     cmd_AddParm(ts, "-criteria", CMD_SINGLE, CMD_OPTIONAL, "0:age, 1:size, 2:age*size");
     cmd_AddParm(ts, "-minMB", CMD_SINGLE, CMD_OPTIONAL, "minimum file size in MB");
