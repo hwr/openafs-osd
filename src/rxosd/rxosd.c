@@ -3229,7 +3229,7 @@ int writePS(struct rx_call *call, t10rock *rock,
             code = EIO;
 	    goto finis;
         }
-        linkCount = namei_GetLinkCount(lhp, inode, 1);
+        linkCount = namei_GetLinkCount(lhp, inode, 0);
         FDH_CLOSE(lhp);
         oh_release(lh);
         if (linkCount != 1) {
