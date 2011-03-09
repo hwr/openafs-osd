@@ -1599,8 +1599,7 @@ namei_SetLinkCount(FdHandle_t * fdP, Inode ino, int count, int locked)
 
 
   bad_SetLinkCount:
-    if (!locked)
-        FLOCK(fdP, LOCK_UN);
+    FLOCK(fdP, LOCK_UN);
 
     return nBytes;
 }
