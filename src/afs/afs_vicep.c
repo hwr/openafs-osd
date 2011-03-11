@@ -520,6 +520,7 @@ vpacDestroy(void **rock, afs_int32 error)
 	    afs_close_vicep_file(v->avc, NULL, v->avc->lock.excl_locked? 1:0);
 	}
     }
+    xdr_free((xdrproc_t *)xdr_async, &v->a);
     FREE_VICEP(v, struct vpac_Variables);
     return code;
 }

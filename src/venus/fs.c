@@ -5646,10 +5646,10 @@ afs_int32 osd_parms(struct cmd_syndesc *as, void *arock)
 			return EINVAL;
 		    }
                     printf("\t    ip=%d.%d.%d.%d obj=%u.%u.%u.%u lun=%u\n",
-                            (obj->ip.ipadd_u.ipv4 >> 24) & 0xff,
-                            (obj->ip.ipadd_u.ipv4 >> 16) & 0xff,
-                            (obj->ip.ipadd_u.ipv4 >>  8) & 0xff,
-                            obj->ip.ipadd_u.ipv4 & 0xff,
+                            obj->addr.ip.addr.addr_val[3],
+                            obj->addr.ip.addr.addr_val[2],
+                            obj->addr.ip.addr.addr_val[1],
+                            obj->addr.ip.addr.addr_val[0],
                             tvid, tvnode, tunique, ttag, tlun);
 #else
 	    	    tlun = (afs_uint32) (obj->part_id >> 32);

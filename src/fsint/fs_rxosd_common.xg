@@ -1,28 +1,46 @@
 %#if  !defined(_RXGEN_AFSINT_) || !defined(_RXGEN_RXOSD_)
 
+struct rx_addr {
+   int addrtype;
+   opaque addr<>;	/* IP address in NBO */
+}; 
+ 
+%#define RX_ADDRTYPE_IPV4 1 
+%#define RX_ADDRTYPE_IPV6 2 
+
+struct rx_endp {
+    afs_int32 protocol;
+    struct rx_addr ip;
+    afs_int32 port;	/* in HBO */
+    afs_int32 service;
+};
+
+%#define RX_PROTOCOL_UDP 1 
+%#define RX_PROTOCOL_TCP 2 
+
 struct udpa4ps {
     afs_uint32 ipv4;
-    afs_uint32 port;		/* 32 bit because there is no xdr for 16 bits */
+    afs_uint32 port;            /* 32 bit because there is no xdr for 16 bits */
     afs_uint32 service;
 };
 
 struct tcpa4ps {
     afs_uint32 ipv4;
-    afs_uint32 port;		/* 32 bit because there is no xdr for 16 bits */
+    afs_uint32 port;            /* 32 bit because there is no xdr for 16 bits */
     afs_uint32 service;
 };
 
 union ipadd switch(afs_int32 vsn) {
 case 1:
-	struct udpa4ps udp;
+        struct udpa4ps udp;
 case 2:
-	struct tcpa4ps tcp;
+        struct tcpa4ps tcp;
 case 4:
-	afs_uint32 ipv4;
+        afs_uint32 ipv4;
 case 6:
-	afs_uint32 ipv6[4];
+        afs_uint32 ipv6[4];
 };
- 
+
 struct Fid32 {
     afs_uint32 Volume;
     afs_uint32 Vnode;
@@ -174,7 +192,7 @@ typedef struct osd_segm_desc0 osd_segm_desc0List <>;
 
 struct osd_obj_desc {
 	struct ometa o;
-	struct ipadd ip;
+	afs_uint32 osd_id;
 	afs_uint32 stripe;
 };
 typedef struct osd_obj_desc osd_obj_descList <>;

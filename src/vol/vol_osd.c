@@ -1603,10 +1603,8 @@ copy_osd_p_file_to_osd_segm_descList(osd_p_file *pf, osd_segm_descList *rl,
 	    ro->o.vsn = 1;
 	    ro->o.ometa_u.t.obj_id = po->obj_id;
 	    ro->o.ometa_u.t.osd_id = po->osd_id;
-	    ro->ip.vsn = 4;
-	    FindOsd(po->osd_id, &ro->ip.ipadd_u.ipv4, &lun, 0);
-	    ro->o.ometa_u.t.part_id = lun; 
-	    ro->o.ometa_u.t.part_id = (ro->o.ometa_u.t.part_id << 32) | po->part_id;
+	    ro->osd_id = po->osd_id;
+	    ro->o.ometa_u.t.part_id = po->part_id;
 	    ro->stripe = po->stripe;
 	}
     }
@@ -1930,12 +1928,11 @@ retry:
 		        obj->m.ometa_u.t.osd_id = pobj->osd_id;
 		        obj->osd_id = pobj->osd_id;
 		        /*
-		         * Let FindOsd ignore unavailability of osds.
+		         * Let fillRxEndpoint ignore unavailability of osds.
 		         * There may be multiple copies and the client may find 
-		         * out which one is accessible. ----------v
+		         * out which one is accessible. ------------------------v
 		         */
-			obj->ip.vsn = 4;
-		        FindOsd(obj->osd_id, &obj->ip.ipadd_u.ipv4, &tlun, 1);
+			fillRxEndpoint(obj->osd_id, &obj->addr, &obj->osd_type, 1);
 		        obj->stripe = pobj->stripe;
 		    }
 	        }
@@ -3570,15 +3567,13 @@ osd_archive(struct Vnode *vn, afs_uint32 Osd, afs_int32 flags)
 			malloc(s->objList.osd_obj_descList_len *
 				sizeof(struct osd_obj_desc));
 		for (j=0; j<s->objList.osd_obj_descList_len; j++) {
-		    afs_uint32 lun;
 		    struct osd_obj_desc *o =
 					&s->objList.osd_obj_descList_val[j];	
 		    po = &ps->objList.osd_p_objList_val[j];
-		    o->ip.vsn = 4;
-		    FindOsd(po->osd_id, &o->ip.ipadd_u.ipv4, &lun, 1);
+		    o->osd_id = po->osd_id;
 		    o->o.vsn = 1;
 		    o->o.ometa_u.t.obj_id = po->obj_id;
-		    o->o.ometa_u.t.part_id = po->part_id | ((afs_uint64)lun << 32);
+		    o->o.ometa_u.t.part_id = po->part_id;
 		    o->o.ometa_u.t.osd_id = po->osd_id;
 		}
 	    }
@@ -4314,17 +4309,7 @@ restart:
 	    struct osd_obj1 *obj = &segm->objList.osd_obj1List_val[j];
 	    obj->osd_flag = 0; /* not yet used */
 	    if (!(flag & FS_OSD_COMMAND)) {
-	        afs_uint32 tlun;
-		if (flag & SEND_PORT_SERVICE) {
-		    obj->ip.vsn = 1;
-                    FindOsdType(obj->osd_id, &obj->ip.ipadd_u.udp.ipv4, &tlun, 1,
-			        &obj->osd_type, &obj->ip.ipadd_u.udp.service,
-			        &obj->ip.ipadd_u.udp.port);
-		} else {
-		    obj->ip.vsn = 4;
-                    FindOsdType(obj->osd_id, &obj->ip.ipadd_u.ipv4, &tlun, 1,
-			        &obj->osd_type, NULL, NULL);
-		}
+		code = fillRxEndpoint(obj->osd_id, &obj->addr, &obj->osd_type, 1);
 	        if (obj->osd_type == 2) {
 		    struct t10cap *cap = 
 			    (struct t10cap *) malloc(sizeof(struct t10cap));
@@ -5603,7 +5588,7 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 	        VNDISK_GET_LEN(size, vd);
 	        ino = VNDISK_GET_INO(vd);
 		if (vd->type == vFile && ino && vd->osdMetadataIndex) {
-	    	    sprintf(line, "%u.%u.%u seems to exist on local disk and object storage\n", 
+	    	    sprintf(line, "Object %u.%u.%u seems to exist on local disk and object storage\n", 
 				V_id(vol), vN, vd->uniquifier);
 	    	    rx_Write(call, line, strlen(line));
 		    errors++;
@@ -5618,7 +5603,7 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 			inodes++;
 		        code = afs_stat(name.n_path, &st);
 		        if (code) {
-	    		    sprintf(line, "%u.%u.%u doesn't exist on local disk", 
+	    		    sprintf(line, "Object %u.%u.%u doesn't exist on local disk", 
 				V_id(vol), vN, vd->uniquifier);
 			    if (flag & SALVAGE_UPDATE && vd->type == vFile
 			      && vd->osdMetadataIndex) {
@@ -5637,16 +5622,16 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 	    		    rx_Write(call, line, strlen(line));
 			    errors++;
 		        } else {
-			    lc = namei_GetLinkCount(lhp, ino, 0);
+			    lc = namei_GetLinkCount(lhp, ino, 0, 0, 1);
 			    if (lc != localinst) {
-	    			sprintf(line, "%u.%u.%u: linkcount wrong (%u instead of %u)\n",
+	    			sprintf(line, "Object %u.%u.%u: linkcount wrong (%u instead of %u)\n",
 				    V_id(vol), vN, vd->uniquifier,
 				    lc, localinst);
 	    		        rx_Write(call, line, strlen(line));
 			        errors++;
 			    }
 			    if (size != st.st_size) {
-	    		        sprintf(line, "%u.%u.%u has wrong length %llu instead of %llu on local disk", 
+	    		        sprintf(line, "Object %u.%u.%u has wrong length %llu instead of %llu on local disk", 
 				    V_id(vol), vN, vd->uniquifier,
 				    st.st_size, size);
 			        if (flag & SALVAGE_UPDATE) {
@@ -5676,7 +5661,7 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 		    obj_data += size;
 		    code = read_osd_p_fileList(vol, vd, vN, &fl);
 		    if (code) {
-	    		sprintf(line, "%u.%u.%u: reading osd metadata failed.", 
+	    		sprintf(line, "Object %u.%u.%u: reading osd metadata failed.", 
 				V_id(vol), vN, vd->uniquifier);
 	        	ino = VNDISK_GET_INO(vd);
 			if (ino && (flag & SALVAGE_UPDATE)) {
@@ -5703,7 +5688,7 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 			if (ino)
 			    single = 0;
 			if (!fl.osd_p_fileList_len) {
-	    		    sprintf(line, "Empty osd file list for %u.%u.%u\n",
+	    		    sprintf(line, "Object %u.%u.%u: empty osd file list\n",
 				V_id(vol), vN, vd->uniquifier);
 	    		    rx_Write(call, line, strlen(line));
 			    errors++;
@@ -5720,7 +5705,7 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 			      && !(f->flags & RESTORE_IN_PROGRESS))
 				online++;
 			    if (!f->segmList.osd_p_segmList_len) {
-	    		        sprintf(line, "Empty segment list for %u.%u.%u\n",
+	    		        sprintf(line, "Object %u.%u.%u: empty segment list\n",
 				    V_id(vol), vN, vd->uniquifier);
 	    		        rx_Write(call, line, strlen(line));
 			        errors++;
@@ -5731,7 +5716,7 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 				if (s->copies > 1)
 				   single = 0;
 			        if (!s->objList.osd_p_objList_len) {
-	    		            sprintf(line, "Empty object list for %u.%u.%u\n",
+	    		            sprintf(line, "Object %u.%u.%u: empty object list\n",
 				        V_id(vol), vN, vd->uniquifier);
 	    		            rx_Write(call, line, strlen(line));
 			            errors++;
@@ -5772,7 +5757,7 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 					code = rxosd_examine(o->osd_id, p_id,
 							 o->obj_id, mask, &e); 
 					if (code) {
-	    				    sprintf(line, "RXOSD_examine of %u.%u.%u.%u for %u.%u.%u failed on OSD %u with code %d\n",
+	    				    sprintf(line, "Object %u.%u.%u.%u: RXOSD_examine of object for %u.%u.%u failed on OSD %u with code %d\n",
 						V_id(vol), 
 						(afs_uint32) (o->obj_id & NAMEI_VNODEMASK), 
 						(afs_uint32) (o->obj_id >> 32), 
@@ -5829,14 +5814,14 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 						    /* archive should have size */
 						    tlen = size;
 			      			if (f->flags & RESTORE_IN_PROGRESS) 
-	    				            sprintf(line, "Object %u.%u.%u.%u being restored on %u (length %llu instead of %llu)",
+	    				            sprintf(line, "Object %u.%u.%u.%u: being restored on %u (length %llu instead of %llu)",
 						    V_id(vol), 
 						    (afs_uint32) (o->obj_id & NAMEI_VNODEMASK), 
 						    (afs_uint32) (o->obj_id >> 32), 
 						    (afs_uint32) ((o->obj_id >> NAMEI_TAGSHIFT) & NAMEI_TAGMASK), 
 						    o->osd_id, objsize, tlen);
 						else 
-	    				            sprintf(line, "Object %u.%u.%u.%u has wrong length on %u (%llu instead of %llu)",
+	    				            sprintf(line, "Object %u.%u.%u.%ui: has wrong length on %u (%llu instead of %llu)",
 						    V_id(vol), 
 						    (afs_uint32) (o->obj_id & NAMEI_VNODEMASK), 
 						    (afs_uint32) (o->obj_id >> 32), 
@@ -5896,7 +5881,7 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 			    }
 			}
 			if (online > 1) {
-	   		   sprintf(line, "File %u.%u.%u has %u online copies\n",
+	   		   sprintf(line, "File %u.%u.%u: has %u online copies\n",
 					V_id(vol), vN, vd->uniquifier,
 					online);
 	    		    rx_Write(call, line, strlen(line));
@@ -5908,9 +5893,9 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 				vd->osdFileOnline = 1;
 			    else
 				vd->osdFileOnline = 0;
-	   		   sprintf(line, "%s file %u.%u.%u was marked as %s",
-					online ? "On-line" : "Wiped",
+	   		   sprintf(line, "File %u.%u.%u: actually %s file was marked as %s",
 					V_id(vol), vN, vd->uniquifier,
+					online ? "On-line" : "Wiped",
 					online ? "wiped" : "on-line");
 			    if (flag & SALVAGE_UPDATE) { 
 	    		        if (FDH_SEEK(fdP, offset, SEEK_SET) == offset) {
@@ -5936,7 +5921,7 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
     }
     FDH_CLOSE(lhp);
     if (usedBlocks != V_diskused(vol)) {
-	sprintf(line, "diskused incorrect, %u instead of %llu",
+	sprintf(line, "Number of used blocks incorrect, %u instead of %llu",
 					V_diskused(vol), usedBlocks);
 	if (V_diskused(vol) != (usedBlocks & 0xffffffff) && (flag & SALVAGE_UPDATE)) {
 	    afs_int32 code2;

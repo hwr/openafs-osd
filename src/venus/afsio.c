@@ -1150,17 +1150,22 @@ osd_io(struct osd_file *file, afs_uint64 offset, afs_int64 length,
 		    afs_uint32 ip4;
                     struct rx_connection *conn;
 #ifdef NEW_OSD_FILE
-		    if (obj->ip.vsn != 4) {
-			fprintf(stderr, "IPv6 address found, not yet supported\n");
+		    unsigned short port;
+		    if (obj->addr.protocol != RX_PROTOCOL_UDP
+		      || obj->addr.ip.addrtype != RX_ADDRTYPE_IPV4) {
+			fprintf(stderr, "Unknown IP protocol or version found\n");
 			code = EINVAL;
 			goto bad_xchange;
 		    }
-		    ip4 = htonl(obj->ip.ipadd_u.ipv4);
+		    memcpy(&ip4, obj->addr.ip.addr.addr_val, 4);
+		    port = obj->addr.port;
+        	    conn = FindRXConnection(ip4, htons(port), obj->addr.service, 
+					cl->sc[cl->scIndex], cl->scIndex);
 #else
 		    ip4 = htonl(obj->osd_ip);
-#endif
         	    conn = FindRXConnection(ip4, OSD_SERVER_PORT, OSD_SERVICE_ID, 
 					cl->sc[cl->scIndex], cl->scIndex);
+#endif
                     if (conn) {
 			struct ometa o;
 			struct RWparm p;

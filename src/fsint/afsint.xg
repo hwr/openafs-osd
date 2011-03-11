@@ -383,7 +383,7 @@ typedef struct osd_file0 osd_file0List <>;
 struct osd_obj1 {
     struct ometa m;
     afs_uint32 osd_id;
-    struct ipadd ip;
+    struct rx_endp addr;
     afs_uint32 osd_flag;
     afs_uint32 stripe;
     afs_uint32 osd_type;

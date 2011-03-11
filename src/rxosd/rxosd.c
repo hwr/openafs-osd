@@ -949,13 +949,15 @@ afs_int32 CheckMount(char *partname)
                 if (afs_stat(hpssMeta, &stat) <0) {
                     return ENOENT;
                 }
-		if (hpssPath != hpssMeta) {
-                    if ((ih_hpss_ops.stat64)(hpssPath, &stat) <0) {
-		        Log("HPSS path %s not found, only meta data partition %s\n", 
-			    hpssPath, hpssMeta);
-                        return ENOENT;
-                    } else
-		        ih_hsm_opsPtr = &ih_hpss_ops;
+		if (hpssPath != hpssMeta) { /* temporarily for testing */
+                if ((ih_hpss_ops.stat64)(hpssPath, &stat) <0) {
+		    Log("HPSS path %s not found, proceeding with metadata partition %s also for data\n", 
+			hpssPath, hpssMeta);
+			hpssPath = hpssMeta;
+			ih_hsm_opsPtr = &ih_namei_ops;
+                    /* return ENOENT; */
+                } else
+		    ih_hsm_opsPtr = &ih_hpss_ops;
 		}
             }
 #endif
@@ -2125,16 +2127,34 @@ struct rx_connection *GetConnFromUnion(struct ipadd *info)
     afs_int32 service = 0;
     short port = OSD_SERVER_PORT;
 
-    if (info->vsn == 1) {
-	ip = info->ipadd_u.udp.ipv4;
-	port = htonl(info->ipadd_u.udp.port);
-	service = info->ipadd_u.udp.service;
-    } else if (info->vsn == 4) {
+    if (info->vsn == 4) {
 	ip = info->ipadd_u.ipv4;
     } else {
     }
     tc = GetConnection(ip, 1, port, service);
     return tc;    
+}
+
+static
+struct rx_connection *GetConnToOsd(afs_uint32 id)
+{
+    struct rx_endp endp;
+    struct rx_connection *tc = NULL;
+    afs_uint32 ip;
+    afs_int32 service;
+    short port;
+    afs_int32 code;
+   
+    code = fillRxEndpoint(id, &endp, NULL, 0);
+    if (!code) {
+        memcpy(&ip, endp.ip.addr.addr_val, 4);
+        port = htonl(endp.port);
+        service = endp.service;
+        tc = GetConnection(ip, 1, port, service);
+	xdr_free((xdrproc_t)xdr_rx_endp, &endp);
+        return tc;    
+    }
+    return NULL;
 }
 
 static struct afs_buffer {
@@ -2983,9 +3003,9 @@ int examine(struct rx_call *call, t10rock *rock, struct oparmT10 *o,
         *sizep = tstat.st_size;
     if ((mask & WANTS_HSM_STATUS) && statusp) {
 #ifdef AFS_RXOSD_SPECIAL
-        if (h.ih_ops->stat_tapecopies)
-            result = h.ih_ops->stat_tapecopies(name.n_path, statusp, sizep);
-        else
+	if (h.ih_ops->stat_tapecopies)
+	    result = h.ih_ops->stat_tapecopies(name.n_path, statusp, sizep);
+	else
 #endif
 	{
 	    char input[100];
@@ -3047,7 +3067,7 @@ int examine(struct rx_call *call, t10rock *rock, struct oparmT10 *o,
             code = EIO;
 	    goto finis;
         }
-        *lcp = namei_GetLinkCount(fdP, o->obj_id, 0);
+        *lcp = namei_GetLinkCount(fdP, o->obj_id, 0, 0, 0);
         FDH_CLOSE(fdP);
         oh_release(lh);
     }
@@ -3229,7 +3249,7 @@ int writePS(struct rx_call *call, t10rock *rock,
             code = EIO;
 	    goto finis;
         }
-        linkCount = namei_GetLinkCount(lhp, inode, 0);
+        linkCount = namei_GetLinkCount(lhp, inode, 0, 0, 0);
         FDH_CLOSE(lhp);
         oh_release(lh);
         if (linkCount != 1) {
@@ -3599,7 +3619,7 @@ int CopyOnWrite(struct rx_call *call, struct oparmT10 *o, afs_uint64 offs,
         code = EIO;
 	goto finis;
     }
-    linkCount = namei_GetLinkCount(lhp, inode, 0);
+    linkCount = namei_GetLinkCount(lhp, inode, 0, 0, 0);
     FDH_CLOSE(lhp);
     if (linkCount == 1) {
         oh_release(lh);
@@ -3841,7 +3861,7 @@ Truncate(struct rx_call *call, struct oparmT10 *o, afs_uint64 length,
         code = EIO;
 	goto finis;
     }
-    lc = namei_GetLinkCount(lhp, inode, 0);
+    lc = namei_GetLinkCount(lhp, inode, 0, 0, 0);
     FDH_CLOSE(lhp);
     oh_release(lh);
     if (lc != 1) {   
@@ -4973,24 +4993,29 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
 	    obj = &list->osd_segm_descList_val[0].objList.osd_obj_descList_val[0];
 	    if (OsdHasAccessToHSM(obj->o.ometa_u.t.osd_id)) {
 		struct oparmT10 o1;
-		struct rx_connection *tcon = GetConnFromUnion(&obj->ip);
-        	FDH_REALLYCLOSE(fdP);
-		fdP = 0;
-		o1.part_id = o->part_id;
-		o1.obj_id = inode;
-		code = RXOSD_write_to_hpss(tcon, &o1, list, output);
-		if (!code)
-		    goto done;
-		else {
-		    ViceLog(0,("RXOSD_write_to_hpss for %s by %u failed with %d, proceeding the old way\n",
-				sprint_oparmT10(o, string, sizeof(string)),
-				obj->o.ometa_u.t.osd_id, code));
-	            fdP = IH_OPEN(oh->ih);
-		    if (!fdP) {
-			ViceLog(0,("SRXOSD_create_archive: couldn't reopen output file for %u.%u.%u.%u\n",
-				sprint_oparmT10(o, string, sizeof(string))));
-			code = EIO;
-			goto bad;
+		struct rx_connection *tcon = GetConnToOsd(obj->o.ometa_u.t.osd_id);
+		if (!tcon) {
+		    ViceLog(0, ("RXOSD_create_archive: GetConnectionToOsd  failed for %u\n",
+				obj->o.ometa_u.t.osd_id));
+		} else {
+        	    FDH_REALLYCLOSE(fdP);
+		    fdP = 0;
+		    o1.part_id = o->part_id;
+		    o1.obj_id = inode;
+		    code = RXOSD_write_to_hpss(tcon, &o1, list, output);
+		    if (!code)
+		        goto done;
+		    else {
+		        ViceLog(0,("RXOSD_write_to_hpss for %s by %u failed with %d, proceeding the old way\n",
+				    sprint_oparmT10(o, string, sizeof(string)),
+				    obj->o.ometa_u.t.osd_id, code));
+	                fdP = IH_OPEN(oh->ih);
+		        if (!fdP) {
+			    ViceLog(0,("SRXOSD_create_archive: couldn't reopen output file for %u.%u.%u.%u\n",
+				    sprint_oparmT10(o, string, sizeof(string))));
+			    code = EIO;
+			    goto bad;
+		        }
 		    }
 		}
 	    }
@@ -5033,8 +5058,15 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
 	            afs_uint64 size;
                     afs_uint32 h;
 		    struct RWparm p;
-		    struct rx_connection * tcon =
-			GetConnFromUnion(&obj->ip);
+		    struct rx_endp endp;
+		    struct rx_connection *tcon = NULL;
+		    code = fillRxEndpoint(obj->osd_id, &endp, NULL, 0);
+		    if (!code) {
+			afs_uint32 ip;
+			short port = endp.port;
+			memcpy(&ip, endp.ip.addr.addr_val, 4);
+    			tcon = GetConnection(ntohl(ip), 1, port, endp.service);
+		    }
 		    if (!tcon) 
 			continue;
 retry:
@@ -5251,8 +5283,6 @@ convert_osd_segm_desc0List(struct osd_segm_desc0List *lin,
 	    oout->o.ometa_u.t.obj_id = oin->oid;
 	    oout->o.ometa_u.t.osd_id = oin->id;
 	    oout->stripe = oin->stripe;
-	    oout->ip.vsn = 4;
-	    oout->ip.ipadd_u.ipv4 = oin->ip;
 	}
     }
     return 0;
@@ -5365,19 +5395,24 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 	  && list->osd_segm_descList_val[0].objList.osd_obj_descList_len == 1) {
 	    struct osd_obj_desc *obj;
 	    obj = &list->osd_segm_descList_val[0].objList.osd_obj_descList_val[0];
-	    if (OsdHasAccessToHSM(obj->o.ometa_u.t.osd_id)) {
-		struct rx_connection * tcon = GetConnFromUnion(&obj->ip);
-		code = RXOSD_read_from_hpss(tcon, o, list, output);
-		if (!code) {
-		    unlock_file(fd);
-		    FDH_REALLYCLOSE(fd);
-		    fd = 0;
-		    goto done;
+	    if (OsdHasAccessToHSM(obj->osd_id)) {
+		struct rx_connection *tcon = GetConnToOsd(obj->osd_id);
+		if (!tcon) {
+		    ViceLog(0, ("RXOSD_restore_archive: GetConnToOsd failed for %u\n",
+				obj->osd_id));
 		} else {
-		    ViceLog(0,("RXOSD_read_from_hpss for %s by %u failed with %d, proceeding the old way\n",
-				sprint_oparmT10(o, string, sizeof(string)),
-				o->osd_id, code));
-		}
+		    code = RXOSD_read_from_hpss(tcon, o, list, output);
+		    if (!code) {
+		        unlock_file(fd);
+		        FDH_REALLYCLOSE(fd);
+		        fd = 0;
+		        goto done;
+		    } else {
+		        ViceLog(0,("RXOSD_read_from_hpss for %s by %u failed with %d, proceeding the old way\n",
+				    sprint_oparmT10(o, string, sizeof(string)),
+				    obj->osd_id, code));
+		    }
+	        }
 	    }
 	}
     }
@@ -5422,7 +5457,15 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 		struct osd_obj_desc *obj = &seg->objList.osd_obj_descList_val[k];
 		if (obj->stripe == j) {
 		    struct RWparm p;
-		    struct rx_connection * tcon = GetConnFromUnion(&obj->ip);
+		    struct rx_endp endp;
+		    struct rx_connection *tcon = NULL;
+		    code = fillRxEndpoint(obj->osd_id, &endp, NULL, 0);
+		    if (!code) {
+			afs_uint32 ip;
+			short port = endp.port;
+			memcpy(&ip, endp.ip.addr.addr_val, 4);
+    			tcon = GetConnection(ntohl(ip), 1, port, endp.service);
+		    }
 		    if (!tcon) 
 			continue;
 		    rcall[j] = rx_NewCall(tcon);

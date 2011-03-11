@@ -181,15 +181,15 @@ getRxosdConn(struct rxosd_Variables *v, struct osd_obj *o,
     afs_uint16 port = AFS_RXOSDPORT;
     afs_int32 code = 0, service = 0;
 #ifdef NEW_OSD_FILE
-   if (o->ip.vsn == 1) {
-	ip = htonl(o->ip.ipadd_u.udp.ipv4);
-	port = o->ip.ipadd_u.udp.port;
+    if (o->addr.protocol == RX_PROTOCOL_UDP
+      && o->addr.ip.addrtype == RX_ADDRTYPE_IPV4) {
+	memcpy(&ip, o->addr.ip.addr.addr_val, 4);
+	port = o->addr.port;
 	port = htons(port);
-	service = o->ip.ipadd_u.udp.service;
-    } else if (o->ip.vsn == 4) {
-        ip = htonl(o->ip.ipadd_u.ipv4);
+	service = o->addr.service;
     } else {
-        afs_warn("check_for_vicep_access: found IPv6 addr, not yet supported\n");
+        afs_warn("check_for_vicep_access: protocol %d or IP version %d  not yet supported\n",
+			o->addr.protocol, o->addr.ip.addrtype);
         code = EIO;
 	return code;
     }
@@ -328,6 +328,8 @@ rxosd_Destroy(void **r, afs_int32 error)
 					v->transid, 0, 0);
         RX_AFS_GLOCK();
     }
+    xdr_free((xdrproc_t)xdr_async, &v->a);
+#if 0
     if (v->osd_file) {
 	for (i=0; i<v->osd_file->segmList.osd_segmList_len; i++) {
 	    segm = &v->osd_file->segmList.osd_segmList_val[i];
@@ -348,6 +350,7 @@ rxosd_Destroy(void **r, afs_int32 error)
 	osi_free(v->osd_file, sizeof(struct osd_file));
 	v->osd_file = NULL;
     }
+#endif
     if (v->tbuffer) {
         osi_FreeLargeSpace(v->tbuffer);
 	v->tbuffer = NULL;
@@ -1265,14 +1268,14 @@ rxosd_serverUp(struct rxosd_Variables *v, struct osd_obj *o)
     afs_int16 port = AFS_RXOSDPORT;
     
 #ifdef NEW_OSD_FILE
-    if (o->ip.vsn == 1) {
-        ip = htonl(o->ip.ipadd_u.udp.ipv4);
-        port = o->ip.ipadd_u.udp.port;
-        port = htons(port);
-    } else if (o->ip.vsn == 4) {
-        ip = htonl(o->ip.ipadd_u.ipv4);
+    if (o->addr.protocol == RX_PROTOCOL_UDP
+      && o->addr.ip.addrtype == RX_ADDRTYPE_IPV4) {
+	memcpy(&ip, o->addr.ip.addr.addr_val, 4);
+	port = o->addr.port;
+	port = htons(port);
     } else {
-	afs_warn("rxosd_serverUp: IPv6 found, not yet supoported\n");
+        afs_warn("check_for_vicep_access: protocol %d or IP version %d  not yet supported\n",
+			o->addr.protocol, o->addr.ip.addrtype);
 	return 0;
     }
 #else
