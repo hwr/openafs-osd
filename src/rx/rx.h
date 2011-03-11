@@ -247,6 +247,9 @@ struct rx_connection {
     afs_uint32 callNumber[RX_MAXCALLS];	/* Current call numbers */
     afs_uint32 rwind[RX_MAXCALLS];
     u_short twind[RX_MAXCALLS];
+    afs_uint32 lastBusy[RX_MAXCALLS]; /* timestamp of the last time we got an
+                                       * RX_PACKET_TYPE_BUSY packet for this
+                                       * call slot, or 0 if the slot is not busy */
     afs_uint32 serial;		/* Next outgoing packet serial number */
     afs_uint32 lastSerial;	/* # of last packet received, for computing skew */
     afs_int32 maxSerial;	/* largest serial number seen on incoming packets */
@@ -639,7 +642,9 @@ struct rx_call {
 #define RX_CALL_IOVEC_WAIT	16384	/* waiting thread is using an iovec */
 #define RX_CALL_HAVE_LAST	32768	/* Last packet has been received */
 #define RX_CALL_NEED_START	0x10000	/* tells rxi_Start to start again */
-#define RX_CALL_LONG_RUNNING	0x20000	/* call can take long don't stop it */
+#define RX_CALL_PEER_BUSY       0x20000 /* the last packet we received on this call was a
+                                         * BUSY packet; i.e. the channel for this call is busy */
+#define RX_CALL_LONG_RUNNING	0x40000	/* call can take long don't stop it */
 
 
 /* The structure of the data portion of an acknowledge packet: An acknowledge
@@ -824,9 +829,9 @@ struct rx_securityClass {
 				    void * avalue,
 				    void ** acurrentValue);
 	int (*op_EncryptDecrypt) (struct rx_connection *conn,
-					afs_uint32 *buf,
-					int length,
-					int encrypt);
+				  afs_uint32 *buf,
+				  int length,
+				  int encrypt);
 	int (*op_Spare3) (void);
     } *ops;
     void *privateData;

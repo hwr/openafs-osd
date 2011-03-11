@@ -680,9 +680,6 @@ VAllocVnode_r(Error * ec, Volume * vp, VnodeType type)
 	    /* This won't block */
 	    VnLock(vnp, WRITE_LOCK, VOL_LOCK_HELD, WILL_NOT_DEADLOCK);
 	} else {
-	    /* other users present; follow locking hierarchy */
-	    VnLock(vnp, WRITE_LOCK, VOL_LOCK_HELD, MIGHT_DEADLOCK);
-
 #ifdef AFS_DEMAND_ATTACH_FS
 	    /*
 	     * DAFS:
@@ -700,6 +697,9 @@ VAllocVnode_r(Error * ec, Volume * vp, VnodeType type)
 	    }
 #endif
 
+	    /* other users present; follow locking hierarchy */
+	    VnLock(vnp, WRITE_LOCK, VOL_LOCK_HELD, MIGHT_DEADLOCK);
+
 	    /*
 	     * verify state of the world hasn't changed
 	     *
@@ -714,6 +714,27 @@ VAllocVnode_r(Error * ec, Volume * vp, VnodeType type)
 	    }
 	}
 
+       /* sanity check: vnode should be blank if it was deleted. If it's                
+        * not blank, it is still in use somewhere; but the bitmap told us               
+        * this vnode number was free, so something is wrong. */                         
+       if (vnp->disk.type != vNull) {                                                   
+           Error tmp;                                                                   
+           Log("VAllocVnode:  addled bitmap or vnode object! (vol %ld, "                
+               "vnode %p, number %ld, type %ld)\n", (long)vp->hashid, vnp,              
+               (long)Vn_id(vnp), (long)vnp->disk.type);                                 
+           *ec = EIO;                                                                   
+           VFreeBitMapEntry_r(&tmp, vp, &vp->vnodeIndex[class], bitNumber,              
+                              VOL_FREE_BITMAP_WAIT);                                    
+           VInvalidateVnode_r(vnp);                                                     
+           VnUnlock(vnp, WRITE_LOCK);                                                   
+           VnCancelReservation_r(vnp);                                                  
+#ifdef AFS_DEMAND_ATTACH_FS                                                             
+           VRequestSalvage_r(ec, vp, SALVSYNC_ERROR, 0);                                
+#else                                                                                   
+           VForceOffline_r(vp, 0);                                                      
+#endif
+           return NULL;                                                                 
+       }
     } else {
 	/* no such vnode in the cache */
 
@@ -774,13 +795,8 @@ VAllocVnode_r(Error * ec, Volume * vp, VnodeType type)
 		*ec = EIO;
 		goto error_encountered;
 	    }
-	    if (FDH_SEEK(fdP, off, SEEK_SET) < 0) {
-		Log("VAllocVnode: can't seek on index file!\n");
-		*ec = EIO;
-		goto error_encountered;
-	    }
 	    if (off + vcp->diskSize <= size) {
-		if (FDH_READ(fdP, &vnp->disk, vcp->diskSize) != vcp->diskSize) {
+		if (FDH_PREAD(fdP, &vnp->disk, vcp->diskSize, off) != vcp->diskSize) {
 		    Log("VAllocVnode: can't read index file!\n");
 		    *ec = EIO;
 		    goto error_encountered;
@@ -799,7 +815,7 @@ VAllocVnode_r(Error * ec, Volume * vp, VnodeType type)
 		    goto error_encountered;
 		}
 		memset(buf, 0, 16 * 1024);
-		if ((FDH_WRITE(fdP, buf, 16 * 1024)) != 16 * 1024) {
+		if ((FDH_PWRITE(fdP, buf, 16 * 1024, off)) != 16 * 1024) {
 		    Log("VAllocVnode: can't grow vnode index: write failed\n");
 		    *ec = EIO;
 		    free(buf);
@@ -829,7 +845,7 @@ VAllocVnode_r(Error * ec, Volume * vp, VnodeType type)
 	    if (fdP)
 		FDH_CLOSE(fdP);
 	    VOL_LOCK;
-	    VFreeBitMapEntry_r(&tmp, &vp->vnodeIndex[class], bitNumber);
+	    VFreeBitMapEntry_r(&tmp, vp, &vp->vnodeIndex[class], bitNumber, 0 /*flags*/);
 	    VInvalidateVnode_r(vnp);
 	    VnUnlock(vnp, WRITE_LOCK);
 	    VnCancelReservation_r(vnp);
@@ -895,6 +911,7 @@ VnLoad(Error * ec, Volume * vp, Vnode * vnp,
     ssize_t nBytes;
     IHandle_t *ihP = vp->vnodeIndex[class].handle;
     FdHandle_t *fdP;
+    afs_ino_str_t stmp;
 
     *ec = 0;
     vcp->reads++;
@@ -910,21 +927,16 @@ VnLoad(Error * ec, Volume * vp, Vnode * vnp,
     fdP = IH_OPEN(ihP);
     if (fdP == NULL) {
 	Log("VnLoad: can't open index dev=%u, i=%s\n", vp->device,
-	    PrintInode(NULL, vp->vnodeIndex[class].handle->ih_ino));
+	    PrintInode(stmp, vp->vnodeIndex[class].handle->ih_ino));
 	*ec = VIO;
 	goto error_encountered_nolock;
-    } else if (FDH_SEEK(fdP, vnodeIndexOffset(vcp, Vn_id(vnp)), SEEK_SET)
-	       < 0) {
-	Log("VnLoad: can't seek on index file vn=%u\n", Vn_id(vnp));
-	*ec = VIO;
-	goto error_encountered_nolock;
-    } else if ((nBytes = FDH_READ(fdP, (char *)&vnp->disk, vcp->diskSize))
+    } else if ((nBytes = FDH_PREAD(fdP, (char *)&vnp->disk, vcp->diskSize, vnodeIndexOffset(vcp, Vn_id(vnp))))
 	       != vcp->diskSize) {
 	/* Don't take volume off line if the inumber is out of range
 	 * or the inode table is full. */
 	if (nBytes == BAD_IGET) {
 	    Log("VnLoad: bad inumber %s\n",
-		PrintInode(NULL, vp->vnodeIndex[class].handle->ih_ino));
+		PrintInode(stmp, vp->vnodeIndex[class].handle->ih_ino));
 	    *ec = VIO;
 	    dosalv = 0;
 	} else if (nBytes == -1 && errno == EIO) {
@@ -956,6 +968,12 @@ VnLoad(Error * ec, Volume * vp, Vnode * vnp,
 	    struct vnodeIndex *index = &vp->vnodeIndex[class];
 	    unsigned int bitNumber = vnodeIdToBitNumber(Vn_id(vnp));
 	    unsigned int offset = bitNumber >> 3;
+
+#ifdef AFS_DEMAND_ATTACH_FS                                                             
+           /* Make sure the volume bitmap isn't getting updated while we are
+            * checking it */
+           VWaitExclusiveState_r(vp);
+#endif
 
 	    /* Test to see if vnode number is valid. */
 	    if ((offset >= index->bitmapSize)
@@ -1026,6 +1044,7 @@ VnStore(Error * ec, Volume * vp, Vnode * vnp,
     afs_foff_t offset;
     IHandle_t *ihP = vp->vnodeIndex[class].handle;
     FdHandle_t *fdP;
+    afs_ino_str_t stmp;
 #ifdef AFS_DEMAND_ATTACH_FS
     VnState vn_state_save;
 #endif
@@ -1043,14 +1062,7 @@ VnStore(Error * ec, Volume * vp, Vnode * vnp,
 	Log("VnStore: can't open index file!\n");
 	goto error_encountered;
     }
-    if (FDH_SEEK(fdP, offset, SEEK_SET) < 0) {
-	Log("VnStore: can't seek on index file! fdp=%"AFS_PTR_FMT
-	    " offset=%d, errno=%d\n",
-	    fdP, (int) offset, errno);
-	goto error_encountered;
-    }
-
-    nBytes = FDH_WRITE(fdP, &vnp->disk, vcp->diskSize);
+    nBytes = FDH_PWRITE(fdP, &vnp->disk, vcp->diskSize, offset);
     if (nBytes != vcp->diskSize) {
 	/* Don't force volume offline if the inumber is out of
 	 * range or the inode table is full.
@@ -1058,7 +1070,7 @@ VnStore(Error * ec, Volume * vp, Vnode * vnp,
 	FDH_REALLYCLOSE(fdP);
 	if (nBytes == BAD_IGET) {
 	    Log("VnStore: bad inumber %s\n",
-		PrintInode(NULL,
+		PrintInode(stmp,
 			   vp->vnodeIndex[class].handle->ih_ino));
 	    *ec = VIO;
 	    VOL_LOCK;
@@ -1348,18 +1360,11 @@ VSyncVnode_r(Volume *vp, VnodeDiskObject *vd, afs_uint32 vN, int newtime)
         code = EIO;
     } else {
         offset = vnodeIndexOffset(vcp, vN);
-        if (FDH_SEEK(fdP, offset, SEEK_SET) < 0) {
-            Log("VSyncVnode %u.%u.%u failed. Seek failed!\n",
+        bytes = FDH_PWRITE(fdP, vd, vcp->diskSize, offset);
+        if (bytes != vcp->diskSize) {
+            Log("VSyncVnode %u.%u.%u failed. Write failed!\n",
                     V_id(vp), vN, vd->uniquifier);
             code = EIO;
-        }
-        if (!code) {
-            bytes = FDH_WRITE(fdP, vd, vcp->diskSize);
-            if (bytes != vcp->diskSize) {
-                Log("VSyncVnode %u.%u.%u failed. Write failed!\n",
-                        V_id(vp), vN, vd->uniquifier);
-                code = EIO;
-            }
         }
         FDH_CLOSE(fdP);
     }
@@ -1486,8 +1491,9 @@ VPutVnode_r(Error * ec, Vnode * vnp)
 		if (vnp->delete && !*ec) {
 		    if (Vn_volume(vnp)->header->diskstuff.filecount-- < 1)
 			Vn_volume(vnp)->header->diskstuff.filecount = 0;
-		    VFreeBitMapEntry_r(ec, &vp->vnodeIndex[class],
-				       vnodeIdToBitNumber(Vn_id(vnp)));
+		    VFreeBitMapEntry_r(ec, vp, &vp->vnodeIndex[class],
+				       vnodeIdToBitNumber(Vn_id(vnp)),
+				       VOL_FREE_BITMAP_WAIT);
 		}
 	    }
 	    vcp->writes++;

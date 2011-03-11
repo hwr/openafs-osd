@@ -465,12 +465,9 @@ afsd_event_cleanup(int signo) {
 
     CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, kCFRunLoopDefaultMode);
     CFRelease (source);
-#ifndef AFS_ARM_DARWIN_ENV
     IODeregisterForSystemPower(&iterator);
     IOServiceClose(root_port);
     IONotificationPortDestroy(notify);
-
-#endif
     exit(0);
 }
 
@@ -481,7 +478,6 @@ afsd_install_events(void)
     SCDynamicStoreContext ctx = {0};
     SCDynamicStoreRef store;
 
-#ifndef AFS_ARM_DARWIN_ENV
     root_port = IORegisterForSystemPower(0,&notify,afsd_sleep_callback,&iterator);
     
     if (root_port) {
@@ -528,7 +524,6 @@ afsd_install_events(void)
 	
 	CFRelease (store); 
     }
-#endif
     
     if (source != NULL) {
 	CFRunLoopAddSource (CFRunLoopGetCurrent(),
@@ -1499,7 +1494,7 @@ AfsdbLookupHandler(void)
     kernelMsg[1] = 0;
     acellName[0] = '\0';
 
-#ifdef AFS_DARWIN_ENV
+#if defined(AFS_DARWIN_ENV) && !defined(AFS_ARM_DARWIN_ENV)
     /* Fork the event handler also. */
     code = fork();
     if (code == 0) {
@@ -2118,6 +2113,12 @@ afsd_run(void)
     /* parse cacheinfo file if this is a diskcache */
     if (ParseCacheInfoFile()) {
 	exit(1);
+    }
+
+    if (!enable_nomount) {
+	if (afsd_check_mount(rn, afsd_cacheMountDir)) {
+	    return -1;
+	}
     }
 
     /* do some random computations in memcache case to get things to work

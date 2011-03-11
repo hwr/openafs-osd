@@ -40,6 +40,9 @@
 /* define if your dops.d_revalidate takes a nameidata argument */
 #undef DOP_REVALIDATE_TAKES_NAMEIDATA
 
+/* define if dentry->d_count is an int */
+#undef D_COUNT_INT
+
 /* define if d_path() takes a struct path argument */
 #undef D_PATH_TAKES_STRUCT_PATH
 
@@ -103,8 +106,14 @@
 /* Define to 1 if you have the <crt_externs.h> header file. */
 #undef HAVE_CRT_EXTERNS_H
 
+/* Define to 1 if you have the <curses.h> header file. */
+#undef HAVE_CURSES_H
+
 /* Define to 1 if you have the `daemon' function. */
 #undef HAVE_DAEMON
+
+/* define if dcache_lock exists */
+#undef HAVE_DCACHE_LOCK
 
 /* Define to 1 if you have the <direct.h> header file. */
 #undef HAVE_DIRECT_H
@@ -118,6 +127,9 @@
 
 /* Define to 1 if you have the `encode_krb5_ticket' function. */
 #undef HAVE_ENCODE_KRB5_TICKET
+
+/* Define to 1 if you have the `error_message' function. */
+#undef HAVE_ERROR_MESSAGE
 
 /* Define to 1 if you have the <et/com_err.h> header file. */
 #undef HAVE_ET_COM_ERR_H
@@ -326,6 +338,9 @@
 /* Define to 1 if you have the <mntent.h> header file. */
 #undef HAVE_MNTENT_H
 
+/* Define to 1 if you have the <ncurses.h> header file. */
+#undef HAVE_NCURSES_H
+
 /* Define to 1 if you have the <ndir.h> header file, and it defines `DIR'. */
 #undef HAVE_NDIR_H
 
@@ -338,8 +353,32 @@
 /* Define to 1 if the system has the type `off64_t'. */
 #undef HAVE_OFF64_T
 
+/* define if you have pread() and pwrite() */
+#undef HAVE_PIO
+
+/* define if you have preadv() and pwritev() */
+#undef HAVE_PIOV
+
 /* define if you have POSIX regex library */
 #undef HAVE_POSIX_REGEX
+
+/* Define to 1 if you have the `pread' function. */
+#undef HAVE_PREAD
+
+/* Define to 1 if you have the `preadv' function. */
+#undef HAVE_PREADV
+
+/* Define to 1 if you have the `preadv64' function. */
+#undef HAVE_PREADV64
+
+/* Define to 1 if you have the `pwrite' function. */
+#undef HAVE_PWRITE
+
+/* Define to 1 if you have the `pwritev' function. */
+#undef HAVE_PWRITEV
+
+/* Define to 1 if you have the `pwritev64' function. */
+#undef HAVE_PWRITEV64
 
 /* Define to 1 if you have the `regcomp' function. */
 #undef HAVE_REGCOMP
@@ -517,6 +556,9 @@
 /* define if your iops.lookup takes a nameidata argument */
 #undef IOP_LOOKUP_TAKES_NAMEIDATA
 
+/* define if your iops.permission takes a flags argument */
+#undef IOP_PERMISSION_TAKES_FLAGS
+
 /* define if your iops.permission takes a nameidata argument */
 #undef IOP_PERMISSION_TAKES_NAMEIDATA
 
@@ -673,6 +715,9 @@
 
 /* Define if kernel struct super_block has the s_bdi element */
 #undef STRUCT_SUPER_BLOCK_HAS_S_BDI
+
+/* Define if kernel struct super_block has the s_d_op element */
+#undef STRUCT_SUPER_BLOCK_HAS_S_D_OP
 
 /* Define if kernel struct super_operations has the alloc_inode element */
 #undef STRUCT_SUPER_OPERATIONS_HAS_ALLOC_INODE

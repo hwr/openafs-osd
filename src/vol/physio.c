@@ -55,12 +55,8 @@ ReallyRead(DirHandle * file, int block, char *data)
 	code = errno;
 	return code;
     }
-    if (FDH_SEEK(fdP, ((afs_foff_t)block) * AFS_PAGESIZE, SEEK_SET) < 0) {
-	code = errno;
-	FDH_REALLYCLOSE(fdP);
-	return code;
-    }
-    nBytes = FDH_READ(fdP, data, (afs_fsize_t) AFS_PAGESIZE);
+    nBytes = FDH_PREAD(fdP, data, (afs_fsize_t) AFS_PAGESIZE,
+                       ((afs_foff_t)block) * AFS_PAGESIZE);
     if (nBytes != AFS_PAGESIZE) {
 	if (nBytes < 0)
 	    code = errno;
@@ -78,7 +74,6 @@ int
 ReallyWrite(DirHandle * file, int block, char *data)
 {
     FdHandle_t *fdP;
-    extern int VolumeChanged;
     int code;
     ssize_t nBytes;
 
@@ -89,12 +84,8 @@ ReallyWrite(DirHandle * file, int block, char *data)
 	code = errno;
 	return code;
     }
-    if (FDH_SEEK(fdP, ((afs_foff_t)block) * AFS_PAGESIZE, SEEK_SET) < 0) {
-	code = errno;
-	FDH_REALLYCLOSE(fdP);
-	return code;
-    }
-    nBytes = FDH_WRITE(fdP, data, (afs_fsize_t) AFS_PAGESIZE);
+    nBytes = FDH_PWRITE(fdP, data, (afs_fsize_t) AFS_PAGESIZE,
+                        ((afs_foff_t)block) * AFS_PAGESIZE);
     if (nBytes != AFS_PAGESIZE) {
 	if (nBytes < 0)
 	    code = errno;
@@ -104,7 +95,7 @@ ReallyWrite(DirHandle * file, int block, char *data)
 	return code;
     }
     FDH_CLOSE(fdP);
-    VolumeChanged = 1;
+    *(file->volumeChanged) = 1;
     return 0;
 }
 
@@ -114,7 +105,7 @@ ReallyWrite(DirHandle * file, int block, char *data)
  */
 void
 SetSalvageDirHandle(DirHandle * dir, afs_int32 volume, Device device,
-		    Inode inode)
+		    Inode inode, int *volumeChanged)
 {
     static int SalvageCacheCheck = 1;
     memset(dir, 0, sizeof(DirHandle));
@@ -125,6 +116,7 @@ SetSalvageDirHandle(DirHandle * dir, afs_int32 volume, Device device,
     IH_INIT(dir->dirh_handle, device, volume, inode);
     /* Always re-read for a new dirhandle */
     dir->dirh_cacheCheck = SalvageCacheCheck++;
+    dir->volumeChanged = volumeChanged;
 }
 
 void

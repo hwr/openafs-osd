@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -307,8 +307,11 @@ fdHandleAllocateChunk(void)
     osi_Assert(fdP != NULL);
     for (i = 0; i < FD_HANDLE_MALLOCSIZE; i++) {
 	fdP[i].fd_status = FD_HANDLE_AVAIL;
+	fdP[i].fd_refcnt = 0;
 	fdP[i].fd_ih = NULL;
 	fdP[i].fd_fd = INVALID_FD;
+        fdP[i].fd_ihnext = NULL;
+        fdP[i].fd_ihprev = NULL;
 	DLL_INSERT_TAIL(&fdP[i], fdAvailHead, fdAvailTail, fd_next, fd_prev);
     }
 }
@@ -357,12 +360,23 @@ ih_open(IHandle_t * ihP)
 
     /* Do we already have an open file handle for this Inode? */
     for (fdP = ihP->ih_fdtail; fdP != NULL; fdP = fdP->fd_ihprev) {
+#ifndef HAVE_PIO
+	/*
+	 * If we don't have positional i/o, don't try to share fds, since
+	 * we can't do so in a threadsafe way.
+	 */
 	if (fdP->fd_status != FD_HANDLE_INUSE) {
-	    fdP->fd_status = FD_HANDLE_INUSE;
-	    DLL_DELETE(fdP, fdLruHead, fdLruTail, fd_next, fd_prev);
+	    osi_Assert(fdP->fd_status == FD_HANDLE_OPEN);
+#else /* HAVE_PIO */
+	if (fdP->fd_status != FD_HANDLE_AVAIL) {
+#endif /* HAVE_PIO */
+	    fdP->fd_refcnt++;
+	    if (fdP->fd_status == FD_HANDLE_OPEN) {
+		fdP->fd_status = FD_HANDLE_INUSE;
+		DLL_DELETE(fdP, fdLruHead, fdLruTail, fd_next, fd_prev);
+	    }
 	    ihP->ih_refcnt++;
 	    IH_UNLOCK;
-	    (void)FDH_SEEK(fdP, 0, SEEK_SET);
 	    return fdP;
 	}
     }
@@ -384,7 +398,7 @@ ih_open_retry:
     if (open_fd > 0) {
 #if defined(AFS_NAMEI_ENV)
 #if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
-        /* make sure ihp->ih_ops get filled correctly */
+	/* make sure ihp->ih_ops get filled correctly */
         namei_t name;
         namei_HandleToName(&name, ihP);
 #endif
@@ -441,6 +455,7 @@ ih_open_retry:
     fdP->fd_status = FD_HANDLE_INUSE;
     fdP->fd_fd = fd;
     fdP->fd_ih = ihP;
+    fdP->fd_refcnt++;
 
     ihP->ih_refcnt++;
 
@@ -496,8 +511,8 @@ FdHandle_t *ih_fakeopen(IHandle_t *ihP, int open_fd)
         f = common_open(ihP, 0, open_fd);
         return f;
 }
-
 #endif /* AFS_RXOSD_SUPPORT */
+
 /*
  * Return a file descriptor handle to the cache
  */
@@ -526,9 +541,12 @@ fd_close(FdHandle_t * fdP)
 	return fd_reallyclose(fdP);
     }
 
+    fdP->fd_refcnt--;
+    if (fdP->fd_refcnt == 0) {
     /* Put this descriptor back into the cache */
     fdP->fd_status = FD_HANDLE_OPEN;
     DLL_INSERT_TAIL(fdP, fdLruHead, fdLruTail, fd_next, fd_prev);
+    }
 
     /* If this is not the only reference to the Inode then we can decrement
      * the reference count, otherwise we need to call ih_release.
@@ -564,13 +582,17 @@ fd_reallyclose(FdHandle_t * fdP)
 
     ihP = fdP->fd_ih;
     closeFd = fdP->fd_fd;
+    fdP->fd_refcnt--;
 
+    if (fdP->fd_refcnt == 0) {
     DLL_DELETE(fdP, ihP->ih_fdhead, ihP->ih_fdtail, fd_ihnext, fd_ihprev);
     DLL_INSERT_TAIL(fdP, fdAvailHead, fdAvailTail, fd_next, fd_prev);
 
     fdP->fd_status = FD_HANDLE_AVAIL;
+    fdP->fd_refcnt = 0;
     fdP->fd_ih = NULL;
     fdP->fd_fd = INVALID_FD;
+    }
 
     /* All the file descriptor handles have been closed; reset
      * the IH_REALLY_CLOSED flag indicating that ih_reallyclose
@@ -580,6 +602,7 @@ fd_reallyclose(FdHandle_t * fdP)
 	ihP->ih_flags &= ~IH_REALLY_CLOSED;
     }
 
+    if (fdP->fd_refcnt == 0) {
     IH_UNLOCK;
 #if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
     (ihP->ih_ops->close)(closeFd);
@@ -588,6 +611,7 @@ fd_reallyclose(FdHandle_t * fdP)
 #endif
     IH_LOCK;
     fdInUseCount -= 1;
+    }
 
     /* If this is not the only reference to the Inode then we can decrement
      * the reference count, otherwise we need to call ih_release. */
@@ -618,6 +642,7 @@ stream_fdopen(FD_t fd)
     streamP->str_fd = fd;
     streamP->str_buflen = 0;
     streamP->str_bufoff = 0;
+    streamP->str_fdoff = 0;
     streamP->str_error = 0;
     streamP->str_eof = 0;
     streamP->str_direction = STREAM_DIRECTION_NONE;
@@ -676,8 +701,8 @@ stream_read(void *ptr, afs_fsize_t size, afs_fsize_t nitems,
 	if (streamP->str_buflen == 0) {
 	    streamP->str_bufoff = 0;
 	    streamP->str_buflen =
-		OS_READ(streamP->str_fd, streamP->str_buffer,
-			STREAM_HANDLE_BUFSIZE);
+		OS_PREAD(streamP->str_fd, streamP->str_buffer,
+			STREAM_HANDLE_BUFSIZE, streamP->str_fdoff);
 	    if (streamP->str_buflen < 0) {
 		streamP->str_error = errno;
 		streamP->str_buflen = 0;
@@ -687,6 +712,7 @@ stream_read(void *ptr, afs_fsize_t size, afs_fsize_t nitems,
 		streamP->str_eof = 1;
 		break;
 	    }
+	    streamP->str_fdoff += streamP->str_buflen;
 	}
 
 	bytesToRead = nbytes;
@@ -727,13 +753,14 @@ stream_write(void *ptr, afs_fsize_t size, afs_fsize_t nitems,
     p = (char *)ptr;
     while (nbytes > 0) {
 	if (streamP->str_buflen == 0) {
-	    rc = OS_WRITE(streamP->str_fd, streamP->str_buffer,
-			  STREAM_HANDLE_BUFSIZE);
+	    rc = OS_PWRITE(streamP->str_fd, streamP->str_buffer,
+			  STREAM_HANDLE_BUFSIZE, streamP->str_fdoff);
 	    if (rc < 0) {
 		streamP->str_error = errno;
 		bytesWritten = 0;
 		break;
 	    }
+	    streamP->str_fdoff += rc;
 	    streamP->str_bufoff = 0;
 	    streamP->str_buflen = STREAM_HANDLE_BUFSIZE;
 	}
@@ -755,28 +782,25 @@ stream_write(void *ptr, afs_fsize_t size, afs_fsize_t nitems,
 
 /* fseek for buffered I/O handles */
 int
-stream_seek(StreamHandle_t * streamP, afs_foff_t offset, int whence)
+stream_aseek(StreamHandle_t * streamP, afs_foff_t offset)
 {
     ssize_t rc;
     int retval = 0;
 
     if (streamP->str_direction == STREAM_DIRECTION_WRITE
 	&& streamP->str_bufoff > 0) {
-	rc = OS_WRITE(streamP->str_fd, streamP->str_buffer,
-		      streamP->str_bufoff);
+	rc = OS_PWRITE(streamP->str_fd, streamP->str_buffer,
+		      streamP->str_bufoff, streamP->str_fdoff);
 	if (rc < 0) {
 	    streamP->str_error = errno;
 	    retval = -1;
 	}
     }
+    streamP->str_fdoff = offset;
     streamP->str_bufoff = 0;
     streamP->str_buflen = 0;
     streamP->str_eof = 0;
     streamP->str_direction = STREAM_DIRECTION_NONE;
-    if (OS_SEEK(streamP->str_fd, offset, whence) < 0) {
-	streamP->str_error = errno;
-	retval = -1;
-    }
     return retval;
 }
 
@@ -789,11 +813,13 @@ stream_flush(StreamHandle_t * streamP)
 
     if (streamP->str_direction == STREAM_DIRECTION_WRITE
 	&& streamP->str_bufoff > 0) {
-	rc = OS_WRITE(streamP->str_fd, streamP->str_buffer,
-		      streamP->str_bufoff);
+	rc = OS_PWRITE(streamP->str_fd, streamP->str_buffer,
+		      streamP->str_bufoff, streamP->str_fdoff);
 	if (rc < 0) {
 	    streamP->str_error = errno;
 	    retval = -1;
+	} else {
+	    streamP->str_fdoff += rc;
 	}
 	streamP->str_bufoff = 0;
 	streamP->str_buflen = STREAM_HANDLE_BUFSIZE;
@@ -812,10 +838,12 @@ stream_close(StreamHandle_t * streamP, int reallyClose)
     osi_Assert(streamP != NULL);
     if (streamP->str_direction == STREAM_DIRECTION_WRITE
 	&& streamP->str_bufoff > 0) {
-	rc = OS_WRITE(streamP->str_fd, streamP->str_buffer,
-		      streamP->str_bufoff);
+	rc = OS_PWRITE(streamP->str_fd, streamP->str_buffer,
+		      streamP->str_bufoff, streamP->str_fdoff);
 	if (rc < 0) {
 	    retval = -1;
+	} else {
+	    streamP->str_fdoff += rc;
 	}
     }
     if (reallyClose) {
@@ -891,11 +919,12 @@ ih_fdclose(IHandle_t * ihP)
     closeCount = 0;
     for (fdP = head; fdP != NULL; fdP = fdP->fd_next) {
 #if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
-        (ihP->ih_ops->close)(fdP->fd_fd);
+	(ihP->ih_ops->close)(fdP->fd_fd);
 #else
 	OS_CLOSE(fdP->fd_fd);
 #endif
 	fdP->fd_status = FD_HANDLE_AVAIL;
+	fdP->fd_refcnt = 0;
 	fdP->fd_fd = INVALID_FD;
 	fdP->fd_ih = NULL;
 	closeCount++;
@@ -931,19 +960,19 @@ ih_reallyclose(IHandle_t * ihP)
     ihP->ih_refcnt++;   /* must not disappear over unlock */
     if (ihP->ih_synced) {
 	FdHandle_t *fdP;
+        ihP->ih_synced = 0;
 	IH_UNLOCK;
-	
+
 	fdP = IH_OPEN(ihP);
-	if (fdP) { 
+	if (fdP) {
 	    OS_SYNC(fdP->fd_fd);
 	    FDH_CLOSE(fdP);
 	}
-	
+
 	IH_LOCK;
     }
 
     osi_Assert(ihP->ih_refcnt > 0);
-    ihP->ih_synced = 0;
 
     ih_fdclose(ihP);
 
@@ -1024,7 +1053,7 @@ ih_sync_all(void) {
 	if (ihP)
 	    ihP->ih_refcnt++;	/* must not disappear over unlock */
 	for (; ihP; ihP = ihPnext) {
-	    
+
 	    if (ihP->ih_synced) {
 		FdHandle_t *fdP;
 
@@ -1032,7 +1061,7 @@ ih_sync_all(void) {
 		IH_UNLOCK;
 
 		fdP = IH_OPEN(ihP);
-		if (fdP) { 
+		if (fdP) {
 		    OS_SYNC(fdP->fd_fd);
 		    FDH_CLOSE(fdP);
 		}
@@ -1097,14 +1126,40 @@ ih_icreate(IHandle_t * ih, int dev, char *part, Inode nI, int p1, int p2,
 }
 #endif /* AFS_NAMEI_ENV */
 
-
-#ifndef AFS_NT40_ENV
 afs_sfsize_t
-ih_size(int fd)
+ih_size(FD_t fd)
 {
+#ifdef AFS_NT40_ENV
+    LARGE_INTEGER size;
+    if (!GetFileSizeEx(fd, &size))
+	return -1;
+    return size.QuadPart;
+#else
     struct afs_stat status;
     if (afs_fstat(fd, &status) < 0)
 	return -1;
     return status.st_size;
-}
 #endif
+}
+
+#ifndef HAVE_PIO
+ssize_t
+ih_pread(int fd, void * buf, size_t count, afs_foff_t offset)
+{
+	afs_foff_t code;
+	code = OS_SEEK(fd, offset, 0);
+	if (code < 0)
+	    return code;
+	return OS_READ(fd, buf, count);
+}
+
+ssize_t
+ih_pwrite(int fd, const void * buf, size_t count, afs_foff_t offset)
+{
+	afs_foff_t code;
+	code = OS_SEEK(fd, offset, 0);
+	if (code < 0)
+	    return code;
+	return OS_WRITE(fd, buf, count);
+}
+#endif /* !HAVE_PIO */

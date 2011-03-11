@@ -110,6 +110,9 @@ init_module(void)
     osi_proc_init();
     osi_ioctl_init();
 #endif
+#if defined(AFS_CACHE_BYPASS)
+    afs_warn("Cache bypass patched libafs module init.\n");
+#endif
 
     return 0;
 }
@@ -122,6 +125,10 @@ void
 cleanup_module(void)
 #endif
 {
+#if defined(AFS_CACHE_BYPASS)
+    afs_warn("Cache bypass patched libafs module cleaning up.\n");
+#endif
+
 #ifdef LINUX_KEYRING_SUPPORT
     osi_keyring_shutdown();
 #endif

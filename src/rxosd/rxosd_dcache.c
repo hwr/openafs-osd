@@ -189,6 +189,11 @@ struct ih_posix_ops ih_dcache_ops = {
     dc_readdir,
     dc_closedir,
 #endif
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
     NULL
 };
 

@@ -655,7 +655,7 @@ afs_ShakeLooseVCaches(afs_int32 anumber)
     afs_int32 i, loop;
     struct vcache *tvc;
     struct afs_q *tq, *uq;
-    int fv_slept;
+    int fv_slept, defersleep = 0;
     afs_int32 target = anumber;
 
     i = 0;
@@ -675,7 +675,7 @@ afs_ShakeLooseVCaches(afs_int32 anumber)
 	}
 
 	fv_slept = 0;
-	if (osi_TryEvictVCache(tvc, &fv_slept))
+	if (osi_TryEvictVCache(tvc, &fv_slept, defersleep))
 	    anumber--;
 
 	if (fv_slept) {
@@ -685,8 +685,14 @@ afs_ShakeLooseVCaches(afs_int32 anumber)
 	    i = 0;
 	    continue;	/* start over - may have raced. */
 	}
-	if (tq == uq)
+	if (tq == uq) {
+	    if (anumber && !defersleep) {
+		defersleep = 1;
+		tq = VLRU.prev;
+		continue;
+	    }
 	    break;
+	}
     }
     if (!afsd_dynamic_vcaches && anumber == target) {
 	afs_warn("afs_ShakeLooseVCaches: warning none freed, using %d of %d\n",
@@ -1677,7 +1683,9 @@ afs_GetVCache(struct VenusFid *afid, struct vrequest *areq,
 	iheldthelock = VOP_ISLOCKED(vp, curthread);
 	if (!iheldthelock)
 	    vn_lock(vp, LK_EXCLUSIVE | LK_RETRY, curthread);
+	AFS_GUNLOCK();
 	vinvalbuf(vp, V_SAVE, curthread, PINOD, 0);
+	AFS_GLOCK();
 	if (!iheldthelock)
 	    VOP_UNLOCK(vp, LK_EXCLUSIVE, curthread);
 #elif defined(AFS_FBSD_ENV)

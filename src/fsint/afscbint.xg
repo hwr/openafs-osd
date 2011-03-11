@@ -122,5 +122,5 @@ proc GetDE(
 proc GetDCacheEntry(
    IN afs_int32 index,
    OUT struct AFSDCacheEntry *a_result
-) = 65540;
+) = 65550;
 

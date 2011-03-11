@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -27,14 +27,14 @@
  *    uses your current umask. Mode bits for directories are 0777 (then
  *    AND'ed with the umask). Mode bits for files are the owner mode bits
  *    duplicated accross group and user (then AND'ed with the umask).
- * 5. For restores of full dumps, if a directory says it has a file and 
- *    the file is not found, then a symbolic link "AFSFile-<#>" will 
- *    appear in that restored tree. Restores of incremental dumps remove 
- *    all these files at the end (expensive because it is a tree search).  
- * 6. If a file or directory was found in the dump but found not to be 
- *    connected to the hierarchical tree, then the file or directory 
- *    will be connected at the root of the tree as "__ORPHANEDIR__.<#>" 
- *    or "__ORPHANFILE__.<#>".  
+ * 5. For restores of full dumps, if a directory says it has a file and
+ *    the file is not found, then a symbolic link "AFSFile-<#>" will
+ *    appear in that restored tree. Restores of incremental dumps remove
+ *    all these files at the end (expensive because it is a tree search).
+ * 6. If a file or directory was found in the dump but found not to be
+ *    connected to the hierarchical tree, then the file or directory
+ *    will be connected at the root of the tree as "__ORPHANEDIR__.<#>"
+ *    or "__ORPHANFILE__.<#>".
  * 7. ACLs are not restored.
  *
  */
@@ -474,7 +474,7 @@ ReadVNode(afs_int32 count)
 	    if (vnode == 1)
 		strncpy(parentdir, rootdir, sizeof parentdir);
 	    else {
-		afs_snprintf(parentdir, sizeof parentdir, "%s/%s%d", rootdir,
+		afs_snprintf(parentdir, sizeof parentdir, "%s" OS_DIRSEP "%s%d", rootdir,
 			     ADIR, vnode);
 
 		len = readlink(parentdir, linkname, MAXNAMELEN);
@@ -482,7 +482,7 @@ ReadVNode(afs_int32 count)
 		    /* parentdir does not exist. So create an orphan dir.
 		     * and then link the parentdir to the orphaned dir.
 		     */
-		    afs_snprintf(linkname, sizeof linkname, "%s/%s%d",
+		    afs_snprintf(linkname, sizeof linkname, "%s" OS_DIRSEP "%s%d",
 				 rootdir, ODIR, vnode);
 		    code = mkdir(linkname, 0777);
 		    if ((code < 0) && (errno != EEXIST)) {
@@ -573,11 +573,11 @@ ReadVNode(afs_int32 count)
 			if (this_vn & 1) {
 			     /*ADIRENTRY*/
 				/* dirname is the directory to create.
-				 * vflink is what will link to it. 
+				 * vflink is what will link to it.
 				 */
-				afs_snprintf(dirname, sizeof dirname, "%s/%s",
+				afs_snprintf(dirname, sizeof dirname, "%s" OS_DIRSEP "%s",
 					     parentdir, this_name);
-			    afs_snprintf(vflink, sizeof vflink, "%s/%s%d",
+			    afs_snprintf(vflink, sizeof vflink, "%s" OS_DIRSEP "%s%d",
 					 rootdir, ADIR, this_vn);
 
 			    /* The link and directory may already exist */
@@ -597,7 +597,7 @@ ReadVNode(afs_int32 count)
 				 * It was created originally as orphaned.
 				 */
 				linkname[len - 1] = '\0';	/* remove '/' at end */
-				afs_snprintf(lname, sizeof lname, "%s/%s",
+				afs_snprintf(lname, sizeof lname, "%s" OS_DIRSEP "%s",
 					     rootdir, linkname);
 				code = rename(lname, dirname);
 				if (code) {
@@ -631,7 +631,7 @@ ReadVNode(afs_int32 count)
 			    else {
 			     /*AFILEENTRY*/ afs_snprintf(vflink,
 							 sizeof vflink,
-							 "%s/%s%d", parentdir,
+							 "%s" OS_DIRSEP "%s%d", parentdir,
 							 AFILE, this_vn);
 
 			    code = symlink(this_name, vflink);
@@ -660,11 +660,11 @@ ReadVNode(afs_int32 count)
 		 * then the file will be an orphaned file.
 		 */
 		lfile = 1;
-		afs_snprintf(filename, sizeof filename, "%s/%s%d", parentdir,
+		afs_snprintf(filename, sizeof filename, "%s" OS_DIRSEP "%s%d", parentdir,
 			     AFILE, vn.vnode);
 		len = readlink(filename, fname, MAXNAMELEN);
 		if (len < 0) {
-		    afs_snprintf(filename, sizeof filename, "%s/%s%d",
+		    afs_snprintf(filename, sizeof filename, "%s" OS_DIRSEP "%s%d",
 				 rootdir, OFILE, vn.vnode);
 		    lfile = 0;	/* no longer a linked file; a direct path */
 		}
@@ -726,15 +726,15 @@ ReadVNode(afs_int32 count)
 		 * of the symbolic link. If it doesn't exist,
 		 * then the link will be an orphaned link.
 		 */
-		afs_snprintf(linkname, sizeof linkname, "%s/%s%d", parentdir,
+		afs_snprintf(linkname, sizeof linkname, "%s" OS_DIRSEP "%s%d", parentdir,
 			     AFILE, vn.vnode);
 		len = readlink(linkname, fname, MAXNAMELEN);
 		if (len < 0) {
-		    afs_snprintf(filename, sizeof filename, "%s/%s%d",
+		    afs_snprintf(filename, sizeof filename, "%s" OS_DIRSEP "%s%d",
 				 rootdir, OFILE, vn.vnode);
 		} else {
 		    fname[len] = '\0';
-		    afs_snprintf(filename, sizeof filename, "%s/%s",
+		    afs_snprintf(filename, sizeof filename, "%s" OS_DIRSEP "%s",
 				 parentdir, fname);
 		}
 
@@ -922,19 +922,19 @@ WorkerBee(struct cmd_syndesc *as, void *arock)
 	dirP = opendir(rootdir);
 	while (dirP && (dirE = readdir(dirP))) {
 	    if (strncmp(dirE->d_name, ADIR, strlen(ADIR)) == 0) {
-		afs_snprintf(name, sizeof name, "%s/%s", rootdir,
+		afs_snprintf(name, sizeof name, "%s" OS_DIRSEP "%s", rootdir,
 			     dirE->d_name);
 		dirQ = opendir(name);
 		while (dirQ && (dirF = readdir(dirQ))) {
 		    if (strncmp(dirF->d_name, AFILE, strlen(AFILE)) == 0) {
-			afs_snprintf(name, sizeof name, "%s/%s/%s", rootdir,
+			afs_snprintf(name, sizeof name, "%s" OS_DIRSEP "%s/%s", rootdir,
 				     dirE->d_name, dirF->d_name);
 			unlink(name);
 		    }
 		}
 		closedir(dirQ);
 	    } else if (strncmp(dirE->d_name, AFILE, strlen(AFILE)) == 0) {
-		afs_snprintf(name, sizeof name, "%s/%s", rootdir,
+		afs_snprintf(name, sizeof name, "%s" OS_DIRSEP "%s", rootdir,
 			     dirE->d_name);
 		unlink(name);
 	    }
@@ -946,7 +946,7 @@ WorkerBee(struct cmd_syndesc *as, void *arock)
     dirP = opendir(rootdir);
     while (dirP && (dirE = readdir(dirP))) {
 	if (strncmp(dirE->d_name, ADIR, strlen(ADIR)) == 0) {
-	    afs_snprintf(name, sizeof name, "%s/%s", rootdir, dirE->d_name);
+	    afs_snprintf(name, sizeof name, "%s" OS_DIRSEP "%s", rootdir, dirE->d_name);
 	    unlink(name);
 	}
     }

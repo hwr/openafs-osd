@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -39,11 +39,10 @@ static int tt_fileMarkSize(struct cmd_syndesc *as, void *arock);
 afs_int32 rewindTape(usd_handle_t hTape);
 int dataBlock(usd_handle_t, afs_int32);
 
-#define ERROR(evalue)                                           \
-        {                                                       \
+#define ERROR(evalue) do {                                      \
             code = evalue;                                      \
             goto error_exit;                                    \
-        }
+        } while (0)
 
 #define MAXV	100
 

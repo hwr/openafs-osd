@@ -2407,8 +2407,8 @@ h_FindClient_r(struct rx_connection *tcon)
 
     authClass = rx_SecurityClassOf((struct rx_connection *)tcon);
     ViceLog(5,
-	    ("FindClient: authenticating connection: authClass=%d\n",
-	     authClass));
+	    ("FindClient: authenticating connection: authClass=%d, client %sfound\n",
+	     authClass, client ? "":"not "));
     if (authClass == 1) {
 	/* A bcrypt tickets, no longer supported */
 	ViceLog(1, ("FindClient: bcrypt ticket, using AnonymousID\n"));
@@ -2456,8 +2456,15 @@ h_FindClient_r(struct rx_connection *tcon)
     if (!client) { /* loop */
 	host = h_GetHost_r(tcon);	/* Returns with incremented refCount  */
 
-	if (!host)
+	if (!host) {
+	    ViceLog(0, ("FindClient: no host found for %u.%u.%u.%u:%u\n",
+			(htonl(tcon->peer->host) >> 24) & 0xff,
+			(htonl(tcon->peer->host) >> 16) & 0xff,
+			(htonl(tcon->peer->host) >> 8) & 0xff,
+			htonl(tcon->peer->host) & 0xff,
+			htons(tcon->peer->port)));
 	    return NULL;
+	}
 
     retryfirstclient:
 	/* First try to find the client structure */
@@ -2478,6 +2485,12 @@ h_FindClient_r(struct rx_connection *tcon)
             if (host->hostFlags & HOSTDELETED) {
                 h_Unlock_r(host);
                 h_Release_r(host);
+	        ViceLog(0, ("FindClient: host deleted %u.%u.%u.%u:%u\n",
+			(htonl(tcon->peer->host) >> 24) & 0xff,
+			(htonl(tcon->peer->host) >> 16) & 0xff,
+			(htonl(tcon->peer->host) >> 8) & 0xff,
+			htonl(tcon->peer->host) & 0xff,
+			htons(tcon->peer->port)));
                 return NULL;
             }
 	    /* Retry to find the client structure */
@@ -3847,6 +3860,7 @@ CheckHost_r(struct host *host, int flags, void *dummy)
     if (host->LastCall < checktime) {
 	h_Lock_r(host);
 	if (!(host->hostFlags & HOSTDELETED)) {
+	    host->hostFlags |= HWHO_INPROGRESS;
 	    cb_conn = host->callback_rxcon;
 	    rx_GetConnection(cb_conn);
 	    if (host->LastCall < clientdeletetime) {
@@ -3914,6 +3928,7 @@ CheckHost_r(struct host *host, int flags, void *dummy)
 	    rx_PutConnection(cb_conn);
 	    cb_conn=NULL;
 	    H_LOCK;
+	    host->hostFlags &= ~HWHO_INPROGRESS;
 	}
 	h_Unlock_r(host);
     }

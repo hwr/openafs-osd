@@ -156,6 +156,45 @@ int myhpss_stat64(const char *path, struct stat64 *buf)
     return 0;
 }
 
+myhpss_stat_tapecopies(const char *path, afs_int32 *level, afs_sfsize_t *size)
+{
+    afs_int32 code, i;
+    int on_disk = 0;
+    int on_tape = 0;
+    afs_uint32 Flags = API_GET_STATS_FOR_ALL_LEVELS;
+    afs_uint32 StorageLevel = 0;
+    hpss_xfileattr_t AttrOut;
+    bf_sc_attrib_t  *scattr_ptr;
+    bf_vv_attrib_t  *vvattr_ptr;
+    *size = 0;
+    *level = 0;
+
+    code = hpss_FileGetXAttributes(path, Flags, StorageLevel, &AttrOut);
+    if (code) 
+	return EIO;
+
+    for(i=0; i<HPSS_MAX_STORAGE_LEVELS; i++) {
+	scattr_ptr = &AttrOut.SCAttrib[i];
+	if (scattr_ptr->Flags == 0)
+	    continue;
+        if (scattr_ptr->Flags & BFS_BFATTRS_LEVEL_IS_DISK) {
+	    on_disk = 1;
+	    if (*size == 0)
+	        *size = scattr_ptr->BytesAtLevel;
+	} else {
+	    on_tape = 1;
+	    *size = scattr_ptr->BytesAtLevel;
+	}
+    }
+    if (on_disk & on_tape)
+	*level = 'p';
+    else if (on_tape)
+	*level = 'm';
+    else 
+	*level = 'r'; 
+    return 0;   
+}
+
 #define MY_COSID 0
 
 #if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
@@ -187,6 +226,32 @@ int myhpss_statfs(const char *path, struct afs_statfs *buf)
     return 0;
 }
 
+ssize_t
+myhpss_pread(int fd, void *buf, size_t len, afs_foff_t pos)
+{
+    afs_offs_t offset;
+    ssize_t bytes;
+    
+    offset = hpss_Lseek(fd, pos, SEEK_SET);
+    if (offset < 0)
+	return offset;
+    bytes = hpss_Read(fd, buf, len);
+    return bytes;	
+}
+
+ssize_t
+myhpss_pwrite(int fd, void *buf, size_t len, afs_foff_t pos)
+{
+    afs_offs_t offset;
+    ssize_t bytes;
+    
+    offset = hpss_Lseek(fd, pos, SEEK_SET);
+    if (offset < 0)
+	return offset;
+    bytes = hpss_Write(fd, buf, len);
+    return bytes;	
+}
+
 struct ih_posix_ops ih_hpss_ops = {
     myhpss_open,
     hpss_Close,
@@ -209,10 +274,15 @@ struct ih_posix_ops ih_hpss_ops = {
     myhpss_closedir,
     hpss_Link,
 #if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
-    myhpss_statvfs
+    myhpss_statvfs,
 #else
-    myhpss_statfs
+    myhpss_statfs,
 #endif
+    myhpss_pread,
+    myhpss_pwrite,
+    NULL,
+    NULL,
+    myhpss_stat_tapecopies
 };
 
 #endif

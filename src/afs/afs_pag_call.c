@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -101,6 +101,7 @@ afspag_Init(afs_int32 nfs_server_addr)
     AFS_GLOCK();
 
     afs_InitStats();
+    rx_SetBusyChannelError(RX_CALL_TIMEOUT);
     rx_Init(htons(7001));
 
     AFS_STATCNT(afs_ResourceInit);

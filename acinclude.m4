@@ -742,6 +742,8 @@ case $AFS_SYSNAME in
     *_obsd44)   AFS_PARAM_COMMON=param.obsd44.h  ;;
     *_obsd45)   AFS_PARAM_COMMON=param.obsd45.h  ;;
     *_obsd46)   AFS_PARAM_COMMON=param.obsd46.h  ;;
+    *_obsd47)   AFS_PARAM_COMMON=param.obsd47.h  ;;
+    *_obsd48)   AFS_PARAM_COMMON=param.obsd48.h  ;;
     *_linux22)  AFS_PARAM_COMMON=param.linux22.h ;;
     *_linux24)  AFS_PARAM_COMMON=param.linux24.h ;;
     *_linux26)  AFS_PARAM_COMMON=param.linux26.h ;;
@@ -804,6 +806,7 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 		 AC_CHECK_LINUX_STRUCT([nameidata], [path], [namei.h])
 		 AC_CHECK_LINUX_STRUCT([proc_dir_entry], [owner], [proc_fs.h])
 		 AC_CHECK_LINUX_STRUCT([super_block], [s_bdi], [fs.h])
+		 AC_CHECK_LINUX_STRUCT([super_block], [s_d_op], [fs.h])
 		 AC_CHECK_LINUX_STRUCT([super_operations], [alloc_inode],
 				       [fs.h])
 		 AC_CHECK_LINUX_STRUCT([super_operations], [evict_inode],
@@ -840,7 +843,7 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 			             [struct timespec s;
 				      s = current_kernel_time();])
 		 AC_CHECK_LINUX_FUNC([d_alloc_anon],
-				     [#include <linux/dcache.h>],
+				     [#include <linux/fs.h>],
 				     [d_alloc_anon(NULL);])
 		 AC_CHECK_LINUX_FUNC([do_sync_read],
 				     [#include <linux/fs.h>],
@@ -905,6 +908,7 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 		 LINUX_INODE_SETATTR_RETURN_TYPE
 		 LINUX_IOP_I_CREATE_TAKES_NAMEIDATA
 		 LINUX_IOP_I_LOOKUP_TAKES_NAMEIDATA
+	  	 LINUX_IOP_I_PERMISSION_TAKES_FLAGS
 	  	 LINUX_IOP_I_PERMISSION_TAKES_NAMEIDATA
 	  	 LINUX_IOP_I_PUT_LINK_TAKES_COOKIE
 	  	 LINUX_DOP_D_REVALIDATE_TAKES_NAMEIDATA
@@ -930,6 +934,8 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 		 LINUX_KEY_ALLOC_NEEDS_CRED
 		 LINUX_INIT_WORK_HAS_DATA
 		 LINUX_REGISTER_SYSCTL_TABLE_NOFLAG
+                 LINUX_HAVE_DCACHE_LOCK
+		 LINUX_D_COUNT_IS_INT
 
 		 dnl If we are guaranteed that keyrings will work - that is
 		 dnl  a) The kernel has keyrings enabled
@@ -1273,6 +1279,7 @@ AC_CHECK_HEADERS(windows.h direct.h sys/ipc.h sys/resource.h)
 AC_CHECK_HEADERS(security/pam_modules.h ucontext.h regex.h sys/statvfs.h sys/statfs.h sys/bitypes.h)
 AC_CHECK_HEADERS(linux/errqueue.h,,,[#include <linux/types.h>])
 AC_CHECK_HEADERS(et/com_err.h)
+AC_CHECK_HEADERS(ncurses.h curses.h)
 
 AC_CHECK_TYPES([fsblkcnt_t],,,[
 #include <sys/types.h>
@@ -1286,6 +1293,17 @@ AC_CHECK_TYPES([fsblkcnt_t],,,[
 #include <sys/statvfs.h>
 #endif
 ])
+
+dnl check for curses-lib
+save_LIBS=$LIBS
+AC_CHECK_LIB( [ncurses], [setupterm],
+[LIB_curses=-lncurses],
+    [AC_CHECK_LIB([Hcurses], [setupterm], [LIB_curses=-lHcurses],
+        [AC_CHECK_LIB([curses], [setupterm], [LIB_curses=-lcurses])
+    ])
+])
+LIBS=$save_LIBS
+AC_SUBST(LIB_curses)
 
 OPENAFS_TEST_PACKAGE(libintl,[#include <libintl.h>],[-lintl],,,INTL)
 
@@ -1315,7 +1333,32 @@ AC_CHECK_FUNCS(snprintf strlcat strlcpy flock getrlimit)
 AC_CHECK_FUNCS(setprogname getprogname sigaction mkstemp vsnprintf strerror strcasestr)
 AC_CHECK_FUNCS(setvbuf vsyslog getcwd)
 AC_CHECK_FUNCS(regcomp regexec regerror)
-AC_CHECK_FUNCS(fseeko64 ftello64)
+AC_CHECK_FUNCS(fseeko64 ftello64 pread preadv pwrite pwritev preadv64 pwritev64)
+
+case $AFS_SYSNAME in
+*hp_ux* | *hpux*)
+   AC_MSG_WARN([Some versions of HP-UX have a buggy positional I/O implementation. Forcing no positional I/O.])
+   ;;
+*)
+   AC_MSG_CHECKING([for positional I/O])
+   if test "$ac_cv_func_pread" = "yes" && \
+           test "$ac_cv_func_pwrite" = "yes"; then
+      AC_DEFINE(HAVE_PIO, 1, [define if you have pread() and pwrite()])
+      AC_MSG_RESULT(yes)
+   else
+     AC_MSG_RESULT(no)
+   fi
+   AC_MSG_CHECKING([for vectored positional I/O])
+   AS_IF([test "$ac_cv_func_preadv" = "yes" -a \
+               "$ac_cv_func_pwritev" = "yes" -a \
+              "$ac_cv_func_preadv64" = "yes" -a \
+              "$ac_cv_func_pwritev64" = "yes"],
+        [AC_DEFINE(HAVE_PIOV, 1, [define if you have preadv() and pwritev()])
+         AC_MSG_RESULT(yes)],
+        [AC_MSG_RESULT(no)])
+   ;;
+esac
+
 AC_MSG_CHECKING([for POSIX regex library])
 if test "$ac_cv_header_regex_h" = "yes" && \
 	test "$ac_cv_func_regcomp" = "yes" && \
@@ -1476,4 +1519,18 @@ struct labeltest struct_labeltest = {
 [AC_MSG_RESULT(no)
 ])
 
+])
+
+AC_DEFUN([SUMMARY], [
+    # Print a configuration summary
+echo
+echo "**************************************"
+echo configure summary
+echo
+AS_IF([test $LIB_curses],[
+echo "LIB_curses :                $LIB_curses" ],[
+echo "XXX LIB_curses  not found! not building scout and afsmonitor!"
+])
+echo
+echo "**************************************"
 ])

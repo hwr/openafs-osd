@@ -2,14 +2,9 @@
 
 %define afsvers @VERSION@
 %define pkgvers @LINUX_PKGVER@
-# for beta/rc releases make pkgrel 0.X.<tag>
+# for beta/rc releases make pkgrel 0.<tag>
 # for real releases make pkgrel 1 (or more for extra releases)
-#%define pkgrel 0.1.rc1
 %define pkgrel @LINUX_PKGREL@
-
-%if %{?osvers:0}%{!?osvers:1}
-%define osvers 1
-%endif
 
 %{!?fedorakmod: %define fedorakmod 1}
 %{!?build_dkmspkg: %define build_dkmspkg 1}
@@ -87,7 +82,7 @@
 # End legacy kernel build stuff
 %endif 
 
-%define dkms_version %{osvers}.%{pkgrel}
+%define dkms_version %{pkgrel}%{?dist}
 
 # Set 'debugspec' to 1 if you want to debug the spec file.  This will
 # not remove the installed tree as part of the %clean operation
@@ -104,7 +99,7 @@
 %define bootkernelsupport %{?_with_bootkernel:1}%{!?_with_bootkernel:0}
 
 # Define the location of your init.d directory
-%define initdir /etc/init.d
+%define initdir /etc/rc.d/init.d
 
 #determine if the kernel provides an arch-specific Provides
 %define kprovidesarch %(%{kversis} provideskernelarch %{ksrcdir} %{_target_cpu})
@@ -240,7 +235,7 @@
 Summary: OpenAFS distributed filesystem
 Name: openafs
 Version: %{pkgvers}
-Release: %{osvers}.%{pkgrel}
+Release: %{pkgrel}%{?dist}
 License: IBM Public License
 URL: http://www.openafs.org
 BuildRoot: %{_tmppath}/%{name}-%{version}-root
@@ -321,7 +316,7 @@ what gets built:
                                   or kdump 
 
 To a kernel module for your running kernel, just run:
-  rpmbuild --rebuild --target=`uname -m` openafs-%{pkgvers}-%{osvers}.%{pkgrel}.src.rpm
+  rpmbuild --rebuild --target=`uname -m` openafs-%{pkgvers}-%{pkgrel}%{?dist}.src.rpm
 
 ##############################################################################
 #
@@ -1114,6 +1109,7 @@ gzip -9 $RPM_BUILD_ROOT%{_mandir}/man*/*
 # create list of man pages that go in the 'openafs' package
 /bin/ls $RPM_BUILD_ROOT%{_mandir}/man1 \
 	|egrep '^afs|^fs|^kas|^klog|kapasswd|pagsh|^pts|^restorevol|^rxdebug|scout|^sys|tokens|translate|udebug|unlog|^uss|^vos' \
+	|egrep -v '^afs_compile_et' \
 	>openafs-man1files
 
 /bin/ls $RPM_BUILD_ROOT%{_mandir}/man5 \
@@ -1426,7 +1422,11 @@ dkms remove -m %{name} -v %{dkms_version} --rpm_safe_upgrade --all ||:
 
 %files docs
 %defattr(-,root,root)
-%doc %{_docdir}/openafs-%{afsvers}
+%docdir %{_docdir}/openafs-%{afsvers}
+%dir %{_docdir}/openafs-%{afsvers}
+%{_docdir}/openafs-%{afsvers}/ChangeLog
+%{_docdir}/openafs-%{afsvers}/RELNOTES-%{afsvers}
+%{_docdir}/openafs-%{afsvers}/pdf
 
 %files client
 %defattr(-,root,root)
@@ -1449,7 +1449,10 @@ dkms remove -m %{name} -v %{dkms_version} --rpm_safe_upgrade --all ||:
 %{_mandir}/man1/cmdebug.*
 %{_mandir}/man1/copyauth.*
 %{_mandir}/man1/up.*
-%{_mandir}/man5/afs*
+%{_mandir}/man5/afs.5.gz
+%{_mandir}/man5/afs_cache.5.gz
+%{_mandir}/man5/afs_volume_header.5.gz
+%{_mandir}/man5/afszcm.cat.5.gz
 %{_mandir}/man5/cacheinfo.*
 %{_mandir}/man8/afsd.*
 %{_mandir}/man8/rmtsysd.*

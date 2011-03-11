@@ -828,7 +828,13 @@ afs_linux_dentry_revalidate(struct dentry *dp, int flags)
     int valid;
     struct afs_fakestat_state fakestate;
 
+#ifdef LOOKUP_RCU
+    /* We don't support RCU path walking */
+    if (nd->flags & LOOKUP_RCU)
+	return -ECHILD;
+#endif
     AFS_GLOCK();
+
     afs_InitFakeStat(&fakestate);
 
     if (dp->d_inode) {
@@ -1020,7 +1026,9 @@ afs_linux_create(struct inode *dip, struct dentry *dp, int mode)
 	afs_getattr(vcp, &vattr, credp);
 	afs_fill_inode(ip, &vattr);
 	insert_inode_hash(ip);
+#if !defined(STRUCT_SUPER_BLOCK_HAS_S_D_OP)
 	dp->d_op = &afs_dentry_operations;
+#endif
 	dp->d_time = hgetlo(VTOAFS(dip)->f.m.DataVersion);
 	d_instantiate(dp, ip);
     }
@@ -1058,7 +1066,9 @@ afs_linux_lookup(struct inode *dip, struct dentry *dp)
 	if (hlist_unhashed(&ip->i_hash))
 	    insert_inode_hash(ip);
     }
+#if !defined(STRUCT_SUPER_BLOCK_HAS_S_D_OP)
     dp->d_op = &afs_dentry_operations;
+#endif
     dp->d_time = hgetlo(VTOAFS(dip)->f.m.DataVersion);
     AFS_GUNLOCK();
 
@@ -1242,7 +1252,9 @@ afs_linux_mkdir(struct inode *dip, struct dentry *dp, int mode)
 	afs_getattr(tvcp, &vattr, credp);
 	afs_fill_inode(ip, &vattr);
 
+#if !defined(STRUCT_SUPER_BLOCK_HAS_S_D_OP)
 	dp->d_op = &afs_dentry_operations;
+#endif
 	dp->d_time = hgetlo(VTOAFS(dip)->f.m.DataVersion);
 	d_instantiate(dp, ip);
     }
@@ -2235,16 +2247,25 @@ done:
  * Check access rights - returns error if can't check or permission denied.
  */
 static int
-#ifdef IOP_PERMISSION_TAKES_NAMEIDATA
+#if defined(IOP_PERMISSION_TAKES_FLAGS)
+afs_linux_permission(struct inode *ip, int mode, unsigned int flags)
+#elif defined(IOP_PERMISSION_TAKES_NAMEIDATA)
 afs_linux_permission(struct inode *ip, int mode, struct nameidata *nd)
 #else
 afs_linux_permission(struct inode *ip, int mode)
 #endif
 {
     int code;
-    cred_t *credp = crref();
+    cred_t *credp;
     int tmp = 0;
 
+#if defined(IOP_PERMISSION_TAKES_FLAGS)
+    /* We don't support RCU path walking */
+    if (flags & IPERM_FLAG_RCU)
+       return -ECHILD;
+#endif
+
+    credp = crref();
     AFS_GLOCK();
     if (mode & MAY_EXEC)
 	tmp |= VEXEC;
