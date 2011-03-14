@@ -2970,8 +2970,11 @@ SRXAFS_FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 
 	    code = createAsyncTransaction(acall, Fid, CALLED_FROM_FETCHDATA,
 					0, MAXFSIZE, &transid, NULL);
-	    if (code)
-		goto Bad_OSD_Archive;
+	    if (code) {
+	        Outputs->code = code;
+	        code = 0;
+	        break;
+	    }
 
     	    if ((code = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
 		goto Bad_OSD_Archive;
@@ -3019,8 +3022,11 @@ SRXAFS_FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 
 	    code = createAsyncTransaction(acall, Fid, CALLED_FROM_STOREDATA,
 					0, MAXFSIZE, &transid, NULL);
-	    if (code)
-		goto Bad_OSD_Wipe;
+	    if (code) {
+	        Outputs->code = code;
+	        code = 0;
+	        break;
+	    }
 
     	    if ((code = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
 		goto Bad_OSD_Wipe;
@@ -3111,8 +3117,11 @@ SRXAFS_FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 
 	    code = createAsyncTransaction(acall, Fid, CALLED_FROM_STOREDATA,
 					0, MAXFSIZE, &transid, NULL);
-	    if (code)
-		goto Bad_ReplaceOSD;
+	    if (code) {
+	        Outputs->code = code;
+	        code = 0;
+	        break;
+	    }
 
     	    if ((code = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
 		goto Bad_ReplaceOSD;
