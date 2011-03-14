@@ -9,8 +9,8 @@
 
 /* Copyright (C) 1994 Cazamar Systems, Inc. */
 
-#ifndef _BUF_H__ENV_
-#define _BUF_H__ENV_ 1
+#ifndef OPENAFS_WINNT_AFSD_BUF_H
+#define OPENAFS_WINNT_AFSD_BUF_H 1
 
 #include <osi.h>
 #ifdef DISKCACHE95
@@ -173,8 +173,6 @@ extern long buf_GetNewLocked(struct cm_scache *, osi_hyper_t *, cm_req_t *, cm_b
 
 extern long buf_Get(struct cm_scache *, osi_hyper_t *, cm_req_t *, cm_buf_t **);
 
-extern long buf_GetNew(struct cm_scache *, osi_hyper_t *, cm_req_t *, cm_buf_t **);
-
 extern afs_uint32 buf_CleanAsyncLocked(cm_scache_t *, cm_buf_t *, cm_req_t *, afs_uint32 flags, afs_uint32 *);
 
 extern afs_uint32 buf_CleanAsync(cm_scache_t *, cm_buf_t *, cm_req_t *, afs_uint32 flags, afs_uint32 *);
@@ -222,4 +220,4 @@ extern int cm_DumpBufHashTable(FILE *outputFile, char *cookie, int lock);
 
 /* error codes */
 #define CM_BUF_EXISTS	1	/* buffer exists, and shouldn't */
-#endif /*  _BUF_H__ENV_ */
+#endif /* OPENAFS_WINNT_AFSD_BUF_H */

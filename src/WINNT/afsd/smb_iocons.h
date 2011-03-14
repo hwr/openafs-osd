@@ -7,8 +7,8 @@
  * directory or online at http://www.openafs.org/dl/license10.html
  */
 
-#ifndef __SMB_IOCONS_H_ENV_
-#define __SMB_IOCONS_H_ENV_ 1
+#ifndef OPENAFS_WINNT_AFSD_SMB_IOCONS_H
+#define OPENAFS_WINNT_AFSD_SMB_IOCONS_H 1
 
 /* included in both AFSD and fs commands */
 
@@ -99,6 +99,8 @@ struct sbstruct {
 #define VIOC_SETGROUP                   0x35
 #define VIOC_FS_CMD                     0x36
 #define VIOCNEWCELL2                    0x37
+#define VIOC_GETUNIXMODE                0x38
+#define VIOC_SETUNIXMODE                0x39
 
 #define VIOC_VOLSTAT_TEST               0x3F
 
@@ -114,4 +116,4 @@ struct sbstruct {
 #define CM_IOCTL_MAXDATA	        8192*2
 #define CM_IOCTL_MAXPROCS               64
 
-#endif /*  __SMB_IOCONS_H_ENV_ */
+#endif /*  OPENAFS_WINNT_AFSD_SMB_IOCONS_H */

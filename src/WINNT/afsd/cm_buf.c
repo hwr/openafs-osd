@@ -15,7 +15,6 @@
 #include <windows.h>
 #include <osi.h>
 #include <stdio.h>
-#include <assert.h>
 #include <strsafe.h>
 #include <math.h>
 
@@ -740,6 +739,9 @@ cm_buf_t *buf_FindAll(struct cm_scache *scp, osi_hyper_t *offsetp, afs_uint32 fl
  * if this buffer contains logged data.
  *
  * Returns non-zero if the buffer was dirty.
+ *
+ * 'scp' may or may not be NULL.  If it is not NULL, the FID for both cm_scache_t
+ * and cm_buf_t must match.
  */
 afs_uint32 buf_CleanAsyncLocked(cm_scache_t *scp, cm_buf_t *bp, cm_req_t *reqp,
                                 afs_uint32 flags, afs_uint32 *pisdirty)
@@ -750,35 +752,54 @@ afs_uint32 buf_CleanAsyncLocked(cm_scache_t *scp, cm_buf_t *bp, cm_req_t *reqp,
     int release_scp = 0;
 
     osi_assertx(bp->magic == CM_BUF_MAGIC, "invalid cm_buf_t magic");
+    osi_assertx(scp == NULL || cm_FidCmp(&scp->fid, &bp->fid) == 0, "scp fid != bp fid");
 
-    if (scp = cm_FindSCache(&bp->fid))
-        release_scp = 1;
-
-    if (!scp) {
-        osi_Log1(buf_logp, "buf_CleanAsyncLocked unable to start I/O - scp not found buf 0x%p", bp);
-        code = CM_ERROR_NOSUCHFILE;
+    /*
+     * If the matching cm_scache_t was not provided as a parameter
+     * we must either find one or allocate a new one.  It is possible
+     * that the cm_scache_t was recycled out of the cache even though
+     * a cm_buf_t with the same FID is in the cache.
+     */
+    if (scp == NULL) {
+        if ((scp = cm_FindSCache(&bp->fid)) ||
+            (cm_GetSCache(&bp->fid, &scp,
+                          bp->userp ? bp->userp : cm_rootUserp,
+                          reqp) == 0)) {
+            release_scp = 1;
+        }
     }
 
     while ((bp->flags & CM_BUF_DIRTY) == CM_BUF_DIRTY) {
         isdirty = 1;
         lock_ReleaseMutex(&bp->mx);
 
-        osi_Log2(buf_logp, "buf_CleanAsyncLocked starts I/O on scp 0x%p buf 0x%p", scp, bp);
+        if (!scp) {
+            /*
+             * If we didn't find a cm_scache_t object for bp->fid it means
+             * that we no longer have that FID in the cache.  It does not
+             * mean that the object does not exist in the cell.  That may
+             * in fact be the case but we don't know that until we attempt
+             * a FetchStatus on the FID.
+             */
+            osi_Log1(buf_logp, "buf_CleanAsyncLocked unable to start I/O - scp not found buf 0x%p", bp);
+            code = CM_ERROR_NOSUCHFILE;
+        } else {
+            osi_Log2(buf_logp, "buf_CleanAsyncLocked starts I/O on scp 0x%p buf 0x%p", scp, bp);
 
-        offset = bp->offset;
-        LargeIntegerAdd(offset, ConvertLongToLargeInteger(bp->dirty_offset));
-        code = (*cm_buf_opsp->Writep)(scp, &offset,
+            offset = bp->offset;
+            LargeIntegerAdd(offset, ConvertLongToLargeInteger(bp->dirty_offset));
+            code = (*cm_buf_opsp->Writep)(scp, &offset,
 #if 1
-                                       /* we might as well try to write all of the contiguous
-                                       * dirty buffers in one RPC
-                                       */
-                                       cm_chunkSize,
+                                          /* we might as well try to write all of the contiguous
+                                           * dirty buffers in one RPC
+                                           */
+                                          cm_chunkSize,
 #else
-                                       bp->dirty_length,
+                                          bp->dirty_length,
 #endif
-                                       flags, bp->userp, reqp);
-        osi_Log3(buf_logp, "buf_CleanAsyncLocked I/O on scp 0x%p buf 0x%p, done=%d", scp, bp, code);
-
+                                          flags, bp->userp, reqp);
+            osi_Log3(buf_logp, "buf_CleanAsyncLocked I/O on scp 0x%p buf 0x%p, done=%d", scp, bp, code);
+        }
         lock_ObtainMutex(&bp->mx);
 	/* if the Write routine returns No Such File, clear the dirty flag
 	 * because we aren't going to be able to write this data to the file
@@ -1021,7 +1042,10 @@ long buf_GetNewLocked(struct cm_scache *scp, osi_hyper_t *offsetp, cm_req_t *req
                  * have the WRITING flag set, so we won't get
                  * back here.
                  */
-                buf_CleanAsync(scp, bp, reqp, 0, NULL);
+                if (cm_FidCmp(&scp->fid, &bp->fid) == 0)
+                    buf_CleanAsync(scp, bp, reqp, 0, NULL);
+                else
+                    buf_CleanAsync(NULL, bp, reqp, 0, NULL);
 
                 /* now put it back and go around again */
                 buf_Release(bp);
@@ -1106,61 +1130,12 @@ long buf_GetNewLocked(struct cm_scache *scp, osi_hyper_t *offsetp, cm_req_t *req
     /* not reached */
 } /* the proc */
 
-/* get a page, returning it held but unlocked.  Doesn't fill in the page
- * with I/O, since we're going to write the whole thing new.
+/*
+ * get a page, returning it held but unlocked.  the page may or may not
+ * contain valid data.
+ *
+ * The scp must be unlocked when passed in unlocked.
  */
-long buf_GetNew(struct cm_scache *scp, osi_hyper_t *offsetp, cm_req_t *reqp, cm_buf_t **bufpp)
-{
-    cm_buf_t *bp;
-    long code;
-    osi_hyper_t pageOffset;
-    int created;
-
-    created = 0;
-    pageOffset.HighPart = offsetp->HighPart;
-    pageOffset.LowPart = offsetp->LowPart & ~(cm_data.buf_blockSize-1);
-    while (1) {
-        bp = buf_Find(scp, &pageOffset);
-        if (bp) {
-            /* lock it and break out */
-            lock_ObtainMutex(&bp->mx);
-            break;
-        }
-
-        /* otherwise, we have to create a page */
-        code = buf_GetNewLocked(scp, &pageOffset, reqp, &bp);
-
-        /* check if the buffer was created in a race condition branch.
-         * If so, go around so we can hold a reference to it. 
-         */
-        if (code == CM_BUF_EXISTS) 
-            continue;
-
-        /* something else went wrong */
-        if (code != 0) 
-            return code;
-
-        /* otherwise, we have a locked buffer that we just created */
-        created = 1;
-        break;
-    } /* big while loop */
-
-    /* wait for reads */
-    if (bp->flags & CM_BUF_READING)
-        buf_WaitIO(scp, bp);
-
-    /* once it has been read once, we can unlock it and return it, still
-     * with its refcount held.
-     */
-    lock_ReleaseMutex(&bp->mx);
-    *bufpp = bp;
-    osi_Log4(buf_logp, "buf_GetNew returning bp 0x%p for scp 0x%p, offset 0x%x:%08x",
-              bp, scp, offsetp->HighPart, offsetp->LowPart);
-    return 0;
-}
-
-/* get a page, returning it held but unlocked.  Make sure it is complete */
-/* The scp must be unlocked when passed to this function */
 long buf_Get(struct cm_scache *scp, osi_hyper_t *offsetp, cm_req_t *reqp, cm_buf_t **bufpp)
 {
     cm_buf_t *bp;
@@ -1176,7 +1151,7 @@ long buf_Get(struct cm_scache *scp, osi_hyper_t *offsetp, cm_req_t *reqp, cm_buf
     created = 0;
     pageOffset.HighPart = offsetp->HighPart;
     pageOffset.LowPart = offsetp->LowPart & ~(cm_data.buf_blockSize-1);
-    while (1) {
+    while (!created) {
         lcount++;
 #ifdef TESTING
         buf_ValidateBufQueues();
@@ -1196,25 +1171,28 @@ long buf_Get(struct cm_scache *scp, osi_hyper_t *offsetp, cm_req_t *reqp, cm_buf
 
         /* otherwise, we have to create a page */
         code = buf_GetNewLocked(scp, &pageOffset, reqp, &bp);
-	/* bp->mx is now held */
-
-        /* check if the buffer was created in a race condition branch.
-         * If so, go around so we can hold a reference to it. 
-         */
-        if (code == CM_BUF_EXISTS) 
-            continue;
-
-        /* something else went wrong */
-        if (code != 0) { 
+        switch (code) {
+        case 0:
+            /* the requested buffer was created */
+            created = 1;
+            break;
+        case CM_BUF_EXISTS:
+            /*
+             * the requested buffer existed by the time the
+             * scp->bufCreateLock and buf_globalLock could be obtained.
+             * loop again and permit buf_Find() to obtain a reference.
+             */
+            break;
+        default:
+            /*
+             * the requested buffer could not be created.
+             * return the error to the caller.
+             */
 #ifdef TESTING
             buf_ValidateBufQueues();
 #endif /* TESTING */
             return code;
         }
-                
-        /* otherwise, we have a locked buffer that we just created */
-        created = 1;
-        break;
     } /* big while loop */
 
     /* if we get here, we have a locked buffer that may have just been
@@ -1224,7 +1202,11 @@ long buf_Get(struct cm_scache *scp, osi_hyper_t *offsetp, cm_req_t *reqp, cm_buf
         /* load the page; freshly created pages should be idle */
         osi_assertx(!(bp->flags & (CM_BUF_READING | CM_BUF_WRITING)), "incorrect cm_buf_t flags");
 
-        /* start the I/O; may drop lock */
+        /*
+         * start the I/O; may drop lock.  as of this writing, the only
+         * implementation of Readp is cm_BufRead() which simply sets
+         * tcount to 0 and returns success.
+         */
         bp->flags |= CM_BUF_READING;
         code = (*cm_buf_opsp->Readp)(bp, cm_data.buf_blockSize, &tcount, NULL);
 
@@ -1251,7 +1233,8 @@ long buf_Get(struct cm_scache *scp, osi_hyper_t *offsetp, cm_req_t *reqp, cm_buf
                 return code;
             }
         } else {
-            /* otherwise, I/O completed instantly and we're done, except
+            /*
+             * otherwise, I/O completed instantly and we're done, except
              * for padding the xfr out with 0s and checking for EOF
              */
             if (tcount < (unsigned long) cm_data.buf_blockSize) {
@@ -1265,7 +1248,6 @@ long buf_Get(struct cm_scache *scp, osi_hyper_t *offsetp, cm_req_t *reqp, cm_buf
                 osi_Wakeup((LONG_PTR) bp);
             }
         }
-
     } /* if created */
 
     /* wait for reads, either that which we started above, or that someone

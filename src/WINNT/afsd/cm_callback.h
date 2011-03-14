@@ -7,8 +7,8 @@
  * directory or online at http://www.openafs.org/dl/license10.html
  */
 
-#ifndef _CM_CALLBACK_H_ENV__
-#define _CM_CALLBACK_H_ENV__ 1
+#ifndef OPENAFS_WINNT_AFSD_CM_CALLBACK_H
+#define OPENAFS_WINNT_AFSD_CM_CALLBACK_H 1
 
 #include <osi.h>
 
@@ -72,9 +72,11 @@ extern void cm_GiveUpAllCallbacks(cm_server_t *tsp, afs_int32 markDown);
 
 extern void cm_GiveUpAllCallbacksAllServers(afs_int32 markDown);
 
+extern void cm_GiveUpAllCallbacksAllServersMulti(afs_int32 markDown);
+
 extern afs_int32 cm_OfflineROIsValid;
 
 extern afs_int32 cm_giveUpAllCBs;
 
 extern afs_int32 cm_shutdown;
-#endif /*  _CM_CALLBACK_H_ENV__ */
+#endif /*  OPENAFS_WINNT_AFSD_CM_CALLBACK_H */

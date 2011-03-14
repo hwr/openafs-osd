@@ -1205,7 +1205,7 @@ cm_IoctlCheckServers(struct cm_ioctl *ioctlp, struct cm_user *userp)
     char *tp;
     char *cp;
     long temp;
-    cm_server_t *tsp;
+    cm_server_t *tsp, *csp;
     int haveCell;
         
     tp = ioctlp->inDatap;
@@ -1265,10 +1265,36 @@ cm_IoctlCheckServers(struct cm_ioctl *ioctlp, struct cm_user *userp)
     for (tsp = cm_allServersp; tsp; tsp=tsp->allNextp) {
         if (cellp && tsp->cellp != cellp) 
             continue;	/* cell spec'd and wrong */
-        if ((tsp->flags & CM_SERVERFLAG_DOWN)
-            && tsp->type == CM_SERVER_FILE) {
-            memcpy(cp, (char *)&tsp->addr.sin_addr.s_addr, sizeof(long));
-            cp += sizeof(long);
+        if (tsp->flags & CM_SERVERFLAG_DOWN) {
+            /*
+             * for a multi-homed file server, if one of the interfaces
+             * is up, do not report the server as down.
+             */
+            if (tsp->type == CM_SERVER_FILE) {
+                for (csp = cm_allServersp; csp; csp=csp->allNextp) {
+                    if (csp->type == CM_SERVER_FILE &&
+                        !(csp->flags & CM_SERVERFLAG_DOWN) &&
+                        afs_uuid_equal(&tsp->uuid, &csp->uuid)) {
+                        break;
+                    }
+                }
+                if (csp)    /* found alternate up interface */
+                    continue;
+            }
+
+            /*
+             * all server types are being reported by ipaddr.  only report
+             * a server once regardless of how many services are down.
+             */
+            for (tp = ioctlp->outDatap; tp < cp; tp += sizeof(long)) {
+                if (!memcmp(tp, (char *)&tsp->addr.sin_addr.s_addr, sizeof(long)))
+                    break;
+            }
+
+            if (tp == cp) {
+                memcpy(cp, (char *)&tsp->addr.sin_addr.s_addr, sizeof(long));
+                cp += sizeof(long);
+            }
         }
     }
     lock_ReleaseRead(&cm_serverLock);
@@ -3414,3 +3440,73 @@ cm_IoctlVolStatTest(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_req_t *re
 
     return code;
 }       
+
+/*
+ * VIOC_GETUNIXMODE internals.
+ *
+ * Assumes that pioctl path has been parsed or skipped.
+ * scp is held but not locked.
+ */
+afs_int32
+cm_IoctlGetUnixMode(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_scache_t *scp, cm_req_t *reqp)
+{
+    afs_int32 code = 0;
+    char *cp;
+
+    lock_ObtainWrite(&scp->rw);
+    code = cm_SyncOp(scp, NULL, userp, reqp, 0,
+                      CM_SCACHESYNC_NEEDCALLBACK | CM_SCACHESYNC_GETSTATUS);
+    if (code == 0)
+        cm_SyncOpDone(scp, NULL, CM_SCACHESYNC_NEEDCALLBACK | CM_SCACHESYNC_GETSTATUS);
+    lock_ReleaseWrite(&scp->rw);
+
+    if (code == 0) {
+        /* Copy all this junk into msg->im_data, keeping track of the lengths. */
+        cp = ioctlp->outDatap;
+        memcpy(cp, (char *)&scp->unixModeBits, sizeof(afs_uint32));
+        cp += sizeof(afs_uint32);
+
+        /* return new size */
+        ioctlp->outDatap = cp;
+    }
+    return code;
+}
+
+
+/*
+ * VIOC_SETUNIXMODE internals.
+ *
+ * Assumes that pioctl path has been parsed or skipped
+ * and that cm_ioctlQueryOptions_t have been parsed and skipped.
+ *
+ * scp is held but not locked.
+ */
+afs_int32
+cm_IoctlSetUnixMode(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_scache_t *scp, cm_req_t *reqp)
+{
+    afs_int32 code = 0;
+    char *cp;
+
+    lock_ObtainWrite(&scp->rw);
+    code = cm_SyncOp(scp, NULL, userp, reqp, 0,
+                      CM_SCACHESYNC_NEEDCALLBACK | CM_SCACHESYNC_GETSTATUS);
+    if (code == 0)
+        cm_SyncOpDone(scp, NULL, CM_SCACHESYNC_NEEDCALLBACK | CM_SCACHESYNC_GETSTATUS);
+    lock_ReleaseWrite(&scp->rw);
+
+    if (code == 0) {
+        afs_uint32 unixModeBits;
+        cm_attr_t attr;
+
+        memset(&attr, 0, sizeof(attr));
+
+        cp = ioctlp->inDatap;
+        memcpy((char *)&unixModeBits, cp, sizeof(afs_uint32));
+
+        attr.mask = CM_ATTRMASK_UNIXMODEBITS;
+        attr.unixModeBits = unixModeBits;
+
+        code = cm_SetAttr(scp, &attr, userp, reqp);
+    }
+    return code;
+}

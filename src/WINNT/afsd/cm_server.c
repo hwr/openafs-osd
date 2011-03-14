@@ -117,8 +117,6 @@ cm_PingServer(cm_server_t *tsp)
     int wasDown = 0;
     cm_conn_t *connp;
     struct rx_connection * rxconnp;
-    long secs;
-    long usecs;
     Capabilities caps = {0, 0};
     char hoststr[16];
     cm_req_t req;
@@ -163,8 +161,6 @@ cm_PingServer(cm_server_t *tsp)
 	else {
 	    /* file server */
 	    code = RXAFS_GetCapabilities(rxconnp, &caps);
-	    if (code == RXGEN_OPCODE)
-		code = RXAFS_GetTime(rxconnp, &secs, &usecs);
 	}
 	if (wasDown)
 	    rx_SetConnDeadTime(rxconnp, ConnDeadtimeout);
@@ -173,13 +169,13 @@ cm_PingServer(cm_server_t *tsp)
     }	/* got an unauthenticated connection to this server */
 
     lock_ObtainMutex(&tsp->mx);
-    if (code >= 0) {
+    if (code >= 0 || code == RXGEN_OPCODE) {
 	/* mark server as up */
 	tsp->flags &= ~CM_SERVERFLAG_DOWN;
         tsp->downTime = 0;
 
 	/* we currently handle 32-bits of capabilities */
-	if (caps.Capabilities_len > 0) {
+	if (code != RXGEN_OPCODE && caps.Capabilities_len > 0) {
 	    tsp->capabilities = caps.Capabilities_val[0];
 	    xdr_free((xdrproc_t) xdr_Capabilities, &caps);
 	    caps.Capabilities_len = 0;
@@ -365,15 +361,13 @@ static void cm_CheckServersMulti(afs_uint32 flags, cm_cell_t *cellp)
     cm_conn_t **conns = NULL;
     struct rx_connection **rxconns = NULL;
     cm_req_t req;
-    afs_int32 i, j, nconns = 0, maxconns;
+    afs_int32 i, nconns = 0, maxconns;
     afs_int32 *conntimer, *results;
     Capabilities *caps = NULL;
     cm_server_t ** serversp, *tsp;
     afs_uint32 isDown, wasDown;
     afs_uint32 code;
-    time_t start, end, *deltas;
-    afs_int32 secs;
-    afs_int32 usecs;
+    time_t start, *deltas;
     char hoststr[16];
 
     cm_InitReq(&req);
@@ -447,10 +441,6 @@ static void cm_CheckServersMulti(afs_uint32 flags, cm_cell_t *cellp)
 
         /* Process results of servers that support RXAFS_GetCapabilities */
         for (i=0; i<nconns; i++) {
-            /* Leave the servers that did not support GetCapabilities alone */
-            if (results[i] == RXGEN_OPCODE)
-                continue;
-
             if (conntimer[i])
                 rx_SetConnDeadTime(rxconns[i], ConnDeadtimeout);
             rx_PutConnection(rxconns[i]);
@@ -462,13 +452,13 @@ static void cm_CheckServersMulti(afs_uint32 flags, cm_cell_t *cellp)
             lock_ObtainMutex(&tsp->mx);
             wasDown = tsp->flags & CM_SERVERFLAG_DOWN;
 
-            if (results[i] >= 0)  {
+            if (results[i] >= 0 || results[i] == RXGEN_OPCODE)  {
                 /* mark server as up */
                 tsp->flags &= ~CM_SERVERFLAG_DOWN;
                 tsp->downTime = 0;
 
                 /* we currently handle 32-bits of capabilities */
-                if (caps[i].Capabilities_len > 0) {
+                if (results[i] != RXGEN_OPCODE && caps[i].Capabilities_len > 0) {
                     tsp->capabilities = caps[i].Capabilities_val[0];
                     xdr_free((xdrproc_t) xdr_Capabilities, &caps[i]);
                     caps[i].Capabilities_len = 0;
@@ -476,137 +466,6 @@ static void cm_CheckServersMulti(afs_uint32 flags, cm_cell_t *cellp)
                 } else {
                     tsp->capabilities = 0;
                 }
-
-                afs_inet_ntoa_r(tsp->addr.sin_addr.S_un.S_addr, hoststr);
-                osi_Log3(afsd_logp, "cm_MultiPingServer server %s (%s) is up with caps 0x%x",
-                          osi_LogSaveString(afsd_logp, hoststr), 
-                          tsp->type == CM_SERVER_VLDB ? "vldb" : "file",
-                          tsp->capabilities);
-
-                /* Now update the volume status if necessary */
-                if (wasDown) {
-                    cm_server_vols_t * tsrvp;
-                    cm_volume_t * volp;
-                    int i;
-
-                    for (tsrvp = tsp->vols; tsrvp; tsrvp = tsrvp->nextp) {
-                        for (i=0; i<NUM_SERVER_VOLS; i++) {
-                            if (tsrvp->ids[i] != 0) {
-                                cm_InitReq(&req);
-
-                                lock_ReleaseMutex(&tsp->mx);
-                                code = cm_FindVolumeByID(tsp->cellp, tsrvp->ids[i], cm_rootUserp,
-                                                         &req, CM_GETVOL_FLAG_NO_LRU_UPDATE, &volp);
-                                lock_ObtainMutex(&tsp->mx);
-                                if (code == 0) {
-                                    cm_UpdateVolumeStatus(volp, tsrvp->ids[i]);
-                                    cm_PutVolume(volp);
-                                }
-                            }
-                        }
-                    }
-                }
-            } else {
-                /* mark server as down */
-                if (!(tsp->flags & CM_SERVERFLAG_DOWN)) {
-                    tsp->flags |= CM_SERVERFLAG_DOWN;
-                    tsp->downTime = time(NULL);
-                }
-                if (code != VRESTARTING) {
-                    lock_ReleaseMutex(&tsp->mx);
-                    cm_ForceNewConnections(tsp);
-                    lock_ObtainMutex(&tsp->mx);
-                }
-                afs_inet_ntoa_r(tsp->addr.sin_addr.S_un.S_addr, hoststr);
-                osi_Log3(afsd_logp, "cm_MultiPingServer server %s (%s) is down with caps 0x%x",
-                          osi_LogSaveString(afsd_logp, hoststr), 
-                          tsp->type == CM_SERVER_VLDB ? "vldb" : "file",
-                          tsp->capabilities);
-
-                /* Now update the volume status if necessary */
-                if (!wasDown) {
-                    cm_server_vols_t * tsrvp;
-                    cm_volume_t * volp;
-                    int i;
-
-                    for (tsrvp = tsp->vols; tsrvp; tsrvp = tsrvp->nextp) {
-                        for (i=0; i<NUM_SERVER_VOLS; i++) {
-                            if (tsrvp->ids[i] != 0) {
-                                cm_InitReq(&req);
-
-                                lock_ReleaseMutex(&tsp->mx);
-                                code = cm_FindVolumeByID(tsp->cellp, tsrvp->ids[i], cm_rootUserp,
-                                                         &req, CM_GETVOL_FLAG_NO_LRU_UPDATE, &volp);
-                                lock_ObtainMutex(&tsp->mx);
-                                if (code == 0) {
-                                    cm_UpdateVolumeStatus(volp, tsrvp->ids[i]);
-                                    cm_PutVolume(volp);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (tsp->waitCount == 0)
-                tsp->flags &= ~CM_SERVERFLAG_PINGING;
-            else 
-                osi_Wakeup((LONG_PTR)tsp);
-            
-            lock_ReleaseMutex(&tsp->mx);
-
-            cm_PutServer(tsp);
-        }
-
-        /* 
-         * At this point we have handled any responses that did not indicate
-         * that RXAFS_GetCapabilities is not supported.
-         */
-        for ( i=0, j=0; i<nconns; i++) {
-            if (results[i] == RXGEN_OPCODE) {
-                if (i != j) {
-                    conns[j] = conns[i];
-                    rxconns[j] = rxconns[i];
-                    serversp[j] = serversp[i];
-                }
-                j++;
-            }
-        }
-        nconns = j;
-
-        if (nconns) {
-            /* Perform the multi call */
-            start = time(NULL);
-            multi_Rx(rxconns,nconns)
-            {
-                secs = usecs = 0;
-                multi_RXAFS_GetTime(&secs, &usecs);
-                end = time(NULL);
-                results[multi_i]=multi_error;
-                if ((start == end) && !multi_error)
-                    deltas[multi_i] = end - secs;
-            } multi_End;
-        }
-
-        /* Process Results of servers that only support RXAFS_GetTime */
-        for (i=0; i<nconns; i++) {
-            /* Leave the servers that did not support GetCapabilities alone */
-            if (conntimer[i])
-                rx_SetConnDeadTime(rxconns[i], ConnDeadtimeout);
-            rx_PutConnection(rxconns[i]);
-            cm_PutConn(conns[i]);
-
-            tsp = serversp[i];
-            cm_GCConnections(tsp);
-
-            lock_ObtainMutex(&tsp->mx);
-            wasDown = tsp->flags & CM_SERVERFLAG_DOWN;
-
-            if (results[i] >= 0)  {
-                /* mark server as up */
-                tsp->flags &= ~CM_SERVERFLAG_DOWN;
-                tsp->downTime = 0;
-                tsp->capabilities = 0;
 
                 afs_inet_ntoa_r(tsp->addr.sin_addr.S_un.S_addr, hoststr);
                 osi_Log3(afsd_logp, "cm_MultiPingServer server %s (%s) is up with caps 0x%x",
@@ -1496,7 +1355,16 @@ int cm_ServerEqual(cm_server_t *srv1, cm_server_t *srv2)
         /* Both support UUID */
         if (UuidEqual((UUID *)&srv1->uuid, (UUID *)&srv2->uuid, &status))
             return 1;
-    } 
+    } else {
+        if (srv1->flags & CM_SERVERFLAG_UUID)
+            return 0;
+
+        /* Neither support UUID so perform an addr/port comparison */
+        if ( srv1->addr.sin_family == srv2->addr.sin_family &&
+             srv1->addr.sin_addr.s_addr == srv2->addr.sin_addr.s_addr &&
+             srv1->addr.sin_port == srv2->addr.sin_port )
+            return 1;
+    }
     
     return 0;
 }

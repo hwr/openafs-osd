@@ -10,9 +10,11 @@
 #include <afs/param.h>
 #include <afs/stds.h>
 #include <afs/com_err.h>
+#include <afs/cmd.h>
 
 #include <windows.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 #include <malloc.h>
 #include <string.h>
 #include <strsafe.h>
@@ -20,7 +22,7 @@
 #include <time.h>
 #include <winsock2.h>
 #include <errno.h>
-#include <assert.h>
+#include <afs/afs_assert.h>
 #include <rx/rx_globals.h>
 
 #include <osi.h>
@@ -37,6 +39,7 @@
 #include "cmd.h"
 #include "afsd.h"
 #include "cm_ioctl.h"
+#include "parsemode.h"
 
 #define MAXNAME 100
 #define MAXINSIZE 1300    /* pioctl complains if data is larger than this */
@@ -49,13 +52,23 @@ static char tspace[1024];
 
 static struct ubik_client *uclient;
 
+/* some forward references */
+static void ZapList (struct AclEntry *alist);
+
+static int PruneList (struct AclEntry **ae, int dfs);
+
+static int CleanAcl(struct Acl *aa, char *fname);
+
+static int SetVolCmd(struct cmd_syndesc *as, void *arock);
+
+static int GetCellName(char *cellNamep, struct afsconf_cell *infop);
+
+static int VLDBInit(int noAuthFlag, struct afsconf_cell *infop);
 static int GetClientAddrsCmd(struct cmd_syndesc *asp, void *arock);
 static int SetClientAddrsCmd(struct cmd_syndesc *asp, void *arock);
 static int FlushMountCmd(struct cmd_syndesc *asp, void *arock);
 static int RxStatProcCmd(struct cmd_syndesc *asp, void *arock);
 static int RxStatPeerCmd(struct cmd_syndesc *asp, void *arock);
-
-extern struct cmd_syndesc *cmd_CreateSyntax();
 
 static int MemDumpCmd(struct cmd_syndesc *asp, void *arock);
 static int CSCPolicyCmd(struct cmd_syndesc *asp, void *arock);
@@ -1766,6 +1779,7 @@ ExamineCmd(struct cmd_syndesc *as, void *arock)
         cm_fid_t fid;
         afs_uint32 filetype;
 	afs_int32 owner[2];
+        afs_uint32 unixModeBits;
 	char cell[CELL_MAXNAMELEN];
 
         /* once per file */
@@ -1826,6 +1840,13 @@ ExamineCmd(struct cmd_syndesc *as, void *arock)
 	    pr_SIdToName(owner[0], oname);
 	    pr_SIdToName(owner[1], gname);
 	    printf("Owner %s (%d) Group %s (%d)\n", oname, owner[0], gname, owner[1]);
+        }
+
+	blob.out_size = sizeof(afs_uint32);
+        blob.out = (char *) &unixModeBits;
+	if (0 == pioctl_utf8(ti->data, VIOC_GETUNIXMODE, &blob, 1) &&
+            blob.out_size == sizeof(afs_uint32)) {
+	    printf("UNIX mode 0%o\n", unixModeBits);
         }
 
 	blob.out = space;
@@ -2293,11 +2314,12 @@ MakeMountCmd(struct cmd_syndesc *as, void *arock)
 	    exit(1);
 	}
 	if (parent[0] == '\\' && parent[1] == '\\' &&
-	    parent[len+2] == '\\' &&
-	    parent[len+3] == '\0' &&
+	    (parent[len+2] == '\\' && parent[len+3] == '\0' || parent[len+2] == '\0') &&
 	    !strnicmp(nbname,&parent[2],len))
 	{
-	    if( FAILED(StringCbPrintf(path, sizeof(path),"%sall\\%s", parent, &as->parms[0].items->data[len+2]))) {
+	    if( FAILED(StringCbPrintf(path, sizeof(path),"%s%sall%s", parent,
+                                      parent[len+2]?"":"\\",
+                                      &as->parms[0].items->data[len+2]))) {
 	        fprintf (stderr, "path - cannot be populated");
                 exit(1);
             }
@@ -5540,6 +5562,104 @@ ChGrpCmd(struct cmd_syndesc *as, void *arock)
     return error;
 }
 
+
+
+static int
+ChModCmd(struct cmd_syndesc *as, void *arock)
+{
+    afs_int32 code;
+    struct ViceIoctl blob;
+    struct cmd_item *ti;
+    int error = 0;
+    int literal = 0;
+    struct {
+        cm_ioctlQueryOptions_t options;
+        afs_uint32 unixModeBits;
+    } inData;
+    afs_uint32 unixModeBits;
+    afs_int32  absolute = 0;
+    char * unixModeStr;
+    char confDir[257];
+
+    cm_GetConfigDir(confDir, sizeof(confDir));
+
+    if (as->parms[2].items)
+        literal = 1;
+
+    unixModeStr = as->parms[0].items->data;
+    if (*unixModeStr >= '0' && *unixModeStr <= '7') {
+        unixModeBits = 0;
+        absolute = 1;
+        while (*unixModeStr >= '0' && *unixModeStr <= '7')
+            unixModeBits = (unixModeBits << 3) | (*unixModeStr++ & 07);
+        if (*unixModeStr) {
+            Die(EINVAL, "invalid mode");
+            return(1);
+        }
+        unixModeBits &= ALL_MODES;
+    }
+
+    SetDotDefault(&as->parms[1].items);
+    for(ti=as->parms[1].items; ti; ti=ti->next) {
+        cm_fid_t fid;
+        afs_uint32 filetype;
+	char cell[CELL_MAXNAMELEN];
+
+        /* once per file */
+        memset(&fid, 0, sizeof(fid));
+        memset(&inData, 0, sizeof(inData));
+        filetype = 0;
+        inData.options.size = sizeof(inData.options);
+        inData.options.field_flags |= CM_IOCTL_QOPTS_FIELD_LITERAL;
+        inData.options.literal = literal;
+	blob.in_size = inData.options.size;    /* no variable length data */
+        blob.in = &inData;
+
+        blob.out_size = sizeof(cm_fid_t);
+        blob.out = (char *) &fid;
+        if (0 == pioctl_utf8(ti->data, VIOCGETFID, &blob, 1) &&
+            blob.out_size == sizeof(cm_fid_t)) {
+            inData.options.field_flags |= CM_IOCTL_QOPTS_FIELD_FID;
+            inData.options.fid = fid;
+        } else {
+	    Die(errno, ti->data);
+	    error = 1;
+	    continue;
+        }
+
+        /*
+         * if the mode was specified as an absolute numeric,
+         * value we can simply apply it to all of the listed
+         * file paths.  Otherwise, we must obtain the old mode
+         * value in order to compute the new value from the
+         * symbolic representation.
+         */
+        if (!absolute) {
+            blob.in_size = 0;
+            blob.out_size = sizeof(afs_uint32);
+            blob.out = (char *)&unixModeBits;
+            if (pioctl_utf8(ti->data, VIOC_GETUNIXMODE, &blob, 1) != 0)
+            {
+                Die(errno, ti->data);
+                error = 1;
+                continue;
+            }
+            inData.unixModeBits = parsemode(unixModeStr, unixModeBits);
+        } else {
+            inData.unixModeBits = unixModeBits;
+        }
+
+        blob.in_size = sizeof(inData);
+	blob.out = NULL;
+	blob.out_size = 0;
+	code = pioctl_utf8(ti->data, VIOC_SETUNIXMODE, &blob, 1);
+	if (code) {
+            Die(errno, ti->data);
+        }
+    }
+    return error;
+}
+
 #ifndef WIN32
 #include "AFS_component_version_number.c"
 #endif
@@ -5911,6 +6031,11 @@ int wmain(int argc, wchar_t **wargv)
     cmd_AddParm(ts, "-path", CMD_LIST, CMD_OPTIONAL, "dir/file path");
     cmd_AddParm(ts, "-literal", CMD_FLAG, CMD_OPTIONAL, "literal evaluation of mountpoints and symlinks");
 
+    ts = cmd_CreateSyntax("chmod", ChModCmd, NULL, "set UNIX mode for object(s) in afs");
+    cmd_AddParm(ts, "-mode", CMD_SINGLE, 0, "UNIX mode bits");
+    cmd_AddParm(ts, "-path", CMD_LIST, CMD_OPTIONAL, "dir/file path");
+    cmd_AddParm(ts, "-literal", CMD_FLAG, CMD_OPTIONAL, "literal evaluation of mountpoints and symlinks");
+
     code = cmd_Dispatch(argc, argv);
 
     if (rxInitDone) 
@@ -5921,7 +6046,7 @@ int wmain(int argc, wchar_t **wargv)
     return code;
 }
 
-static void 
+void
 Die(int code, char *filename)
 { /*Die*/
 
