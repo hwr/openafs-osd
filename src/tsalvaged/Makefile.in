@@ -220,5 +220,6 @@ dest: salvageserver dafssync-debug salvsync-debug dasalvager
 
 clean:
 	$(RM) -f *.o salvageserver core AFS_component_version_number.c dafssync-debug salvsync-debug dasalvager
+	$(RM) -f vol_osd.h
 
 include ../config/Makefile.version

@@ -1489,6 +1489,7 @@ $(JUAFS)/xdr_len.o: $(TOP_SRC_RX)/xdr_len.c
 clean:
 	-$(RM) -rf UAFS* JUAFS* AFSWEB* nsapi des afs afsint config rx
 	-$(RM) -f  h net netinet rpc ufs machine inet nfs sys des linktest $(AFS_OS_CLEAN)
+	-$(RM) -f afsd
 
 
 install: UAFS/$(LIBUAFS) JUAFS/$(LIBJUAFS)

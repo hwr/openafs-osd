@@ -297,6 +297,7 @@ vol_osd.h: ${srcdir}/vol_osd.xg
 clean:
 	$(RM) -f *.o *.a AFS_component_version_number.c
 	$(RM) -f ${SCMPROGS} ${STAGEPROGS} core salvager volinfo gi fssync-debug
+	$(RM) -f osdmetadata linkcounts vol_osd.xdr.c vol_osd.h
 
 test:
 	cd test; $(MAKE)

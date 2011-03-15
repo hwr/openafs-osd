@@ -107,7 +107,8 @@ depend: osddb.h
 distclean: clean
 
 clean:
-	rm -f osddb.xdr.c osddb.ss.c osddb.h osddb.cs.c *.o *~ osddbserver
+	$(RM) -f osddb.xdr.c osddb.ss.c osddb.h osddb.cs.c *.o *~ osddbserver
+	$(RM) -f test volint.h
 
 
 #
