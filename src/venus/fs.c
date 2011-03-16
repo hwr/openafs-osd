@@ -6646,14 +6646,14 @@ defect 3069
 
 #ifdef AFS_RXOSD_SUPPORT
     ts = cmd_CreateSyntax("osd", osd_parms, NULL, "list osd metadata of a file");
-    cmd_AddParm(ts, "-file", CMD_SINGLE, CMD_OPTIONAL, "file");
+    cmd_AddParm(ts, "-file", CMD_SINGLE, CMD_REQUIRED, "file");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cellname");
     cmd_AddParm(ts, "-cm", CMD_FLAG, CMD_OPTIONAL, "what cache manager gets");
     cmd_AddParm(ts, "-pathes", CMD_FLAG, CMD_OPTIONAL, "");
 
     ts = cmd_CreateSyntax("fidosd", osd_parms, NULL, 
 			"list osd metadata of a file");
-    cmd_AddParm(ts, "-fid", CMD_SINGLE, CMD_OPTIONAL, "fid");
+    cmd_AddParm(ts, "-fid", CMD_SINGLE, CMD_REQUIRED, "fid");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cellname");
     cmd_AddParm(ts, "-cm", CMD_FLAG, CMD_OPTIONAL, "what cache manager gets");
     cmd_AddParm(ts, "-pathes", CMD_FLAG, CMD_OPTIONAL, "");
