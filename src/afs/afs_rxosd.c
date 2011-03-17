@@ -194,7 +194,7 @@ getRxosdConn(struct rxosd_Variables *v, struct osd_obj *o,
 	return code;
     }
 #else
-    ip = o->osd_ip;
+    ip = htonl(o->osd_ip);
 #endif
     *ts = afs_GetServer(&ip, 1, v->avc->f.fid.Cell, port,
 			WRITE_LOCK, (afsUUID *)0, 0);
