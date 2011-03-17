@@ -2402,7 +2402,7 @@ _namei_examine_special(char * path1,
     struct ViceInodeInfo info;
     afs_uint32 inode_vgid;
 
-    if (DecodeInode(path1, dname, &info, myIH->ih_vid) < 0) {
+    if (DecodeInode(path1, dname, &info, myIH) < 0) {
 	ret = 0;
 	goto error;
     }
