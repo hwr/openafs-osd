@@ -2432,7 +2432,7 @@ _namei_examine_special(char * path1,
 			   "%s" OS_DIRSEP "%s", path1, dname);
 	linkHandle->fd_fd = afs_open(path2, Testing ? O_RDONLY : O_RDWR, 0666);
 	info.linkCount =
-	    namei_GetLinkCount(linkHandle, (Inode) 0, 1, 1, Testing);
+	    namei_GetLinkCount(linkHandle, (Inode) 0, 0, 1, Testing);
     }
 
     if (!judgeFun ||
@@ -2499,7 +2499,7 @@ _namei_examine_reg(char * path3,
 
     info.linkCount =
 	namei_GetLinkCount(linkHandle,
-			    info.inodeNumber, 1, 1, Testing);
+			    info.inodeNumber, 0, 1, Testing);
     if (info.linkCount == 0) {
 #ifdef DELETE_ZLC
 	Log("Found 0 link count file %s" OS_DIRSEP "%s, deleting it.\n", path3, dname);
