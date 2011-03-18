@@ -259,7 +259,12 @@ SetCellFname(name)
         strcat((char *) &cellFname, name);
     else {
         tdir = afsconf_Open(AFSDIR_CLIENT_ETC_DIRPATH);
-        afsconf_GetLocalCell(tdir, &cellFname[5], MAXCELLCHARS);
+	if (tdir)
+            afsconf_GetLocalCell(tdir, &cellFname[5], MAXCELLCHARS);
+	else {
+	    fprintf(stderr, "Couldn't find local cell\n");
+	    exit(1);
+	}
     }
 }
 
