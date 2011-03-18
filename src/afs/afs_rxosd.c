@@ -1143,6 +1143,11 @@ rxosd_storeInit(struct vcache *avc, struct afs_conn *tc, afs_offs_t base,
 	code = RXAFS_StartAsyncStore(tc->id, (struct AFSFid *) &avc->f.fid.Fid,
 				&p, &v->a, &v->maxlength, &v->transid, &v->expires, 
 				&v->OutStatus);
+	if (code == RXGEN_OPCODE)
+	    code = RXAFS_StartAsyncStore1(tc->id, (struct AFSFid *) &avc->f.fid.Fid,
+				base, bytes, avc->f.m.Length, 0, &v->a,
+				&v->maxlength, &v->transid, &v->expires, &v->OutStatus);
+
         RX_AFS_GLOCK();
 	if (code != OSD_WAIT_FOR_TAPE && code != VBUSY && code != VRESTARTING) 
 	    break;
@@ -2011,6 +2016,10 @@ rxosd_fetchInit(struct afs_conn *tc, struct vcache *avc, afs_offs_t base,
         RX_AFS_GUNLOCK();
 	code = RXAFS_StartAsyncFetch(tc->id, (struct AFSFid *) &avc->f.fid.Fid,
 				&p, &v->a, &v->transid, &v->expires,
+		 		&v->OutStatus, &v->CallBack);
+	if (code == RXGEN_OPCODE)
+	    code = RXAFS_StartAsyncFetch1(tc->id, (struct AFSFid *) &avc->f.fid.Fid,
+				base, bytes, 0, &v->a, &v->transid, &v->expires,
 		 		&v->OutStatus, &v->CallBack);
         RX_AFS_GLOCK();
 	if (code != OSD_WAIT_FOR_TAPE && code != VBUSY && code != VRESTARTING) 
