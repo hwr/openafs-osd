@@ -67,6 +67,16 @@
 #include <dirent.h>
 #include "rxosd_hsm.h"
 
+afs_int32 
+authenticate_for_hpss(char *principal, char *keytab)
+{
+    afs_int32 code;
+    code = hpss_SetLoginCred(principal, hpss_authn_mech_krb5,
+                             hpss_rpc_cred_client,
+                             hpss_rpc_auth_type_keytab, keytab);
+    return code;
+}
+
 int myhpss_open(const char *path, int flags, mode_t mode)
 {
     hpss_cos_hints_t *HintsIn = NULL;

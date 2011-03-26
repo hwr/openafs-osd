@@ -245,11 +245,14 @@ int HSM = 0;
 #endif
 
 #ifdef AFS_HPSS_SUPPORT
+extern afs_int32 authenticate_for_hpss(principal, keytab);
 extern char *hpssPath;
 extern char *hpssMeta;
 extern afs_int32 hpssDev;
 extern struct ih_posix_ops ih_hpss_ops;
 extern struct ih_posix_ops ih_namei_ops;
+char *principal = NULL;
+char *keytab = NULL;
 #endif
 
 struct MHhost {
@@ -1113,6 +1116,10 @@ FiveMinuteCheckLWP()
 			p = volutil_PartitionName_r(e->t.etype_u.osd.lun, 
 				partname, 16);
 #ifdef AFS_HPSS_SUPPORT
+			code = authenticate_for_hpss(principal, keytab);
+			if (code) {
+			    ViceLog(0,("hpss_SetLoginCred returns %d\n", code));
+			}
 			if (hpssPath && e->t.etype_u.osd.flags & OSDDB_ARCHIVAL)
 			    hpssDev = e->t.etype_u.osd.lun;
 #endif
@@ -6988,6 +6995,14 @@ main(int argc, char *argv[])
 	    hpssDev = volutil_GetPartitionID(hpssMeta);
 	    ih_hsm_opsPtr = &ih_hpss_ops;
         }
+	else if (!strcmp(argv[i], "-hpss_principal")) {
+	    ++i;
+	    principal = argv[i];
+	}
+	else if (!strcmp(argv[i], "-hpss_keytab")) {
+	    ++i;
+	    keytab = argv[i];
+	}
 #endif
         else
             printf("Unsupported option: %s\n", argv[i]);
