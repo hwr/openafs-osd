@@ -1118,7 +1118,7 @@ FiveMinuteCheckLWP()
 #ifdef AFS_HPSS_SUPPORT
 			code = authenticate_for_hpss(principal, keytab);
 			if (code) {
-			    ViceLog(0,("hpss_SetLoginCred returns %d\n", code));
+			    ViceLog(5,("hpss_SetLoginCred returns %d\n", code));
 			}
 			if (hpssPath && e->t.etype_u.osd.flags & OSDDB_ARCHIVAL)
 			    hpssDev = e->t.etype_u.osd.lun;
@@ -4936,6 +4936,7 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
     afs_uint32 diff;
     char string[FIDSTRLEN];
 
+    output->o.vsn = 1;
     if (!afsconf_SuperUser(confDir, call, (char *)0)) {
         code = EACCES;
 	goto finis;
@@ -4964,6 +4965,7 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
 			vnode, unique, 1, &open_fd);
 	if (!VALID_INO(inode)) {
     	    oh_release(lh);
+            ViceLog(0,("SRXOSD_create_archive: namei_icreate_open failed.\n"));
 	    code = ENOSPC;
 	    goto finis;
 	}
@@ -4973,7 +4975,6 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
 	code = EIO;
 	goto finis;
     }
-    output->o.vsn = 1;
     output->o.ometa_u.t.obj_id = inode;
     output->o.ometa_u.t.part_id = o->part_id;
     output->size = 0;
