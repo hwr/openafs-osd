@@ -4965,13 +4965,14 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
 			vnode, unique, 1, &open_fd);
 	if (!VALID_INO(inode)) {
     	    oh_release(lh);
-            ViceLog(0,("SRXOSD_create_archive: namei_icreate_open failed.\n"));
+            ViceLog(0,("SRXOSD_create_archive: namei_icreate_open failed (invalid inode).\n"));
 	    code = ENOSPC;
 	    goto finis;
 	}
     }
     oh_release(lh);
     if (!open_fd) {
+        ViceLog(0,("SRXOSD_create_archive: namei_icreate_open failed (not open).\n"));
 	code = EIO;
 	goto finis;
     }
