@@ -866,6 +866,10 @@ SetOGM(FD_t fd, int parm, int tag, int special)
     group = (parm >> 15) & 0x7fff;
 #ifdef BUILDING_RXOSD
     if (!special) {
+#ifdef AFS_HPSS_SUPPORT
+	/* We don't change owner and group for files in HPSS */
+	return 0;
+#endif
         owner = 0;
         group = 0;
     }
