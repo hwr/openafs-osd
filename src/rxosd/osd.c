@@ -1625,7 +1625,7 @@ static int examine(struct cmd_syndesc *as, void *rock)
 		char str[2];
 		str[0] = e.exam_u.e4.status;
 		str[1] = 0;
-	        printf(" HSM status %s\n", str);
+	        printf(" HSM status %s ", str);
 	    }
 	    if (mask & WANTS_CTIME)
         	PrintTime(&e.exam_u.e4.ctime);
