@@ -166,7 +166,7 @@ int myhpss_stat64(const char *path, struct stat64 *buf)
     return 0;
 }
 
-myhpss_stat_tapecopies(const char *path, afs_int32 *level, afs_sfsize_t *size)
+int myhpss_stat_tapecopies(const char *path, afs_int32 *level, afs_sfsize_t *size)
 {
     afs_int32 code, i;
     int on_disk = 0;

@@ -27,6 +27,12 @@ struct ih_posix_ops {
 #else
     int         (*statfs)(const char *, struct afs_statfs *);
 #endif
+    ssize_t     (*pread)(int, void *, size_t, afs_foff_t);
+    ssize_t     (*pwrite)(int, const void *, size_t, afs_foff_t);
+    ssize_t     (*preadv)(int, const struct iovec *, int, afs_foff_t);
+    ssize_t     (*pwritev)(int, const struct iovec *, int, afs_foff_t);
+    int         (*stat_tapecopies)(const char *path, afs_int32 *level,
+                                   afs_sfsize_t *size);
 };
 
 #endif
