@@ -2059,6 +2059,9 @@ bad:
     return EACCES;
 }
 
+/*
+ host and port in NBO
+ */
 static
 struct rx_connection *GetConnection(afs_uint32 host,  afs_uint32 limit, short port,
 				    afs_int32 service)
@@ -2155,9 +2158,9 @@ struct rx_connection *GetConnToOsd(afs_uint32 id)
     code = fillRxEndpoint(id, &endp, NULL, 0);
     if (!code) {
         memcpy(&ip, endp.ip.addr.addr_val, 4);
-        port = htonl(endp.port);
+        port = endp.port;
         service = endp.service;
-        tc = GetConnection(ip, 1, port, service);
+        tc = GetConnection(ip, 1, htons(port), service);
 	xdr_free((xdrproc_t)xdr_rx_endp, &endp);
         return tc;    
     }
@@ -5072,9 +5075,9 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
 		    code = fillRxEndpoint(obj->osd_id, &endp, NULL, 0);
 		    if (!code) {
 			afs_uint32 ip;
-			short port = htonl(endp.port);
+			short port = endp.port;
 			memcpy(&ip, endp.ip.addr.addr_val, 4);
-    			tcon = GetConnection(ntohl(ip), 1, port, endp.service);
+    			tcon = GetConnection(ip, 1, htons(port), endp.service);
 		    }
 		    if (!tcon) 
 			continue;
@@ -5473,7 +5476,7 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 			afs_uint32 ip;
 			short port = htonl(endp.port);
 			memcpy(&ip, endp.ip.addr.addr_val, 4);
-    			tcon = GetConnection(ntohl(ip), 1, port, endp.service);
+    			tcon = GetConnection(ip, 1, htons(port), endp.service);
 		    }
 		    if (!tcon) 
 			continue;
