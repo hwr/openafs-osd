@@ -2115,7 +2115,7 @@ struct rx_connection *GetConnection(afs_uint32 host,  afs_uint32 limit, short po
         else
 	    service = 1;
     }
-    Connection = rx_NewConnection(htonl(host), port, service, sc, scIndex);
+    Connection = rx_NewConnection(host, port, service, sc, scIndex);
     if (Connection == 0)
         return (Connection);
     tc = (struct RemoteConnection *) malloc(sizeof(struct RemoteConnection));
