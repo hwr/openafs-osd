@@ -1621,8 +1621,12 @@ static int examine(struct cmd_syndesc *as, void *rock)
 		    Oprm.ometa_u.f.rwvol, Oprm.ometa_u.f.vN, 
 		    Oprm.ometa_u.f.unique, Oprm.ometa_u.f.tag, 
 		    e.exam_u.e4.size, e.exam_u.e4.linkcount);
-	    if (mask & WANTS_HSM_STATUS)
-	        printf(" HSM status %s\n", e.exam_u.e4.status);
+	    if (mask & WANTS_HSM_STATUS) {
+		char str[2];
+		str[0] = e.exam_u.e4.status;
+		str[1] = 0;
+	        printf(" HSM status %s\n", str);
+	    }
 	    if (mask & WANTS_CTIME)
         	PrintTime(&e.exam_u.e4.ctime);
 	    else if (mask & WANTS_ATIME)

@@ -185,15 +185,16 @@ int myhpss_stat_tapecopies(const char *path, afs_int32 *level, afs_sfsize_t *siz
 
     for(i=0; i<HPSS_MAX_STORAGE_LEVELS; i++) {
 	scattr_ptr = &AttrOut.SCAttrib[i];
-	if (scattr_ptr->Flags == 0)
-	    continue;
-        if (scattr_ptr->Flags & BFS_BFATTRS_LEVEL_IS_DISK) {
-	    on_disk = 1;
-	    if (*size == 0)
+        if (scattr_ptr->Flags & BFS_BFATTRS_DATAEXISTS_AT_LEVEL) {
+            if (scattr_ptr->Flags & BFS_BFATTRS_LEVEL_IS_DISK) {
+	        on_disk = 1;
+	        if (*size == 0)
+	            *size = scattr_ptr->BytesAtLevel;
+	    }
+            if (scattr_ptr->Flags & BFS_BFATTRS_LEVEL_IS_TAPE) {
+	        on_tape = 1;
 	        *size = scattr_ptr->BytesAtLevel;
-	} else {
-	    on_tape = 1;
-	    *size = scattr_ptr->BytesAtLevel;
+	    }
 	}
     }
     if (on_disk & on_tape)
