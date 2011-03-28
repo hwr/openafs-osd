@@ -1117,10 +1117,14 @@ namei_icreate_open(IHandle_t * lh, char *part, afs_uint32 p1, afs_uint32 p2, afs
     namei_HandleToName(&name, &tmp);
 #if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
     mode = 0;
-#if defined(AFS_DCACHE_SUPPORT) || defined(AFS_HPSS_SUPPORT)
+#if defined(AFS_DCACHE_SUPPORT)
     if (dcache && p2 != -1)
         mode = 0600 | S_IWUSR;
 #endif /* AFS_DCACHE_SUPPORT */
+#if defined(AFS_HPSS_SUPPORT)
+    if (p2 != -1)
+	mode = 0600;
+#endif /* AFS_HSPSS_SUPPORT */
     fd = tmp.ih_ops->open(name.n_path, O_CREAT | O_EXCL | O_TRUNC | O_RDWR, mode);
 #else /* defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL) */
     fd = afs_open(name.n_path, O_CREAT | O_EXCL | O_TRUNC | O_RDWR, 0);
