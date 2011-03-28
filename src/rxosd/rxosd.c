@@ -2540,7 +2540,7 @@ incdec(struct rx_call *call, struct oparmT10 *o, afs_int32 diff)
     char string[FIDSTRLEN];
 
     extract_oparmT10(o, &lun, &vid, &vnode, &unique, NULL);
-    ViceLog(1,("SRXOSD_incdec for %u.%u.%u.%u %d from %u.%u.%u.%u\n",
+    ViceLog(1,("SRXOSD_incdec for %s from %u.%u.%u.%u\n",
                 sprint_oparmT10(o, string, sizeof(string)),
                 diff,
                 (ntohl(call->conn->peer->host) >> 24) & 0xff,
@@ -4971,7 +4971,7 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
 	}
     }
     oh_release(lh);
-    if (!open_fd) {
+    if (open_fd < 0) {
         ViceLog(0,("SRXOSD_create_archive: namei_icreate_open failed (not open).\n"));
 	code = EIO;
 	goto finis;
