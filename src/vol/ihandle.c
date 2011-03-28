@@ -395,7 +395,7 @@ ih_open(IHandle_t * ihP)
     IH_UNLOCK;
 ih_open_retry:
 #ifdef AFS_RXOSD_SUPPORT
-    if (open_fd > 0) {
+    if (open_fd >= 0) {
 #if defined(AFS_NAMEI_ENV)
 #if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
 	/* make sure ihp->ih_ops get filled correctly */
