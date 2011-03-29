@@ -83,6 +83,7 @@ char **argv;
 #ifdef AFS_HPSS_SUPPORT
 	case	'h' :
 		myops = &ih_hpss_ops;
+		authenticate_for_hpss("afsipp", "/usr/afs/etc/afsipp.keytab");
 		break;
 #endif
         case    'v' :
