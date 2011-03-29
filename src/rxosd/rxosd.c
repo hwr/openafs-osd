@@ -5369,7 +5369,11 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
     vid = o->part_id & 0xffffffff;
     lun = (afs_uint64)(o->part_id >> 32);
     oh = oh_init(o->part_id, o->obj_id);
+#ifdef AFS_HPSS_SUPPORT
+    if (HSM || oh->ih->ih_dev == hpssDev) {
+#else
     if (HSM) {
+#endif
 	if (!call) /* only try to open when restore_archive was called internally */
             fd = IH_REOPEN(oh->ih);
     } else
