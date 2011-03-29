@@ -5402,9 +5402,14 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
     } else
         fd = IH_OPEN(oh->ih);
     if (!fd) {
+	int hpssFile = 0;
+#ifdef AFS_HPSS_SUPPORT
+	if (oh->ih->ih_dev == hpssDev)
+	    hpssFile = 1;
+#endif
 	oh_release(oh);
         oh = 0;
-        if (HSM)
+        if (HSM || hpssFile)
             code = FindInFetchqueue(call, o, user, list);
         else {
             ViceLog(0,("restore_archive: couldn't open %s\n",
