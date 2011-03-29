@@ -5023,16 +5023,17 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
 	    struct osd_obj_desc *obj;
 	    obj = &list->osd_segm_descList_val[0].objList.osd_obj_descList_val[0];
 	    if (OsdHasAccessToHSM(obj->o.ometa_u.t.osd_id)) {
-		struct oparmT10 o1;
+		struct ometa o1;
 		struct rx_connection *tcon = GetConnToOsd(obj->o.ometa_u.t.osd_id);
 		if (!tcon) {
-		    ViceLog(0, ("RXOSD_create_archive: GetConnectionToOsd  failed for %u\n",
+		    ViceLog(0, ("RXOSD_create_archive: GetConnToOsd  failed for %u\n",
 				obj->o.ometa_u.t.osd_id));
 		} else {
         	    FDH_REALLYCLOSE(fdP);
 		    fdP = 0;
-		    o1.part_id = o->part_id;
-		    o1.obj_id = inode;
+		    o1.vsn = 1;
+		    o1.ometa_u.t.part_id = o->part_id;
+		    o1.ometa_u.t.obj_id = inode;
 		    code = RXOSD_write_to_hpss(tcon, &o1, list, output);
 		    if (!code)
 		        goto done;
@@ -5445,7 +5446,10 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 		    ViceLog(0, ("RXOSD_restore_archive: GetConnToOsd failed for %u\n",
 				obj->osd_id));
 		} else {
-		    code = RXOSD_read_from_hpss(tcon, o, list, output);
+		    struct ometa om;
+		    om.vsn = 1;
+		    om.ometa_u.t = *o;
+		    code = RXOSD_read_from_hpss(tcon, &om, list, output);
 		    if (!code) {
 		        unlock_file(fd);
 		        FDH_REALLYCLOSE(fd);
