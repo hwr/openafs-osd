@@ -6435,6 +6435,7 @@ write_to_hpss(struct rx_call *call, struct oparmT10 *o,
     output->o.ometa_u.t.obj_id = o->obj_id;
     output->o.ometa_u.t.part_id = o->part_id;
     output->size = 0;
+    output->c.type = 1; /* md5 checksum */
     fd = IH_OPEN(oh->ih);
     if (!fd) {
 	ViceLog(0,("write_to_hpss: couldn't open output file %s\n",
@@ -6624,7 +6625,6 @@ read_from_hpss(struct rx_call *call, struct oparmT10 *o,
     struct osd_obj_desc *odsc;
     MD5_CTX md5;
     char string[FIDSTRLEN];
-    struct oparmT10 oout;
 
     if (call && !afsconf_SuperUser(confDir, call, (char *)0)) {
         code = EACCES;
@@ -6652,13 +6652,18 @@ read_from_hpss(struct rx_call *call, struct oparmT10 *o,
     }
     lock_file(fd, LOCK_SH);
     odsc = &list->osd_segm_descList_val[0].objList.osd_obj_descList_val[0];
-    oout.part_id = odsc->o.ometa_u.t.part_id;
-    oout.obj_id = odsc->o.ometa_u.t.obj_id;
-    ohout = oh_init_oparmT10(&oout);
+    if (odsc->o.vsn != 1)
+    if (odsc->o.vsn != 1) {
+	ViceLog(0, ("read_from_hpss: objcct_desc contained ometa with vsn %d\n", 
+		odsc->o.vsn));
+	code = EIO;
+	goto bad;
+    }
+    ohout = oh_init_oparmT10(&odsc->o.ometa_u.t);
     fdout = IH_OPEN(ohout->ih);
     if (!fdout) {
         ViceLog(0,("read_from_hpss: couldn't open local file %s\n",
-			sprint_oparmT10(&oout, string, sizeof(string))));
+			sprint_oparmT10(&odsc->o.ometa_u.t, string, sizeof(string))));
         code = EIO;
 	goto bad;
     }
@@ -6666,9 +6671,10 @@ read_from_hpss(struct rx_call *call, struct oparmT10 *o,
     FDH_SEEK(fdout, 0, SEEK_SET);
     if (output) {
 	memset(output, 0, sizeof(struct osd_cksum));
-	output->o.ometa_u.t.obj_id = o->obj_id;
-	output->o.ometa_u.t.part_id = o->part_id;
 	output->o.vsn = 1;
+	output->o.ometa_u.t.part_id = o->part_id;
+	output->o.ometa_u.t.obj_id = o->obj_id;
+	output->c.type = 1;	/* md5 checksum */
         MD5_Init(&md5);
     }
 
@@ -6693,7 +6699,8 @@ read_from_hpss(struct rx_call *call, struct oparmT10 *o,
 	bytes = FDH_WRITE(fdout, buf, readlen);
 	if (bytes != readlen) {
             ViceLog(0,("read_from_hpss %s: written only %d bytes instead of %d\n",
-		       sprint_oparmT10(&oout, string, sizeof(string)), bytes, readlen));
+		       sprint_oparmT10(&odsc->o.ometa_u.t, string, sizeof(string)),
+		       bytes, readlen));
 	    code = EIO;
 	    goto bad;
 	}
