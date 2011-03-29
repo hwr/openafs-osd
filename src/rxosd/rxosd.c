@@ -4084,12 +4084,20 @@ readPS(struct rx_call *call, t10rock *rock, struct oparmT10 * o,
 		mystripe, toffset, bytesToXfer));
     }
     if (bytesToXfer > 0) {
+#ifdef AFS_HPSS_SUPPORT
+	if (HSM || oh->ih->ih_dev == hpssDev) {
+#else
 	if (HSM)
+#endif
 	    fdP = IH_REOPEN(oh->ih);
 	else
             fdP = IH_OPEN(oh->ih);
         if (!fdP) {
+#ifdef AFS_HPSS_SUPPORT
+	    if (HSM || oh->ih->ih_dev == hpssDev) {
+#else
 	    if (HSM) {
+#endif
 		afs_uint32 user = 1; /* assume it's admin */
 		struct osd_segm_descList list;
 		list.osd_segm_descList_val = 0;
@@ -4236,7 +4244,11 @@ readPS(struct rx_call *call, t10rock *rock, struct oparmT10 * o,
 finis:
     if (fdP) {
 	unlock_file(fdP);
+#ifdef AFS_HPSS_SUPPORT
+	if (HSM || oh->ih->ih_dev == hpssDev) {
+#else
 	if (HSM) {
+#endif
             char cmd[100];
 	    FDH_REALLYCLOSE(fdP);
             ViceLog(0,("HSM migrate %s\n", name.n_path));
@@ -5188,7 +5200,11 @@ retry:
 	        output->c.cksum_u.md5[2], output->c.cksum_u.md5[3],
 		datarate));
 done:
+#ifdef AFS_HPSS_SUPPORT
+    if (HSM || oh->ih->ih_dev == hpssDev) {
+#else
     if (HSM) {
+#endif
         namei_HandleToName(&name, oh->ih);
         ViceLog(0,("HSM migrate %s\n", name.n_path));
     }
@@ -5565,7 +5581,11 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
     }
 
 done:
+#ifdef AFS_HPSS_SUPPORT
+    if (call && (HSM || oh->ih->ih_dev == hpssDev)) {
+#else
     if (HSM && call)
+#endif
 	DeleteFromFetchq(o);
 
 bad:
@@ -5580,7 +5600,11 @@ bad:
         FDH_REALLYCLOSE(fd);
     }
     if (oh)  {
+#ifdef AFS_HPSS_SUPPORT
+        if (HSM || oh->ih->ih_dev == hpssDev) {
+#else
         if (HSM) {
+#endif
             namei_t name;
             char cmd[100];
             namei_HandleToName(&name, oh->ih);
