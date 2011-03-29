@@ -5582,7 +5582,7 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 
 done:
 #ifdef AFS_HPSS_SUPPORT
-    if (call && (HSM || oh->ih->ih_dev == hpssDev)) {
+    if (call && (HSM || oh->ih->ih_dev == hpssDev))
 #else
     if (HSM && call)
 #endif
