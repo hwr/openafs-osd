@@ -5478,7 +5478,7 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 		    code = fillRxEndpoint(obj->osd_id, &endp, NULL, 0);
 		    if (!code) {
 			afs_uint32 ip;
-			short port = htonl(endp.port);
+			short port = endp.port;
 			memcpy(&ip, endp.ip.addr.addr_val, 4);
     			tcon = GetConnection(ip, 1, htons(port), endp.service);
 		    }
