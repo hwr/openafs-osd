@@ -6444,7 +6444,13 @@ write_to_hpss(struct rx_call *call, struct oparmT10 *o,
     }
     lock_file(fd, LOCK_EX);
     odsc = &list->osd_segm_descList_val[0].objList.osd_obj_descList_val[0];
-    ohin = oh_init(odsc->part_id, odsc->obj_id);
+    if (odsc->o.vsn != 1) {
+	ViceLog(0, ("write_to_hpss: objcct_desc contained ometa with vsn %d\n", 
+		odsc->o.vsn));
+	code = EIO;
+	goto bad;
+    }
+    ohin = oh_init_oparmT10(&odsc->o.ometa_u.t);
     fdin = IH_OPEN(ohin->ih);
     if (!fdin) {
         ViceLog(0,("write_to_hpss: couldn't open local file %s\n",
