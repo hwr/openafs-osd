@@ -1260,7 +1260,14 @@ StartFetch()
 	    char ** argList = &arguments[0];
 	    memset(&arguments, 0, sizeof(arguments));
 	    arguments[0] = "readabyte";
+#ifdef AFS_HPSS_SUPPORT
+	    arguments[1] = "-h";
+	    arguments[2] = principal;
+	    arguments[3] = keytab;
+	    arguments[4] = name.n_path;
+#else
 	    arguments[1] = name.n_path;
+#endif
 	    (void) execv("/usr/afs/bin/readabyte", argList); 
 	}
 #endif

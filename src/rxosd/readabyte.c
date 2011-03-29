@@ -68,6 +68,8 @@ char **argv;
     int sleeptime = 0;
     float seconds;
     FILE *log;
+    char *principal = NULL;
+    char *keytab = NULL;
     
     log = fopen("/tmp/readabyte.log", "a+");
 
@@ -83,7 +85,11 @@ char **argv;
 #ifdef AFS_HPSS_SUPPORT
 	case	'h' :
 		myops = &ih_hpss_ops;
-		authenticate_for_hpss("afsipp", "/usr/afs/etc/afsipp.keytab");
+                argc--; argv++;
+		principal = argv[0];
+                argc--; argv++;
+		keytab = argv[0];
+		authenticate_for_hpss(principal, keytab);
 		break;
 #endif
         case    'v' :
