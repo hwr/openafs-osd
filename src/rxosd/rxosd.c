@@ -4085,7 +4085,7 @@ readPS(struct rx_call *call, t10rock *rock, struct oparmT10 * o,
     }
     if (bytesToXfer > 0) {
 #ifdef AFS_HPSS_SUPPORT
-	if (HSM || oh->ih->ih_dev == hpssDev) {
+	if (HSM || oh->ih->ih_dev == hpssDev) 
 #else
 	if (HSM)
 #endif
