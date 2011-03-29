@@ -1511,7 +1511,7 @@ XferData(struct fetch_entry *f)
 	    f->state = SET_FILE_READY;
 	    oh_release(f->oh);
 	    f->oh = 0;
-	    conn = GetConnection(f->d.fileserver, 1, htons(7000), 1);
+	    conn = GetConnection(htonl(f->d.fileserver), 1, htons(7000), 1);
 	    code = RXAFS_SetOsdFileReady(conn, &fid, &new_md5.c);
 	    if (code)
 	        f->error = code;
