@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -15,7 +15,7 @@
 #define osi_Alloc afs_osi_Alloc
 #define osi_Free  afs_osi_Free
 
-#ifndef AFS_DARWIN80_ENV
+#ifndef RXK_TIMEDSLEEP_ENV
 #define rxi_ReScheduleEvents    0	/* Not needed by kernel */
 #endif
 
