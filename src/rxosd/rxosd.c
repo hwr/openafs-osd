@@ -4931,7 +4931,7 @@ int check_dsmls(FILE *cmd_stdin, FILE *cmd_stdout, char *rock)
 afs_int32
 create_archive(struct rx_call *call, struct oparmT10 *o, 
 			struct osd_segm_descList *list,
-			struct osd_cksum *output)
+			struct osd_cksum *output, afs_int32 legacy)
 {
     struct o_handle *oh = 0;
     struct o_handle *lh = 0;
@@ -5109,7 +5109,13 @@ retry:
 		    p.type = 1;
 		    p.RWparm_u.p1.offset = 0;
 		    p.RWparm_u.p1.length = striperesid[j];
-		    code = StartRXOSD_read(rcall[j], &dummyrock, &p, &obj->o);
+		    if (legacy)
+			code = StartRXOSD_read131(rcall[j], dummyrock,
+						  obj->o.ometa_u.t.part_id,
+						  obj->o.ometa_u.t.obj_id,
+						  0, striperesid[j]);
+		    else
+		        code = StartRXOSD_read(rcall[j], &dummyrock, &p, &obj->o);
 		    if (code) {
 			rx_EndCall(rcall[j], 0);
 			rcall[j] = NULL;
@@ -5270,7 +5276,7 @@ SRXOSD_create_archive(struct rx_call *call, struct ometa *o,
 	code = RXGEN_SS_UNMARSHAL;
 	goto bad;
     }
-    code = create_archive(call, optr, l, output);
+    code = create_archive(call, optr, l, output, 0);
 bad:
     SETTHREADINACTIVE();
     return code;
@@ -5345,7 +5351,7 @@ SRXOSD_create_archive240(struct rx_call *call, afs_uint64 part_id,
     code = convert_osd_segm_desc0List(list, &l);
     if (code)
 	goto bad;
-    code = create_archive(call, &o, &l, &out);
+    code = create_archive(call, &o, &l, &out, 1);
     for (i=0; i<l.osd_segm_descList_len; i++)
 	free(l.osd_segm_descList_val[i].objList.osd_obj_descList_val);
     output->oid = out.o.ometa_u.t.obj_id;
@@ -5362,7 +5368,8 @@ bad:
 
 afs_int32
 restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
-			struct osd_segm_descList *list, struct osd_cksum *output)
+			struct osd_segm_descList *list, struct osd_cksum *output,
+			afs_int32 legacy)
 {
     struct o_handle *oh = 0;
     FdHandle_t *fd = 0;
@@ -5523,7 +5530,13 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 		    p.type = 1;
 		    p.RWparm_u.p1.offset = 0;
 		    p.RWparm_u.p1.length = striperesid[j];
-		    code = StartRXOSD_write(rcall[j], &dummyrock, &p, &obj->o);
+		    if (legacy)
+			code = StartRXOSD_write121(rcall[j], dummyrock,
+						   obj->o.ometa_u.t.part_id,
+						   obj->o.ometa_u.t.obj_id,
+						   0, striperesid[j]);
+		    else
+		        code = StartRXOSD_write(rcall[j], &dummyrock, &p, &obj->o);
 		    if (code) {
 			rx_EndCall(rcall[j], 0);
 			rcall[j] = NULL;
@@ -5670,7 +5683,7 @@ SRXOSD_restore_archive(struct rx_call *call, struct ometa *o, afs_uint32 user,
 	goto bad;
     }
 
-    code = restore_archive(call, optr, user, l, output);
+    code = restore_archive(call, optr, user, l, output, 0);
 bad:
     SETTHREADINACTIVE();
     return code;
@@ -5693,7 +5706,7 @@ SRXOSD_restore_archive251(struct rx_call *call, afs_uint64 part_id,
     code = convert_osd_segm_desc0List(list, &l);
     if (code)
 	goto bad;
-    code = restore_archive(call, &o, user, &l, &out);
+    code = restore_archive(call, &o, user, &l, &out, 1);
     output->oid = out.o.ometa_u.t.obj_id;
     output->pid = out.o.ometa_u.t.part_id;
     output->size = out.size;
