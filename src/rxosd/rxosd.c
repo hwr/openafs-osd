@@ -4466,7 +4466,7 @@ SRXOSD_hardlink115(struct rx_call *call, afs_uint64 from_part,
 }
 
 afs_int32
-copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint32 to_osd)
+copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint32 to_osd,     afs_int32 legacy)
 {
     int ret, bytes, nbytes;
     struct o_handle *from_oh = 0, *to_oh = 0;
@@ -4578,7 +4578,11 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
 	p.RWparm_u.p3.atime.type = 1;
 	p.RWparm_u.p3.atime.afstm_u.sec = at;
 	p.RWparm_u.p3.mtime.afstm_u.sec = mt;
-        code = StartRXOSD_write(tcall, &dummyrock, &p, &ometa);
+	if (legacy)
+	    code = StartRXOSD_write_keep122(tcall, to->part_id, to->obj_id, offset,
+					    length, at, mt);
+	else
+            code = StartRXOSD_write(tcall, &dummyrock, &p, &ometa);
         if (code) {
             ViceLog(0, ("SRXOSD_copy: StartRXOSD_write to OSD %u failed with code %d\n",
                     to_osd, code));
@@ -4718,7 +4722,7 @@ SRXOSD_copy(struct rx_call *call, struct ometa *from, struct ometa *to,
     SETTHREADACTIVE(14, call, from);
 
     if (from->vsn == 1 && to->vsn == 1) 
-	code = copy(call, &from->ometa_u.t, &to->ometa_u.t, to_osd);
+	code = copy(call, &from->ometa_u.t, &to->ometa_u.t, to_osd, 0);
     else {
 	struct oparmT10 from1, to1;
 	if (from->vsn == 2)
@@ -4726,11 +4730,11 @@ SRXOSD_copy(struct rx_call *call, struct ometa *from, struct ometa *to,
 	else 
 	    code = RXGEN_SS_UNMARSHAL;
 	if (!code && to->vsn == 1)
-	    code = copy(call, &from1, &to->ometa_u.t, to_osd);
+	    code = copy(call, &from1, &to->ometa_u.t, to_osd, 0);
 	else if (!code && to->vsn == 2) {
 	    code = convert_ometa_2_1(&to->ometa_u.f, &to1);
 	    if (!code)
-	        code = copy(call, &from1, &to1, to_osd);
+	        code = copy(call, &from1, &to1, to_osd, 0);
 	} else    
 	    code = RXGEN_SS_UNMARSHAL;
     }
@@ -4751,7 +4755,7 @@ SRXOSD_copy200(struct rx_call *call, afs_uint64 from_part, afs_uint64 to_part,
     from1.obj_id = from_id;
     to1.part_id = to_part;
     to1.obj_id = to_id;
-    code = copy(call, &from1, &to1, to_osd);
+    code = copy(call, &from1, &to1, to_osd, 1);
 
     SETTHREADINACTIVE();
     return code;
