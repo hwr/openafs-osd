@@ -635,6 +635,7 @@ extern afs_int32 implicitAdminRights;
 extern afs_int32 readonlyServer;
 int udpBufSize = 0;             /* UDP buffer size for receive */
 int sendBufSize = 65536;        /* send buffer size */
+int hpssBufSize = 1024*1024;    /* bigger buffer size */
 int fiveminutes = 300;
 
 afs_uint32 Nstripes[4] ={1, 2, 4, 8};
@@ -6465,10 +6466,10 @@ write_to_hpss(struct rx_call *call, struct oparmT10 *o,
     gettimeofday(&start, &tz);
     MD5_Init(&md5);
     length =  list->osd_segm_descList_val[0].length;
-    buf = malloc(sendBufSize);
+    buf = malloc(hpssBufSize);
     while (length) {
 	writelen = 0;
-	tlen = sendBufSize;
+	tlen = hpssBufSize;
 	if (tlen > length)
 	    tlen = length;
 	bytes = FDH_READ(fdin, buf, tlen);	
@@ -6681,10 +6682,10 @@ read_from_hpss(struct rx_call *call, struct oparmT10 *o,
     length =  list->osd_segm_descList_val[0].length;
     if (output)
 	output->size += length;
-    buf = malloc(sendBufSize);
+    buf = malloc(hpssBufSize);
     FDH_SEEK(fd, 0, SEEK_SET);
     while (length) {
-	readlen = sendBufSize;
+	readlen = hpssBufSize;
 	if (readlen > length)
 	    readlen = length;
 	bytes = FDH_READ(fd, buf, readlen);
