@@ -5093,7 +5093,7 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
 		    struct RWparm p;
 		    struct rx_endp endp;
 		    struct rx_connection *tcon = NULL;
-		    code = fillRxEndpoint(obj->osd_id, &endp, NULL, 0);
+		    code = fillRxEndpoint(obj->o.ometa_u.t.osd_id, &endp, NULL, 0);
 		    if (!code) {
 			afs_uint32 ip;
 			short port = endp.port;
@@ -5508,7 +5508,7 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 		    struct RWparm p;
 		    struct rx_endp endp;
 		    struct rx_connection *tcon = NULL;
-		    code = fillRxEndpoint(obj->osd_id, &endp, NULL, 0);
+		    code = fillRxEndpoint(obj->o.ometa_u.t.osd_id, &endp, NULL, 0);
 		    if (!code) {
 			afs_uint32 ip;
 			short port = endp.port;
