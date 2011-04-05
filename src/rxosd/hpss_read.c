@@ -200,7 +200,7 @@ char **argv;
     seconds = opentime.tv_sec + opentime.tv_usec *.000001          
              -starttime.tv_sec - starttime.tv_usec *.000001;
     if (!duration)
-    printf("open of %s bytes took %.3f sec.\n", filename, seconds);
+    printf("open of %s took %.3f sec.\n", filename, seconds);
 
     seconds = writetime.tv_sec + writetime.tv_usec *.000001          
              -opentime.tv_sec - opentime.tv_usec *.000001;
