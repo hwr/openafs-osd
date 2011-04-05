@@ -635,7 +635,7 @@ extern afs_int32 implicitAdminRights;
 extern afs_int32 readonlyServer;
 int udpBufSize = 0;             /* UDP buffer size for receive */
 int sendBufSize = 65536;        /* send buffer size */
-int hpssBufSize = 1024*1024;    /* bigger buffer size */
+int hpssBufSize = 32*1024*1024;    /* bigger buffer size */
 int fiveminutes = 300;
 
 afs_uint32 Nstripes[4] ={1, 2, 4, 8};
@@ -6093,6 +6093,9 @@ Variable(struct rx_call *call, afs_int32 cmd, char *name,
         } else if (!strcmp(name, "o_cache_used")) {
             *result = o_cache_used;
             code = 0;
+	} else if (!strcmp(name, "hpssBufSize")) {
+	    *result = hpssBufSize;
+	    code = 0;
 	} else
 	    code = ENOENT;
     } else if (cmd == 2) {					/* set */
@@ -6126,6 +6129,15 @@ Variable(struct rx_call *call, afs_int32 cmd, char *name,
 	    LogLevel = value;
 	    *result = LogLevel;
 	    code = 0;
+	} else if (!strcmp(name, "hpssBufSize")) {
+	    /* Allow ownly multiples of 1 MB */
+	    if (value <=0 || (value & 0xfffff)) {
+		code = EINVAL;
+		goto finis;
+	    }
+	    hpssBufSize = value;
+	    *result = hpssBufSize;
+	    code = 0;
 	} else
 	    code = ENOENT;
     }
@@ -6152,6 +6164,8 @@ char ExportedVariables[] =
     "fileLockWaits"
     EXP_VAR_SEPARATOR
     "o_cache_used"
+    EXP_VAR_SEPARATOR
+    "hpssBufSize"
     EXP_VAR_SEPARATOR
     "";
     
