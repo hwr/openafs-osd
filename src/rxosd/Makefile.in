@@ -183,6 +183,12 @@ readabyte.o: readabyte.c
 readabyte: readabyte.o
 	${CC} ${LDFLAGS} -ldl -o readabyte readabyte.o rxosd_hpss.o rxosd_dcache.o ${MT_LIBS} ${HSM_LIB}
 
+hpss_read.o: ${srcdir}/hpss_read.c
+	${CCRULE} ${HSM_INC}
+
+hpss_read: hpss_read.o
+	${CC} ${LDFLAGS} -o hpss_read hpss_read.o ${HSM_LIB}
+
 ${DEST}/root.server/usr/afs/bin/rxosd: rxosd  
 	${INSTALL} $? $@
 
