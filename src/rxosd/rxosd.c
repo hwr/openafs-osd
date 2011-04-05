@@ -6657,6 +6657,10 @@ read_from_hpss(struct rx_call *call, struct oparmT10 *o,
     struct osd_obj_desc *odsc;
     MD5_CTX md5;
     char string[FIDSTRLEN];
+    struct timeval start, end;
+    struct timezone tz;
+    afs_uint64 datarate;
+    afs_uint32 diff;
 
     if (call && !afsconf_SuperUser(confDir, call, (char *)0)) {
         code = EACCES;
@@ -6701,6 +6705,7 @@ read_from_hpss(struct rx_call *call, struct oparmT10 *o,
     }
     lock_file(fdout, LOCK_EX);
     FDH_SEEK(fdout, 0, SEEK_SET);
+    gettimeofday(&start, &tz);
     if (output) {
 	memset(output, 0, sizeof(struct osd_cksum));
 	output->o.vsn = 1;
@@ -6747,10 +6752,16 @@ read_from_hpss(struct rx_call *call, struct oparmT10 *o,
         MD5_Final((char *)&output->c.cksum_u.md5[0], &md5);
         for (i=0; i<4; i++)
             output->c.cksum_u.md5[i] = ntohl(output->c.cksum_u.md5[i]);
-    	ViceLog(0,("read_from_hpss:  md5 checksum for %s is %08x%08x%08x%08x\n",
+        gettimeofday(&end, &tz);
+        diff = end.tv_sec - start.tv_sec;
+        if (diff == 0)
+	    diff = 1;
+        datarate = (output->size / diff) >> 20;
+        ViceLog(0,("read_from_hpss: md5 checksum for %s is %08x%08x%08x%08x %llu MB/s\n",
 		   sprint_oparmT10(o, string, sizeof(string)),
 		   output->c.cksum_u.md5[0], output->c.cksum_u.md5[1],
-		   output->c.cksum_u.md5[2], output->c.cksum_u.md5[3]));
+		   output->c.cksum_u.md5[2], output->c.cksum_u.md5[3],
+		   datarate));
     }
     code = 0;
 bad:
