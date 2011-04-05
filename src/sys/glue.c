@@ -109,7 +109,7 @@ ioctl_sun_afs_syscall(long syscall, uintptr_t param1, uintptr_t param2,
 {
     void *ioctldata;
     long callnum;
-    int fd;
+    int fd, code;
 
 # ifdef _ILP32
     struct afssysargs32 sargs32;
@@ -142,8 +142,15 @@ ioctl_sun_afs_syscall(long syscall, uintptr_t param1, uintptr_t param2,
 	return -1;
     }
 
-    *error = ioctl(fd, callnum, ioctldata);
+    *error = 0;
+
+    code = ioctl(fd, callnum, ioctldata);
     close(fd);
+
+    if (code) {
+	errno = code;
+	*error = code;
+    }
 
     return 0;
 }
