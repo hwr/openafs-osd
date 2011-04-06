@@ -71,7 +71,7 @@ char **argv;
     hpss_cos_hints_t *HintsIn = NULL;
     hpss_cos_priorities_t *HintsPri = NULL;
     hpss_cos_hints_t *HintsOut = NULL;
-    MD5_CTX md5
+    MD5_CTX md5;
     int cksum[4];
 
     code = hpss_SetLoginCred("afsipp", hpss_authn_mech_krb5,
@@ -220,7 +220,7 @@ char **argv;
     if (domd5) {
 	MD5_Final((char *)&cksum[0], &md5);
 	printf("md5 checksum is %08x%08x%08x%08x\n",
-		ntohl(ckdum[0]), ntohl(cksum[1]), ntohl(cksum[2]), ntohl(cksum[3]));
+		ntohl(cksum[0]), ntohl(cksum[1]), ntohl(cksum[2]), ntohl(cksum[3]));
     }
 
     hpss_Close(fd);
