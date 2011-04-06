@@ -2551,9 +2551,10 @@ incdec(struct rx_call *call, struct oparmT10 *o, afs_int32 diff)
     char string[FIDSTRLEN];
 
     extract_oparmT10(o, &lun, &vid, &vnode, &unique, NULL);
-    ViceLog(1,("SRXOSD_incdec for %s %d from %u.%u.%u.%u\n",
-                sprint_oparmT10(o, string, sizeof(string)),
+    ViceLog(1,("SRXOSD_incdec %s %d in lun %u from %u.%u.%u.%u\n",
                 diff,
+                sprint_oparmT10(o, string, sizeof(string)),
+		lun,
                 (ntohl(call->conn->peer->host) >> 24) & 0xff,
                 (ntohl(call->conn->peer->host) >> 16) & 0xff,
                 (ntohl(call->conn->peer->host) >> 8) & 0xff,
@@ -4439,9 +4440,10 @@ SRXOSD_hardlink(struct rx_call *call, struct ometa *from, struct ometa *to,
         code = hardlink(call, from->ometa_u.t.part_id, from->ometa_u.t.obj_id,
 		        to->ometa_u.t.part_id, to->ometa_u.t.obj_id,
 		        &res->ometa_u.t.obj_id);
-        ViceLog(1, ("SRXOSD_hardlink for %s to %s returns %d\n",
+        ViceLog(1, ("SRXOSD_hardlink for %s to %s in lun %u returns %d\n",
 		sprint_oparmT10(&from->ometa_u.t, string, sizeof(string)),
 		sprint_oparmT10(&to->ometa_u.t, string2, sizeof(string2)),
+		(afs_uint32)(from->ometa_u.t.part_id >> 32),
 		code));
     } else if (from->vsn == 2 && to->vsn == 2) {
 	struct oparmT10 f, t, r;
