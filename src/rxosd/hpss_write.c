@@ -112,9 +112,9 @@ char **argv;
 
     code = hpss_Stat(filename, &status);
     if (code) {
-        fd = hpss_Open(filename, O_RDWR | O_EXCL, 0600, HintsIn, HintsPri, HintsOut);
-    } else 
         fd = hpss_Open(filename, O_CREAT | O_EXCL | O_RDWR | O_TRUNC, 0600, HintsIn, HintsPri, HintsOut);
+    } else 
+        fd = hpss_Open(filename, O_RDWR | O_EXCL, 0600, HintsIn, HintsPri, HintsOut);
     if (fd < 0) {
        fprintf(stderr, "hpss_Open for %s returned %d\n", filename, fd);
        exit(1);
