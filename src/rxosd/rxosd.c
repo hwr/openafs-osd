@@ -4431,20 +4431,29 @@ SRXOSD_hardlink(struct rx_call *call, struct ometa *from, struct ometa *to,
 			struct ometa *res)
 {
     afs_int32 code;
+    char string[FIDSTRLEN], string2[FIDSTRLEN];
     SETTHREADACTIVE(13, call, from);
     
     res->vsn = 1;
-    if (from->vsn == 1 && to->vsn == 1)
+    if (from->vsn == 1 && to->vsn == 1) {
         code = hardlink(call, from->ometa_u.t.part_id, from->ometa_u.t.obj_id,
 		        to->ometa_u.t.part_id, to->ometa_u.t.obj_id,
 		        &res->ometa_u.t.obj_id);
-    else if (from->vsn == 2 && to->vsn == 2) {
+        ViceLog(1, ("SRXOSD_hardlink for %s to %s returns %d\n",
+		sprint_oparmT10(&from->ometa_u.t, string, sizeof(string)),
+		sprint_oparmT10(&to->ometa_u.t, string2, sizeof(string2)),
+		code));
+    } else if (from->vsn == 2 && to->vsn == 2) {
 	struct oparmT10 f, t, r;
 	code = convert_ometa_2_1(&from->ometa_u.f, &f);
 	if (!code) 
 	    code = convert_ometa_2_1(&to->ometa_u.f, &t);
 	if (!code)
             code = hardlink(call, f.part_id, f.obj_id, t.part_id, t.obj_id, &r.obj_id);
+        ViceLog(1, ("SRXOSD_hardlink for %s to %s returns %d\n",
+		sprint_oparmT10(&f, string, sizeof(string)),
+		sprint_oparmT10(&t, string2, sizeof(string2)),
+		code));
 	(void) convert_ometa_1_2(&r, &res->ometa_u.f);
     } else
 	code = RXGEN_SS_UNMARSHAL;
