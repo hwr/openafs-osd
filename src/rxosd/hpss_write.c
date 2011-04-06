@@ -114,7 +114,7 @@ char **argv;
     if (code) {
         fd = hpss_Open(filename, O_WRONLY | O_LARGEFILE, 0644, HintsIn, HintsPri, HintsOut);
     } else 
-        fd = hpss_Open(filename, O_WRONLY | O_LARGEFILE, 0644, HintsIn, HintsPri, HintsOut);
+        fd = hpss_Open(filename, O_CREAT, O_WRONLY | O_LARGEFILE, 0644, HintsIn, HintsPri, HintsOut);
     if (fd < 0) {
        fprintf(stderr, "hpss_Open for %s returned %d\n", filename, fd);
        exit(1);
