@@ -178,7 +178,7 @@ char **argv;
 	      && writetime.tv_usec >= stop.tv_usec)
 		length = 0;
 	}		
-        if (!duration && !(++i % 4)) {
+        if (!duration && !(++i % 3)) {
           long long tl;
 	  int ttl;
 	  

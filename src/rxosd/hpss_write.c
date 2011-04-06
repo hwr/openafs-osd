@@ -128,7 +128,6 @@ char **argv;
 
     page = 0;
     if (offset > 0) {
-	Length = fileLength - offset;
         if ((long long) hpss_Lseek(fd, offset, SEEK_SET) < 1) {
 	    perror("hpss_Lseek failed");
 	    exit(1);
@@ -136,7 +135,7 @@ char **argv;
     }
     memset(&buffer, 0, BUFSIZE);
     num = 0;
-    length = Length;
+    Length = length;
     trunclength = offset + length;
     i = 0;
     lasttime = opentime;
@@ -176,7 +175,7 @@ char **argv;
               && writetime.tv_usec >= stop.tv_usec)
                 length = 0;
         }
-        if (!duration && !(++i % 4)) {
+        if (!duration && !(++i % 3)) {
             long long tl;
             int ttl;
 
