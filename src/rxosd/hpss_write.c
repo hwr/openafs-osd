@@ -56,7 +56,7 @@ char **argv;
     struct timeval lasttime;
     struct timezone timezone;
     int sync = 0, i, num = 0, number = 0;
-    u_int word[2], ll, page = 0;
+    u_int ll, page = 0;
     char *p;
     long high = 0, low = 0, thigh, tlow, fields;
     long long toffset;
@@ -201,8 +201,6 @@ char **argv;
             lasttime = writetime;
         }
     }
- 
-	MD5_Final((char *)&cksum[0], &md5);
     gettimeofday (&writetime, &timezone);
     if (truncate) {
         code = hpss_Ftruncate(fd, trunclength);
