@@ -31,6 +31,7 @@
 #endif
 #include "hpss_api.h"
 #include "hpss_stat.h"
+#include "../rxkad/md5.h"
 
 extern int errno;
  
@@ -60,6 +61,7 @@ char **argv;
     long high = 0, low = 0, thigh, tlow, fields;
     long long toffset;
     int display = 0;
+    int domd5 = 0;
     char line[256];
     unsigned long offhi, offlo;
     long long result;
@@ -68,6 +70,8 @@ char **argv;
     hpss_cos_hints_t *HintsIn = NULL;
     hpss_cos_priorities_t *HintsPri = NULL;
     hpss_cos_hints_t *HintsOut = NULL;
+    MD5_CTX md5;
+    int cksum[4];
 
     code = hpss_SetLoginCred("afsipp", hpss_authn_mech_krb5,
 				hpss_rpc_cred_client,
@@ -82,6 +86,10 @@ char **argv;
 	switch (argv[0][1]) {
 	    case    'd' :
 		display = 1;
+		break;
+	    case    'm':
+		domd5 = 1;
+		MD5_Init(&md5);
 		break;
 	    case    's' :
 		argc--; argv++;
@@ -150,6 +158,8 @@ char **argv;
             perror("read");
             exit(1);
        	}
+	if (domd5)
+	    MD5_Update(&md5, buffer, l);
 	for (ll = 0; ll < l; ll += 4096) {
        	    fields = sscanf (&buffer[ll], "Offset (0x%x, 0x%x)\n",
                  &high, &low);
@@ -219,6 +229,11 @@ char **argv;
 	printf("%.4f MB in %.4f sec, %.4f MB/sec\n", mb, seconds, datarate);
     } else
     printf("Total data rate = %.0f Kbytes/sec. for read\n", datarate);
+    if (domd5) {
+	MD5_Final((char *)&cksum[0], &md5);
+        printf("md5 checksum is %08x%08x%08x%08x\n",
+                ntohl(cksum[0]), ntohl(cksum[1]), ntohl(cksum[2]), ntohl(cksum[3]));
+    }
    
     exit(0);
 }
