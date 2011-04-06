@@ -31,6 +31,7 @@
 #endif
 #include "hpss_api.h"
 #include "hpss_stat.h"
+#include "../rxkad/md5.h"
 
 extern int errno;
  
@@ -65,10 +66,13 @@ char **argv;
     long long result;
     int duration = 0;
     int truncate = 0;
+    int domd5 = 0;
     struct timeval stop;
     hpss_cos_hints_t *HintsIn = NULL;
     hpss_cos_priorities_t *HintsPri = NULL;
     hpss_cos_hints_t *HintsOut = NULL;
+    MD5_CTX md5
+    int cksum[4];
 
     code = hpss_SetLoginCred("afsipp", hpss_authn_mech_krb5,
 				hpss_rpc_cred_client,
@@ -90,6 +94,10 @@ char **argv;
 		break;
             case 't':
                 truncate = 1;
+                break;
+            case 'm':
+                domd5 = 1;
+		MD5_Init(&md5);
                 break;
 	    default: usage();
 	}
@@ -151,6 +159,8 @@ char **argv;
         }
         p = &buffer[0];
         ll = l;
+	if (domd5)
+	    MD5_Update(&md5, p, ll);
         while (ll) {
             count = hpss_Write(fd, p, ll);
             if (count != ll) {
@@ -192,6 +202,7 @@ char **argv;
         }
     }
  
+	MD5_Final((char *)&cksum[0], &md5);
     gettimeofday (&writetime, &timezone);
     if (truncate) {
         code = hpss_Ftruncate(fd, trunclength);
@@ -206,6 +217,11 @@ char **argv;
              -opentime.tv_sec - opentime.tv_usec *.000001;
     if (!duration)
     printf("writing of %llu bytes took %.3f sec.\n", offset - seekoffset, seconds);
+    if (domd5) {
+	MD5_Final((char *)&cksum[0], &md5);
+	printf("md5 checksum is %08x%08x%08x%08x\n",
+		ntohl(ckdum[0]), ntohl(cksum[1]), ntohl(cksum[2]), ntohl(cksum[3]));
+    }
 
     hpss_Close(fd);
  

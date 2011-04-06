@@ -187,13 +187,13 @@ hpss_read.o: ${srcdir}/hpss_read.c
 	${CCRULE} ${HSM_INC}
 
 hpss_read: hpss_read.o
-	${CC} ${LDFLAGS} -o hpss_read hpss_read.o ${HSM_LIB}
+	${CC} ${LDFLAGS} -o hpss_read hpss_read.o ../rxkad/md5.o ${HSM_LIB}
 
 hpss_write.o: ${srcdir}/hpss_write.c
-	${CCRULE} ${HSM_INC}
+	${CCRULE} ${HSM_INC} 
 
 hpss_write: hpss_write.o
-	${CC} ${LDFLAGS} -o hpss_write hpss_write.o ${HSM_LIB}
+	${CC} ${LDFLAGS} -o hpss_write hpss_write.o ../rxkad/md5.o ${HSM_LIB}
 
 ${DEST}/root.server/usr/afs/bin/rxosd: rxosd  
 	${INSTALL} $? $@
