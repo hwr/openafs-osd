@@ -211,6 +211,11 @@ char **argv;
  
     gettimeofday (&closetime, &timezone);
     seconds = closetime.tv_sec + closetime.tv_usec *.000001
+             -writetime.tv_sec - writetime.tv_usec *.000001;
+    if (!duration)
+    printf("close took %.3f sec.\n", seconds);
+
+    seconds = closetime.tv_sec + closetime.tv_usec *.000001
              -starttime.tv_sec - starttime.tv_usec *.000001;
     datarate = (offset -seekoffset) / seconds / 1024;
     if (duration) {
@@ -218,7 +223,7 @@ char **argv;
 	datarate = mb / seconds;
 	printf("%.4f MB in %.4f sec, %.4f MB/sec\n", mb, seconds, datarate);
     } else
-    printf("Total data rate = %.0f Kbytes/sec. for read\n", datarate);
+    printf("Total data rate = %.0f Kbytes/sec. for write\n", datarate);
    
     exit(0);
 }
