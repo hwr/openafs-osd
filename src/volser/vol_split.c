@@ -78,6 +78,16 @@ struct Msg {
     char line[1024];
 };
 
+extern afs_int32 LogLevel;
+
+static void inform(struct Msg *m, int force)
+{
+    if (LogLevel)
+	Log("%s", m->line);
+    if (m->verbose || force)
+	rx_Write(m->call, m->line, strlen(m->line));
+}
+
 static afs_int32 
 ExtractVnodes(struct Msg *m, Volume *vol, afs_int32 class, 
 	      struct VnodeExtract **list,
@@ -103,7 +113,7 @@ ExtractVnodes(struct Msg *m, Volume *vol, afs_int32 class,
     if (!fdP) {
 	sprintf(m->line, "Couldn't open %s Index of volume %u\n", 
 		class ? "small":"large", V_id(vol));
-	rx_Write(m->call, m->line, strlen(m->line));
+	inform(m, 1);
 	code = EIO;
 	goto Bad_Extract;
     }
@@ -119,7 +129,7 @@ ExtractVnodes(struct Msg *m, Volume *vol, afs_int32 class,
     if (!stream) {
 	sprintf(m->line, "Couldn't stream open %s Index of volume %u\n", 
 		class ? "small":"large", V_id(vol));
-	rx_Write(m->call, m->line, strlen(m->line));
+	inform(m, 1);
 	code = EIO;
 	goto Bad_Extract;
     }
@@ -155,16 +165,14 @@ ExtractVnodes(struct Msg *m, Volume *vol, afs_int32 class,
 	        code = EIO;
         } else {
 	    sprintf(m->line, "SplitVolume: extract didn't see directory %u\n", where);
-	    rx_Write(m->call, m->line, strlen(m->line));
+	    inform(m, 1);
 	    code = ENOENT;
 	}
     }
-    if (m->verbose) {
-	sprintf(m->line, "Volume %u has %u %s vnodes in volume %u\n",
+    sprintf(m->line, "Volume %u has %u %s vnodes in volume %u\n",
 			V_parentId(vol), *length, class? "small":"large",
 			V_id(vol));
-	rx_Write(m->call, m->line, strlen(m->line));
-    }
+    inform(m, 0);
     
 Bad_Extract:
     if (stream)
@@ -205,7 +213,7 @@ FindVnodes(struct Msg *m, afs_uint32 where,
 	    sprintf(m->line, 
 		"SplitVolume: directory %u where to start new volume not found\n",
 		 where);
-	    rx_Write(m->call, m->line, strlen(m->line));
+	    inform(m, 1);
 	    return ENOENT;
 	}
 	found = 0;
@@ -219,7 +227,7 @@ FindVnodes(struct Msg *m, afs_uint32 where,
 	if (!found) {
 	    sprintf(m->line, "SplitVolume: parent directory %u not found\n", 
 			parent);
-	    rx_Write(m->call, m->line, strlen(m->line));
+	    inform(m, 1);
 	    return ENOENT;
 	}
     }
@@ -238,11 +246,9 @@ FindVnodes(struct Msg *m, afs_uint32 where,
 	    }
 	}
     }
-    if (m->verbose) {
-	sprintf(m->line, "%u %s vnodes will go into the new volume\n", 
+    sprintf(m->line, "%u %s vnodes will go into the new volume\n", 
 			*needed, class ? "small" : "large");
-	rx_Write(m->call, m->line, strlen(m->line));
-    }
+    inform(m, 0);
     return 0;
 }
     
@@ -260,7 +266,7 @@ copyDir(struct Msg *m, IHandle_t *inh, IHandle_t *outh)
 		    infdP->fd_ih->ih_vid,
 		    (afs_uint32)(infdP->fd_ih->ih_ino & NAMEI_VNODEMASK),
 		    (afs_uint32)(infdP->fd_ih->ih_ino >> NAMEI_UNIQSHIFT));
-	rx_Write(m->call, m->line, strlen(m->line));
+	inform(m, 1);
 	return EIO;
     }
     outfdP = IH_OPEN(outh);
@@ -269,7 +275,7 @@ copyDir(struct Msg *m, IHandle_t *inh, IHandle_t *outh)
 		    outfdP->fd_ih->ih_vid,
 		    (afs_uint32)(outfdP->fd_ih->ih_ino & NAMEI_VNODEMASK),
 		    (afs_uint32)(outfdP->fd_ih->ih_ino >> NAMEI_UNIQSHIFT));
-	rx_Write(m->call, m->line, strlen(m->line));
+	inform(m, 1);
 	FDH_REALLYCLOSE(infdP);
 	return EIO;
     }
@@ -284,7 +290,7 @@ copyDir(struct Msg *m, IHandle_t *inh, IHandle_t *outh)
 		    infdP->fd_ih->ih_vid,
 		    (afs_uint32)(infdP->fd_ih->ih_ino & NAMEI_VNODEMASK),
 		    (afs_uint32)(infdP->fd_ih->ih_ino >> NAMEI_UNIQSHIFT));
-	    rx_Write(m->call, m->line, strlen(m->line));
+	    inform(m, 1);
 	    FDH_REALLYCLOSE(infdP);
 	    FDH_REALLYCLOSE(outfdP);
 	    free(tbuf);
@@ -295,7 +301,7 @@ copyDir(struct Msg *m, IHandle_t *inh, IHandle_t *outh)
 		    outfdP->fd_ih->ih_vid,
 		    (afs_uint32)(outfdP->fd_ih->ih_ino & NAMEI_VNODEMASK),
 		    (afs_uint32)(outfdP->fd_ih->ih_ino >> NAMEI_UNIQSHIFT));
-	    rx_Write(m->call, m->line, strlen(m->line));
+	    inform(m, 1);
 	    FDH_REALLYCLOSE(infdP);
 	    FDH_REALLYCLOSE(outfdP);
 	    free(tbuf);
@@ -727,11 +733,8 @@ split_volume(struct rx_call *call, Volume *vol, Volume *newvol,
      *  Find out which directories will belong to the new volume
      *
      */
-    if (verbose) {
-	sprintf(m->line, 
-		"1st step: extract vnode essence from large vnode file\n");
-	rx_Write(m->call, m->line, strlen(m->line));
-    }
+    sprintf(m->line, "1st step: extract vnode essence from large vnode file\n");
+    inform(m, 0);
 
     code = ExtractVnodes(m, vol, vLarge, &dirList, &dl, where, rootVnode, 
 			&parent, parVnode);
@@ -739,59 +742,52 @@ split_volume(struct rx_call *call, Volume *vol, Volume *newvol,
 	sprintf(m->line, 
 		"ExtractVnodes failed for %u for directories with code %d\n",
 	        V_id(vol), code);
-	rx_Write(m->call, m->line, strlen(m->line));
+	inform(m, 1);
 	return code;
     }
 
-    if (verbose) {
-	sprintf(m->line, "2nd step: look for name of vnode %u in directory %u.%u.%u\n",
+    sprintf(m->line, "2nd step: look for name of vnode %u in directory %u.%u.%u\n",
 		where, V_id(vol), parent, parVnode->uniquifier); 
-	rx_Write(m->call, m->line, strlen(m->line));
-    }
+    inform(m, 0);
     code = findName(vol, parVnode, where, rootVnode->uniquifier, 
                     name,  sizeof(name));
     if (code) {
 	sprintf(m->line, 
 		"splitvolume: could'nt find name of %u in directory %u.%u.%u.\n",
 		where, V_id(vol), parent, parVnode->uniquifier); 
-	rx_Write(m->call, m->line, strlen(m->line));
+        inform(m, 1);
 	return code;
     }
-    if (verbose) {
-	sprintf(m->line, "name of %u is %s\n", where, name); 
-	rx_Write(m->call, m->line, strlen(m->line));
-    }
+    sprintf(m->line, "name of %u is %s\n", where, name); 
+    inform(m, 0);
 
-    if (verbose) {
-	sprintf(m->line, "3rd step: find all directory vnodes belonging to the subtree under %u \"%s\"\n", 
+    sprintf(m->line, "3rd step: find all directory vnodes belonging to the subtree under %u \"%s\"\n", 
 			where, name);
-	rx_Write(m->call, m->line, strlen(m->line));
-    }
+    inform(m, 0);
+
     code = FindVnodes(m, where, dirList, dl, dirList, dl, &dirsNeeded, 1);
     if (code) {
 	sprintf(m->line, 
 		"FindVnodes for directories failed with code %d\n", code);
-	rx_Write(m->call, m->line, strlen(m->line));
+        inform(m, 1);
 	return code;
     }
 
-    if (verbose) {
-	sprintf(m->line, "4th step extract vnode essence from small vnode file\n");
-	rx_Write(m->call, m->line, strlen(m->line));
-    }
+    sprintf(m->line, "4th step extract vnode essence from small vnode file\n");
+    inform(m, 0);
+ 
     code = ExtractVnodes(m, vol, vSmall, &fileList, &fl, where, 0, 0, 0);
     if (code) {
 	sprintf(m->line, 
 		"ExtractVnodes failed for %u for files with code %d\n",
 		V_id(vol), code);
-	rx_Write(m->call, m->line, strlen(m->line));
+        inform(m, 1);
 	return code;
     }
-    if (verbose) {
-	sprintf(m->line, "5th step: find all small vnodes belonging to the subtree under %u \"%s\"\n", 
+    sprintf(m->line, "5th step: find all small vnodes belonging to the subtree under %u \"%s\"\n", 
 			where, name);
-	rx_Write(m->call, m->line, strlen(m->line));
-    }
+    inform(m, 0);
+
     FindVnodes(m, where, fileList, fl, dirList, dl, &filesNeeded, 0);
 
     /* 
@@ -801,14 +797,13 @@ split_volume(struct rx_call *call, Volume *vol, Volume *newvol,
 
     V_destroyMe(newvol) = DESTROY_ME;
     V_inService(newvol) = 0;
-    if (verbose) {
-	sprintf(m->line, "6th step: create hard links in the AFSIDat tree between files of the old and new volume\n");
-	rx_Write(m->call, m->line, strlen(m->line));
-    }
+    sprintf(m->line, "6th step: create hard links in the AFSIDat tree between files of the old and new volume\n");
+    inform(m, 0);
+
     code = copyVnodes(m, vol, newvol, 1, fileList, fl, where, &blocks, 0); 
     if (code) {
 	sprintf(m->line, "copyVnodes for files failed with code %d\n", code);
-	rx_Write(m->call, m->line, strlen(m->line));
+        inform(m, 1);
 	return code;
     }
 	
@@ -817,15 +812,14 @@ split_volume(struct rx_call *call, Volume *vol, Volume *newvol,
      *  split directory to new root directory
      */
 
-    if (verbose) {
-	sprintf(m->line, "7th step: create hard links in the AFSIDat tree between directories of the old and new volume and make dir %u to new volume's root directory.\n",
+    sprintf(m->line, "7th step: create hard links in the AFSIDat tree between directories of the old and new volume and make dir %u to new volume's root directory.\n",
 		where);
-	rx_Write(m->call, m->line, strlen(m->line));
-    }
+    inform(m, 0);
+
     code = copyVnodes(m, vol, newvol, 0, dirList, dl, where, &blocks, parVnode); 
     if (code) {
 	sprintf(m->line, "copyVnodes for directories failed with code %d\n", code);
-	rx_Write(m->call, m->line, strlen(m->line));
+        inform(m, 1);
 	return code;
     }
 
@@ -833,10 +827,8 @@ split_volume(struct rx_call *call, Volume *vol, Volume *newvol,
      *  Finalize new volume
      *
      */
-    if (verbose) {
-	sprintf(m->line, "8th step: write new volume's metadata to disk\n");
-	rx_Write(m->call, m->line, strlen(m->line));
-    }
+    sprintf(m->line, "8th step: write new volume's metadata to disk\n");
+    inform(m, 0);
 
     V_diskused(newvol) = blocks;
 #ifdef AFS_RXOSD_SUPPORT
@@ -853,15 +845,13 @@ split_volume(struct rx_call *call, Volume *vol, Volume *newvol,
      *  Sixth step: change directory entry in old volume:
      *  rename old tree and create mount point for new volume.
      */
-    if (verbose) {
-	sprintf(m->line, "9th step: create mountpoint \"%s\" for new volume in old volume's directory %u.\n", name, parent);
-	rx_Write(m->call, m->line, strlen(m->line));
-    }
+    sprintf(m->line, "9th step: create mountpoint \"%s\" for new volume in old volume's directory %u.\n", name, parent);
+    inform(m, 0);
     
     code = createMountpoint(vol, newvol, parVnode, parent, rootVnode, name);
     if (code) {
 	sprintf(m->line, "createMountpoint failed with code %d\n", code);
-	rx_Write(m->call, m->line, strlen(m->line));
+        inform(m, 1);
 	return code;
     }
     /*
@@ -871,22 +861,20 @@ split_volume(struct rx_call *call, Volume *vol, Volume *newvol,
      */ 
 
     blocks = 0;
-    if (verbose) {
-	sprintf(m->line, "10th step: delete large vnodes belonging to subtree in the old volume.\n");
-	rx_Write(m->call, m->line, strlen(m->line));
-    }
+    sprintf(m->line, "10th step: delete large vnodes belonging to subtree in the old volume.\n");
+    inform(m, 0);
     deleteVnodes(vol, vLarge, dirList, dl, &blocks);
-    if (verbose) {
-	sprintf(m->line, "11th step: delete small vnodes belonging to subtree in the old volume.\n");
-	rx_Write(m->call, m->line, strlen(m->line));
-    }
+
+    sprintf(m->line, "11th step: delete small vnodes belonging to subtree in the old volume.\n");
+    inform(m, 0);
     deleteVnodes(vol, vSmall, fileList, fl, &blocks);
+
     V_diskused(vol) -= blocks;
     V_filecount(vol) -= (filesNeeded + dirsNeeded + 1);
     VUpdateVolume(&code, vol);
 
     sprintf(m->line, "Finished!\n");
-    rx_Write(m->call, m->line, strlen(m->line));
+    inform(m, 1);
     m->line[0] = 0;
     m->line[1] = 0;
     m->line[2] = 0;
