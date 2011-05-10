@@ -6455,7 +6455,7 @@ write_to_hpss(struct rx_call *call, struct oparmT10 *o,
     afs_uint64 striperesid[MAXOSDSTRIPES];
     char *buf = 0, *bp;
     afs_int32 bytes, tlen, writelen;
-    afs_uint64 length;
+    afs_uint64 length, offset;
     afs_uint64 tpart_id;
     afs_int32 i, j, k;
     MD5_CTX md5;
@@ -6519,6 +6519,7 @@ write_to_hpss(struct rx_call *call, struct oparmT10 *o,
     MD5_Init(&md5);
     length =  list->osd_segm_descList_val[0].length;
     buf = malloc(hpssBufSize);
+    offset = 0;
     while (length) {
 	writelen = 0;
 	tlen = hpssBufSize;
@@ -6526,9 +6527,9 @@ write_to_hpss(struct rx_call *call, struct oparmT10 *o,
 	    tlen = length;
 	bytes = FDH_READ(fdin, buf, tlen);	
 	if (bytes != tlen) {
-	    ViceLog(0,("write_to_hpss: read only %d bytes from %s instead of %d\n",
+	    ViceLog(0,("write_to_hpss: read only %d bytes from %s instead of %d at offset %llu\n",
                 	bytes, sprint_oparmT10(&oin, string, sizeof(string)),
-				bytes, tlen));
+				bytes, tlen, offset));
 	    code = EIO;
 	    goto bad;
 	}
@@ -6538,11 +6539,12 @@ write_to_hpss(struct rx_call *call, struct oparmT10 *o,
 	MD5_Update(&md5, buf, writelen);
 	bytes = FDH_WRITE(fd, buf, writelen);
 	if (bytes != writelen) {
-	    ViceLog(0,("write_to_hpss: written only %d bytes to %s instead of %d\n",
-                	bytes, sprint_oparmT10(o, string, sizeof(string)), writelen));
+	    ViceLog(0,("write_to_hpss: written only %d bytes to %s instead of %d at offset %llu\n",
+                	bytes, sprint_oparmT10(o, string, sizeof(string)), writelen, offset));
 	    code = EIO;
 	    goto bad;
 	}
+	offset += writelen;
     }
     free(buf);
     buf = 0;
