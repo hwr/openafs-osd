@@ -76,15 +76,21 @@ authenticate_for_hpss(char *principal, char *keytab)
 {
     afs_int32 code = 0;
     time_t now = time(0);
+    static int authenticated = 0;
  
     if (now - hpssLastAuth > HALFDAY) {
-	hpss_ClientAPIReset();
-	hpss_PurgeLoginCred();
+	if (authenticated) {
+	    hpss_ClientAPIReset();
+	    hpss_PurgeLoginCred();
+	    authenticated = 0;
+	}
         code = hpss_SetLoginCred(principal, hpss_authn_mech_krb5,
                              hpss_rpc_cred_client,
                              hpss_rpc_auth_type_keytab, keytab);
-        if (!code)
+        if (!code) {
+	    authenticated = 1;
 	    hpssLastAuth = now;
+	}
     }
     return code;
 }
