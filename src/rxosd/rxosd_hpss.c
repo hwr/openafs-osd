@@ -67,6 +67,7 @@
 #include <dirent.h>
 #include "rxosd_hsm.h"
 
+extern void Log(const char *format, ...);
 extern time_t hpssLastAuth;
 
 #define HALFDAY 12*60*60
@@ -99,6 +100,7 @@ authenticate_for_hpss(char *principal, char *keytab)
 
 int myhpss_open(const char *path, int flags, mode_t mode)
 {
+    int fd;
     hpss_cos_hints_t cos_hints;
 
     memset(&cos_hints, 0 , sizeof(cos_hints));
@@ -107,7 +109,11 @@ int myhpss_open(const char *path, int flags, mode_t mode)
     hpss_cos_priorities_t *HintsPri = NULL;
     hpss_cos_hints_t *HintsOut = &cos_hints;
 
-    return hpss_Open(path, flags, mode, HintsIn, HintsPri, HintsOut);
+    fd = hpss_Open(path, flags, mode, HintsIn, HintsPri, HintsOut);
+    if (fd < 0) {
+	Log("hpss_Open returns %d\n", fd);
+    }
+    return fd;
 }
 
 
