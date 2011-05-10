@@ -102,12 +102,14 @@ int myhpss_open(const char *path, int flags, mode_t mode)
 {
     int fd;
     hpss_cos_hints_t cos_hints;
+    hpss_cos_priorities_t cos_pri;
 
     memset(&cos_hints, 0 , sizeof(cos_hints));
+    memset(&cos_pri, 0 , sizeof(cos_pri));
     cos_hints.COSId = AFS_COS;
     cos_hints.COSIdPriority = REQUIRED_PRIORITY;
     hpss_cos_hints_t *HintsIn = &cos_hints;
-    hpss_cos_priorities_t *HintsPri = NULL;
+    hpss_cos_priorities_t *HintsPri = &cos_pri;
     hpss_cos_hints_t *HintsOut = &cos_hints;
 
     fd = hpss_Open(path, flags, mode, HintsIn, HintsPri, HintsOut);
