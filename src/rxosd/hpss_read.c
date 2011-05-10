@@ -119,6 +119,7 @@ char **argv;
        exit(1);                     
     }   
 
+    hpss_ClientAPIReset();
     hpss_PurgeLoginCred();
 
     code = hpss_SetLoginCred("afsipp", hpss_authn_mech_krb5,
