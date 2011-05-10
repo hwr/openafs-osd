@@ -120,6 +120,16 @@ char **argv;
     }   
 
     hpss_ClientAPIReset();
+    hpss_PurgeLoginCred();
+
+    code = hpss_SetLoginCred("afsipp", hpss_authn_mech_krb5,
+                               hpss_rpc_cred_client,
+                               hpss_rpc_auth_type_keytab,
+                               "/usr/afs/etc/afsipp.keytab");
+    if (code) {
+       fprintf(stderr, "second call to hpss_SetLoginCred failed with %d\n", code);
+       exit(1);
+    }
 
     fd = hpss_Open(filename, O_RDONLY | O_LARGEFILE, 0644, HintsIn, HintsPri, HintsOut);
     if (fd < 0) {
