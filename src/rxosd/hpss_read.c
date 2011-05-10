@@ -41,6 +41,7 @@ extern int errno;
 #define BUFSIZE 32*1024*1024
 
 char buffer[BUFSIZE];
+time_t hpssLastAuth = 0;
 
 main(argc,argv)
 int argc;

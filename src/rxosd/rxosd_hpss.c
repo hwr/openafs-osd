@@ -67,7 +67,7 @@
 #include <dirent.h>
 #include "rxosd_hsm.h"
 
-time_t hpssLastAuth = 0;
+extern time_t hpssLastAuth;
 
 #define HALFDAY 12*60*60
 

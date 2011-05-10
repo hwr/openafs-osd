@@ -26,6 +26,7 @@ char *whoami;
 
 extern struct ih_posix_ops ih_hpss_ops;
 extern struct ih_posix_ops ih_dcache_ops;
+time_t hpssLastAuth = 0;
 
 struct ih_posix_ops clib_ops = {
     open,

@@ -636,6 +636,7 @@ extern afs_int32 readonlyServer;
 int udpBufSize = 0;             /* UDP buffer size for receive */
 int sendBufSize = 65536;        /* send buffer size */
 int hpssBufSize = 32*1024*1024;    /* bigger buffer size */
+time_t hpssLastAuth = 0;
 int fiveminutes = 300;
 
 afs_uint32 Nstripes[4] ={1, 2, 4, 8};
@@ -1119,7 +1120,7 @@ FiveMinuteCheckLWP()
 #ifdef AFS_HPSS_SUPPORT
 			code = authenticate_for_hpss(principal, keytab);
 			if (code) {
-			    ViceLog(5,("hpss_SetLoginCred returns %d\n", code));
+			    ViceLog(5,("authenticate_for_hpss returns %d\n", code));
 			}
 			if (hpssPath && e->t.etype_u.osd.flags & OSDDB_ARCHIVAL)
 			    hpssDev = e->t.etype_u.osd.lun;
@@ -6107,6 +6108,9 @@ Variable(struct rx_call *call, afs_int32 cmd, char *name,
 	} else if (!strcmp(name, "hpssBufSize")) {
 	    *result = hpssBufSize;
 	    code = 0;
+	} else if (!strcmp(name, "hpssLastAuth")) {
+	    *result = hpssLastAuth;
+	    code = 0;
 	} else
 	    code = ENOENT;
     } else if (cmd == 2) {					/* set */
@@ -6149,6 +6153,10 @@ Variable(struct rx_call *call, afs_int32 cmd, char *name,
 	    hpssBufSize = value;
 	    *result = hpssBufSize;
 	    code = 0;
+	} else if (!strcmp(name, "hpssLastAuth)) {
+	    hpssLastAuth = value;
+	    *result = hpssLastAuth;
+	    code = 0;
 	} else
 	    code = ENOENT;
     }
@@ -6177,6 +6185,8 @@ char ExportedVariables[] =
     "o_cache_used"
     EXP_VAR_SEPARATOR
     "hpssBufSize"
+    EXP_VAR_SEPARATOR
+    "hpssLastAuth"
     EXP_VAR_SEPARATOR
     "";
     
