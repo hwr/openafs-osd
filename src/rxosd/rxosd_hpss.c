@@ -95,11 +95,17 @@ authenticate_for_hpss(char *principal, char *keytab)
     return code;
 }
 
+#define AFS_COS 21
+
 int myhpss_open(const char *path, int flags, mode_t mode)
 {
-    hpss_cos_hints_t *HintsIn = NULL;
+    hpss_cos_hints_t cos_hints;
+
+    memset(&cos_hints, 0 , sizeof(cos_hints));
+    cos_hints.COSId = AFS_COS;
+    hpss_cos_hints_t *HintsIn = &cos_hints;
     hpss_cos_priorities_t *HintsPri = NULL;
-    hpss_cos_hints_t *HintsOut = NULL;
+    hpss_cos_hints_t *HintsOut = &cos_hints;
 
     return hpss_Open(path, flags, mode, HintsIn, HintsPri, HintsOut);
 }
