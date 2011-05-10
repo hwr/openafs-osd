@@ -67,13 +67,25 @@
 #include <dirent.h>
 #include "rxosd_hsm.h"
 
+time_t hpssLastAuth = 0;
+
+#define HALFDAY 12*60*60
+
 afs_int32 
 authenticate_for_hpss(char *principal, char *keytab)
 {
-    afs_int32 code;
-    code = hpss_SetLoginCred(principal, hpss_authn_mech_krb5,
+    afs_int32 code = 0;
+    time_t now = time(0);
+ 
+    if (now - hpssLastAuth > HALFDAY) {
+	hpss_ClientAPIReset();
+	hpss_PurgeLoginCred();
+        code = hpss_SetLoginCred(principal, hpss_authn_mech_krb5,
                              hpss_rpc_cred_client,
                              hpss_rpc_auth_type_keytab, keytab);
+        if (!code)
+	    happLastAuth = now;
+    }
     return code;
 }
 
