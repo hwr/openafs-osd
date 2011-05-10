@@ -84,7 +84,7 @@ authenticate_for_hpss(char *principal, char *keytab)
                              hpss_rpc_cred_client,
                              hpss_rpc_auth_type_keytab, keytab);
         if (!code)
-	    happLastAuth = now;
+	    hppsLastAuth = now;
     }
     return code;
 }
