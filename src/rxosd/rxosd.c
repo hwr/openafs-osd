@@ -6153,7 +6153,7 @@ Variable(struct rx_call *call, afs_int32 cmd, char *name,
 	    hpssBufSize = value;
 	    *result = hpssBufSize;
 	    code = 0;
-	} else if (!strcmp(name, "hpssLastAuth)) {
+	} else if (!strcmp(name, "hpssLastAuth")) {
 	    hpssLastAuth = value;
 	    *result = hpssLastAuth;
 	    code = 0;
