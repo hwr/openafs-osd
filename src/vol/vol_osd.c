@@ -1832,12 +1832,14 @@ retry:
 
 	    	        p_id = lun;
 	    	        p_id = (p_id << 32) | po->part_id;
-                        for (mi=0; mi<pf->metaList.osd_p_metaList_len; mi++) {
-                            if (pf->metaList.osd_p_metaList_val[mi].type ==
-                                                        OSD_P_META_MD5) {
-                                meta = &pf->metaList.osd_p_metaList_val[mi];
-				flag &= ~NO_CHECKSUM;
-                                break;
+			if (!fastRestore) {
+                            for (mi=0; mi<pf->metaList.osd_p_metaList_len; mi++) {
+                                if (pf->metaList.osd_p_metaList_val[mi].type ==
+                                                            OSD_P_META_MD5) {
+                                    meta = &pf->metaList.osd_p_metaList_val[mi];
+				    flag &= ~NO_CHECKSUM;
+                                    break;
+                                }
                             }
                         }
 			om.vsn = 1;
