@@ -273,11 +273,13 @@ union RWparm switch(afs_int32 type) {
 struct rxosd_fetch_entry {
 	struct oparmT10 o;
 	afs_uint32 user;
+	afs_int32 flag;
 	afs_uint32 time;
 	afs_uint32 fileserver;
 	struct osd_segm_descList list;
 };
 typedef struct rxosd_fetch_entry rxosd_fetch_entryList<>;
+%#define NO_CHECKSUM	1
 
 %#define TAPE_FETCH  	1
 %#define XFERING     	2

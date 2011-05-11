@@ -1317,8 +1317,8 @@ GetFetchEntry(struct oparmT10 *o)
 }
 
 afs_int32
-FindInFetchqueue(struct rx_call *call, struct oparmT10 *o,
-		afs_uint32 user, struct osd_segm_descList *list)
+FindInFetchqueue(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
+		 struct osd_segm_descList *list, afs_int32 flag)
 {
     struct fetch_entry *f;
     
@@ -1343,6 +1343,7 @@ FindInFetchqueue(struct rx_call *call, struct oparmT10 *o,
 	f->d.o.part_id = o->part_id;
 	f->d.fileserver = ntohl(call->conn->peer->host);
 	f->d.user = user;
+	f->d.flag = flag;
 	f->d.time = now;
 	f->d.list.osd_segm_descList_val = list->osd_segm_descList_val;
 	f->d.list.osd_segm_descList_len = list->osd_segm_descList_len;
@@ -1502,7 +1503,7 @@ XferData(struct fetch_entry *f)
 	o.vsn = 1;
 	o.ometa_u.t = f->d.o;
         code = SRXOSD_restore_archive((struct rx_call *)0, &o, f->d.user, 
-				      &list, &new_md5);
+				      &list, f->d.flag, &new_md5);
 	for (i=0; i<list.osd_segm_descList_len; i++)
 	    free(list.osd_segm_descList_val[i].objList.osd_obj_descList_val);
 	free(list.osd_segm_descList_val);
@@ -4112,7 +4113,7 @@ readPS(struct rx_call *call, t10rock *rock, struct oparmT10 * o,
 		struct osd_segm_descList list;
 		list.osd_segm_descList_val = 0;
 		list.osd_segm_descList_len = 0;
-		code = FindInFetchqueue(call, o, user, &list);
+		code = FindInFetchqueue(call, o, user, &list, 0);
 	    } else {
                 ViceLog(0,("SRXOSD_readPS: IH_OPEN failed for %u.%u.%u tag %d\n",
                     vid, (afs_uint32)(o->obj_id & RXOSD_VNODEMASK),
@@ -4946,7 +4947,7 @@ int check_dsmls(FILE *cmd_stdin, FILE *cmd_stdout, char *rock)
     
 afs_int32
 create_archive(struct rx_call *call, struct oparmT10 *o, 
-			struct osd_segm_descList *list,
+			struct osd_segm_descList *list, afs_int32 flag,
 			struct osd_cksum *output, afs_int32 legacy)
 {
     struct o_handle *oh = 0;
@@ -5057,7 +5058,7 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
 		    o1.vsn = 1;
 		    o1.ometa_u.t.part_id = o->part_id;
 		    o1.ometa_u.t.obj_id = inode;
-		    code = RXOSD_write_to_hpss(tcon, &o1, list, output);
+		    code = RXOSD_write_to_hpss(tcon, &o1, list, flag, output);
 		    if (!code)
 		        goto done;
 		    else {
@@ -5275,7 +5276,8 @@ finis:
 
 afs_int32
 SRXOSD_create_archive(struct rx_call *call, struct ometa *o, 
-		      struct osd_segm_descList *l, struct osd_cksum *output)
+		      struct osd_segm_descList *l, afs_int32 flag,
+		      struct osd_cksum *output)
 {
     afs_int32 code;
     struct oparmT10 o1, *optr;
@@ -5298,7 +5300,7 @@ SRXOSD_create_archive(struct rx_call *call, struct ometa *o,
 	code = RXGEN_SS_UNMARSHAL;
 	goto bad;
     }
-    code = create_archive(call, optr, l, output, 0);
+    code = create_archive(call, optr, l, flag, output, 0);
 bad:
     SETTHREADINACTIVE();
     return code;
@@ -5373,7 +5375,7 @@ SRXOSD_create_archive240(struct rx_call *call, afs_uint64 part_id,
     code = convert_osd_segm_desc0List(list, &l);
     if (code)
 	goto bad;
-    code = create_archive(call, &o, &l, &out, 1);
+    code = create_archive(call, &o, &l, 0, &out, 1);
     for (i=0; i<l.osd_segm_descList_len; i++)
 	free(l.osd_segm_descList_val[i].objList.osd_obj_descList_val);
     output->oid = out.o.ometa_u.t.obj_id;
@@ -5390,8 +5392,8 @@ bad:
 
 afs_int32
 restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
-			struct osd_segm_descList *list, struct osd_cksum *output,
-			afs_int32 legacy)
+			struct osd_segm_descList *list, afs_int32 flag,
+			struct osd_cksum *output, afs_int32 legacy)
 {
     struct o_handle *oh = 0;
     FdHandle_t *fd = 0;
@@ -5441,7 +5443,7 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 	oh_release(oh);
         oh = 0;
         if (HSM || hpssFile)
-            code = FindInFetchqueue(call, o, user, list);
+            code = FindInFetchqueue(call, o, user, list, flag);
         else {
             ViceLog(0,("restore_archive: couldn't open %s\n",
 				sprint_oparmT10(o, string, sizeof(string))));
@@ -5479,7 +5481,7 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 		    struct ometa om;
 		    om.vsn = 1;
 		    om.ometa_u.t = *o;
-		    code = RXOSD_read_from_hpss(tcon, &om, list, output);
+		    code = RXOSD_read_from_hpss(tcon, &om, list, flag, output);
 		    if (!code) {
 		        unlock_file(fd);
 		        FDH_REALLYCLOSE(fd);
@@ -5501,7 +5503,8 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 	output->o.ometa_u.t.obj_id =  o->obj_id;
 	output->o.ometa_u.t.part_id =  o->part_id;
 	output->c.type = 1;
-        MD5_Init(&md5);
+	if (!(flag & NO_CHECKSUM))
+            MD5_Init(&md5);
     }
     for (i=0; i<list->osd_segm_descList_len; i++) {
 	struct osd_segm_desc * seg = &list->osd_segm_descList_val[i];
@@ -5587,7 +5590,7 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 		    code = EIO;
 		    goto bad;
 	    }
-	    if (output)
+	    if (output && !(flag & NO_CHECKSUM))
 	        MD5_Update(&md5, buf, readlen);
 	    bp = buf;
 	    for (j=0; j<seg->stripes; j++) {
@@ -5622,7 +5625,7 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 	    rcall[j] = NULL;
 	}
     }
-    if (output) {
+    if (output && !(flag & NO_CHECKSUM)) {
         MD5_Final((char *)&output->c.cksum_u.md5[0], &md5);
         for (i=0; i<4; i++)
             output->c.cksum_u.md5[i] = ntohl(output->c.cksum_u.md5[i]);
@@ -5681,7 +5684,8 @@ finis:
 
 afs_int32
 SRXOSD_restore_archive(struct rx_call *call, struct ometa *o, afs_uint32 user, 
-			struct osd_segm_descList *l, struct osd_cksum *output)
+			struct osd_segm_descList *l, afs_int32 flag,
+			struct osd_cksum *output)
 {
     afs_int32 code;
     afs_uint64 p_id, o_id;
@@ -5705,7 +5709,7 @@ SRXOSD_restore_archive(struct rx_call *call, struct ometa *o, afs_uint32 user,
 	goto bad;
     }
 
-    code = restore_archive(call, optr, user, l, output, 0);
+    code = restore_archive(call, optr, user, l, flag, output, 0);
 bad:
     SETTHREADINACTIVE();
     return code;
@@ -5728,7 +5732,7 @@ SRXOSD_restore_archive251(struct rx_call *call, afs_uint64 part_id,
     code = convert_osd_segm_desc0List(list, &l);
     if (code)
 	goto bad;
-    code = restore_archive(call, &o, user, &l, &out, 1);
+    code = restore_archive(call, &o, user, &l, 0, &out, 1);
     output->oid = out.o.ometa_u.t.obj_id;
     output->pid = out.o.ometa_u.t.part_id;
     output->size = out.size;
@@ -6596,7 +6600,8 @@ finis:
 
 afs_int32
 SRXOSD_write_to_hpss(struct rx_call *call, struct ometa *o, 
-		     struct osd_segm_descList *l, struct osd_cksum *output)
+		     struct osd_segm_descList *l, afs_int32 flag,
+		     struct osd_cksum *output)
 {
     afs_int32 code;
     struct oparmT10 o1, *optr;
@@ -6822,7 +6827,7 @@ finis:
 
 afs_int32
 SRXOSD_read_from_hpss(struct rx_call *call, struct ometa *o, 
-			struct osd_segm_descList *l,
+			struct osd_segm_descList *l, afs_int32 flag,
 			struct osd_cksum *output)
 {
     afs_int32 code;

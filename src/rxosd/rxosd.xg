@@ -160,6 +160,7 @@ md5sum          (IN struct ometa *o,
 
 create_archive  (IN struct ometa *o,
 		 IN struct osd_segm_descList *l,
+		 IN afs_int32 flag,
 		 OUT struct osd_cksum *output) = 17; 
 
 /***************************************************************************
@@ -172,6 +173,7 @@ create_archive  (IN struct ometa *o,
 restore_archive (IN struct ometa *o,
 		 IN afs_uint32 user,
 		 IN struct osd_segm_descList *l,
+		 IN afs_int32 flag,
 		 OUT osd_cksum *output) = 18;
 
 /***************************************************************************
@@ -242,6 +244,7 @@ updatecounters	(IN afs_uint64 bytes_rcvd,
 
 write_to_hpss	(IN struct ometa *o,
 		 IN struct osd_segm_descList *list,
+		 IN afs_int32 flag,
 		 OUT osd_cksum *output) = 26;
 
 /***************************************************************************
@@ -250,6 +253,7 @@ write_to_hpss	(IN struct ometa *o,
 
 read_from_hpss	(IN struct ometa *o,
 		 IN struct osd_segm_descList *list,
+		 IN afs_int32 flag,
 		 OUT osd_cksum *output) = 27;
 
 /************************************************ 

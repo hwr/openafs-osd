@@ -155,6 +155,7 @@ static afs_int32 read_local_file(void *rock, char *buf, afs_int32 len);
 afs_int64 minOsdFileSize = -1;
 t10rock dummyrock = {0, 0};
 int believe = 1;
+int fastRestore = 0;
 
 struct osdMetadaEntry {
     afs_uint32 magic;  /* contains magic number for entry 0 */
@@ -218,7 +219,7 @@ rxosd_create(afs_uint32 osd, afs_uint64 p_id, afs_uint64 o_id,
 }
 
 static afs_int32
-rxosd_create_archive(struct ometa *om, struct osd_segm_descList *list,
+rxosd_create_archive(struct ometa *om, struct osd_segm_descList *list, afs_int32 flag,
 		     struct osd_cksum *md5)
 {
     afs_int32 code = RXOSD_RESTARTING;
@@ -228,7 +229,7 @@ rxosd_create_archive(struct ometa *om, struct osd_segm_descList *list,
     while (code == RXOSD_RESTARTING) {
         conn = FindOsdConnection(om->ometa_u.t.osd_id);
         if (conn) {
-	    code = RXOSD_create_archive(conn->conn, om, list, md5);
+	    code = RXOSD_create_archive(conn->conn, om, list, flag, md5);
 	    PutOsdConn(&conn);
 	    if (!code) {	/* Little paranoia ... */
 		if ((md5->o.ometa_u.t.obj_id & TAGBITSMASK) 
@@ -259,7 +260,7 @@ rxosd_create_archive(struct ometa *om, struct osd_segm_descList *list,
 
 static afs_int32
 rxosd_restore_archive(struct ometa *om, afs_uint32 user, struct osd_segm_descList *list,
-		struct osd_cksum *md5)
+		afs_int32 flag, struct osd_cksum *md5)
 {
     afs_int32 code = RXOSD_RESTARTING;
     afs_int32 informed = 0;
@@ -268,7 +269,7 @@ rxosd_restore_archive(struct ometa *om, afs_uint32 user, struct osd_segm_descLis
     while (code == RXOSD_RESTARTING) {
         conn = FindOsdConnection(om->ometa_u.t.osd_id);
         if (conn) {
-	    code = RXOSD_restore_archive(conn->conn, om, user, list, md5);
+	    code = RXOSD_restore_archive(conn->conn, om, user, list, flag, md5);
 	    PutOsdConn(&conn);
         } else
             code = EIO;
@@ -1827,12 +1828,15 @@ retry:
                         struct osd_p_meta *meta = 0;
 			struct ometa om;
                         afs_int32 mi;
+			afs_int32 flag = NO_CHECKSUM;
+
 	    	        p_id = lun;
 	    	        p_id = (p_id << 32) | po->part_id;
                         for (mi=0; mi<pf->metaList.osd_p_metaList_len; mi++) {
                             if (pf->metaList.osd_p_metaList_val[mi].type ==
                                                         OSD_P_META_MD5) {
                                 meta = &pf->metaList.osd_p_metaList_val[mi];
+				flag &= ~NO_CHECKSUM;
                                 break;
                             }
                         }
@@ -1840,8 +1844,8 @@ retry:
 			om.ometa_u.t.part_id = p_id;
 			om.ometa_u.t.obj_id = po->obj_id;
 			om.ometa_u.t.osd_id = osd;
-                        code = rxosd_restore_archive(&om, user, &rlist, &new_md5);
-                        if (!code && meta)
+                        code = rxosd_restore_archive(&om, user, &rlist, flag, &new_md5);
+                        if (!code && meta && !(flag & NO_CHECKSUM))
                             code = compare_md5(meta, &new_md5.c.cksum_u.md5[0]);
                     }
 		    if (code) {
@@ -2083,8 +2087,11 @@ set_osd_file_ready(struct rx_call *call, Vnode *vn, struct cksum *checksum)
                     for (j=0; j<f->metaList.osd_p_metaList_len; j++) {
                         if (f->metaList.osd_p_metaList_val[j].type
                                                 == OSD_P_META_MD5) {
-                            code = compare_md5(&f->metaList.osd_p_metaList_val[j],
-				 	       &checksum->cksum_u.md5[0]);
+			    if (fastRestore)
+				code = 0;
+			    else
+                                code = compare_md5(&f->metaList.osd_p_metaList_val[j],
+				   	           &checksum->cksum_u.md5[0]);
                             if (code)
                                 goto bad;
                         }
@@ -3581,7 +3588,7 @@ osd_archive(struct Vnode *vn, afs_uint32 Osd, afs_int32 flags)
 	    om.ometa_u.t.part_id = p_id;
 	    om.ometa_u.t.obj_id = o_id;
 	    om.ometa_u.t.osd_id = osd;
-	    code = rxosd_create_archive(&om, &sl, &md5);
+	    code = rxosd_create_archive(&om, &sl, 0, &md5);
 	    if (!code && md5.size != size) {
 		Log("osd_archive: length returned is %llu instead of %llu for %u.%u.%u\n", md5.size, size, V_id(vol), vN, vd->uniquifier);
 		rxosd_incdec(osd, md5.o.ometa_u.t.part_id, md5.o.ometa_u.t.obj_id, -1);

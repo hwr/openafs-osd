@@ -98,7 +98,7 @@ authenticate_for_hpss(char *principal, char *keytab)
 
 #define AFS_SMALL_COS 21
 #define AFS_LARGE_COS 23
-#define SIZE_THRESHOLD 64*1024*1024*1024
+#define SIZE_THRESHOLD 64*1024*1024*1024LL
 
 int myhpss_open(const char *path, int flags, mode_t mode, afs_uint64 size)
 {

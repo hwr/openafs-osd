@@ -239,6 +239,7 @@ extern afs_int32 FindOsdUsePrior;
 #ifdef AFS_RXOSD_SUPPORT
 afs_uint64 max_move_osd_size = MAX_MOVE_OSD_SIZE;
 afs_int32 max_move_osd_size_set_by_hand = 0;
+extern afs_int32 fastRestore;
 #endif
 struct afsconf_dir *tdir = 0;
 
@@ -311,6 +312,8 @@ char ExportedVariables[] =
     "FindOsdUsePrior"
     EXP_VAR_SEPARATOR
     "maxLexLegacyThreadsPerClient"
+    EXP_VAR_SEPARATOR
+    "fastRestore"
     EXP_VAR_SEPARATOR
 #endif
     ""
@@ -9600,7 +9603,7 @@ afs_int32
 SRXAFS_GetPath(struct rx_call *acall, AFSFid *Fid, struct async *a)
 {
     afs_int32 errorCode = RXGEN_OPCODE;
-#ifdef AFS_ENABLE_VICEP_ACCESS
+#if defined(AFS_ENABLE_VICEP_ACCESS) || defined(AFS_RXOSD_SUPPORT)
     Vnode *targetptr = 0;       /* pointer to input fid */
     Vnode *parentwhentargetnotdir = 0;  /* parent of Fid to get ACL */
     Vnode tparentwhentargetnotdir;      /* parent vnode for GetStatus */
@@ -10717,6 +10720,9 @@ Variable(struct rx_call *acall, afs_int32 cmd, char *name,
 	} else if (!strcmp(name, "maxLegacyThreadsPerClient")) {
 	    *result = maxLegacyThreadsPerClient;
 	    code = 0;
+	} else if (!strcmp(name, "fastRestore")) {
+	    *result = fastRestore;
+	    code = 0;
 #endif
 #if defined(AFS_RXOSD_SUPPORT) || defined(AFS_ENABLE_VICEP_ACCESS)
 	} else if (!strcmp(name, "activeFiles")) {
@@ -10829,6 +10835,10 @@ Variable(struct rx_call *acall, afs_int32 cmd, char *name,
 	    }
 	    maxLegacyThreadsPerClient = value;
             *result = maxLegacyThreadsPerClient;
+            code = 0;
+        } else if (!strcmp(name, "fastRestore")) {
+	    fastRestore = value;
+            *result = fastRestore;
             code = 0;
 #endif
         } else
