@@ -4988,11 +4988,17 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
         code = EIO;
 	goto finis;
     }
+    /* Calculate file size */
+    length = 0;
+    for (i=0; i<list->osd_segm_descList_len; i++) {
+	struct osd_segm_desc * seg = &list->osd_segm_descList_val[i];
+	length +=  seg->length;
+    }
     vnode = o->obj_id & RXOSD_VNODEMASK;
     unique = (o->obj_id >> RXOSD_UNIQUESHIFT);
     volutil_PartitionName_r(lun, (char *)&partition, PARTNAMELEN); 
     inode = namei_icreate_open(lh->ih, (char *)&partition, vid, vnode, 
-				unique, 1, &open_fd);
+				unique, 1, length, &open_fd);
     if (!VALID_INO(inode)) {
 	code = create_volume(call, o->part_id);
 	if (code) {
@@ -5001,7 +5007,7 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
 	    goto finis;
 	}
         inode = namei_icreate_open(lh->ih, (char *)&partition,  vid, 
-			vnode, unique, 1, &open_fd);
+			vnode, unique, 1, length, &open_fd);
 	if (!VALID_INO(inode)) {
     	    oh_release(lh);
             ViceLog(0,("SRXOSD_create_archive: namei_icreate_open failed (invalid inode).\n"));

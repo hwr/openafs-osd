@@ -43,6 +43,10 @@ extern int errno;
 char buffer[BUFSIZE];
 time_t hpssLastAuth = 0;
 
+#define AFS_SMALL_COS 21
+#define AFS_LARGE_COS 23
+#define SIZE_THRESHOLD 64*1024*1024*1024LL
+
 main(argc,argv)
 int argc;
 char **argv;
@@ -69,9 +73,8 @@ char **argv;
     int truncate = 0;
     int domd5 = 0;
     struct timeval stop;
-    hpss_cos_hints_t *HintsIn = NULL;
-    hpss_cos_priorities_t *HintsPri = NULL;
-    hpss_cos_hints_t *HintsOut = NULL;
+    hpss_cos_hints_t HintsIn;
+    hpss_cos_priorities_t HintsPri;
     MD5_CTX md5;
     int cksum[4];
 
@@ -121,9 +124,15 @@ char **argv;
 
     code = hpss_Stat(filename, &status);
     if (code) {
-        fd = hpss_Open(filename, O_CREAT | O_EXCL | O_RDWR | O_TRUNC, 0600, HintsIn, HintsPri, HintsOut);
+        memset(&HintsIn, 0, sizeof(HintsIn));
+        memset(&HintsPri, 0, sizeof(HintsPri));
+        HintsIn.COSId = AFS_SMALL_COS;
+        if (length >= SIZE_THRESHOLD)
+	    HintsIn.COSId = AFS_LARGE_COS;
+        HintsPri.COSIdPriority = REQUIRED_PRIORITY;
+        fd = hpss_Open(filename, O_CREAT | O_EXCL | O_RDWR | O_TRUNC, 0600, &HintsIn, &HintsPri, NULL);
     } else 
-        fd = hpss_Open(filename, O_RDWR | O_EXCL, 0600, HintsIn, HintsPri, HintsOut);
+        fd = hpss_Open(filename, O_RDWR | O_EXCL, 0600, NULL, NULL, NULL);
     if (fd < 0) {
        fprintf(stderr, "hpss_Open for %s returned %d\n", filename, fd);
        exit(1);

@@ -1051,7 +1051,8 @@ bad:
 }
 #else /* !AFS_NT40_ENV */
 Inode
-namei_icreate_open(IHandle_t * lh, char *part, afs_uint32 p1, afs_uint32 p2, afs_uint32 p3, afs_uint32 p4, int *open_fd)
+namei_icreate_open(IHandle_t * lh, char *part, afs_uint32 p1, afs_uint32 p2,
+	 	   afs_uint32 p3, afs_uint32 p4, afs_uint64 size, int *open_fd)
 {
     namei_t name;
     int fd = INVALID_FD;
@@ -1124,8 +1125,11 @@ namei_icreate_open(IHandle_t * lh, char *part, afs_uint32 p1, afs_uint32 p2, afs
 #if defined(AFS_HPSS_SUPPORT)
     if (p2 != -1)
 	mode = 0600;
-#endif /* AFS_HSPSS_SUPPORT */
+    fd = tmp.ih_ops->open(name.n_path, O_CREAT | O_EXCL | O_TRUNC | O_RDWR,
+				  mode, size);
+#else /* AFS_HSPSS_SUPPORT */
     fd = tmp.ih_ops->open(name.n_path, O_CREAT | O_EXCL | O_TRUNC | O_RDWR, mode);
+#endif /* AFS_HSPSS_SUPPORT */
 #else /* defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL) */
     fd = afs_open(name.n_path, O_CREAT | O_EXCL | O_TRUNC | O_RDWR, 0);
 #endif /* defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL) */
@@ -1198,7 +1202,7 @@ namei_icreate(IHandle_t * lh, char *part, afs_uint32 p1, afs_uint32 p2, afs_uint
 {
     Inode ino;
 
-    ino = namei_icreate_open(lh, part, p1, p2, p3, p4, NULL);
+    ino = namei_icreate_open(lh, part, p1, p2, p3, p4, 0, NULL);
     return ino;
 }
 #endif

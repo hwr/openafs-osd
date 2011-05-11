@@ -24,7 +24,7 @@ extern Inode namei_icreate(IHandle_t * lh, char *part, afs_uint32 p1,
 			   afs_uint32 p2, afs_uint32 p3, afs_uint32 p4);
 extern Inode namei_icreate_open(IHandle_t * lh, char *part, afs_uint32 p1,
 			   afs_uint32 p2, afs_uint32 p3, afs_uint32 p4,
-			   int *open_fd);
+			   afs_uint64 size, int *open_fd);
 extern FD_t namei_iopen(IHandle_t * h);
 extern int namei_irelease(IHandle_t * h);
 afs_sfsize_t namei_iread(IHandle_t * h, afs_foff_t offset, char *buf,

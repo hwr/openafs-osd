@@ -96,9 +96,11 @@ authenticate_for_hpss(char *principal, char *keytab)
     return code;
 }
 
-#define AFS_COS 21
+#define AFS_SMALL_COS 21
+#define AFS_LARGE_COS 23
+#define SIZE_THRESHOLD 64*1024*1024*1024
 
-int myhpss_open(const char *path, int flags, mode_t mode)
+int myhpss_open(const char *path, int flags, mode_t mode, afs_uint64 size)
 {
     int fd;
     hpss_cos_hints_t cos_hints;
@@ -106,16 +108,15 @@ int myhpss_open(const char *path, int flags, mode_t mode)
 
     memset(&cos_hints, 0 , sizeof(cos_hints));
     memset(&cos_pri, 0 , sizeof(cos_pri));
-    cos_hints.COSId = AFS_COS;
+    cos_hints.COSId = AFS_SMALL_COS;
+    if (size >= SIZE_THRESHOLD)
+        cos_hints.COSId = AFS_LARGE_COS;
     cos_pri.COSIdPriority = REQUIRED_PRIORITY;
     hpss_cos_hints_t *HintsIn = &cos_hints;
     hpss_cos_priorities_t *HintsPri = &cos_pri;
     hpss_cos_hints_t *HintsOut = &cos_hints;
 
     fd = hpss_Open(path, flags, mode, HintsIn, HintsPri, HintsOut);
-    if (fd < 0) {
-	Log("hpss_Open returns %d\n", fd);
-    }
     return fd;
 }
 
