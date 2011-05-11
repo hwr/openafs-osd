@@ -6669,7 +6669,8 @@ bad:
 
 afs_int32
 read_from_hpss(struct rx_call *call, struct oparmT10 *o, 
-	       struct osd_segm_descList *list, struct osd_cksum *output)
+	       struct osd_segm_descList *list, afs_int32 flag,
+	       struct osd_cksum *output)
 {
     afs_int32 code = EIO;
 #ifdef AFS_HPSS_SUPPORT
@@ -6746,7 +6747,8 @@ read_from_hpss(struct rx_call *call, struct oparmT10 *o,
 	output->o.ometa_u.t.part_id = o->part_id;
 	output->o.ometa_u.t.obj_id = o->obj_id;
 	output->c.type = 1;	/* md5 checksum */
-        MD5_Init(&md5);
+	if (!(flag & NO_CHECKSUM))
+            MD5_Init(&md5);
     }
 
     length =  list->osd_segm_descList_val[0].length;
@@ -6765,7 +6767,7 @@ read_from_hpss(struct rx_call *call, struct oparmT10 *o,
 	    code = EIO;
 	    goto bad;
 	}
-	if (output)
+	if (output && !(flag & NO_CHECKSUM))
 	    MD5_Update(&md5, buf, readlen);
 	bytes = FDH_WRITE(fdout, buf, readlen);
 	if (bytes != readlen) {
@@ -6783,19 +6785,25 @@ read_from_hpss(struct rx_call *call, struct oparmT10 *o,
     FDH_CLOSE(fdout);
     fdout = 0;
     if (output) {
-        MD5_Final((char *)&output->c.cksum_u.md5[0], &md5);
-        for (i=0; i<4; i++)
-            output->c.cksum_u.md5[i] = ntohl(output->c.cksum_u.md5[i]);
         gettimeofday(&end, &tz);
         diff = end.tv_sec - start.tv_sec;
         if (diff == 0)
 	    diff = 1;
         datarate = (output->size / diff) >> 20;
-        ViceLog(0,("read_from_hpss: md5 checksum for %s is %08x%08x%08x%08x %llu MB/s\n",
+	if (flag & NO_CHECKSUM) {
+            ViceLog(0,("read_from_hpss for %s with data rate %llu MB/s\n",
+		   sprint_oparmT10(o, string, sizeof(string)),
+		   datarate));
+	} else {
+            MD5_Final((char *)&output->c.cksum_u.md5[0], &md5);
+            for (i=0; i<4; i++)
+                output->c.cksum_u.md5[i] = ntohl(output->c.cksum_u.md5[i]);
+            ViceLog(0,("read_from_hpss: md5 checksum for %s is %08x%08x%08x%08x %llu MB/s\n",
 		   sprint_oparmT10(o, string, sizeof(string)),
 		   output->c.cksum_u.md5[0], output->c.cksum_u.md5[1],
 		   output->c.cksum_u.md5[2], output->c.cksum_u.md5[3],
 		   datarate));
+	}
     }
     code = 0;
 bad:
@@ -6852,7 +6860,7 @@ SRXOSD_read_from_hpss(struct rx_call *call, struct ometa *o,
 	goto bad;
     }
 
-    code = read_from_hpss(call, optr, l, output);
+    code = read_from_hpss(call, optr, l, flag, output);
 bad:
     SETTHREADINACTIVE();
     return code;
@@ -6875,7 +6883,7 @@ SRXOSD_read_from_hpss316(struct rx_call *call, afs_uint64 part_id,
     code = convert_osd_segm_desc0List(list, &l);
     if (code)
 	goto bad;
-    code = read_from_hpss(call, &o1, list, &out);
+    code = read_from_hpss(call, &o1, list, 0, &out);
     output->oid = out.o.ometa_u.t.obj_id;
     output->pid = out.o.ometa_u.t.part_id;
     output->size = out.size;
