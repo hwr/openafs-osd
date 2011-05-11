@@ -1338,22 +1338,31 @@ namei_dec(IHandle_t * ih, Inode ino, int p1)
             gettimeofday(&now, 0);
             t = now.tv_sec;
             TimeFields = localtime(&t);
+	    int do_unlink = 0;
 #endif
 	    IH_INIT(th, ih->ih_dev, ih->ih_vid, ino);
 
 	    namei_HandleToName(&name, th);
 #ifdef RENAME_INSTEAD_OF_UNLINK
+#ifdef AFS_HPSS_SUPPORT
+	    if (th->ih_dev != hpssDev)
+		do_unlink = 1;
+#endif
             sprintf((char *)&unlinkname, "%s-unlinked-%d%02d%02d",
                         (char *)&name.n_path, TimeFields->tm_year + 1900,
                         TimeFields->tm_mon + 1, TimeFields->tm_mday);
 #if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
-            if (th->ih_ops->stat64(name.n_path, &st) == 0 && st.st_size == 0)
-                code = th->ih_ops->unlink(name.n_path);
-            else {
-                code = th->ih_ops->rename(name.n_path, &unlinkname);
-                ViceLog(0,("SOFT_DELETED: %s\n", unlinkname));
-            }
-#else
+            if (th->ih_ops->stat64(name.n_path, &st) == 0) {
+		if (do_unlink || st.st_size == 0)
+                    code = th->ih_ops->unlink(name.n_path);
+                else {
+                    code = th->ih_ops->rename(name.n_path, &unlinkname);
+                    ViceLog(0,("SOFT_DELETED: %s\n", unlinkname));
+		}
+            } else {
+		ViceLog(0,("namei_dec: file doesn't exist %s\n", name.n_path));
+	    } 
+#else 
             if (afs_stat(name.n_path, &st) == 0 && st.st_size == 0)
                 code = unlink(name.n_path);
             else {
