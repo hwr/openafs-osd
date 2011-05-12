@@ -113,11 +113,11 @@ fillsize(afs_uint64 *size, char *str)
 {
     int code = 0;
     int fields;
-    afs_uint64 value;
+    afs_uint64 value = 0;
     char unit[8], *u;
 
     u = &str[strlen(str)-1];
-    fields = sscanf(str, "%ull%s", &value, &unit);
+    fields = sscanf(str, "%llu%s", &value, &unit);
     if (fields == 1)
         *size = value;
     if (fields == 2)
