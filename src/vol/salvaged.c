@@ -59,7 +59,7 @@
 #ifdef	AFS_OSF_ENV
 #include <ufs/inode.h>
 #else /* AFS_OSF_ENV */
-#if !defined(AFS_LINUX20_ENV) && !defined(AFS_XBSD_ENV) && !defined(AFS_ARM_DARWIN_ENV)
+#if !defined(AFS_LINUX20_ENV) && !defined(AFS_XBSD_ENV) && !defined(AFS_DARWIN_ENV)
 #include <sys/inode.h>
 #endif
 #endif
@@ -271,8 +271,15 @@ handleit(struct cmd_syndesc *as, void *arock)
 	    strlcpy(pname, ti->data, sizeof(pname));
 	}
 	if ((ti = as->parms[1].items)) {	/* -volumeid */
+	    char *end;
+	    unsigned long vid_l;
 	    seenvol = 1;
-	    vid = atoi(ti->data);
+	    vid_l = strtoul(ti->data, &end, 10);
+	    if (vid_l >= MAX_AFS_UINT32 || vid_l == ULONG_MAX || *end != '\0') {
+		printf("Invalid volume id specified; salvage aborted\n");
+		exit(-1);
+	    }
+	    vid = (VolumeId)vid_l;
 	}
 
 	if (ShowLog) {

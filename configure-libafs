@@ -745,6 +745,7 @@ RHCONFIG_MP
 RHCONFIG_SP
 LINUX_GCC_KOPTS
 P5PLUS_KOPTS
+OSXSDK
 SOLARISCC
 LEXLIB
 LEX_OUTPUT_ROOT
@@ -2591,9 +2592,9 @@ am__tar='${AMTAR} chof - "$$tardir"'; am__untar='${AMTAR} xf -'
 
 ac_config_headers="$ac_config_headers src/config/afsconfig.h"
 
-MACOS_VERSION=1.6.0fc3-osd
+MACOS_VERSION=1.6.0fc5-osd
 LINUX_PKGVER=1.6.0-osd
-LINUX_PKGREL=0.pre3
+LINUX_PKGREL=0.pre5
 #LINUX_PKGREL=1.1
 
 
@@ -6376,24 +6377,43 @@ $as_echo_n "checking your AFS sysname... " >&6; }
 			;;
 		powerpc-apple-darwin7*)
 			AFS_SYSNAME="ppc_darwin_70"
+			OSXSDK="macosx10.3"
 			;;
 		powerpc-apple-darwin8.*)
 			AFS_SYSNAME="ppc_darwin_80"
+			OSXSDK="macosx10.4"
 			;;
 		i386-apple-darwin8.*)
 			AFS_SYSNAME="x86_darwin_80"
+			OSXSDK="macosx10.4"
 			;;
 		powerpc-apple-darwin9.*)
 			AFS_SYSNAME="ppc_darwin_90"
+			OSXSDK="macosx10.5"
 			;;
 		i386-apple-darwin9.*)
 			AFS_SYSNAME="x86_darwin_90"
+			OSXSDK="macosx10.5"
 			;;
 		i?86-apple-darwin10.*)
 			AFS_SYSNAME="x86_darwin_100"
+			OSXSDK="macosx10.6"
 			;;
 		x86_64-apple-darwin10.*)
 			AFS_SYSNAME="x86_darwin_100"
+			OSXSDK="macosx10.6"
+			;;
+		arm-apple-darwin10.*)
+			AFS_SYSNAME="arm_darwin_100"
+			OSXSDK="iphoneos4.0"
+			;;
+		x86_64-apple-darwin11.*)
+			AFS_SYSNAME="x86_darwin_110"
+			OSXSDK="macosx10.7"
+			;;
+		i?86-apple-darwin11.*)
+			AFS_SYSNAME="x86_darwin_110"
+			OSXSDK="macosx10.7"
 			;;
 		sparc-sun-solaris2.5*)
 			AFS_SYSNAME="sun4x_55"
@@ -6780,6 +6800,7 @@ done
 
 		DARWIN_PLIST=src/libafs/afs.${AFS_SYSNAME}.plist
 		DARWIN_INFOFILE=afs.${AFS_SYSNAME}.plist
+
 		;;
 esac
 
@@ -13058,6 +13079,119 @@ $as_echo "$ac_cv_linux_func_pagevec_lru_add_file" >&6; }
 
 cat >>confdefs.h <<\_ACEOF
 #define HAVE_LINUX_PAGEVEC_LRU_ADD_FILE 1
+_ACEOF
+
+fi
+
+
+		   { $as_echo "$as_me:$LINENO: checking for path_lookup" >&5
+$as_echo_n "checking for path_lookup... " >&6; }
+if test "${ac_cv_linux_func_path_lookup+set}" = set; then
+  $as_echo_n "(cached) " >&6
+else
+  save_CPPFLAGS="$CPPFLAGS"
+     CPPFLAGS="$CPPFLAGS -Werror-implicit-function-declaration"
+
+  if test $AFS_SYSKVERS -ge 26 ; then
+      rm -fr conftest.dir
+  if test "x$ac_linux_kbuild_requires_extra_cflags" = "xyes" ; then
+    CFLAGS_PREFIX='EXTRA_'
+  fi
+  if mkdir conftest.dir &&
+    cat >conftest.dir/Makefile <<_ACEOF &&
+${CFLAGS_PREFIX}CFLAGS += $CPPFLAGS
+
+obj-m += conftest.o
+_ACEOF
+    cat >conftest.dir/conftest.c <<\_ACEOF &&
+/* confdefs.h */
+_ACEOF
+    cat confdefs.h >>conftest.dir/conftest.c &&
+    cat >>conftest.dir/conftest.c <<\_ACEOF &&
+/* end confdefs.h */
+#include <linux/module.h>
+#include <linux/fs.h>
+				      #include <linux/namei.h>
+
+void conftest(void)
+{
+path_lookup(NULL, 0, NULL);
+}
+
+MODULE_LICENSE("http://www.openafs.org/dl/license10.html");
+_ACEOF
+    echo make -C $LINUX_KERNEL_BUILD M=$SRCDIR_PARENT/conftest.dir modules KBUILD_VERBOSE=1 >&5 &&
+    make -C $LINUX_KERNEL_BUILD M=$SRCDIR_PARENT/conftest.dir modules KBUILD_VERBOSE=1 >&5 2>conftest.err &&
+    ! grep -i "WARNING: .* undefined!$" conftest.err >/dev/null 2>&1
+    then ac_cv_linux_func_path_lookup=yes
+    else
+      sed '/^ *+/d' conftest.err >&5
+      echo "$as_me: failed using Makefile:" >&5
+      sed 's/^/| /' conftest.dir/Makefile >&5
+      echo "$as_me: and program was:" >&5
+      sed 's/^/| /' conftest.dir/conftest.c >&5
+      ac_cv_linux_func_path_lookup=no
+  fi; rm -fr conftest.err conftest.dir
+  else
+
+  ac_save_CPPFLAGS="$CPPFLAGS"
+  CPPFLAGS="-I$LINUX_KERNEL_PATH/include -D__KERNEL__ -Werror-implicit-function-declaration $CPPFLAGS"
+  cat >conftest.$ac_ext <<_ACEOF
+/* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+
+#include <linux/kernel.h>
+#include <linux/fs.h>
+				      #include <linux/namei.h>
+int
+main ()
+{
+path_lookup(NULL, 0, NULL);
+  ;
+  return 0;
+}
+_ACEOF
+rm -f conftest.$ac_objext
+if { (ac_try="$ac_compile"
+case "(($ac_try" in
+  *\"* | *\`* | *\\*) ac_try_echo=\$ac_try;;
+  *) ac_try_echo=$ac_try;;
+esac
+eval ac_try_echo="\"\$as_me:$LINENO: $ac_try_echo\""
+$as_echo "$ac_try_echo") >&5
+  (eval "$ac_compile") 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  $as_echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } && {
+	 test -z "$ac_c_werror_flag" ||
+	 test ! -s conftest.err
+       } && test -s conftest.$ac_objext; then
+  ac_cv_linux_func_path_lookup=yes
+else
+  $as_echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+	ac_cv_linux_func_path_lookup=no
+fi
+
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+  CPPFLAGS="$ac_save_CPPFLAGS"
+  fi
+     CPPFLAGS="$save_CPPFLAGS"
+
+fi
+{ $as_echo "$as_me:$LINENO: result: $ac_cv_linux_func_path_lookup" >&5
+$as_echo "$ac_cv_linux_func_path_lookup" >&6; }
+  if test $ac_cv_linux_func_path_lookup = yes; then
+
+cat >>confdefs.h <<\_ACEOF
+#define HAVE_LINUX_PATH_LOOKUP 1
 _ACEOF
 
 fi
@@ -20160,7 +20294,7 @@ _ACEOF
 
         WITH_OBJECT_STORAGE="YES"
 else
-	WITH_OBJECT_STORAGE="NO"
+        WITH_OBJECT_STORAGE="NO"
 fi
 
 
@@ -23174,14 +23308,14 @@ $as_echo "no" >&6; }
 $as_echo_n "checking for vectored positional I/O... " >&6; }
    if test "$ac_cv_func_preadv" = "yes" -a \
                "$ac_cv_func_pwritev" = "yes" -a \
-              "$ac_cv_func_preadv64" = "yes" -a \
-              "$ac_cv_func_pwritev64" = "yes"; then
+	       "$ac_cv_func_preadv64" = "yes" -a \
+	       "$ac_cv_func_pwritev64" = "yes"; then
 
 cat >>confdefs.h <<\_ACEOF
 #define HAVE_PIOV 1
 _ACEOF
 
-         { $as_echo "$as_me:$LINENO: result: yes" >&5
+  	  { $as_echo "$as_me:$LINENO: result: yes" >&5
 $as_echo "yes" >&6; }
 else
   { $as_echo "$as_me:$LINENO: result: no" >&5
@@ -26584,7 +26718,7 @@ case $AFS_SYSNAME in
 		SHLIB_LINKER="${CC} -all -shared -expect_unresolved \"*\""
 		;;
 
-	alpha_dux50)
+	alpha_dux50 | alpha_dux51)
 		CC="cc"
 		CCOBJ="cc"
 		MT_CC="cc"
@@ -26597,32 +26731,7 @@ case $AFS_SYSNAME in
 		SHLIB_LINKER="${CC} -all -shared -expect_unresolved \"*\""
 		;;
 
-	alpha_dux51)
-		CC="cc"
-		CCOBJ="cc"
-		MT_CC="cc"
-		DBG="-g3"
-		CSTATIC="-non_shared"
-		LWP_OPTMZ="-O2"
-		MT_CFLAGS='-D_REENTRANT=1 -pthread -DAFS_PTHREAD_ENV ${XCFLAGS}'
-		MT_LIBS="-pthread -lpthread -lmach -lexc -lc"
-		XCFLAGS="-D_NO_PROTO -DOSF"
-		SHLIB_LINKER="${CC} -all -shared -expect_unresolved \"*\""
-		;;
-
-	alpha_linux_22)
-		KERN_OPTMZ=-O2
-		MT_CFLAGS='-DAFS_PTHREAD_ENV -pthread -D_REENTRANT ${XCFLAGS}'
-		MT_LIBS="-lpthread"
-		PAM_OPTMZ=-O2
-		PAM_CFLAGS="-Dlinux -DLINUX_PAM -fPIC"
-		SHLIB_CFLAGS="-fPIC"
-		SHLIB_LDFLAGS="-shared -Xlinker -x"
-		XCFLAGS="-D_LARGEFILE64_SOURCE"
-		SHLIB_LINKER="${MT_CC} -shared"
-		;;
-
-	alpha_linux_24)
+	alpha_linux_22 | alpha_linux_24 | alpha_linux_26)
 		CCOBJ="${CC} -fPIC"
 		KERN_OPTMZ=-O2
 		MT_CFLAGS='-DAFS_PTHREAD_ENV -pthread -D_REENTRANT ${XCFLAGS}'
@@ -26635,33 +26744,7 @@ case $AFS_SYSNAME in
 		SHLIB_LINKER="${MT_CC} -shared"
 		;;
 
-	alpha_linux_26)
-		CCOBJ="${CC} -fPIC"
-		KERN_OPTMZ=-O2
-		MT_CFLAGS='-DAFS_PTHREAD_ENV -pthread -D_REENTRANT ${XCFLAGS}'
-		MT_LIBS="-lpthread"
-		PAM_OPTMZ=-O2
-		PAM_CFLAGS="-Dlinux -DLINUX_PAM -fPIC"
-		SHLIB_CFLAGS="-fPIC"
-		SHLIB_LDFLAGS="-shared -Xlinker -x"
-		XCFLAGS="-D_LARGEFILE64_SOURCE"
-		SHLIB_LINKER="${MT_CC} -shared"
-		;;
-
-	arm_linux24)
-		CCOBJ="${CC} -fPIC"
-		KERN_OPTMZ=-O2
-		MT_CFLAGS='-DAFS_PTHREAD_ENV -pthread -D_REENTRANT ${XCFLAGS}'
-		MT_LIBS="-lpthread"
-		PAM_OPTMZ=-O2
-		PAM_CFLAGS="-Dlinux -DLINUX_PAM -fPIC"
-		SHLIB_CFLAGS="-fPIC"
-		SHLIB_LDFLAGS="-shared -Xlinker -x"
-		XCFLAGS="-D_LARGEFILE64_SOURCE"
-		SHLIB_LINKER="${MT_CC} -shared"
-		;;
-
-	arm_linux26)
+	arm_linux24 | arm_linux26)
 		CCOBJ="${CC} -fPIC"
 		KERN_OPTMZ=-O2
 		MT_CFLAGS='-DAFS_PTHREAD_ENV -pthread -D_REENTRANT ${XCFLAGS}'
@@ -26836,19 +26919,7 @@ case $AFS_SYSNAME in
 		SHLIB_LINKER="${MT_CC} -shared"
 		;;
 
-	ppc64_linux24)
-		KERN_OPTMZ=-O2
-		MT_CFLAGS='-DAFS_PTHREAD_ENV -pthread -D_REENTRANT ${XCFLAGS}'
-		MT_LIBS="-lpthread"
-		PAM_OPTMZ=-O2
-		PAM_CFLAGS="-Dlinux -DLINUX_PAM -fPIC"
-		SHLIB_LDFLAGS="-shared -Xlinker -x"
-		SHLIB_CFLAGS="-fPIC"
-		XCFLAGS="-D_LARGEFILE64_SOURCE"
-		SHLIB_LINKER="${MT_CC} -shared"
-		;;
-
-	ppc64_linux26)
+	ppc64_linux24 | ppc64_linux26)
 		KERN_OPTMZ=-O2
 		MT_CFLAGS='-DAFS_PTHREAD_ENV -pthread -D_REENTRANT ${XCFLAGS}'
 		MT_LIBS="-lpthread"
@@ -26857,18 +26928,6 @@ case $AFS_SYSNAME in
 		SHLIB_LDFLAGS="-shared -Xlinker -x"
 		SHLIB_CFLAGS="-fPIC"
 		XCFLAGS="-D_LARGEFILE64_SOURCE -fPIC"
-		SHLIB_LINKER="${MT_CC} -shared"
-		;;
-
-	i386_umlinux22)
-		KERN_OPTMZ=-O2
-		MT_CFLAGS='-DAFS_PTHREAD_ENV -pthread -D_REENTRANT ${XCFLAGS}'
-		MT_LIBS="-lpthread"
-		PAM_OPTMZ=-O2
-		PAM_CFLAGS="-Dlinux -DLINUX_PAM -fPIC"
-		SHLIB_CFLAGS="-fPIC"
-		SHLIB_LDFLAGS="-shared -Xlinker -x"
-		XCFLAGS="-D_LARGEFILE64_SOURCE"
 		SHLIB_LINKER="${MT_CC} -shared"
 		;;
 
@@ -26888,24 +26947,7 @@ case $AFS_SYSNAME in
 		SHLIB_LINKER="${MT_CC} -shared"
 		;;
 
-	i386_umlinux24)
-		KERN_OPTMZ=-O2
-		MT_CFLAGS='-DAFS_PTHREAD_ENV -pthread -D_REENTRANT ${XCFLAGS}'
-		MT_LIBS="-lpthread"
-		DBG=-g
-		KERN_DBG=-g
-		LWP_DBG=-g
-		LWP_OPTMZ=-O2
-		OPTMZ=-O2
-		PAM_OPTMZ=-O2
-		PAM_CFLAGS="-Dlinux -DLINUX_PAM -fPIC"
-		SHLIB_CFLAGS="-fPIC"
-		SHLIB_LDFLAGS="-shared -Xlinker -x"
-		XCFLAGS="-D_LARGEFILE64_SOURCE"
-		SHLIB_LINKER="${MT_CC} -shared"
-		;;
-
-	i386_umlinux26)
+	i386_umlinux22 | i386_umlinux24 | i386_umlinux26)
 		KERN_OPTMZ=-O2
 		MT_CFLAGS='-DAFS_PTHREAD_ENV -pthread -D_REENTRANT ${XCFLAGS}'
 		MT_LIBS="-lpthread"
@@ -27021,7 +27063,7 @@ case $AFS_SYSNAME in
 		XLIBS="${LIB_AFSDB} ${XBSA_XLIBS} -framework CoreFoundation"
 		;;
 
-	*_darwin_100)
+	*_darwin_100 | *_darwin_110 )
 		AFSD_LDFLAGS="-F/System/Library/PrivateFrameworks -framework DiskArbitration -framework SystemConfiguration -framework IOKit -framework CoreFoundation"
 		MT_CFLAGS='-DAFS_PTHREAD_ENV -D_REENTRANT ${XCFLAGS} ${ARCHFLAGS}'
 		MT_LIBS="${LIB_AFSDB} -framework CoreFoundation"
@@ -27068,40 +27110,7 @@ case $AFS_SYSNAME in
 		AIX64="#"
 		;;
 
-
-	rs_aix51)
-		CC="cc"
-		CCOBJ="cc"
-		DBG=""
-		LIBSYS_AIX_EXP="afsl.exp"
-		MT_CC="xlc_r"
-		MT_CFLAGS='-DAFS_PTHREAD_ENV ${XCFLAGS}'
-		MT_LIBS="-lpthreads"
-		SHLIB_SUFFIX="o"
-		XCFLAGS="-K -D_NONSTD_TYPES -D_MBI=void"
-		XLIBS="${LIB_AFSDB} ${LIB_libintl} -ldl"
-		SHLIB_LINKER="${MT_CC} -bM:SRE -berok"
-		AIX32=""
-		AIX64=""
-		;;
-
-	rs_aix52)
-		CC="cc"
-		CCOBJ="cc"
-		DBG=""
-		LIBSYS_AIX_EXP="afsl.exp"
-		MT_CC="xlc_r"
-		MT_CFLAGS='-DAFS_PTHREAD_ENV ${XCFLAGS}'
-		MT_LIBS="-lpthreads"
-		SHLIB_SUFFIX="o"
-		XCFLAGS="-K -D_NONSTD_TYPES -D_MBI=void"
-		XLIBS="${LIB_AFSDB} ${LIB_libintl} -ldl"
-		SHLIB_LINKER="${MT_CC} -bM:SRE -berok"
-		AIX32=""
-		AIX64=""
-		;;
-
-	rs_aix53)
+	rs_aix51 | rs_aix52 | rs_aix53)
 		CC="cc"
 		CCOBJ="cc"
 		DBG="-g"
@@ -27133,22 +27142,7 @@ case $AFS_SYSNAME in
 		AIX64=""
 		;;
 
-	s390_linux22)
-		LD="ld"
-		KERN_OPTMZ=-O2
-		MT_CC="$CC"
-		MT_CFLAGS='-DAFS_PTHREAD_ENV -pthread -D_REENTRANT ${XCFLAGS}'
-		MT_LIBS="-lpthread"
-		PAM_OPTMZ=-O
-		PAM_CFLAGS="-Dlinux -DLINUX_PAM -fPIC"
-		SHLIB_CFLAGS="-fPIC"
-		SHLIB_LDFLAGS="-shared -Xlinker -x"
-		OPTMZ=-O
-		XCFLAGS="-D_LARGEFILE64_SOURCE"
-		SHLIB_LINKER="${MT_CC} -shared"
-		;;
-
-	s390_linux24|s390_linux26)
+	s390_linux22|s390_linux24|s390_linux26)
 		LD="ld"
 		KERN_OPTMZ=-O2
 		MT_CC="$CC"
@@ -27281,66 +27275,7 @@ case $AFS_SYSNAME in
 		LWP_OPTMZ="-g"
 		;;
 
-	sun4x_56)
-		CC=$SOLARISCC
-		CCOBJ=$SOLARISCC
-		MT_CC=$SOLARISCC
-		MT_CFLAGS='-mt -DAFS_PTHREAD_ENV ${XCFLAGS}'
-		MT_LIBS="-lpthread -lsocket"
-		PAM_CFLAGS="-KPIC"
-		PAM_LIBS="-lc -lpam -lsocket -lnsl -lm"
-		SHLIB_CFLAGS="-KPIC"
-		SHLIB_LDFLAGS="-G -Bsymbolic"
-		XCFLAGS="-dy -Bdynamic"
-		XLIBELFA="-lelf"
-		LD="/usr/ccs/bin/ld"
-		XLIBKVM="-lkvm"
-		XLIBS="${LIB_AFSDB} -lsocket -lnsl -lintl -ldl"
-		SHLIB_LINKER="${CC} -G -dy -Bsymbolic -z text"
-		LWP_OPTMZ="-g"
-		;;
-
-	sun4x_57)
-		CC=$SOLARISCC
-		CCOBJ=$SOLARISCC
-		LD="/usr/ccs/bin/ld"
-		MT_CC=$SOLARISCC
-		MT_CFLAGS='-mt -DAFS_PTHREAD_ENV ${XCFLAGS}'
-		MT_LIBS="-lpthread -lsocket"
-		PAM_CFLAGS="-KPIC"
-		PAM_LIBS="-lc -lpam -lsocket -lnsl -lm"
-		SHLIB_CFLAGS="-KPIC"
-		SHLIB_LDFLAGS="-G -Bsymbolic"
-		XCFLAGS64='${XCFLAGS} -xarch=v9'
-		XCFLAGS="-dy -Bdynamic"
-		XLIBELFA="-lelf"
-		XLIBKVM="-lkvm"
-		XLIBS="${LIB_AFSDB} -lsocket -lnsl -lintl -ldl"
-		SHLIB_LINKER="${CC} -G -dy -Bsymbolic -z text"
-		LWP_OPTMZ="-g"
-		;;
-
-	sun4x_58)
-		CC=$SOLARISCC
-		CCOBJ=$SOLARISCC
-		LD="/usr/ccs/bin/ld"
-		MT_CC=$SOLARISCC
-		MT_CFLAGS='-mt -DAFS_PTHREAD_ENV ${XCFLAGS}'
-		MT_LIBS="-lpthread -lsocket"
-		PAM_CFLAGS="-KPIC"
-		PAM_LIBS="-lc -lpam -lsocket -lnsl -lm"
-		SHLIB_CFLAGS="-KPIC"
-		SHLIB_LDFLAGS="-G -Bsymbolic"
-		XCFLAGS64='${XCFLAGS} -xarch=v9'
-		XCFLAGS="-dy -Bdynamic"
-		XLIBELFA="-lelf"
-		XLIBKVM="-lkvm"
-		XLIBS="${LIB_AFSDB} -lsocket -lnsl -lintl -ldl"
-		SHLIB_LINKER="${CC} -G -dy -Bsymbolic -z text"
-		LWP_OPTMZ="-g"
-		;;
-
-	sun4x_59)
+	sun4x_56|sun4x_57|sun4x_58|sun4x_59)
 		CC=$SOLARISCC
 		CCOBJ=$SOLARISCC
 		LD="/usr/ccs/bin/ld"
@@ -27400,45 +27335,7 @@ case $AFS_SYSNAME in
 		LWP_OPTMZ="-g"
 		;;
 
-	sunx86_57)
-		CC=$SOLARISCC
-		CCOBJ=$SOLARISCC
-		LD="/usr/ccs/bin/ld"
-		MT_CC=$SOLARISCC
-		MT_CFLAGS='-mt -DAFS_PTHREAD_ENV ${XCFLAGS}'
-		MT_LIBS="-lpthread -lsocket"
-		PAM_CFLAGS="-KPIC"
-		PAM_LIBS="-lc -lpam -lsocket -lnsl -lm"
-		SHLIB_CFLAGS="-KPIC"
-		SHLIB_LDFLAGS="-G -Bsymbolic"
-		XCFLAGS64='${XCFLAGS} -xarch=amd64'
-		XCFLAGS="-dy -Bdynamic"
-		XLIBELFA="-lelf"
-		XLIBKVM="-lkvm"
-		XLIBS="${LIB_AFSDB} -lsocket -lnsl -lintl -ldl"
-		SHLIB_LINKER="${CC} -G -dy -Bsymbolic -z text"
-		;;
-
-	sunx86_58)
-		CC=$SOLARISCC
-		CCOBJ=$SOLARISCC
-		LD="/usr/ccs/bin/ld"
-		MT_CC=$SOLARISCC
-		MT_CFLAGS='-mt -DAFS_PTHREAD_ENV ${XCFLAGS}'
-		MT_LIBS="-lpthread -lsocket"
-		PAM_CFLAGS="-KPIC"
-		PAM_LIBS="-lc -lpam -lsocket -lnsl -lm"
-		SHLIB_CFLAGS="-KPIC"
-		SHLIB_LDFLAGS="-G -Bsymbolic"
-		XCFLAGS64='${XCFLAGS} -xarch=amd64'
-		XCFLAGS="-dy -Bdynamic"
-		XLIBELFA="-lelf"
-		XLIBKVM="-lkvm"
-		XLIBS="${LIB_AFSDB} -lsocket -lnsl -lintl -ldl"
-		SHLIB_LINKER="${CC} -G -dy -Bsymbolic -z text"
-		;;
-
-	sunx86_59)
+	sunx86_57|sunx86_58|sunx86_59)
 		CC=$SOLARISCC
 		CCOBJ=$SOLARISCC
 		LD="/usr/ccs/bin/ld"

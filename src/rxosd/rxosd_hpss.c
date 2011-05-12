@@ -1,3 +1,26 @@
+/**********************************************************************
+ *  Interface routines to HPSS
+ *
+ *  The HPSS site specific configuration is supposed to be stored 
+ *  in the file HPSS.conf in either /usr/afs/local or /etc/openafs.
+ *
+ *  It may contain one ore more lines for the "classes of service" of 
+ *  the form
+ *
+ *  COS <number> min <minsize> max <maxsize>
+ *
+ *  where <minsize> and <maxsize> must be integer numbers which may
+ *  have at their end 'k' for KB
+ *                    'm' for MB
+ *                    'g' for GB
+ *                    't' for TB
+ *
+ *  Example
+ *
+ *  COS 21 min 0 max 64g
+ *  COS 23 min 64g max 1t
+ *
+ *********************************************************************/
 #define _BSD_SOURCE	
 #define _THREAD_SAFE
 #define LINUX
@@ -12,6 +35,8 @@
 #include <errno.h>
 #include "hpss_api.h"
 #include "hpss_stat.h"
+#include <afs/fileutil.h>
+#include <afs/dirpath.h>
 
 #if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
 #include <sys/statvfs.h>
@@ -72,13 +97,117 @@ extern time_t hpssLastAuth;
 
 #define HALFDAY 12*60*60
 
+int initialized = 0;
+
+struct cosInfo {
+    afs_int32 cosId;
+    afs_uint64 minSize;
+    afs_uint64 maxSize;
+};
+
+#define MAXCOS 64
+struct cosInfo info[MAXCOS];
+
+static int
+fillsize(afs_uint32 *size, char *str)
+{
+    int code = 0;
+    int fields;
+    afs_uint64 value;
+    char unit[8];
+
+    fields = sscanf(str, "%u%s", &value, &unit);
+    if (fields == 1)
+        *size = value;
+    else if (fields == 2) {
+        if (unit[0] == 'k') 
+	    *size = value << 10;
+        else if (unit[0] == 'm') 
+	    *size = value << 20;
+        else if (unit[0] == 'g') 
+	    *size = value << 30;
+        else if (unit[0] == 't') 
+	    *size = value << 40;
+        else if (unit[0] == 'p') 
+	    *size = value << 50;
+	else
+	    code = EINVAL;
+    } else
+	code = EINVAL;
+    return code;
+}
+
+static int
+fillInfo(struct cosInfo *info, int id, char *min, char *max)
+{
+    int code;
+    info->cosId = id;
+    code = fillsize(&info->minSize, min);
+    if (!code)
+	code = fillsize(&info->maxSize, max);
+    return code;
+}
+
+static int
+readHPSSconf()
+{
+    int i, j, cos, code = ENOENT;
+    afs_uint64 value;
+    struct stat64 tstat;
+    char tbuffer[256];
+    char minstr[128];
+    char maxstr[128];
+    char unit[8];
+    static time_t lastVersion = 0;
+
+    if (!initialized) {
+	memset(&info, 0, sizeof(info));
+	initialized = 1;
+    }
+    sprintf(tbuffer, "%s/HPSSconf", AFSDIR_SERVER_ETC_DIRPATH);
+    if (stat64(tbuffer, &tstat) == 0) {
+	code = 0;
+	if (tstat.st_mtim.tv_sec > lastVersion) {
+	    bufio_p bp = BufioOpen(tbuffer, O_RDONLY, 0);
+	    if (bp) {
+		while (1) {
+		    j = BufioGets(bp, tbuffer, sizeof(tbuffer));
+		    if (j < 0)
+			break;
+		    j = sscanf(tbuffer, "COS %u min %s max %s",
+				 &cos, &minstr, &maxstr);
+		    if (j != 3)
+	   		break;
+		    for (i=0; i<MAXCOS; i++) {
+			if (cos == info[i].cosId)
+			    break;
+			if (info[i].cosId == 0)
+			    break;
+		    }
+		    if (i<MAXCOS) 
+			code = fillInfo(&info[i], cos, &minstr, &maxstr);
+		}
+		BufioClose(bp);
+	    }
+	    if (!code)
+		lastVersion = tstat.st_mtim.tv_sec;
+	}
+    }
+    return code;
+}
+
+/* 
+ * This routine is called by the FiveMinuteCcheck
+ */
 afs_int32 
 authenticate_for_hpss(char *principal, char *keytab)
 {
-    afs_int32 code = 0;
+    afs_int32 code = 0, i;
     time_t now = time(0);
     static int authenticated = 0;
- 
+
+    code = readHPSSconf();
+
     if (now - hpssLastAuth > HALFDAY) {
 	if (authenticated) {
 	    hpss_ClientAPIReset();
@@ -96,27 +225,24 @@ authenticate_for_hpss(char *principal, char *keytab)
     return code;
 }
 
-#define AFS_SMALL_COS 21
-#define AFS_LARGE_COS 23
-#define SIZE_THRESHOLD 64*1024*1024*1024LL
-
 int myhpss_open(const char *path, int flags, mode_t mode, afs_uint64 size)
 {
-    int fd;
+    int fd, i;
     hpss_cos_hints_t cos_hints;
     hpss_cos_priorities_t cos_pri;
 
     memset(&cos_hints, 0 , sizeof(cos_hints));
     memset(&cos_pri, 0 , sizeof(cos_pri));
-    cos_hints.COSId = AFS_SMALL_COS;
-    if (size >= SIZE_THRESHOLD)
-        cos_hints.COSId = AFS_LARGE_COS;
-    cos_pri.COSIdPriority = REQUIRED_PRIORITY;
-    hpss_cos_hints_t *HintsIn = &cos_hints;
-    hpss_cos_priorities_t *HintsPri = &cos_pri;
-    hpss_cos_hints_t *HintsOut = &cos_hints;
-
-    fd = hpss_Open(path, flags, mode, HintsIn, HintsPri, HintsOut);
+    for (i=0; i<MAXCOS; i++) {
+	if (!info[i].cosId)
+	    break;
+	if (info[i].cosId && size >= info[i].minSize && size <= info[i].maxSize) {
+	    cos_hints.COSId = info[i].cosId;
+            cos_pri.COSIdPriority = REQUIRED_PRIORITY;
+	    break;
+    	}
+    }
+    fd = hpss_Open(path, flags, mode, &cos_hints, &cos_pri, NULL);
     return fd;
 }
 

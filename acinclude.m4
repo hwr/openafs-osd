@@ -99,22 +99,22 @@ AC_ARG_ENABLE([bitmap-later],
     [enable_bitmap_later="no"])
 AC_ARG_ENABLE([object-storage],
     [AS_HELP_STRING([--enable-object-storage],
-	[enable use of object storage for AFS files])],
+        [enable use of object storage for AFS files])],
     ,
     [enable_object_storage="no"])
 AC_ARG_ENABLE([vicep-access],
     [AS_HELP_STRING([--enable-vicep-access],
-	[enable direct client access to visible fileserver partitions (experimental)])],
+        [enable direct client access to visible fileserver partitions (experimental)])],
     ,
     [enable_vicep_access="no"])
 AC_ARG_ENABLE([dcache-hsm],
     [AS_HELP_STRING([--enable-dcache-hsm],
-	[enable use of DCACHE as HSM system for object storage])],
+        [enable use of DCACHE as HSM system for object storage])],
     ,
     [enable_dcache_hsm="no"])
 AC_ARG_ENABLE([hpss-hsm],
     [AS_HELP_STRING([--enable-hpss-hsm],
-	[enable use of HPSS as HSM system for object storage])],
+        [enable use of HPSS as HSM system for object storage])],
     ,
     [enable_hpss_hsm="no"])
 AC_ARG_ENABLE([unix-sockets],
@@ -182,13 +182,13 @@ dnl Optimization and debugging flags.
 
 AC_ARG_WITH([version-string],
     [AS_HELP_STRING([--with-version-string=string],
-	[what to display in rxdebug -v])])
+        [what to display in rxdebug -v])])
 AC_ARG_WITH([dcache-path],
     [AS_HELP_STRING([--with-dcache-path=path],
-	[where dcap.h and libdcap.a can be found])])
+        [where dcap.h and libdcap.a can be found])])
 AC_ARG_WITH([hpss-path],
     [AS_HELP_STRING([--with-hpss-path=path],
-	[where include and lib for HPSS can be found, typically /opt/hpss])])
+        [where include and lib for HPSS can be found, typically /opt/hpss])])
 AC_ARG_ENABLE([strip-binaries],
     [AS_HELP_STRING([--disable-strip-binaries],
         [disable stripping of symbol information from binaries (defaults to
@@ -547,24 +547,43 @@ else
 			;;
 		powerpc-apple-darwin7*)
 			AFS_SYSNAME="ppc_darwin_70"
+			OSXSDK="macosx10.3"
 			;;
 		powerpc-apple-darwin8.*)
 			AFS_SYSNAME="ppc_darwin_80"
+			OSXSDK="macosx10.4"
 			;;
 		i386-apple-darwin8.*)
 			AFS_SYSNAME="x86_darwin_80"
+			OSXSDK="macosx10.4"
 			;;
 		powerpc-apple-darwin9.*)
 			AFS_SYSNAME="ppc_darwin_90"
+			OSXSDK="macosx10.5"
 			;;
 		i386-apple-darwin9.*)
 			AFS_SYSNAME="x86_darwin_90"
+			OSXSDK="macosx10.5"
 			;;
 		i?86-apple-darwin10.*)
 			AFS_SYSNAME="x86_darwin_100"
+			OSXSDK="macosx10.6"
 			;;
 		x86_64-apple-darwin10.*)
 			AFS_SYSNAME="x86_darwin_100"
+			OSXSDK="macosx10.6"
+			;;
+		arm-apple-darwin10.*)
+			AFS_SYSNAME="arm_darwin_100"
+			OSXSDK="iphoneos4.0"
+			;;
+		x86_64-apple-darwin11.*)
+			AFS_SYSNAME="x86_darwin_110"
+			OSXSDK="macosx10.7"
+			;;
+		i?86-apple-darwin11.*)
+			AFS_SYSNAME="x86_darwin_110"
+			OSXSDK="macosx10.7"
 			;;
 		sparc-sun-solaris2.5*)
 			AFS_SYSNAME="sun4x_55"
@@ -713,6 +732,7 @@ case $AFS_SYSNAME in
 		AC_CHECK_HEADERS(crt_externs.h)
 		DARWIN_PLIST=src/libafs/afs.${AFS_SYSNAME}.plist
 		DARWIN_INFOFILE=afs.${AFS_SYSNAME}.plist
+		AC_SUBST(OSXSDK)
 		;;
 esac
 
@@ -878,6 +898,10 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 		 AC_CHECK_LINUX_FUNC([pagevec_lru_add_file],
 				     [#include <linux/pagevec.h>],
 				     [__pagevec_lru_add_file(NULL);])
+		 AC_CHECK_LINUX_FUNC([path_lookup],
+				     [#include <linux/fs.h>
+				      #include <linux/namei.h>],
+				     [path_lookup(NULL, 0, NULL);])
 		 AC_CHECK_LINUX_FUNC([rcu_read_lock],
 				     [#include <linux/rcupdate.h>],
 				     [rcu_read_lock();])
@@ -908,7 +932,7 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 		 LINUX_INODE_SETATTR_RETURN_TYPE
 		 LINUX_IOP_I_CREATE_TAKES_NAMEIDATA
 		 LINUX_IOP_I_LOOKUP_TAKES_NAMEIDATA
-	  	 LINUX_IOP_I_PERMISSION_TAKES_FLAGS
+		 LINUX_IOP_I_PERMISSION_TAKES_FLAGS
 	  	 LINUX_IOP_I_PERMISSION_TAKES_NAMEIDATA
 	  	 LINUX_IOP_I_PUT_LINK_TAKES_COOKIE
 	  	 LINUX_DOP_D_REVALIDATE_TAKES_NAMEIDATA
@@ -934,7 +958,7 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 		 LINUX_KEY_ALLOC_NEEDS_CRED
 		 LINUX_INIT_WORK_HAS_DATA
 		 LINUX_REGISTER_SYSCTL_TABLE_NOFLAG
-                 LINUX_HAVE_DCACHE_LOCK
+		 LINUX_HAVE_DCACHE_LOCK
 		 LINUX_D_COUNT_IS_INT
 
 		 dnl If we are guaranteed that keyrings will work - that is
@@ -1163,7 +1187,7 @@ if test "$enable_object_storage" = "yes"; then
         AC_DEFINE(AFS_RXOSD_SUPPORT, 1, [define if you want to use object storage in your cell])
         WITH_OBJECT_STORAGE="YES"
 else
-	WITH_OBJECT_STORAGE="NO"
+        WITH_OBJECT_STORAGE="NO"
 fi
 AC_SUBST(WITH_OBJECT_STORAGE)
 
@@ -1351,11 +1375,11 @@ case $AFS_SYSNAME in
    AC_MSG_CHECKING([for vectored positional I/O])
    AS_IF([test "$ac_cv_func_preadv" = "yes" -a \
                "$ac_cv_func_pwritev" = "yes" -a \
-              "$ac_cv_func_preadv64" = "yes" -a \
-              "$ac_cv_func_pwritev64" = "yes"],
-        [AC_DEFINE(HAVE_PIOV, 1, [define if you have preadv() and pwritev()])
-         AC_MSG_RESULT(yes)],
-        [AC_MSG_RESULT(no)])
+	       "$ac_cv_func_preadv64" = "yes" -a \
+	       "$ac_cv_func_pwritev64" = "yes"],
+	 [AC_DEFINE(HAVE_PIOV, 1, [define if you have preadv() and pwritev()])
+  	  AC_MSG_RESULT(yes)],
+	 [AC_MSG_RESULT(no)])
    ;;
 esac
 
@@ -1523,7 +1547,7 @@ struct labeltest struct_labeltest = {
 
 AC_DEFUN([SUMMARY], [
     # Print a configuration summary
-echo
+echo 
 echo "**************************************"
 echo configure summary
 echo
@@ -1531,6 +1555,6 @@ AS_IF([test $LIB_curses],[
 echo "LIB_curses :                $LIB_curses" ],[
 echo "XXX LIB_curses  not found! not building scout and afsmonitor!"
 ])
-echo
+echo 
 echo "**************************************"
 ])

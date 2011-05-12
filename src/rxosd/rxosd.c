@@ -956,11 +956,11 @@ afs_int32 CheckMount(char *partname)
                 }
 		if (hpssPath != hpssMeta) { /* temporarily for testing */
                 if ((ih_hpss_ops.stat64)(hpssPath, &stat) <0) {
-		    Log("HPSS path %s not found, proceeding with metadata partition %s also for data\n", 
+/*		    Log("HPSS path %s not found, proceeding with metadata partition %s also for data\n", 
 			hpssPath, hpssMeta);
 			hpssPath = hpssMeta;
-			ih_hsm_opsPtr = &ih_namei_ops;
-                    /* return ENOENT; */
+			ih_hsm_opsPtr = &ih_namei_ops; */
+                    return ENOENT;
                 } else
 		    ih_hsm_opsPtr = &ih_hpss_ops;
 		}

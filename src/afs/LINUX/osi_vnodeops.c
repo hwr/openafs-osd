@@ -30,13 +30,10 @@
 #include <linux/mm_inline.h>
 #endif
 #include <linux/pagemap.h>
-#include <linux/smp_lock.h>
 #include <linux/writeback.h>
 #include <linux/pagevec.h>
-#if defined(AFS_CACHE_BYPASS)
 #include "afs/lock.h"
 #include "afs/afs_bypasscache.h"
-#endif
 
 #include "osi_compat.h"
 #include "osi_pagecopy.h"
@@ -587,9 +584,7 @@ afs_linux_flush(struct file *fp)
     struct vcache *vcp;
     cred_t *credp;
     int code;
-#if defined(AFS_CACHE_BYPASS)
     int bypasscache = 0;
-#endif
 
     AFS_GLOCK();
 
@@ -606,21 +601,20 @@ afs_linux_flush(struct file *fp)
     code = afs_InitReq(&treq, credp);
     if (code)
 	goto out;
-#if defined(AFS_CACHE_BYPASS)
     /* If caching is bypassed for this file, or globally, just return 0 */
-    if(cache_bypass_strategy == ALWAYS_BYPASS_CACHE)
+    if (cache_bypass_strategy == ALWAYS_BYPASS_CACHE)
 	bypasscache = 1;
     else {
 	ObtainReadLock(&vcp->lock);
-	if(vcp->cachingStates & FCSBypass)
+	if (vcp->cachingStates & FCSBypass)
 	    bypasscache = 1;
 	ReleaseReadLock(&vcp->lock);
     }
-    if(bypasscache) {
+    if (bypasscache) {
         /* future proof: don't rely on 0 return from afs_InitReq */
-        code = 0; goto out;
+        code = 0;
+	goto out;
     }
-#endif
 
     ObtainSharedLock(&vcp->lock, 535);
     if ((vcp->execsOrWriters > 0) && (file_count(fp) == 1)) {
@@ -1311,8 +1305,17 @@ afs_linux_rename(struct inode *oldip, struct dentry *olddp,
 	rehash = newdp;
     }
 
+#if defined(D_COUNT_INT)
+    spin_lock(&olddp->d_lock);
+    if (olddp->d_count > 1) {
+        spin_unlock(&olddp->d_lock);
+        shrink_dcache_parent(olddp);
+    } else
+        spin_unlock(&olddp->d_lock);
+#else
     if (atomic_read(&olddp->d_count) > 1)
 	shrink_dcache_parent(olddp);
+#endif
 
     AFS_GLOCK();
     code = afs_rename(VTOAFS(oldip), (char *)oldname, VTOAFS(newip), (char *)newname, credp);
@@ -1400,9 +1403,6 @@ out:
 
 #endif /* USABLE_KERNEL_PAGE_SYMLINK_CACHE */
 
-#if defined(AFS_CACHE_BYPASS)
-#endif /* defined(AFS_CACHE_BYPASS */
-
 /* Populate a page by filling it from the cache file pointed at by cachefp
  * (which contains indicated chunk)
  * If task is NULL, the page copy occurs syncronously, and the routine
@@ -1415,14 +1415,25 @@ afs_linux_read_cache(struct file *cachefp, struct page *page,
 		     int chunk, struct pagevec *lrupv,
 		     struct afs_pagecopy_task *task) {
     loff_t offset = page_offset(page);
+    struct inode *cacheinode = cachefp->f_dentry->d_inode;
     struct page *newpage, *cachepage;
     struct address_space *cachemapping;
-    int pageindex;
+    int pageindex, endindex;
     int code = 0;
 
-    cachemapping = cachefp->f_dentry->d_inode->i_mapping;
+    cachemapping = cacheinode->i_mapping;
     newpage = NULL;
     cachepage = NULL;
+
+    /* If we're trying to read a page that's past the end of the disk
+     * cache file, then just return a zeroed page */
+    if (offset >= i_size_read(cacheinode)) {
+        zero_user_segment(page, 0, PAGE_CACHE_SIZE);
+        SetPageUptodate(page);
+        if (task)
+            unlock_page(page);
+        return 0;
+    }
 
     /* From our offset, we now need to work out which page in the disk
      * file it corresponds to. This will be fun ... */
@@ -1703,8 +1714,6 @@ afs_linux_prefetch(struct file *fp, struct page *pp)
 
 }
 
-#if defined(AFS_CACHE_BYPASS)
-
 static int
 afs_linux_bypass_readpages(struct file *fp, struct address_space *mapping,
 			   struct list_head *page_list, unsigned num_pages)
@@ -1881,7 +1890,7 @@ afs_linux_can_bypass(struct inode *ip) {
 	case ALWAYS_BYPASS_CACHE:
 	    return 1;
 	case LARGE_FILES_BYPASS_CACHE:
-	    if(cache_bypass_threshold >= 0 && i_size_read(ip) > cache_bypass_threshold)
+	    if (cache_bypass_threshold >= 0 && i_size_read(ip) > cache_bypass_threshold)
 		return 1;
 	default:
 	    return 0;
@@ -1904,21 +1913,6 @@ afs_linux_bypass_check(struct inode *ip) {
     return bypass;
 }
 
-#else
-static inline int
-afs_linux_bypass_check(struct inode *ip) {
-    return 0;
-}
-static inline int
-afs_linux_bypass_readpage(struct file *fp, struct page *pp) {
-    return 0;
-}
-static inline int
-afs_linux_bypass_readpages(struct file *fp, struct address_space *mapping,
-		    struct list_head *page_list, unsigned int num_pages) {
-    return 0;
-}
-#endif
 
 static int
 afs_linux_readpage(struct file *fp, struct page *pp)

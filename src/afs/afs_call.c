@@ -24,9 +24,6 @@
 #include "netinet/in_var.h"
 #endif
 #endif /* !defined(UKERNEL) */
-#ifdef AFS_LINUX22_ENV
-#include "h/smp_lock.h"
-#endif
 #ifdef AFS_SUN510_ENV
 #include "h/ksynch.h"
 #include "h/sunddi.h"
@@ -110,8 +107,6 @@ afs_InitSetup(int preallocs)
 
     memset(afs_zeros, 0, AFS_ZEROS);
 
-    rx_SetBusyChannelError(RX_CALL_TIMEOUT);
-
     /* start RX */
     if(!afscall_set_rxpck_received)
     rx_extraPackets = AFS_NRXPACKETS;	/* smaller # of packets */
@@ -144,8 +139,13 @@ afsd_thread(int *rock)
 	AFS_GLOCK();
 	wakeup(arg);
 	afs_CB_Running = 1;
+#ifndef RXK_LISTENER_ENV
+        afs_initState = AFSOP_START_AFS;
+        afs_osi_Wakeup(&afs_initState);
+#else
 	while (afs_RX_Running != 2)
 	    afs_osi_Sleep(&afs_RX_Running);
+#endif
 	afs_RXCallBackServer();
 	AFS_GUNLOCK();
 	thread_terminate(current_thread());
@@ -191,6 +191,7 @@ afsd_thread(int *rock)
 	AFS_GUNLOCK();
 	thread_terminate(current_thread());
 	break;
+#ifdef RXK_LISTENER_ENV
     case AFSOP_RXLISTENER_DAEMON:
 	AFS_GLOCK();
 	wakeup(arg);
@@ -203,6 +204,7 @@ afsd_thread(int *rock)
 	AFS_GUNLOCK();
 	thread_terminate(current_thread());
 	break;
+#endif
     default:
 	afs_warn("Unknown op %ld in StartDaemon()\n", (long)parm);
 	break;
@@ -220,10 +222,12 @@ afs_DaemonOp(long parm, long parm2, long parm3, long parm4, long parm5,
     if (parm == AFSOP_START_RXCALLBACK) {
 	if (afs_CB_Running)
 	    return;
+#ifdef RXK_LISTENER_ENV
     } else if (parm == AFSOP_RXLISTENER_DAEMON) {
 	if (afs_RX_Running)
 	    return;
 	afs_RX_Running = 1;
+#endif
 	code = afs_InitSetup(parm2);
 	if (parm3) {
 	    rx_enablePeerRPCStats();
@@ -283,8 +287,13 @@ afsd_thread(void *rock)
 	AFS_GLOCK();
 	complete(arg->complete);
 	afs_CB_Running = 1;
+#if !defined(RXK_LISTENER_ENV)
+        afs_initState = AFSOP_START_AFS;
+        afs_osi_Wakeup(&afs_initState);
+#else
 	while (afs_RX_Running != 2)
 	    afs_osi_Sleep(&afs_RX_Running);
+#endif
 	sprintf(current->comm, "afs_callback");
 	afs_RXCallBackServer();
 	AFS_GUNLOCK();
@@ -356,6 +365,7 @@ afsd_thread(void *rock)
 	AFS_GUNLOCK();
 	complete_and_exit(0, 0);
 	break;
+#ifdef RXK_LISTENER_ENV
     case AFSOP_RXLISTENER_DAEMON:
 	sprintf(current->comm, "afs_lsnstart");
 #ifdef SYS_SETPRIORITY_EXPORTED
@@ -377,6 +387,7 @@ afsd_thread(void *rock)
 	AFS_GUNLOCK();
 	complete_and_exit(0, 0);
 	break;
+#endif
     default:
 	afs_warn("Unknown op %ld in StartDaemon()\n", (long)parm);
 	break;
@@ -416,10 +427,12 @@ afs_DaemonOp(long parm, long parm2, long parm3, long parm4, long parm5,
     if (parm == AFSOP_START_RXCALLBACK) {
 	if (afs_CB_Running)
 	    return;
+#ifdef RXK_LISTENER_ENV
     } else if (parm == AFSOP_RXLISTENER_DAEMON) {
 	if (afs_RX_Running)
 	    return;
 	afs_RX_Running = 1;
+#endif
 	code = afs_InitSetup(parm2);
 	if (parm3) {
 	    rx_enablePeerRPCStats();
@@ -586,6 +599,12 @@ afs_syscall_call(long parm, long parm2, long parm3,
 	    while (afs_RX_Running != 2)
 		afs_osi_Sleep(&afs_RX_Running);
 #else /* !RXK_LISTENER_ENV */
+            if (parm3) {
+                rx_enablePeerRPCStats();
+            }
+            if (parm4) {
+                rx_enableProcessRPCStats();
+            }
 	    afs_initState = AFSOP_START_AFS;
 	    afs_osi_Wakeup(&afs_initState);
 #endif /* RXK_LISTENER_ENV */
@@ -1232,7 +1251,6 @@ afs_shutdown(void)
 
     if (afs_shuttingdown)
 	return;
-    afs_FlushVCBs(2);       /* Reasonable effort to free dynamically allocated callback returns */
 
     afs_shuttingdown = 1;
     if (afs_cold_shutdown)
@@ -1297,7 +1315,7 @@ afs_shutdown(void)
 #endif
 #endif
 
-#ifdef AFS_SUN510_ENV
+#if defined(AFS_SUN510_ENV) || defined(RXK_UPCALL_ENV)
     afs_warn("NetIfPoller... ");
     osi_StopNetIfPoller();
 #endif

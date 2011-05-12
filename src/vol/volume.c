@@ -45,7 +45,7 @@
 #endif
 #endif
 #else /* AFS_VFSINCL_ENV */
-#if !defined(AFS_AIX_ENV) && !defined(AFS_LINUX20_ENV) && !defined(AFS_XBSD_ENV) && !defined(AFS_ARM_DARWIN_ENV)
+#if !defined(AFS_AIX_ENV) && !defined(AFS_LINUX20_ENV) && !defined(AFS_XBSD_ENV) && !defined(AFS_DARWIN_ENV)
 #include <sys/fs.h>
 #endif
 #endif /* AFS_VFSINCL_ENV */
@@ -6088,7 +6088,7 @@ VGetVolumePath(Error * ec, VolId volumeId, char **partitionp, char **namep)
     struct DiskPartition64 *dp;
 
     *ec = 0;
-    name[0] = OS_DIRSEPC;
+    name[0] = OS_DIRSEP;
     (void)afs_snprintf(&name[1], (sizeof name) - 1, VFORMAT, afs_printable_uint32_lu(volumeId));
     for (dp = DiskPartitionList; dp; dp = dp->next) {
 	struct afs_stat status;
@@ -6124,9 +6124,9 @@ VGetVolumePath(Error * ec, VolId volumeId, char **partitionp, char **namep)
 int
 VolumeNumber(char *name)
 {
-    if (*name == OS_DIRSEPC)
+    if (*name == OS_DIRSEP)
 	name++;
-    return atoi(name + 1);
+    return strtoul(name + 1, NULL, 10);
 }
 
 /**

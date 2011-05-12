@@ -56,7 +56,7 @@ validate_krb5_availability(void)
 #define KRB5LIB "krb5_64.dll"
 #endif
     HINSTANCE h = LoadLibrary(KRB5LIB);
-    if (h) 
+    if (h)
         FreeLibrary(h);
     else {
         fprintf(stderr, "Kerberos for Windows library %s is not available.\n", KRB5LIB);
@@ -114,8 +114,24 @@ main(int argc, char **argv)
 	}
 	retval = krb5_kt_read_service_key(context, argv[3], principal, kvno,
 					  ENCTYPE_DES_CBC_CRC, &key);
-	if (retval != 0) {
-		afs_com_err(argv[0], retval, "while extracting AFS service key");
+        if (retval == KRB5_KT_NOTFOUND)
+            retval = krb5_kt_read_service_key(context, argv[3], principal, kvno,
+                                               ENCTYPE_DES_CBC_MD5, &key);
+        if (retval == KRB5_KT_NOTFOUND)
+            retval = krb5_kt_read_service_key(context, argv[3], principal, kvno,
+                                               ENCTYPE_DES_CBC_MD4, &key);
+        if (retval == KRB5_KT_NOTFOUND) {
+            char * princname = NULL;
+
+            krb5_unparse_name(context, principal, &princname);
+
+            afs_com_err(argv[0], retval,
+                        "for keytab entry with Principal %s, kvno %u, DES-CBC-CRC/MD5/MD4",
+                        princname ? princname : argv[4],
+                        kvno);
+            exit(1);
+        } else if (retval != 0) {
+            afs_com_err(argv[0], retval, "while extracting AFS service key");
 		exit(1);
 	}
 
@@ -149,7 +165,7 @@ main(int argc, char **argv)
     else if (strcmp(argv[1], "list") == 0) {
 	struct afsconf_keys tkeys;
 	register int i, j;
-	
+
 	code = afsconf_GetKeys(tdir, &tkeys);
 	if (code) {
 	    printf("asetkey: failed to get keys, code %d\n", code);

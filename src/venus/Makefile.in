@@ -38,7 +38,7 @@ AFSIO_LIBS=${TOP_LIBDIR}/libafsrpc.a \
 	${TOP_LIBDIR}/libvldb.a \
 	${TOP_LIBDIR}/libubik.a \
 	${TOP_LIBDIR}/librxkad.a \
-	${TOP_LIBDIR}/libcom_err.a \
+	${TOP_LIBDIR}/libafscom_err.a \
 	${TOP_LIBDIR}/libcmd.a \
 	${TOP_LIBDIR}/librx.a \
 	${TOP_LIBDIR}/libsys.a \
@@ -50,7 +50,7 @@ FSLIBS=${TOP_LIBDIR}/libsys.a \
 	 ${TOP_LIBDIR}/libubik.a \
 	 ${TOP_LIBDIR}/libauth.a \
 	 ${TOP_LIBDIR}/librxkad.a \
-	 ${TOP_LIBDIR}/libcom_err.a \
+	 ${TOP_LIBDIR}/libafscom_err.a \
 	 ${TOP_LIBDIR}/libcmd.a \
 	 ${TOP_LIBDIR}/libkauth.a \
 	 ${TOP_LIBDIR}/libdes.a \
@@ -64,7 +64,7 @@ CMLIBS=${TOP_LIBDIR}/libsys.a \
 	 ${TOP_LIBDIR}/libafsint.a \
 	 ${TOP_LIBDIR}/librxkad.a \
 	 ${TOP_LIBDIR}/libauth.a \
-	 ${TOP_LIBDIR}/libcom_err.a \
+	 ${TOP_LIBDIR}/libafscom_err.a \
 	 ${TOP_LIBDIR}/libcmd.a \
 	 ${TOP_LIBDIR}/librx.a \
 	 ${TOP_LIBDIR}/libsys.a \
@@ -417,7 +417,6 @@ dest: kdump-build fs afsio livesys up fstrace cmdebug
 
 clean:
 	$(RM) -f *.o *.a up fs kdump-* kdump kdump64 core cmdebug AFS_component_version_number.c fstrace gcpags livesys dedebug
-	$(RM) -f cacheout afsio
 
 test:
 	cd test; $(MAKE)

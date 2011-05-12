@@ -10345,6 +10345,7 @@ StoreData_RXStyle(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
 	    if (fdP == NULL) {
 		ViceLog(25,
 			("StoreData : Reopen after CopyOnWrite failed\n"));
+		FDH_REALLYCLOSE(origfdP);
 		return ENOENT;
 	    }
 	}
@@ -10519,7 +10520,7 @@ StoreData_RXStyle(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
     }
     FDH_CLOSE(fdP);
     if (origfdP)
-        FDH_CLOSE(origfdP);
+        FDH_REALLYCLOSE(origfdP);
 
     FT_GetTimeOfDay(&StopTime, 0);
 

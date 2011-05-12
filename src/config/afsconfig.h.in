@@ -308,6 +308,9 @@
 /* Define if your kernel has the page_offset function */
 #undef HAVE_LINUX_PAGE_OFFSET
 
+/* Define if your kernel has the path_lookup function */
+#undef HAVE_LINUX_PATH_LOOKUP
+
 /* Define if your kernel has the rcu_read_lock function */
 #undef HAVE_LINUX_RCU_READ_LOCK
 
