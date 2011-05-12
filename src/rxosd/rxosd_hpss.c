@@ -114,26 +114,24 @@ fillsize(afs_uint64 *size, char *str)
     int code = 0;
     int fields;
     afs_uint64 value;
-    char unit[8];
+    char unit[8], *u;
 
+    u = &str[strlen(str)-1];
     fields = sscanf(str, "%ull%s", &value, &unit);
     if (fields == 1)
         *size = value;
-    else if (fields == 2) {
-        if (unit[0] == 'k') 
-	    *size = value << 10;
-        else if (unit[0] == 'm') 
-	    *size = value << 20;
-        else if (unit[0] == 'g') 
-	    *size = value << 30;
-        else if (unit[0] == 't') 
-	    *size = value << 40;
-        else if (unit[0] == 'p') 
-	    *size = value << 50;
-	else
-	    code = EINVAL;
-    } else
-	code = EINVAL;
+    if (fields == 2)
+	u = &unit[0]; 
+    if (*u == 'k') 
+	*size = value << 10;
+    if (*u == 'm') 
+	*size = value << 20;
+    if (*u == 'g') 
+	*size = value << 30;
+    if (*u == 't') 
+	*size = value << 40;
+    if (*u == 'p') 
+	*size = value << 50;
     return code;
 }
 
@@ -157,7 +155,6 @@ readHPSSconf()
     char tbuffer[256];
     char minstr[128];
     char maxstr[128];
-    char unit[8];
     static time_t lastVersion = 0;
 
     if (!initialized) {
