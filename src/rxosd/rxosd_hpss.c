@@ -109,14 +109,14 @@ struct cosInfo {
 struct cosInfo info[MAXCOS];
 
 static int
-fillsize(afs_uint32 *size, char *str)
+fillsize(afs_uint64 *size, char *str)
 {
     int code = 0;
     int fields;
     afs_uint64 value;
     char unit[8];
 
-    fields = sscanf(str, "%u%s", &value, &unit);
+    fields = sscanf(str, "%ull%s", &value, &unit);
     if (fields == 1)
         *size = value;
     else if (fields == 2) {
