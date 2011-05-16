@@ -3967,7 +3967,7 @@ replace_osd(struct Vnode *vn, afs_uint32 old, afs_int32 new, afs_int32 *result)
 	}
 done:
         if (tf) { /* Now decremnt the link counts on the removed osd */
-	    for (i=0; l<tf->segmList.osd_p_segmList_len; i++) {
+	    for (i=0; i<tf->segmList.osd_p_segmList_len; i++) {
        		struct osd_p_segm *s = &tf->segmList.osd_p_segmList_val[i];
        		for (j=0; j<s->objList.osd_p_objList_len; j++) {
 		    afs_int32 tcode;
