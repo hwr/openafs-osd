@@ -209,6 +209,29 @@ afs_int32 DoOsdIncDec(struct osd_osd *s)
 	    
 #endif
             code = RXOSD_bulkincdec(tcon->conn, &p->list);
+	    if (code == RXGEN_OPCODE) {
+		int i;
+		struct osd_incdec0List l0;
+		l0.osd_incdec0List_len = p->list.osd_incdecList_len;
+		l0.osd_incdec0List_val = (struct osd_incdec0 *)
+				 malloc(l0.osd_incdec0List_len * 
+					sizeof(struct osd_incdec0));
+		for (i=0; i<l0.osd_incdec0List_len; i++) {
+		    struct osd_incdec *in = &p->list.osd_incdecList_val[i];
+		    struct osd_incdec0 *in0 = &l0.osd_incdec0List_val[i];
+		    in0->oid = in->m.ometa_u.t.obj_id;
+		    in0->pid = in->m.ometa_u.t.part_id;
+		    in0->todo = in->todo;
+		    in0->done = in->done;
+		}
+		code = RXOSD_bulkincdec152(tcon->conn, &l0);
+		for (i=0; i<l0.osd_incdec0List_len; i++) {
+		    struct osd_incdec *in = &p->list.osd_incdecList_val[i];
+		    struct osd_incdec0 *in0 = &l0.osd_incdec0List_val[i];
+		    in->done = in0->done;
+		}
+		free(l0.osd_incdec0List_val);
+	    }
             if (code) {
 	        Log("DoOsdIncDec: RXOSD_bulkincdec failed for osd %u\n", s->id);
 	        PutOsdConn(&tcon);
@@ -249,8 +272,32 @@ afs_int32 UndoOsdInc(struct osd_osd *s, afs_uint32 vn)
                 } else
                     p->list.osd_incdecList_val[i].todo = 0;
             }
-            if (todo)
+            if (todo) {
                 RXOSD_bulkincdec(tcon->conn, &p->list);
+	        if (code == RXGEN_OPCODE) {
+		    int i;
+		    struct osd_incdec0List l0;
+		    l0.osd_incdec0List_len = p->list.osd_incdecList_len;
+		    l0.osd_incdec0List_val = (struct osd_incdec0 *)
+				     malloc(l0.osd_incdec0List_len * 
+					    sizeof(struct osd_incdec0));
+		    for (i=0; i<l0.osd_incdec0List_len; i++) {
+		        struct osd_incdec *in = &p->list.osd_incdecList_val[i];
+		        struct osd_incdec0 *in0 = &l0.osd_incdec0List_val[i];
+		        in0->oid = in->m.ometa_u.t.obj_id;
+		        in0->pid = in->m.ometa_u.t.part_id;
+		        in0->todo = in->todo;
+		        in0->done = in->done;
+		    }
+		    code = RXOSD_bulkincdec152(tcon->conn, &l0);
+		    for (i=0; i<l0.osd_incdec0List_len; i++) {
+		        struct osd_incdec *in = &p->list.osd_incdecList_val[i];
+		        struct osd_incdec0 *in0 = &l0.osd_incdec0List_val[i];
+		        in->done = in0->done;
+		    }
+		    free(l0.osd_incdec0List_val);
+	        }
+	    }
         }
 	PutOsdConn(&tcon);
     }

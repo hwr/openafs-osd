@@ -346,6 +346,9 @@ rxosd_incdec(afs_uint32 osd, afs_uint64 p_id, afs_uint64 o_id, afs_int32 what)
 	    o.ometa_u.t.obj_id = o_id;
 	    o.ometa_u.t.osd_id = osd;
 	    code = RXOSD_incdec(conn->conn, &o, what);
+	    if (code == RXGEN_OPCODE) {
+		code = RXOSD_incdec150(conn->conn, p_id, o_id, what);
+	    }
 	    PutOsdConn(&conn);
         } else
             code = EIO;
