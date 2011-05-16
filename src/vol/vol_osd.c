@@ -387,6 +387,15 @@ rxosd_examine(afs_uint32 osd, afs_uint64 p_id, afs_uint64 o_id,
 	    t.t10rock_len = 0;
 	    t.t10rock_val = NULL;
             code = RXOSD_examine(conn->conn, &t, &o, mask, e);
+	    if (code == RXGEN_OPCODE) {
+		if (mask == WANTS_SIZE | WANTS_LINKCOUNT) {
+		    e->type = 3;
+		    code = RXOSD_examine185(conn->conn, p_id, o_id,
+					    &e->exam_u.e3.size,
+					    &e->exam_u.e3.linkcount,
+					    &e->exam_u.e3.mtime);
+	 	} 
+	    }
             PutOsdConn(&conn);
         } else
             code = EIO;
