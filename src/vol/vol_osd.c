@@ -3970,8 +3970,13 @@ done:
 	    for (i=0; l<tf->segmList.osd_p_segmList_len; i++) {
        		struct osd_p_segm *s = &tf->segmList.osd_p_segmList_val[i];
        		for (j=0; j<s->objList.osd_p_objList_len; j++) {
+		    afs_int32 tcode;
        		    struct osd_p_obj *o = &s->objList.osd_p_objList_val[j];
-    		    rxosd_incdec(o->osd_id, o->part_id, o->obj_id, -1);
+    		    tcode = rxosd_incdec(o->osd_id, o->part_id, o->obj_id, -1);
+		    if (tcode) {
+        		ViceLog(1, ("replace_osd: decr for %u.%u.%u's copy on %u failed with %d\n",
+                  	V_id(vol), vN, vd->uniquifier, o->osd_id, tcode));
+		    }
 		}
 	    }
         }		
