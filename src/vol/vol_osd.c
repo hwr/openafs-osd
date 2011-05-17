@@ -313,7 +313,7 @@ rxosd_restore_archive(struct ometa *om, afs_uint32 user, struct osd_segm_descLis
 		    md5->o.ometa_u.t.obj_id = osd_md5.oid;
 		    md5->size = osd_md5.size;
 		    md5->c.type = 1;
-		    for (i=0; i<3; i++) {
+		    for (i=0; i<4; i++) {
 			md5->c.cksum_u.md5[i] = osd_md5.md5[i];
 		    }
 		}
