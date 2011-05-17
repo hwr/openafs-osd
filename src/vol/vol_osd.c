@@ -270,6 +270,54 @@ rxosd_restore_archive(struct ometa *om, afs_uint32 user, struct osd_segm_descLis
         conn = FindOsdConnection(om->ometa_u.t.osd_id);
         if (conn) {
 	    code = RXOSD_restore_archive(conn->conn, om, user, list, flag, md5);
+	    if (code == RXGEN_OPCODE) {
+		afs_int32 i, j;
+		struct osd_segm_desc0List l0;
+		struct osd_md5 osd_md5;
+		l0.osd_segm_desc0List_len = list->osd_segm_descList_len;
+		l0.osd_segm_desc0List_val = (struct osd_segm_desc0 *)
+				malloc(l0.osd_segm_desc0List_len * 
+					sizeof(struct osd_segm_desc0));
+		for (i=0; i<l0.osd_segm_desc0List_len; i++) {
+		    struct osd_segm_desc0 *s0 = &l0.osd_segm_desc0List_val[i];
+		    struct osd_segm_desc *s = &list->osd_segm_descList_val[i];
+		    s0->length = s->length;
+		    s0->stripes = s->stripes;
+		    s0->stripe_size = s->stripe_size;
+		    s0->objList.osd_obj_desc0List_len = s->objList.osd_obj_descList_len;
+		    s0->objList.osd_obj_desc0List_val = (struct osd_obj_desc0 *)
+				malloc(s->objList.osd_obj_descList_len * 
+					sizeof(struct osd_obj_desc0));
+		    for (j=0; j<s0->objList.osd_obj_desc0List_len; j++) {
+			afs_uint32 lun;
+			struct osd_obj_desc0 *o0 = &s0->objList.osd_obj_desc0List_val[j];
+			struct osd_obj_desc *o = &s->objList.osd_obj_descList_val[j];
+			o0->oid = o->o.ometa_u.t.obj_id;
+			o0->pid = o->o.ometa_u.t.part_id;
+			o0->id = o->osd_id;
+			FindOsd(o0->id, &o0->ip, &lun, 1);
+			o0->stripe = o->stripe;
+		    }
+		}
+		code = RXOSD_restore_archive251(conn->conn, om->ometa_u.t.part_id,
+						om->ometa_u.t.obj_id, user,
+						&l0, &osd_md5);
+		for (i=0; i<l0.osd_segm_desc0List_len; i++) {
+		    struct osd_segm_desc0 *s0 = &l0.osd_segm_desc0List_val[i];
+		    free(s0->objList.osd_obj_desc0List_val);
+		}
+		free(l0.osd_segm_desc0List_val);
+		if (!code) {
+		    md5->o.vsn = 1;
+		    md5->o.ometa_u.t.part_id = osd_md5.pid;
+		    md5->o.ometa_u.t.obj_id = osd_md5.oid;
+		    md5->size = osd_md5.size;
+		    md5->c.type = 1;
+		    for (i=0; i<3; i++) {
+			md5->c.cksum_u.md5[i] = osd_md5.md5[i];
+		    }
+		}
+	    }
 	    PutOsdConn(&conn);
         } else
             code = EIO;
@@ -1343,7 +1391,7 @@ read_osd_p_fileList(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN,
 					&s->objList.osd_p_objList_val[k];
 			        if (o->magic != OSD_P_OBJ_MAGIC)
 				    goto bad;  
-			        if (FindOsd(o->osd_id, &ip, &lun) != 0)
+			        if (FindOsd(o->osd_id, &ip, &lun, 1) != 0)
 				    goto bad;
 			        o->part_id &= RXOSD_VOLUME_MASK;
 			        o->part_id |= ((afs_uint64)lun << 32);
@@ -5855,7 +5903,7 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 						    (afs_uint32) ((o->obj_id >> NAMEI_TAGSHIFT) & NAMEI_TAGMASK), 
 						    o->osd_id, objsize, tlen);
 						else 
-	    				            sprintf(line, "Object %u.%u.%u.%ui: has wrong length on %u (%llu instead of %llu)",
+	    				            sprintf(line, "Object %u.%u.%u.%u: has wrong length on %u (%llu instead of %llu)",
 						    V_id(vol), 
 						    (afs_uint32) (o->obj_id & NAMEI_VNODEMASK), 
 						    (afs_uint32) (o->obj_id >> 32), 
