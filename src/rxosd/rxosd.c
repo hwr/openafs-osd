@@ -4793,6 +4793,18 @@ SRXOSD_ProbeServer(struct rx_call *call)
 }
 
 afs_int32
+SRXOSD_ProbeServer270(struct rx_call *call)
+{
+    afs_int32 code = 0;
+    SETTHREADACTIVE(270, call, 0);
+    if (!afsconf_SuperUser(confDir, call, (char *)0))
+        code = EACCES;
+    
+    SETTHREADINACTIVE();
+    return code;
+}
+
+afs_int32
 SRXOSD_Dummy220(struct rx_call *call, afs_uint32 in, afs_uint32 *out)
 {
     afs_int32 code = 0;
@@ -5137,7 +5149,8 @@ retry:
 			code = StartRXOSD_read131(rcall[j], dummyrock,
 						  obj->o.ometa_u.t.part_id,
 						  obj->o.ometa_u.t.obj_id,
-						  0, striperesid[j]);
+						  p.RWparm_u.p1.offset,
+						  p.RWparm_u.p1.length);
 		    else
 		        code = StartRXOSD_read(rcall[j], &dummyrock, &p, &obj->o);
 		    if (code) {

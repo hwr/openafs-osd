@@ -375,6 +375,8 @@ restore_archive251 (IN afs_uint64 part_id,
 		 IN struct osd_segm_desc0List *listi,
 		 OUT osd_md5 *output) = 251;
 
+ProbeServer270	() = 270;
+
 fetchqueue280	(OUT FetchEntry0List *list) = 280;
 
 wipe_candidates291 (IN afs_uint32 lun,

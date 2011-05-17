@@ -2673,6 +2673,8 @@ struct rxosd_conn * FindOsdConnection(afs_uint32 id)
     c->usecount = 1;
     c->conn = rx_NewConnection(htonl(h->ip), htons(h->port), h->service, sc, scIndex);
     code = RXOSD_ProbeServer(c->conn);
+    if (code == RXGEN_OPCODE)
+	code = RXOSD_ProbeServer270(c->conn);
     if (code)
         Log("RXOSD_ProbeServer failed to %u.%u.%u.%u with %d\n",
 			(h->ip >> 24) & 0xff,
