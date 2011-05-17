@@ -2674,11 +2674,11 @@ struct rxosd_conn * FindOsdConnection(afs_uint32 id)
     c->conn = rx_NewConnection(htonl(h->ip), htons(h->port), h->service, sc, scIndex);
     code = RXOSD_ProbeServer(c->conn);
     if (code)
-        Log("RXOSD_ProbeServer failed to %u.%u.%u.%u\n",
+        Log("RXOSD_ProbeServer failed to %u.%u.%u.%u with %d\n",
 			(h->ip >> 24) & 0xff,
 			(h->ip >> 16) & 0xff,
 			(h->ip >> 8) & 0xff,
-			h->ip & 0xff);
+			h->ip & 0xff, code);
     OSD_LOCK;
     c->next = h->connections;
     h->connections = c;
