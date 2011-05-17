@@ -312,6 +312,7 @@ struct o_hash_bucket o_LRU;
 int o_cache_used = 0;
 int o_cache_entries = 0;
 int o_MaxCacheSize = 0;
+int oldRxosds = 1; /* As long as still 1.4x rxosds exist in the cell */
 
 
 struct o_handle *oh_init(afs_uint64 p, afs_uint64 o)
@@ -4735,7 +4736,7 @@ SRXOSD_copy(struct rx_call *call, struct ometa *from, struct ometa *to,
     SETTHREADACTIVE(14, call, from);
 
     if (from->vsn == 1 && to->vsn == 1) 
-	code = copy(call, &from->ometa_u.t, &to->ometa_u.t, to_osd, 0);
+	code = copy(call, &from->ometa_u.t, &to->ometa_u.t, to_osd, oldRxosds);
     else {
 	struct oparmT10 from1, to1;
 	if (from->vsn == 2)
@@ -4743,11 +4744,11 @@ SRXOSD_copy(struct rx_call *call, struct ometa *from, struct ometa *to,
 	else 
 	    code = RXGEN_SS_UNMARSHAL;
 	if (!code && to->vsn == 1)
-	    code = copy(call, &from1, &to->ometa_u.t, to_osd, 0);
+	    code = copy(call, &from1, &to->ometa_u.t, to_osd, oldRxosds);
 	else if (!code && to->vsn == 2) {
 	    code = convert_ometa_2_1(&to->ometa_u.f, &to1);
 	    if (!code)
-	        code = copy(call, &from1, &to1, to_osd, 0);
+	        code = copy(call, &from1, &to1, to_osd, oldRxosds);
 	} else    
 	    code = RXGEN_SS_UNMARSHAL;
     }
@@ -5300,7 +5301,7 @@ SRXOSD_create_archive(struct rx_call *call, struct ometa *o,
 	code = RXGEN_SS_UNMARSHAL;
 	goto bad;
     }
-    code = create_archive(call, optr, l, flag, output, 0);
+    code = create_archive(call, optr, l, flag, output, oldRxosds);
 bad:
     SETTHREADINACTIVE();
     return code;
@@ -5709,7 +5710,7 @@ SRXOSD_restore_archive(struct rx_call *call, struct ometa *o, afs_uint32 user,
 	goto bad;
     }
 
-    code = restore_archive(call, optr, user, l, flag, output, 0);
+    code = restore_archive(call, optr, user, l, flag, output, oldRxosds);
 bad:
     SETTHREADINACTIVE();
     return code;
@@ -6121,6 +6122,9 @@ Variable(struct rx_call *call, afs_int32 cmd, char *name,
 	} else if (!strcmp(name, "hpssLastAuth")) {
 	    *result = hpssLastAuth;
 	    code = 0;
+	} else if (!strcmp(name, "oldRxosds")) {
+	    *result = oldRxosds;
+	    code = 0;
 	} else
 	    code = ENOENT;
     } else if (cmd == 2) {					/* set */
@@ -6167,6 +6171,10 @@ Variable(struct rx_call *call, afs_int32 cmd, char *name,
 	    hpssLastAuth = value;
 	    *result = hpssLastAuth;
 	    code = 0;
+	} else if (!strcmp(name, "oldRxosds")) {
+	    oldRxosds = value;
+	    *result = oldRxosds;
+	    code = 0;
 	} else
 	    code = ENOENT;
     }
@@ -6197,6 +6205,8 @@ char ExportedVariables[] =
     "hpssBufSize"
     EXP_VAR_SEPARATOR
     "hpssLastAuth"
+    EXP_VAR_SEPARATOR
+    "oldRxosds"
     EXP_VAR_SEPARATOR
     "";
     
