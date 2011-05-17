@@ -436,8 +436,8 @@ rxosd_examine(afs_uint32 osd, afs_uint64 p_id, afs_uint64 o_id,
 	    t.t10rock_val = NULL;
             code = RXOSD_examine(conn->conn, &t, &o, mask, e);
 	    if (code == RXGEN_OPCODE) {
+		afs_int32 mtime, lc;
 		if (mask == WANTS_SIZE | WANTS_LINKCOUNT) {
-		    afs_int32 mtime;
 		    e->type = 1;
 		    code = RXOSD_examine185(conn->conn, p_id, o_id,
 					    &e->exam_u.e1.size,
@@ -451,6 +451,13 @@ rxosd_examine(afs_uint32 osd, afs_uint64 p_id, afs_uint64 o_id,
 					    &e->exam_u.e3.linkcount,
 					    &e->exam_u.e3.mtime);
 	 	} 
+		else if (mask == WANTS_SIZE | WANTS_HSM_STATUS) {
+		    e->type = 4;
+		    code = RXOSD_examineHSM186(conn->conn, p_id, o_id,
+					    &e->exam_u.e4.size,
+					    &lc, &mtime,
+					    &e->exam_u.e4.status);
+	 	}
 	    }
             PutOsdConn(&conn);
         } else
