@@ -536,23 +536,27 @@ VAttachPartitions2(void)
 	   struct afs_stat st;
             if (wouldattach && VGetPartition(pname, 0) == NULL &&
                 afs_stat(pname, &st) == 0 && S_ISDIR(st.st_mode) && VInit == 1) {
+    		char OnlyRxosdPath[MAXPATHLEN];
+    		sprintf(OnlyRxosdPath, "%s/OnlyRxosd", pname);
+    		if (afs_stat(OnlyRxosdPath, &st) != 0) {
 
-                /* This is a /vicep* dir, and it has not been attached as a
-                 * partition. This probably means that this is a /vicep* dir
-                 * that is not a separate partition, so just give a notice so
-                 * admins are not confused as to why their /vicep* dirs are not
-                 * being attached.
-                 *
-                 * It is possible that the dir _is_ a separate partition and we
-                 * failed to attach it earlier, making this message a bit
-                 * confusing. But that should be rare, and an error message
-                 * about the failure will already be logged right before this,
-                 * so it should be clear enough. */
+                    /* This is a /vicep* dir, and it has not been attached as a
+                     * partition. This probably means that this is a /vicep* dir
+                     * that is not a separate partition, so just give a notice so
+                     * admins are not confused as to why their /vicep* dirs are not
+                     * being attached.
+                     *
+                     * It is possible that the dir _is_ a separate partition and we
+                     * failed to attach it earlier, making this message a bit
+                     * confusing. But that should be rare, and an error message
+                     * about the failure will already be logged right before this,
+                     * so it should be clear enough. */
 
-                Log("VAttachPartitions: not attaching %s; either it is not a "
-                    "separate partition, or it failed to attach (create the "
-                    "file %s/" VICE_ALWAYSATTACH_FILE " to force attachment)\n",
-                    pname, pname);
+                    Log("VAttachPartitions: not attaching %s; either it is not a "
+                        "separate partition, or it failed to attach (create the "
+                        "file %s/" VICE_ALWAYSATTACH_FILE " to force attachment)\n",
+                        pname, pname);
+		}
             }
         }
     }
