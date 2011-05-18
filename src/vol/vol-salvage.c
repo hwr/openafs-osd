@@ -712,13 +712,13 @@ get_DevName(char *pbuffer, char *wpath)
 {
     char pbuf[128], *ptr;
     strcpy(pbuf, pbuffer);
-    ptr = (char *)strrchr(pbuf, OS_DIRSEP);
+    ptr = (char *)strrchr(pbuf, OS_DIRSEPC);
     if (ptr) {
 	*ptr = '\0';
 	strcpy(wpath, pbuf);
     } else
 	return NULL;
-    ptr = (char *)strrchr(pbuffer, OS_DIRSEP);
+    ptr = (char *)strrchr(pbuffer, OS_DIRSEPC);
     if (ptr) {
 	strcpy(pbuffer, ptr + 1);
 	return pbuffer;
@@ -767,10 +767,11 @@ SalvageFileSys1(struct DiskPartition64 *partP, VolumeId singleVolumeNumber)
 
 #ifdef AFS_NT40_ENV
     /* Opendir can fail on "C:" but not on "C:\" if C is empty! */
-    (void)sprintf(salvinfo->fileSysPath, "%s" OS_DIRSEP, fileSysPathName);
+    (void)sprintf(salvinfo->fileSysPath, "%s" OS_DIRSEP, salvinfo->fileSysPathName);
     name = partP->devName;
 #else
     strlcpy(salvinfo->fileSysPath, salvinfo->fileSysPathName, sizeof(salvinfo->fileSysPath));
+    strcpy(tmpDevName, partP->devName);
     name = get_DevName(tmpDevName, wpath);
     salvinfo->fileSysDeviceName = name;
     salvinfo->filesysfulldev = wpath;
@@ -947,6 +948,7 @@ SalvageFileSys1(struct DiskPartition64 *partP, VolumeId singleVolumeNumber)
          * we destroyed the volume header.
          * Also, make sure we bring the singleVolumeNumber back online first.
 	 */
+
         for (j = 0; j < salvinfo->nVolumes; j++) {
             if (salvinfo->volumeSummaryp[j].header.id == singleVolumeNumber) {
                 foundSVN = 1;
@@ -1425,7 +1427,7 @@ AskVolumeSummary(struct SalvInfo *salvinfo, VolumeId singleVolumeNumber)
 		Exit(SALSRV_EXIT_VOLGROUP_LINK);
 	    }
 
-	    salvinfo->volumeSummaryp = malloc(VOL_VG_MAX_VOLS * sizeof(struct VolumeSummary));
+	    salvinfo->volumeSummaryp = calloc(VOL_VG_MAX_VOLS, sizeof(struct VolumeSummary));
 	    osi_Assert(salvinfo->volumeSummaryp != NULL);
 
 	    salvinfo->nVolumes = 0;
@@ -1576,7 +1578,7 @@ RecordHeader(struct DiskPartition64 *dp, const char *name,
 
 	/* check if the header file is incorrectly named */
 	int badname = 0;
-	const char *base = strrchr(name, OS_DIRSEP);
+	const char *base = strrchr(name, OS_DIRSEPC);
 	if (base) {
 	    base++;
 	} else {
@@ -1741,7 +1743,7 @@ GetVolumeSummary(struct SalvInfo *salvinfo, VolumeId singleVolumeNumber)
 	nvols = VOL_VG_MAX_VOLS;
     }
 
-    salvinfo->volumeSummaryp = malloc(nvols * sizeof(struct VolumeSummary));
+    salvinfo->volumeSummaryp = calloc(nvols, sizeof(struct VolumeSummary));
     osi_Assert(salvinfo->volumeSummaryp != NULL);
 
     params.singleVolumeNumber = singleVolumeNumber;
@@ -1951,7 +1953,7 @@ DoSalvageVolumeGroup(struct SalvInfo *salvinfo, struct InodeSummary *isp, int nV
     if (fdP)
 	FDH_REALLYCLOSE(fdP);
 #else
-    IH_INIT(salvinfo->VGLinkH, fileSysDevice, -1, -1);
+    IH_INIT(salvinfo->VGLinkH, salvinfo->fileSysDevice, -1, -1);
 #endif
 
     /* Salvage in reverse order--read/write volume last; this way any
@@ -3001,7 +3003,6 @@ CopyAndSalvage(struct SalvInfo *salvinfo, struct DirSummary *dir)
     if (code) {
 	/* didn't really build the new directory properly, let's just give up. */
 	code = IH_DEC(dir->ds_linkH, newinode, dir->rwVid);
-	osi_Assert(code == 0);
 	Log("Directory salvage returned code %d, continuing.\n", code);
 	if (code) {
 	    Log("also failed to decrement link count on new inode");
@@ -3386,7 +3387,8 @@ DistilVnodeEssence(struct SalvInfo *salvinfo, VolumeId rwVId,
 }
 
 static char *
-GetDirName(struct SalvInfo *salvinfo, VnodeId vnode, struct VnodeEssence *vp, char *path)
+GetDirName(struct SalvInfo *salvinfo, VnodeId vnode, struct VnodeEssence *vp,
+	   char *path)
 {
     struct VnodeEssence *parentvp;
 
@@ -3543,6 +3545,7 @@ GetNewFID(struct SalvInfo *salvinfo, VolumeDiskData *volHeader,
 	salvinfo->vnodeInfo[class].vnodes =
 	     realloc(salvinfo->vnodeInfo[class].vnodes,
 	                                  sizeof(struct VnodeEssence) * (i+1));
+
 	salvinfo->vnodeInfo[class].vnodes[i].type = vNull;
     }
 
@@ -4210,21 +4213,40 @@ SalvageVolume(struct SalvInfo *salvinfo, struct InodeSummary *rwIsp, IHandle_t *
 	    afs_printable_uint32_lu(vid));
     }
 
-#ifdef FSSYNC_BUILD_CLIENT
     if (!Testing && salvinfo->VolumeChanged) {
-	afs_int32 fsync_code;
+#ifdef FSSYNC_BUILD_CLIENT
+	if (salvinfo->useFSYNC) {
+	    afs_int32 fsync_code;
 
-	fsync_code = FSYNC_VolOp(vid, NULL, FSYNC_VOL_BREAKCBKS, FSYNC_SALVAGE, NULL);
-	if (fsync_code) {
-	    Log("Error trying to tell the fileserver to break callbacks for "
-		"changed volume %lu; error code %ld\n",
-		afs_printable_uint32_lu(vid),
-		afs_printable_int32_ld(fsync_code));
-	} else {
-	    salvinfo->VolumeChanged = 0;
-	}
-    }
+	    fsync_code = FSYNC_VolOp(vid, NULL, FSYNC_VOL_BREAKCBKS, FSYNC_SALVAGE, NULL);
+	    if (fsync_code) {
+	        Log("Error trying to tell the fileserver to break callbacks for "
+		    "changed volume %lu; error code %ld\n",
+		    afs_printable_uint32_lu(vid),
+		    afs_printable_int32_ld(fsync_code));
+	    } else {
+	        salvinfo->VolumeChanged = 0;
+	    }
+        }
 #endif /* FSSYNC_BUILD_CLIENT */
+
+#if defined(AFS_DEMAND_ATTACH_FS) || defined(AFS_DEMAND_ATTACH_UTIL)
+        if (!salvinfo->useFSYNC) {
+            /* A volume's contents have changed, but the fileserver will not
+             * break callbacks on the volume until it tries to load the vol
+             * header. So, to reduce the amount of time a client could have
+             * stale data, remove fsstate.dat, so the fileserver will init
+             * callback state with all clients. This is a very coarse hammer,
+             * and in the future we should just record which volumes have
+             * changed. */
+            code = unlink(AFSDIR_SERVER_FSSTATE_FILEPATH);
+            if (code && errno != ENOENT) {
+                Log("Error %d when trying to unlink FS state file %s\n", errno,
+                    AFSDIR_SERVER_FSSTATE_FILEPATH);
+            }
+        }
+#endif
+    }
 
     /* Turn off the inUse bit; the volume's been salvaged! */
     volHeader.inUse = 0;	/* clear flag indicating inUse@last crash */
@@ -4565,7 +4587,8 @@ AskDelete(struct SalvInfo *salvinfo, VolumeId volumeId)
             break;
         } else if (i < 2) {
             /* try it again */
-            Log("AskOnline:  request for fileserver to delete volume failed; trying again...\n"); FSYNC_clientFinis();
+            Log("AskOnline:  request for fileserver to delete volume failed; trying again...\n");
+	    FSYNC_clientFinis();
             FSYNC_clientInit();
         }
     }
