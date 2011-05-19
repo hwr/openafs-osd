@@ -256,6 +256,12 @@ read_from_hpss	(IN struct ometa *o,
 		 IN afs_int32 flag,
 		 OUT osd_cksum *output) = 27;
 
+/***************************************************************************
+ * Bring object on-line (in HSM context) */
+
+online		(IN struct ometa *o,
+		 IN afs_int32 flag,
+		 OUT struct exam *e) = 28;
 /************************************************ 
  * Legacy interface for old clients and servers *
  ************************************************/
@@ -413,6 +419,14 @@ read_from_hpss316 (IN afs_uint64 part_id,
 		 IN afs_uint64 obj_id,
 		 IN struct osd_segm_desc0List *list,
 		 OUT osd_md5 *output) = 316;
+/***************************************************************************
+ * Bring object on-line (in HSM context) */
+
+online317	(IN afs_uint64 part_id,
+		 IN afs_uint64 obj_id,
+		 IN afs_int32 flag,
+		 OUT afs_uint64 *size,
+		 OUT afs_int32 *status) = 317;
 
 /* end package */
 

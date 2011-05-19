@@ -219,6 +219,36 @@ rxosd_create(afs_uint32 osd, afs_uint64 p_id, afs_uint64 o_id,
 }
 
 static afs_int32
+rxosd_online(struct ometa *om, afs_int32 flag, struct exam *e)
+{
+    afs_int32 code = RXOSD_RESTARTING;
+    afs_int32 informed = 0;
+    struct rxosd_conn *conn;
+
+    while (code == RXOSD_RESTARTING) {
+        conn = FindOsdConnection(om->ometa_u.t.osd_id);
+        if (conn) {
+	    code = RXOSD_online(conn->conn, om, flag, e);
+	    PutOsdConn(&conn);
+        } else
+            code = EIO;
+	if (code == RXOSD_RESTARTING) {
+	    if (!informed) {
+	    	Log("rxosd_online waiting for restarting osd %u\n",
+		    om->ometa_u.t.osd_id);
+		informed = 1;
+	    }
+#ifdef AFS_PTHREAD_ENV
+	    sleep(1);
+#else
+	    IOMGR_Sleep(1);
+#endif
+	}
+    }
+    return code;
+}
+
+static afs_int32
 rxosd_create_archive(struct ometa *om, struct osd_segm_descList *list, afs_int32 flag,
 		     struct osd_cksum *md5)
 {
@@ -3597,6 +3627,8 @@ osd_archive(struct Vnode *vn, afs_uint32 Osd, afs_int32 flags)
 		break;   
 	}
 	if (pf->archiveTime && (flags & USE_ARCHIVE)) { 
+	    struct exam e;
+	    struct ometa om;
 	    afs_uint32 osd;
 	    afs_int32 nosds = 0;
 	    afs_uint32 osds[MAX_ARCHIVAL_COPIES];
@@ -3623,10 +3655,23 @@ osd_archive(struct Vnode *vn, afs_uint32 Osd, afs_int32 flags)
 	        if (pf->archiveTime && pf->archiveVersion == vd->dataVersion) {
 		    struct osd_p_segm *ps = &pf->segmList.osd_p_segmList_val[0];
                     struct osd_p_obj *po = &ps->objList.osd_p_objList_val[0];
-                    if (osd == po->osd_id)
+                    if (osd == po->osd_id) {
+			om.vsn = 1;
+			om.ometa_u.t.part_id = po->part_id;
+			om.ometa_u.t.obj_id = po->obj_id;
+			om.ometa_u.t.osd_id = po->osd_id;
+			om.ometa_u.t.stripe = po->stripe; /* should be 0, anyway */
 			break;
+		    }
 		}
 	    }
+	    /*
+	     * Make sure the file is online in the archival OSD's HSM system
+	     */
+	    
+	    code = rxosd_online(&om, 0, &e);
+	    if (code)
+		goto bad;
 	}	   
 	if (!pf->archiveTime || (flags & USE_ARCHIVE)) { 
 	    struct osd_segm_descList sl;

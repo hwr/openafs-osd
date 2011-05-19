@@ -6921,6 +6921,75 @@ bad:
     return code;
 }
 
+afs_int32
+SRXOSD_online(struct rx_call *call, struct ometa *o, afs_int32 flag, struct exam *e)
+{
+    afs_int32 code;
+    afs_int32 mask = WANTS_SIZE | WANTS_HSM_STATUS;
+
+    SETTHREADACTIVE(28, call, o);
+    if (o->vsn == 1) {
+	code = examine(call, NULL, &o->ometa_u.t, mask, e);
+	if (code)
+	    goto finis;
+	if (e->type == 4 && e->exam_u.e4.status == 'm') {
+	    afs_uint32 user = 1; /* assume it's admin */
+	    struct osd_segm_descList list;
+	    list.osd_segm_descList_val = 0;
+	    list.osd_segm_descList_len = 0;
+	    code = FindInFetchqueue(call, o, user, &list, 0);
+	} else { 	/* object presumably on-line */
+	    struct o_handle *oh = oh_init_oparmT10(&o->ometa_u.t);
+	    struct FdHandle_t *fdP;
+	    fdP = IH_OPEN(oh->ih);
+	    if (fdP)
+		FDH_CLOSE(fdP);
+	    oh_release(oh);
+	} 
+    } else 
+	code = EINVAL;
+finis:
+    SETTHREADINACTIVE();
+    return code;
+}
+
+afs_int32
+SRXOSD_online317(struct rx_call *call, afs_uint64 part_id, afs_uint64 obj_id,
+		 afs_int32 flag, afs_uint64 *size, afs_int32 *status)
+{
+    afs_int32 code;
+    struct exam e;
+    afs_int32 mask = WANTS_SIZE | WANTS_HSM_STATUS;
+    struct ometa o;
+
+    SETTHREADACTIVE_OLD(317, call, part_id, obj_id);
+    o.vsn = 1;
+    o.ometa_u.t.part_id = part_id;
+    o.ometa_u.t.obj_id = obj_id;
+    code = examine(call, NULL, &o.ometa_u.t, mask, &e);
+    if (code)
+	goto finis;
+    if (e.type == 4 && e.exam_u.e4.status == 'm') {
+	afs_uint32 user = 1; /* assume it's admin */
+	struct osd_segm_descList list;
+	list.osd_segm_descList_val = 0;
+	list.osd_segm_descList_len = 0;
+	code = FindInFetchqueue(call, &o, user, &list, 0);
+    } else { 	/* object presumably on-line */
+	struct o_handle *oh = oh_init_oparmT10(&o.ometa_u.t);
+	struct FdHandle_t *fdP;
+	fdP = IH_OPEN(oh->ih);
+	if (fdP)
+	    FDH_CLOSE(fdP);
+	oh_release(oh);
+    }
+finis:
+    SETTHREADINACTIVE();
+    *size = e.exam_u.e4.size;
+    *status = e.exam_u.e4.status;
+    return code;
+}
+
 #ifdef notdef
 static int sys2et[512];
 
