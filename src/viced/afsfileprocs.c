@@ -134,7 +134,7 @@ pthread_mutex_t async_glock_mutex;
 #else /* AFS_PTHREAD_ENV */
 #define ACTIVE_LOCK
 #define ACTIVE_UNLOCK
-#if defined(AFS_ENABLE_VICEP_ACCESS) || defined(AFS_SUPPORT_RXOSD)
+#if defined(AFS_ENABLE_VICEP_ACCESS) || defined(AFS_RXOSD_SUPPORT)
 #define ASYNC_LOCK
 #define ASYNC_UNLOCK
 #endif
