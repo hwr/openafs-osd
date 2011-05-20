@@ -21,16 +21,19 @@
  *  COS 23 min 64g max 1t
  *
  *********************************************************************/
+#include <afsconfig.h>
+#include <afs/param.h>
+
+#ifdef AFS_LINUX26_ENV
 #define _BSD_SOURCE	
 #define _THREAD_SAFE
 #define LINUX
 #define _POSIX_C_SOURCE 199309L
 #define _XOPEN_SOURCE
-
-#include "afsconfig.h"
-#include <afs/param.h>
+#endif
 
 #ifdef AFS_HPSS_SUPPORT
+#include <dirent.h>
 #include <stdio.h>
 #include <errno.h>
 #include "hpss_api.h"
@@ -89,7 +92,6 @@
 #endif /* !AFS_NT40_ENV */
 
 #endif /* !O_LARGEFILE */
-#include <dirent.h>
 #include "rxosd_hsm.h"
 
 extern void Log(const char *format, ...);
@@ -164,7 +166,11 @@ readHPSSconf()
     sprintf(tbuffer, "%s/HPSSconf", AFSDIR_SERVER_ETC_DIRPATH);
     if (stat64(tbuffer, &tstat) == 0) {
 	code = 0;
+#ifdef AFS_AIX53_ENV
+	if (tstat.st_mtime > lastVersion) {
+#else
 	if (tstat.st_mtim.tv_sec > lastVersion) {
+#endif
 	    bufio_p bp = BufioOpen(tbuffer, O_RDONLY, 0);
 	    if (bp) {
 		while (1) {
@@ -187,7 +193,11 @@ readHPSSconf()
 		BufioClose(bp);
 	    }
 	    if (!code)
+#ifdef AFS_AIX53_ENV
+		lastVersion = tstat.st_mtime;
+#else
 		lastVersion = tstat.st_mtim.tv_sec;
+#endif
 	}
     }
     return code;
@@ -265,13 +275,16 @@ DIR* myhpss_opendir(const char* path)
 
 struct dirent *myhpss_readdir(DIR *dir)
 {
+#ifndef AFS_AIX53_ENV
     struct hpss_dirent ent;
     struct myDIR *mydir = (struct myDIR *)dir;
 
     if (hpss_Readdir(mydir->dir_handle, &ent) < 0)
 	return (struct dirent *)0;
     if (!ent.d_namelen)
+#endif
 	return (struct dirent *)0;
+#ifndef AFS_AIX53_ENV
     mydir->dirent.d_type = ent.d_handle.Type;
     if (ent.d_namelen < 256) { 
 	strncpy(&mydir->dirent.d_name, &ent.d_name, ent.d_namelen);
@@ -279,6 +292,7 @@ struct dirent *myhpss_readdir(DIR *dir)
     }
     mydir->dirent.d_reclen = ent.d_reclen;
     return &mydir->dirent;
+#endif
 }
 
 int myhpss_closedir(DIR* dir)
@@ -336,6 +350,7 @@ int myhpss_stat_tapecopies(const char *path, afs_int32 *level, afs_sfsize_t *siz
     *size = 0;
     *level = 0;
 
+#ifndef AFS_AIX53_ENV
     code = hpss_FileGetXAttributes(path, Flags, StorageLevel, &AttrOut);
     if (code) 
 	return EIO;
@@ -360,6 +375,7 @@ int myhpss_stat_tapecopies(const char *path, afs_int32 *level, afs_sfsize_t *siz
 	*level = 'm';
     else 
 	*level = 'r'; 
+#endif
     return 0;   
 }
 
