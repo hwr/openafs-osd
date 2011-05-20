@@ -8,6 +8,7 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
+#ifdef AFS_LINUX26_ENV
 #if !defined(UKERNEL)
 
 #include "afs/sysincludes.h"	/* Standard vendor system headers */
@@ -1787,4 +1788,5 @@ afs_fast_vpac_check(struct vcache *avc, struct afs_conn *tc, afs_int32 storing,
     }
     return ENOENT;
 }
+#endif 
 #endif 
