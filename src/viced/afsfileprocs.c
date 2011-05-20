@@ -124,7 +124,7 @@ pthread_mutex_t active_glock_mutex;
     osi_Assert(pthread_mutex_lock(&active_glock_mutex) == 0)
 #define ACTIVE_UNLOCK \
     osi_Assert(pthread_mutex_unlock(&active_glock_mutex) == 0)
-#if defined(AFS_ENABLE_VICEP_ACCESS) || defined(AFS_SUPPORT_RXOSD)
+#if defined(AFS_ENABLE_VICEP_ACCESS) || defined(AFS_RXOSD_SUPPORT)
 pthread_mutex_t async_glock_mutex;
 #define ASYNC_LOCK \
     osi_Assert(pthread_mutex_lock(&async_glock_mutex) == 0)
