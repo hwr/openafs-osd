@@ -853,7 +853,7 @@ afs_close(OSI_VC_DECL(avc), afs_int32 aflags, afs_ucred_t *acred)
 	ReleaseWriteLock(&avc->lock);
     }
     AFS_DISCON_UNLOCK();
-#if !defined(UKERNEL)
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
     afs_close_vicep_file(avc, &treq, 0);
 #endif 
     afs_PutFakeStat(&fakestat);
@@ -905,7 +905,7 @@ afs_fsync(OSI_VC_DECL(avc), afs_ucred_t *acred)
 
 		/* put the file back */
 		UpgradeSToWLock(&avc->lock, 41);
-#ifndef UKERNEL
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
 	        vpac_fsync(avc); /* set fsync flag in vpacRock */
 #endif
 		code = afs_StoreAllSegments(avc, &treq, AFS_SYNC);

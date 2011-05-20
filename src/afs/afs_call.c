@@ -1189,7 +1189,7 @@ afs_syscall_call(long parm, long parm2, long parm3,
 	afscall_set_rxpck_received = 1;
     } else if (parm == AFSOP_SET_RXMAXMTU) {
 	rx_MyMaxSendSize = rx_maxReceiveSizeUser = rx_maxReceiveSize = parm2;
-#if !defined(UKERNEL)
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
      } else if (parm == AFSOP_SERVERUUID) {
         code = afs_set_serveruuid(parm2, parm3, parm4, parm5);
      } else if (parm == AFSOP_OSDID) {

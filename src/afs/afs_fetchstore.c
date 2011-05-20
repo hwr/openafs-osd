@@ -717,7 +717,7 @@ afs_CacheStoreVCache(struct dcache **dcList, struct vcache *avc,
                                                 &protocol);
 		RX_AFS_GLOCK();
                 if (!code) {
-#if !defined(UKERNEL)
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
                     if (avc->protocol & VICEP_ACCESS) {
                         afs_close_vicep_file(avc, areq, 1);
                         if (avc->vpacRock)
@@ -733,7 +733,7 @@ afs_CacheStoreVCache(struct dcache **dcList, struct vcache *avc,
                            ICL_TYPE_INT32, avc->protocol);
                 }
             }
-#if !defined(UKERNEL)
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
             if ((afs_protocols & VICEP_ACCESS)
               && (avc->protocol & RX_FILESERVER)
               && (avc->f.states & CPartVisible)
@@ -753,7 +753,7 @@ afs_CacheStoreVCache(struct dcache **dcList, struct vcache *avc,
                     code =  rxosd_storeInit(avc, tc, base, bytes, length,
                                         sync, areq, &ops, &rock);
                     break;
-#if !defined(UKERNEL)
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
                 case VICEP_ACCESS:
                     if (afs_protocols & VICEP_ACCESS) {
                         code = vpac_storeInit(avc, tc, base, bytes, length,
@@ -1394,7 +1394,7 @@ afs_FetchProc(struct afs_conn *tc, struct osi_file *fP,
 	adc->validPos = base;
     }
 
-#ifndef UKERNEL
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
     if (!avc->vpacRock && (avc->f.states & CPartVisible))
         afs_open_vicep_localFile(avc, areq);
 #endif
@@ -1406,7 +1406,7 @@ restart:
 			tc, avc, base, size, &length, bypassparms,
 			fP, areq, &ops, &rock);
             break;
-#ifndef UKERNEL
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
         case VICEP_ACCESS:
             if (afs_protocols & VICEP_ACCESS) {
                 code = vpac_fetchInit(

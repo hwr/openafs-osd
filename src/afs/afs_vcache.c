@@ -180,7 +180,7 @@ afs_FlushVCache(struct vcache *avc, int *slept)
 
     /* remove entry from the volume hash table */
     QRemove(&avc->vhashq);
-#if !defined(UKERNEL)
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
     afs_close_vicep_file(avc, NULL, 0);
 #endif
 
@@ -787,7 +787,7 @@ afs_PrePopulateVCache(struct vcache *avc, struct VenusFid *afid,
     avc->cachingTransitions = 0;
 #endif
     avc->protocol = 1;		     /* 1 == RX_FILESERVER as default */
-#ifndef UKERNEL
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
     avc->vpacRock = NULL;
 #endif
 }
@@ -1113,7 +1113,7 @@ afs_VerifyVCache2(struct vcache *avc, struct vrequest *areq)
     avc->f.states &= ~(CStatd | CUnique);
     avc->callback = NULL;
     afs_DequeueCallback(avc);
-#if !defined(UKERNEL)
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
     afs_close_vicep_file(avc, areq, 1);
 #endif
     ReleaseWriteLock(&afs_xcbhash);
@@ -1581,7 +1581,7 @@ afs_GetVCache(struct VenusFid *afid, struct vrequest *areq,
     struct vcache *tvc;
     struct volume *tvp;
     afs_int32 retry;
-#if !defined(UKERNEL)
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
     afs_int32 visible = 0;
 #endif
 
@@ -1751,7 +1751,7 @@ afs_GetVCache(struct VenusFid *afid, struct vrequest *areq,
 		    osi_AllocSmallSpace(sizeof(struct VenusFid));
 	    *tvc->mvid = tvp->dotdot;
 	}
-#if !defined(UKERNEL)
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
         if (tvp->states & VPartVisible && (afs_protocols & VICEP_ACCESS))
             visible = 1;
 #endif
@@ -1777,7 +1777,7 @@ afs_GetVCache(struct VenusFid *afid, struct vrequest *areq,
 		/* printf("Network is down in afs_GetCache"); */
 	    } else {
 	        code = afs_FetchStatus(tvc, afid, areq, &OutStatus);
-#if !defined(UKERNEL)
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
                 if (!code && visible && OutStatus.FileType == File) {
                     tvc->f.states |= CPartVisible;
                     afs_Trace3(afs_iclSetp, CM_TRACE_WASHERE,
@@ -1951,7 +1951,7 @@ afs_LookupVCache(struct VenusFid *afid, struct vrequest *areq,
 		    osi_AllocSmallSpace(sizeof(struct VenusFid));
 	    *tvc->mvid = tvp->dotdot;
 	}
-#if !defined(UKERNEL)
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
         if (tvp->states & VPartVisible && (afs_protocols & VICEP_ACCESS)) {
             tvc->f.states |= CPartVisible;
             afs_Trace3(afs_iclSetp, CM_TRACE_WASHERE,

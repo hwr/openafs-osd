@@ -1104,7 +1104,7 @@ InstallUVolumeEntry(struct volume *av, struct uvldbentry *ve, int acell,
 	    if (ts && (ts->sr_addr_uniquifier == ve->serverUnique[i])
 		&& ts->addr) {
 		/* uuid, uniquifier, and portal are the same */
-#if !defined(UKERNEL)
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
                 if (afs_compare_serveruuid((char *)&ve->serverNumber))
                     av->states |= VPartVisible;
 #endif

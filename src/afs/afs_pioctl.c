@@ -5289,7 +5289,6 @@ DECL_PIOCTL(PNFSNukeCreds)
 
 DECL_PIOCTL(PSetProtocols)
 {
-#ifndef UKERNEL
     afs_uint32 mask, streams;
 /*  AFS_STATCNT(PSetProtocols); */
 
@@ -5299,7 +5298,7 @@ DECL_PIOCTL(PSetProtocols)
     if (afs_pd_getUint(ain, &mask) == 0) {
         if (!afs_osi_suser(*acred))
             return EACCES;
-
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
         if (mask & VICEP_ACCESS)
             afs_protocols |= VICEP_ACCESS;
         else
@@ -5314,7 +5313,7 @@ DECL_PIOCTL(PSetProtocols)
             vicep_fastread = 1;
         else
             vicep_fastread = 0;
-
+#endif
         if (mask & RX_OSD)
             afs_protocols |= RX_OSD;
         else
@@ -5330,11 +5329,12 @@ DECL_PIOCTL(PSetProtocols)
         else
             rx_enableIdleDead = 0;
 
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
         if (mask & VICEP_NOSYNC)
             vicep_nosync = 1;
         else
             vicep_nosync = 0;
-
+#endif
         if (mask & NO_HSM_RECALL)
             afs_dontRecallFromHSM = 1;
         else
@@ -5359,20 +5359,21 @@ DECL_PIOCTL(PSetProtocols)
     mask = afs_protocols | (fakeStripes << 24);
     if (afs_soft_mounted)
         mask |= RX_OSD_SOFT;
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
     if (lustre_hack)
         mask |= VPA_USE_LUSTRE_HACK;
     if (vicep_fastread)
         mask |= VPA_FAST_READ;
-    if (rx_enableIdleDead)
-	mask |= RX_ENABLE_IDLEDEAD;
     if (vicep_nosync)
 	mask |= VICEP_NOSYNC;
+#endif
+    if (rx_enableIdleDead)
+	mask |= RX_ENABLE_IDLEDEAD;
     if (afs_dontRecallFromHSM)
 	mask |= NO_HSM_RECALL;
     if (afs_asyncRecallFromHSM)
 	mask |= ASYNC_HSM_RECALL;
     return afs_pd_putInt(aout, mask);
-#endif /* UKERNEL */
     return 0;
 }
 

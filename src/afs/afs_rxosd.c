@@ -107,9 +107,9 @@ static afs_int32 stamp = 0;
 
 afs_uint32 fakeStripes = 1;
 afs_uint32 logFakeStripes = 0;
-afs_int32 afs_soft_mounted = 0;
+afs_int32 afs_soft_mounted = 1;
 
-#if !defined(UKERNEL)
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
 extern afs_int32 vicep_fastread;
 #endif
 
@@ -235,7 +235,7 @@ static afs_int32
 check_for_vicep_access(struct rxosd_Variables *v, int writing, afs_uint32 *osd_id)
 {
     afs_int32 code = ENOENT;
-#if !defined(UKERNEL)
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
     if ((afs_protocols & VICEP_ACCESS) 
       && v->osd_file->segmList.osd_segmList_len == 1
       && v->osd_file->segmList.osd_segmList_val[0].objList.osd_objList_len ==1) {
@@ -1119,7 +1119,7 @@ rxosd_storeInit(struct vcache *avc, struct afs_conn *tc, afs_offs_t base,
                    ICL_TYPE_STRING, __FILE__,
                    ICL_TYPE_INT32, __LINE__, ICL_TYPE_INT32, code);
 
-#if !defined(UKERNEL)
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
     if (vicep_fastread)
        afs_fast_vpac_check(avc, tc, 1, &osd_id);
 #endif
@@ -1189,7 +1189,7 @@ rxosd_storeInit(struct vcache *avc, struct afs_conn *tc, afs_offs_t base,
     if (v->expires) 
 	v->expires += startTime;
 
-#if !defined(UKERNEL)
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
 #ifdef NEW_OSD_FILE
     code = check_for_vicep_access(v, 1, &osd_id);
 #else
@@ -1982,7 +1982,7 @@ rxosd_fetchInit(struct afs_conn *tc, struct vcache *avc, afs_offs_t base,
     v->fs_conn = tc;
     v->avc = avc;
     v->areq = areq;
-#if !defined(UKERNEL)
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
     if (vicep_fastread) {
         code = afs_fast_vpac_check(avc, tc, 0, &osd_id);
         if (!code) {
@@ -2062,7 +2062,7 @@ rxosd_fetchInit(struct afs_conn *tc, struct vcache *avc, afs_offs_t base,
     if (v->expires)
 	v->expires += startTime;
 
-#if !defined(UKERNEL)
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
     code = check_for_vicep_access(v, 0, &osd_id);
     if (!code) {
 	code = fake_vpac_fetchInit(tc, avc, base, bytes, length, bypassparms,
