@@ -240,12 +240,13 @@ extern off_t afs_lseek(int FD, off_t O, int F);
 #ifdef AFS_AIX53_ENV
 int HSM = 1;
 #define AFS_TSM_HSM_ENV 1
+int check_dsmls(FILE *cmd_stdin, FILE *cmd_stdout, char *rock);
 #else
 int HSM = 0;
 #endif
 
 #ifdef AFS_HPSS_SUPPORT
-extern afs_int32 authenticate_for_hpss(principal, keytab);
+extern afs_int32 authenticate_for_hpss(char *principal, char *keytab);
 extern char *hpssPath;
 extern char *hpssMeta;
 extern afs_int32 hpssDev;
@@ -3043,9 +3044,9 @@ int examine(struct rx_call *call, t10rock *rock, struct oparmT10 *o,
     blocks *= tstat.st_blksize;
     if (blocks < tstat.st_size) {
         if (tstat.st_blocks == 0) {
-	    if (status && (*status == 'r' || *status == 'p'))
-	    	*size = 0;
-	    if (*size == 0)
+	    if (statusp && (*statusp == 'r' || *statusp == 'p'))
+	    	*sizep = 0;
+	    if (*sizep == 0)
 	        ViceLog(0,("examine: ERROR: %s has 0 blocks\n",
 			sprint_oparmT10(o, string, sizeof(string))));
 	} else
@@ -3057,19 +3058,31 @@ int examine(struct rx_call *call, t10rock *rock, struct oparmT10 *o,
         *mtimep = tstat.st_mtime;
     }
     if ((mask & WANTS_MTIME) && mtime64p) {
+#ifdef AFS_AIX53_ENV
+	*mtime64p = ((tstat.st_mtime << 32) | tstat.st_mtime_n) / 100;
+#else
 	*mtime64p = ((tstat.st_mtim.tv_sec << 32) | tstat.st_mtim.tv_nsec) / 100;
+#endif
     }
     if ((mask & WANTS_ATIME) && atimep) {
         *atimep = tstat.st_atime;
     }
     if ((mask & WANTS_ATIME) && atime64p) {
+#ifdef AFS_AIX53_ENV
+	*atime64p = ((tstat.st_atime << 32) | tstat.st_atime_n) / 100;
+#else
 	*atime64p = ((tstat.st_atim.tv_sec << 32) | tstat.st_atim.tv_nsec) / 100;
+#endif
     }
     if ((mask & WANTS_CTIME) && ctimep) {
         *ctimep = tstat.st_ctime;
     }
     if ((mask & WANTS_CTIME) && ctime64p) {
+#ifdef AFS_AIX53_ENV
+	*ctime64p = ((tstat.st_ctime << 32) | tstat.st_ctime_n) / 100;
+#else
 	*ctime64p = ((tstat.st_ctim.tv_sec << 32) | tstat.st_ctim.tv_nsec) / 100;
+#endif
     }
     if ((mask & WANTS_LINKCOUNT) && lcp) {
 	struct o_handle *lh = 0;
@@ -6538,7 +6551,11 @@ write_to_hpss(struct rx_call *call, struct oparmT10 *o,
 	goto bad;
     }
     ohin = oh_init_oparmT10(&odsc->o.ometa_u.t);
+#ifdef AFS_TSM_HSM_ENV
+    fdin = IH_REOPEN(ohin->ih);
+#else
     fdin = IH_OPEN(ohin->ih);
+#endif
     if (!fdin) {
         ViceLog(0,("write_to_hpss: couldn't open local file %s\n",
                 sprint_oparmT10(&oin, string, sizeof(string))));
@@ -6608,7 +6625,11 @@ bad:
     oh_release(oh);
     if (fdin) {
 	unlock_file(fdin);
+#ifdef TSM_HSM_ENV
+	FDH_REALLYCLOSE(fdin);
+#else
 	FDH_CLOSE(fdin);
+#endif
     }
     oh_release(ohin);
 finis:
