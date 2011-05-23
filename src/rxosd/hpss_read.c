@@ -145,7 +145,11 @@ char **argv;
 
     page = 0;
     if (argc < 3) {
+#ifdef AFS_AIX53_ENV
+	fileLength = (status.st_size.high << 32) + status.st_size.low;
+#else
         fileLength = status.st_size;
+#endif
 	Length = fileLength;
     } else {
 	sscanf(argv[2],"%llu", &Length);
