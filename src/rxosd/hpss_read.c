@@ -2,9 +2,6 @@
  * test for writing the last chunk of a big file.
  *
  */
-#include <afs/param.h>
-#include "afsconfig.h"
-
 #define _BSD_SOURCE
 #define _THREAD_SAFE
 #define _POSIX_C_SOURCE 199309L
@@ -20,6 +17,7 @@
 #if defined(AFS_LINUX26_ENV) || defined(AFS_SUN59_ENV)
 #include <unistd.h>
 #if defined(AFS_LINUX26_ENV)
+#define LINUX
 #include <linux/unistd.h>
 #endif
 #endif
