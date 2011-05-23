@@ -2,9 +2,11 @@
  * test for writing the last chunk of a big file.
  *
  */
+#include <afs/param.h>
+#include "afsconfig.h"
+
 #define _BSD_SOURCE
 #define _THREAD_SAFE
-#define LINUX
 #define _POSIX_C_SOURCE 199309L
 #define _XOPEN_SOURCE
 
@@ -15,18 +17,18 @@
 #include <stdio.h>
 #include <errno.h>
 #include <sys/time.h>
-#if defined(LINUX) || defined(SOLARIS)
+#if defined(AFS_LINUX26_ENV) || defined(AFS_SUN59_ENV)
 #include <unistd.h>
-#ifdef LINUX
+#if defined(AFS_LINUX26_ENV)
 #include <linux/unistd.h>
 #endif
 #endif
-#ifdef _IBMR2
+#if defined(AFS_AIX53_ENV)
 #include <fcntl.h>
 #else
 #include <sys/fcntl.h>
 #endif
-#if     defined(CRAY) || defined(_IBMR2)
+#if defined(AFS_AIX53_ENV)
 #include <netinet/in.h>
 #endif
 #include "hpss_api.h"
