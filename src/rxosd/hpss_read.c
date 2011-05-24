@@ -73,9 +73,6 @@ char **argv;
     MD5_CTX md5;
     int cksum[4];
 
-    hpss_ClientAPIReset();
-    hpss_PurgeLoginCred();
-
     code = hpss_SetLoginCred("afsipp", hpss_authn_mech_krb5,
 				hpss_rpc_cred_client,
 				hpss_rpc_auth_type_keytab,
