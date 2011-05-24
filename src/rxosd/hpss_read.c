@@ -78,8 +78,16 @@ char **argv;
 				hpss_rpc_auth_type_keytab,
 				"/usr/afs/etc/afsipp.keytab");
     if (code) {
-	fprintf(stderr, "hpss_SetLoginCred failed with %d\n", code);
-	exit(1);
+	fprintf(stderr, "hpss_SetLoginCred failed with %d retrying in 5 seconds\n", code);
+	sleep(5)
+        code = hpss_SetLoginCred("afsipp", hpss_authn_mech_krb5,
+				hpss_rpc_cred_client,
+				hpss_rpc_auth_type_keytab,
+				"/usr/afs/etc/afsipp.keytab");
+	if (code) {
+	    fprintf(stderr, "hpss_SetLoginCred failed again with %d\n", code);
+	    exit(1);
+	}
     }
     argv++; argc--;
     while (argc > 0 && argv[0][0] == '-') {
