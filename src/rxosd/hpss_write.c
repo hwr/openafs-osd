@@ -55,8 +55,8 @@ char **argv;
     int fd, count, l, code;
     hpss_stat_t status;
     char filename[256];
-    unsigned long long length, offset, Length, lastLength, fileLength;
-    unsigned long long seekoffset, trunclength;
+    afs_uint64length, offset, Length, lastLength, fileLength;
+    afs_int64 seekoffset, trunclength, toffset;
     struct timeval starttime, opentime, write1time, writetime, closetime;
     struct timeval lasttime;
     struct timezone timezone;
@@ -64,11 +64,10 @@ char **argv;
     u_int ll, page = 0;
     char *p;
     long high = 0, low = 0, thigh, tlow, fields;
-    long long toffset;
     int display = 0;
     char line[256];
-    unsigned long offhi, offlo;
-    long long result;
+    afs_uint32 offhi, offlo;
+    afs_int64 result;
     int duration = 0;
     int truncate = 0;
     int domd5 = 0;
@@ -213,8 +212,16 @@ char **argv;
     }
     gettimeofday (&writetime, &timezone);
     if (truncate) {
+#ifdef AFS_AIX53_ENV
+	struct u_signed64_rep trunclen;
+	trunclen.high = traunclength >> 32;
+	trunclen.low = trunclength & 0xffffffff;
+	code = hpss_Ftruncate(fd, trunc);
+#else
         code = hpss_Ftruncate(fd, trunclength);
-       if (code) fprintf(stderr,"hpss_Ftruncate ended with code %d.\n", code);
+#endif
+        if (code) 
+	    fprintf(stderr,"hpss_Ftruncate ended with code %d.\n", code);
     }
     seconds = opentime.tv_sec + opentime.tv_usec *.000001          
              -starttime.tv_sec - starttime.tv_usec *.000001;
