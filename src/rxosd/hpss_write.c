@@ -55,7 +55,7 @@ char **argv;
     int fd, count, l, code;
     hpss_stat_t status;
     char filename[256];
-    afs_uint64length, offset, Length, lastLength, fileLength;
+    afs_uint64 length, offset, Length, lastLength, fileLength;
     afs_int64 seekoffset, trunclength, toffset;
     struct timeval starttime, opentime, write1time, writetime, closetime;
     struct timeval lasttime;
@@ -214,9 +214,9 @@ char **argv;
     if (truncate) {
 #ifdef AFS_AIX53_ENV
 	struct u_signed64_rep trunclen;
-	trunclen.high = traunclength >> 32;
+	trunclen.high = trunclength >> 32;
 	trunclen.low = trunclength & 0xffffffff;
-	code = hpss_Ftruncate(fd, trunc);
+	code = hpss_Ftruncate(fd, trunclen);
 #else
         code = hpss_Ftruncate(fd, trunclength);
 #endif
