@@ -68,7 +68,7 @@ generated: force buildtools
 	+${COMPILE_PART1} update ${COMPILE_GENERATED}
 	+${COMPILE_PART1} vlserver ${COMPILE_GENERATED}
 	+${COMPILE_PART1} volser ${COMPILE_GENERATED}
-	+${COMPILE_PART1} config ${COMPILE_RPART2} generated_clean
+	+${COMPILE_PART1} config ${COMPILE_PART2A} generated_clean
 
 install: all install_dirs
 	$(MAKE) build COMPILE_PART2B=install
@@ -804,7 +804,7 @@ clean2:
 	-(cd src/libafs; /bin/rm -rf afs afsint config rx)
 	-(cd src/libuafs; /bin/rm -rf afs afsint config rx des)
 	-/bin/rm -rf ${TOP_INCDIR} ${TOP_LIBDIR} ${TOP_JLIBDIR}
-	-/bin/rm -rf libafs_tree
+	-/bin/rm -rf libafs_tree  ${SYS_NAME}
 
 distclean: clean
 	/bin/rm -rf lib include
