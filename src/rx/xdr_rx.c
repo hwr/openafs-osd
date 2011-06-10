@@ -1,14 +1,14 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
  */
 
 /*
- * xdr_rx.c.  XDR using RX. 
+ * xdr_rx.c.  XDR using RX.
  */
 
 #include <afsconfig.h>
@@ -73,6 +73,8 @@ static bool_t xdrrx_getbytes(XDR *axdrs, caddr_t addr,
 static bool_t xdrrx_putbytes(XDR *axdrs, caddr_t addr,
 			     u_int len);
 static afs_int32 *xdrrx_inline(XDR *axdrs, u_int len);
+static bool_t xdrrx_getNBOint32(XDR *axdrs, afs_int32 * lp);
+static bool_t xdrrx_putNBOint32(XDR *axdrs, afs_int32 * lp);
 
 
 /*
@@ -100,6 +102,8 @@ static struct xdr_ops xdrrx_ops = {
     xdrrx_getint32,     /* not supported */
     xdrrx_putint32,     /* serialize an afs_int32 */
 #endif
+    xdrrx_getNBOint32,  /* deserialize an afs_int32 w/o byte-reordering */
+    xdrrx_putNBOint32,  /* serialize an afs_int32 w/o byte-reordering */
 #else
 #ifdef AFS_XDR_64BITOPS
     .x_getint64 = xdrrx_getint64,
@@ -116,6 +120,8 @@ static struct xdr_ops xdrrx_ops = {
 #if defined(KERNEL) && defined(AFS_SUN57_ENV)
     .x_control = NULL,
 #endif
+    .x_getNBOint32 = xdrrx_getNBOint32,  /* deserialize an afs_int32 w/o byte-reordering */
+    .x_putNBOint32 = xdrrx_putNBOint32,  /* serialize an afs_int32 w/o byte-reordering */
 #endif
 };
 
@@ -174,7 +180,7 @@ xdrrx_getint32(XDR *axdrs, afs_int32 * lp)
     char *saddr = (char *)&l;
     saddr -= STACK_TO_PIN;
     /*
-     * Hack of hacks: Aix3.2 only guarantees that the next 2K of stack in pinned. Under 
+     * Hack of hacks: Aix3.2 only guarantees that the next 2K of stack in pinned. Under
      * splnet (disables interrupts), which is set throughout rx, we can't swap in stack
      * pages if we need so we panic. Since sometimes, under splnet, we'll use more than
      * 2K stack we could try to bring the next few stack pages in here before we call the rx
@@ -213,7 +219,7 @@ xdrrx_putint32(XDR *axdrs, afs_int32 * lp)
     char *saddr = (char *)&code;
     saddr -= STACK_TO_PIN;
     /*
-     * Hack of hacks: Aix3.2 only guarantees that the next 2K of stack in pinned. Under 
+     * Hack of hacks: Aix3.2 only guarantees that the next 2K of stack in pinned. Under
      * splnet (disables interrupts), which is set throughout rx, we can't swap in stack
      * pages if we need so we panic. Since sometimes, under splnet, we'll use more than
      * 2K stack we could try to bring the next few stack pages in here before we call the rx
@@ -244,7 +250,7 @@ xdrrx_getbytes(XDR *axdrs, caddr_t addr, u_int len)
     char *saddr = (char *)&code;
     saddr -= STACK_TO_PIN;
     /*
-     * Hack of hacks: Aix3.2 only guarantees that the next 2K of stack in pinned. Under 
+     * Hack of hacks: Aix3.2 only guarantees that the next 2K of stack in pinned. Under
      * splnet (disables interrupts), which is set throughout rx, we can't swap in stack
      * pages if we need so we panic. Since sometimes, under splnet, we'll use more than
      * 2K stack we could try to bring the next few stack pages in here before we call the rx
@@ -276,7 +282,7 @@ xdrrx_putbytes(XDR *axdrs, caddr_t addr, u_int len)
     char *saddr = (char *)&code;
     saddr -= STACK_TO_PIN;
     /*
-     * Hack of hacks: Aix3.2 only guarantees that the next 2K of stack in pinned. Under 
+     * Hack of hacks: Aix3.2 only guarantees that the next 2K of stack in pinned. Under
      * splnet (disables interrupts), which is set throughout rx, we can't swap in stack
      * pages if we need so we panic. Since sometimes, under splnet, we'll use more than
      * 2K stack we could try to bring the next few stack pages in here before we call the rx
@@ -319,4 +325,78 @@ xdrrx_inline(XDR *axdrs, u_int len)
 {
     /* I don't know what this routine is supposed to do, but the stdio module returns null, so we will, too */
     return (0);
+}
+
+struct NBOint32 {
+    afs_int32 v;
+};
+
+static bool_t
+xdrrx_getNBOint32(XDR *axdrs, afs_int32 * lp)
+{
+    afs_int32 l;
+    XDR * xdrs = (XDR *)axdrs;
+    struct rx_call *call = ((struct rx_call *)(xdrs)->x_private);
+#if	defined(KERNEL) && defined(AFS_AIX32_ENV)
+    char *saddr = (char *)&l;
+    saddr -= STACK_TO_PIN;
+    /*
+     * Hack of hacks: Aix3.2 only guarantees that the next 2K of stack in pinned. Under
+     * splnet (disables interrupts), which is set throughout rx, we can't swap in stack
+     * pages if we need so we panic. Since sometimes, under splnet, we'll use more than
+     * 2K stack we could try to bring the next few stack pages in here before we call the rx
+     * layer. Of course this doesn't guarantee that those stack pages won't be swapped
+     * out between here and calling splnet. So we now pin (and unpin) them instead to
+     * guarantee that they remain there.
+     */
+    if (pin(saddr, STACK_TO_PIN)) {
+	/* XXX There's little we can do by continue XXX */
+	saddr = NULL;
+	rx_pin_failed++;
+    }
+#endif
+    if (rx_Read32(call, &l) == sizeof(l)) {
+	*lp = l;
+#if	defined(KERNEL) && defined(AFS_AIX32_ENV)
+	if (saddr)
+	    unpin(saddr, STACK_TO_PIN);
+#endif
+	return TRUE;
+    }
+#if	defined(KERNEL) && defined(AFS_AIX32_ENV)
+    if (saddr)
+	unpin(saddr, STACK_TO_PIN);
+#endif
+    return FALSE;
+}
+
+static bool_t
+xdrrx_putNBOint32(XDR *axdrs, afs_int32 * lp)
+{
+    afs_int32 code, l = *lp;
+    XDR * xdrs = (XDR *)axdrs;
+    struct rx_call *call = ((struct rx_call *)(xdrs)->x_private);
+#if	defined(KERNEL) && defined(AFS_AIX32_ENV)
+    char *saddr = (char *)&code;
+    saddr -= STACK_TO_PIN;
+    /*
+     * Hack of hacks: Aix3.2 only guarantees that the next 2K of stack in pinned. Under
+     * splnet (disables interrupts), which is set throughout rx, we can't swap in stack
+     * pages if we need so we panic. Since sometimes, under splnet, we'll use more than
+     * 2K stack we could try to bring the next few stack pages in here before we call the rx
+     * layer. Of course this doesn't guarantee that those stack pages won't be swapped
+     * out between here and calling splnet. So we now pin (and unpin) them instead to
+     * guarantee that they remain there.
+     */
+    if (pin(saddr, STACK_TO_PIN)) {
+	saddr = NULL;
+	rx_pin_failed++;
+    }
+#endif
+    code = (rx_Write32(call, &l) == sizeof(l));
+#if	defined(KERNEL) && defined(AFS_AIX32_ENV)
+    if (saddr)
+	unpin(saddr, STACK_TO_PIN);
+#endif
+    return code;
 }

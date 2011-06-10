@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -18,6 +18,7 @@ extern int xdr_afsUUID(XDR * xdrs, afsUUID * objp);
 /* xdr_int32.c */
 extern bool_t xdr_afs_int32(XDR * xdrs, afs_int32 * ip);
 extern bool_t xdr_afs_uint32(XDR * xdrs, afs_uint32 * up);
+/*extern bool_t xdr_afs_NBOint32(XDR * xdrs, void * ip); */
 
 /* xdr_int64.c */
 extern bool_t xdr_int64(XDR * xdrs, afs_int64 * ulp);
@@ -88,7 +89,7 @@ extern bool_t xdrrec_endofrecord(XDR * xdrs, bool_t sendnow);
 
 /* xdr_refernce.c */
 
-extern bool_t xdr_reference(XDR *xdrs, caddr_t *pp, u_int size, 
+extern bool_t xdr_reference(XDR *xdrs, caddr_t *pp, u_int size,
 			    xdrproc_t proc);
 
 /* xdr_stdio.c */
