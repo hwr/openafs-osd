@@ -135,7 +135,11 @@ static int
 afs_linux_read_actor(read_descriptor_t *desc, struct page *page,
 		     unsigned long offset, unsigned long size)
 {
+#ifdef READ_DESCRIPTOR_T_HAS_BUF
+    struct rockops *rockops = (void *) desc->buf;
+#else
     struct rockops *rockops = (struct rockops *) desc->arg.data;
+#endif
     unsigned long count = desc->count;
     int code;
     afs_uint32 byteswritten = 0;

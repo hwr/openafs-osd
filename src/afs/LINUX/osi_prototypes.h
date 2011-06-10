@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -83,7 +83,6 @@ extern void osi_VM_Truncate(struct vcache *avc, int alen,
 extern void vattr2inode(struct inode *ip, struct vattr *vp);
 extern int afs_init_inodecache(void);
 extern void afs_destroy_inodecache(void);
-extern void osi_linux_free_inode_pages(void);
 
 /* osi_vnodeops.c */
 extern void afs_fill_inode(struct inode *ip, struct vattr *vattr);

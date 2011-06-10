@@ -804,7 +804,7 @@ clean2:
 	-(cd src/libafs; /bin/rm -rf afs afsint config rx)
 	-(cd src/libuafs; /bin/rm -rf afs afsint config rx des)
 	-/bin/rm -rf ${TOP_INCDIR} ${TOP_LIBDIR} ${TOP_JLIBDIR}
-	-/bin/rm -rf libafs_tree  ${SYS_NAME}
+	-/bin/rm -rf libafs_tree
 
 distclean: clean
 	/bin/rm -rf lib include
@@ -942,7 +942,6 @@ distclean: clean
 	tests/Makefile \
 	tests/rpctestlib/Makefile \
 	tests/tap/Makefile \
-	tests/util/Makefile \
 	src/helper-splint.sh
 	if test -d doc/man-pages ; then \
 	    rm -f doc/man-pages/Makefile doc/man-pages/install-man ; \

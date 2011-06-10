@@ -142,6 +142,8 @@ UAFSOBJ = \
 	$(UOBJ)/afsd_uafs.o \
 	$(UOBJ)/xdr.o \
 	$(UOBJ)/xdr_afsuuid.o \
+	$(UOBJ)/xdr_update.o \
+	$(UOBJ)/xdr_refernce.o \
 	$(UOBJ)/afs_uuid.o \
 	$(UOBJ)/assert.o \
 	$(UOBJ)/osi_vnodeops.o \
@@ -151,6 +153,7 @@ UAFSOBJ = \
 	$(UOBJ)/osi_vcache.o \
 	$(UOBJ)/afsaux.o \
 	$(UOBJ)/Kvice.xdr.o \
+	$(UOBJ)/xdr_array.o \
 	$(UOBJ)/xdr_arrayn.o \
 	$(UOBJ)/Kvice.cs.o \
 	$(UOBJ)/fcrypt.o \
@@ -281,6 +284,8 @@ AFSWEBOBJ = \
 	$(WEBOBJ)/afsd_uafs.o \
 	$(WEBOBJ)/xdr.o \
 	$(WEBOBJ)/xdr_afsuuid.o \
+	$(WEBOBJ)/xdr_update.o \
+	$(WEBOBJ)/xdr_refernce.o \
 	$(WEBOBJ)/afs_uuid.o \
 	$(WEBOBJ)/assert.o \
 	$(WEBOBJ)/osi_vnodeops.o \
@@ -290,6 +295,7 @@ AFSWEBOBJ = \
 	$(WEBOBJ)/osi_vcache.o \
 	$(WEBOBJ)/afsaux.o \
 	$(WEBOBJ)/Kvice.xdr.o \
+	$(WEBOBJ)/xdr_array.o \
 	$(WEBOBJ)/xdr_arrayn.o \
 	$(WEBOBJ)/Kvice.cs.o \
 	$(WEBOBJ)/fcrypt.o \
@@ -425,6 +431,7 @@ AFSWEBOBJKRB = \
 	$(WEBOBJ)/osi_vcache.o \
 	$(WEBOBJ)/afsaux.o \
 	$(WEBOBJ)/Kvice.xdr.o \
+	$(WEBOBJ)/xdr_array.o \
 	$(WEBOBJ)/xdr_arrayn.o \
 	$(WEBOBJ)/Kvice.cs.o \
 	$(WEBOBJ)/fcrypt.o \
@@ -554,6 +561,8 @@ JUAFSOBJ = \
 	$(JUAFS)/afsd_uafs.o \
 	$(JUAFS)/xdr.o \
 	$(JUAFS)/xdr_afsuuid.o \
+	$(JUAFS)/xdr_update.o \
+	$(JUAFS)/xdr_refernce.o \
 	$(JUAFS)/afs_uuid.o \
 	$(JUAFS)/assert.o \
 	$(JUAFS)/osi_vnodeops.o \
@@ -563,6 +572,7 @@ JUAFSOBJ = \
 	$(JUAFS)/osi_vcache.o \
 	$(JUAFS)/afsaux.o \
 	$(JUAFS)/Kvice.xdr.o \
+	$(JUAFS)/xdr_array.o \
 	$(JUAFS)/xdr_arrayn.o \
 	$(JUAFS)/Kvice.cs.o \
 	$(JUAFS)/fcrypt.o \
@@ -797,6 +807,10 @@ $(UOBJ)/assert.o: $(TOP_SRCDIR)/util/assert.c
 	$(CRULE1)
 $(UOBJ)/xdr_afsuuid.o: $(TOP_SRCDIR)/rx/xdr_afsuuid.c
 	$(CRULE1)
+$(UOBJ)/xdr_update.o: $(TOP_SRCDIR)/rx/xdr_update.c
+	$(CRULE1)
+$(UOBJ)/xdr_refernce.o: $(TOP_SRCDIR)/rx/xdr_refernce.c
+	$(CRULE1)
 $(UOBJ)/xdr.o: $(TOP_SRCDIR)/rx/xdr.c
 	$(CRULE1)
 $(UOBJ)/osi_vnodeops.o: $(TOP_SRC_AFS)/UKERNEL/osi_vnodeops.c
@@ -818,6 +832,8 @@ $(UOBJ)/Kvice.cs.o: $(TOP_OBJ_FSINT)/Kvice.cs.c
 $(UOBJ)/afsaux.o: $(TOP_SRC_FSINT)/afsaux.c
 	$(CRULE1)
 $(UOBJ)/xdr_arrayn.o: $(TOP_SRC_RX)/xdr_arrayn.c
+	$(CRULE1)
+$(UOBJ)/xdr_array.o: $(TOP_SRC_RX)/xdr_array.c
 	$(CRULE1)
 $(UOBJ)/Kvldbint.cs.o: $(TOP_OBJ_VLSERVER)/Kvldbint.cs.c
 	$(CRULE1)
@@ -1078,6 +1094,10 @@ $(WEBOBJ)/assert.o: $(TOP_SRCDIR)/util/assert.c
 	$(CRULE1)
 $(WEBOBJ)/xdr_afsuuid.o: $(TOP_SRCDIR)/rx/xdr_afsuuid.c
 	$(CRULE2)
+$(WEBOBJ)/xdr_update.o: $(TOP_SRCDIR)/rx/xdr_update.c
+	$(CRULE2)
+$(WEBOBJ)/xdr_refernce.o: $(TOP_SRCDIR)/rx/xdr_refernce.c
+	$(CRULE2)
 $(WEBOBJ)/xdr.o: $(TOP_SRCDIR)/rx/xdr.c
 	$(CRULE2)
 $(WEBOBJ)/osi_vnodeops.o: $(TOP_SRC_AFS)/UKERNEL/osi_vnodeops.c
@@ -1097,6 +1117,8 @@ $(WEBOBJ)/Kvice.xdr.o: $(TOP_OBJ_FSINT)/Kvice.xdr.c
 $(WEBOBJ)/Kvice.cs.o: $(TOP_OBJ_FSINT)/Kvice.cs.c
 	$(CRULE2)
 $(WEBOBJ)/afsaux.o: $(TOP_SRC_FSINT)/afsaux.c
+	$(CRULE2)
+$(WEBOBJ)/xdr_array.o: $(TOP_SRC_RX)/xdr_array.c
 	$(CRULE2)
 $(WEBOBJ)/xdr_arrayn.o: $(TOP_SRC_RX)/xdr_arrayn.c
 	$(CRULE2)
@@ -1369,6 +1391,10 @@ $(JUAFS)/assert.o: $(TOP_SRCDIR)/util/assert.c
 	$(CRULE1)
 $(JUAFS)/xdr_afsuuid.o: $(TOP_SRCDIR)/rx/xdr_afsuuid.c
 	$(CRULE1)
+$(JUAFS)/xdr_update.o: $(TOP_SRCDIR)/rx/xdr_update.c
+	$(CRULE1)
+$(JUAFS)/xdr_refernce.o: $(TOP_SRCDIR)/rx/xdr_refernce.c
+	$(CRULE1)
 $(JUAFS)/xdr.o: $(TOP_SRCDIR)/rx/xdr.c
 	$(CRULE1)
 $(JUAFS)/osi_vnodeops.o: $(TOP_SRC_AFS)/UKERNEL/osi_vnodeops.c
@@ -1388,6 +1414,8 @@ $(JUAFS)/Kvice.xdr.o: $(TOP_OBJ_FSINT)/Kvice.xdr.c
 $(JUAFS)/Kvice.cs.o: $(TOP_OBJ_FSINT)/Kvice.cs.c
 	$(CRULE1)
 $(JUAFS)/afsaux.o: $(TOP_SRC_FSINT)/afsaux.c
+	$(CRULE1)
+$(JUAFS)/xdr_array.o: $(TOP_SRC_RX)/xdr_array.c
 	$(CRULE1)
 $(JUAFS)/xdr_arrayn.o: $(TOP_SRC_RX)/xdr_arrayn.c
 	$(CRULE1)
@@ -1489,7 +1517,6 @@ $(JUAFS)/xdr_len.o: $(TOP_SRC_RX)/xdr_len.c
 clean:
 	-$(RM) -rf UAFS* JUAFS* AFSWEB* nsapi des afs afsint config rx
 	-$(RM) -f  h net netinet rpc ufs machine inet nfs sys des linktest $(AFS_OS_CLEAN)
-	-$(RM) -f afsd
 
 
 install: UAFS/$(LIBUAFS) JUAFS/$(LIBJUAFS)

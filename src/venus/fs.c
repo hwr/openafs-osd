@@ -5208,7 +5208,7 @@ Restart:
             fn = fname;
         code = pioctl(fn, VIOC_PREFETCHTAPE, &status, 0);
         if (code) {
-            fprintf(stderr, "prefetch for %s failed with code %d\n", fn, code);
+            fprintf(stderr, "prefetch for %s failed with code %d\n", fname, code);
         } else {
             Fid.Volume = out.fid.Volume;
             Fid.Vnode = out.fid.Vnode;
