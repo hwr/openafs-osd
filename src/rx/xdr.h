@@ -5,23 +5,23 @@
  * may copy or modify Sun RPC without charge, but are not authorized
  * to license or distribute it to anyone else except as part of a product or
  * program developed by the user.
- * 
+ *
  * SUN RPC IS PROVIDED AS IS WITH NO WARRANTIES OF ANY KIND INCLUDING THE
  * WARRANTIES OF DESIGN, MERCHANTIBILITY AND FITNESS FOR A PARTICULAR
  * PURPOSE, OR ARISING FROM A COURSE OF DEALING, USAGE OR TRADE PRACTICE.
- * 
+ *
  * Sun RPC is provided with no support and without any obligation on the
  * part of Sun Microsystems, Inc. to assist in its use, correction,
  * modification or enhancement.
- * 
+ *
  * SUN MICROSYSTEMS, INC. SHALL HAVE NO LIABILITY WITH RESPECT TO THE
  * INFRINGEMENT OF COPYRIGHTS, TRADE SECRETS OR ANY PATENTS BY SUN RPC
  * OR ANY PART THEREOF.
- * 
+ *
  * In no event will Sun Microsystems, Inc. be liable for any lost revenue
  * or profits or other special, indirect and consequential damages, even if
  * Sun has been advised of the possibility of such damages.
- * 
+ *
  * Sun Microsystems, Inc.
  * 2550 Garcia Avenue
  * Mountain View, California  94043
@@ -63,7 +63,7 @@
 #define mem_free(ptr, bsize)	free(ptr)
 #endif
 
-#if defined(AFS_AMD64_LINUX24_ENV) || defined(AFS_DARWIN_ENV)
+#if !defined(AFS_NT40_ENV)
 #define xdr_alloc afs_xdr_alloc
 #define xdr_free afs_xdr_free
 #define xdr_void afs_xdr_void
@@ -176,7 +176,7 @@ enum xdr_op {
  * bool_t	(*xdrproc_t)(XDR *, caddr_t *);
  */
 
-/* We need a different prototype for i386 Linux kernel code, because it 
+/* We need a different prototype for i386 Linux kernel code, because it
  * uses a register (rather than stack) based calling convention. The
  * normal va_args prototype results in the arguments being placed on the
  * stack, where they aren't accessible to the 'real' function.
@@ -224,6 +224,8 @@ typedef struct __afs_xdr {
 	  bool_t(*x_getint32) (struct __afs_xdr *xdrs, afs_int32 * lp);
 	  bool_t(*x_putint32) (struct __afs_xdr *xdrs, afs_int32 * lp);
 #endif
+	bool_t(*x_getNBOint32) (struct __afs_xdr *xdrs, afs_int32 *lp); /* get an afs_int32 without byte-reordering from underlying stream */
+	bool_t(*x_putNBOint32) (struct __afs_xdr *xdrs, afs_int32 *lp); /* put an afs_int32 without byte-reordering to underlying stream */
     } *x_ops;
     caddr_t x_public;		/* users' data */
     caddr_t x_private;		/* pointer to private data */
@@ -294,6 +296,12 @@ typedef struct __afs_xdr {
 	if ((xdrs)->x_ops->x_destroy) 			\
 		(*(xdrs)->x_ops->x_destroy)(xdrs)
 
+#define XDR_GETNBOINT32(xdrs, int32p)			\
+	(*(xdrs)->x_ops->x_getNBOint32)(xdrs, int32p)
+
+#define XDR_PUTNBOINT32(xdrs, int32p)			\
+	(*(xdrs)->x_ops->x_putNBOint32)(xdrs, int32p)
+
 /*
  * Support struct for discriminated unions.
  * You create an array of xdrdiscrim structures, terminated with
@@ -327,6 +335,8 @@ struct xdr_discrim {
  */
 #define IXDR_GET_INT32(buf)		ntohl(*buf++)
 #define IXDR_PUT_INT32(buf, v)		(*buf++ = htonl(v))
+#define IXDR_GET_NBO_INT32(buf)		*buf++
+#define IXDR_PUT_NBO_INT32(buf, v)	(*buf++ = v)
 
 #define IXDR_GET_BOOL(buf)		((bool_t)IXDR_GET_INT32(buf))
 #define IXDR_GET_ENUM(buf, t)		((t)IXDR_GET_INT32(buf))
