@@ -94,10 +94,10 @@ xdr_afs_NBOint32(XDR * xdrs, void * lp)
     struct NBOint32 *p = (struct NBOint32 *)lp;
 
     if (xdrs->x_op == XDR_ENCODE)
-	return (XDR_PUTNBOINT32(xdrs, p->v));
+	return (XDR_PUTNBOINT32(xdrs, &p->v));
 
     if (xdrs->x_op == XDR_DECODE)
-	return (XDR_GETNBOINT32(xdrs, p->v));
+	return (XDR_GETNBOINT32(xdrs, &p->v));
 
     if (xdrs->x_op == XDR_FREE)
 	return (TRUE);
