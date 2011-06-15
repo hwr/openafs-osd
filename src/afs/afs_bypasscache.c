@@ -61,7 +61,7 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-#if defined(AFS_CACHE_BYPASS)
+#if defined(AFS_CACHE_BYPASS) && defined(AFS_LINUX24_ENV)
 
 #include "afs/afs_bypasscache.h"
 
