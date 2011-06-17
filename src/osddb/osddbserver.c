@@ -2589,11 +2589,11 @@ main(argc, argv)
     ubik_CheckRXSecurityProc = afsconf_CheckAuth;
     ubik_CheckRXSecurityRock = (char *)tdir;
     code =
-	ubik_ServerInitByInfo(myHost, htons(AFSCONF_OSDDBPORT), &info, clones,
+	ubik_ServerInitByInfo(myHost, OSDDB_SERVER_PORT, &info, clones,
 			      osd_dbaseName, &OSD_dbase);
     if (code) {
 	printf("osddb: Ubik init for port %u failed with code %d\n",
-		 AFSCONF_OSDDBPORT,code);
+		 ntohs(OSDDB_SERVER_PORT),code);
 	exit(2);
     }
     if (!rxJumbograms) {
@@ -2614,8 +2614,8 @@ main(argc, argv)
 	exit(3);
     }
     tservice =
-	rx_NewServiceHost(host, htons(7016), OSDDB_SERVICE_ID, "osddb server", sc, numSc,
-		      OSDDB_ExecuteRequest);
+	rx_NewServiceHost(host, OSDDB_SERVER_NEWPORT, OSDDB_SERVICE_ID,
+			  "osddb server", sc, numSc, OSDDB_ExecuteRequest);
     if (!tservice) {
 	printf("osddb: Could not create OSDDB rx service\n");
 	exit(3);
