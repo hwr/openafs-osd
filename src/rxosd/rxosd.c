@@ -496,6 +496,13 @@ afs_uint32 fileLockWaits = 0;
 afs_uint32 locked_files = 0;
 struct file_lock *fileLocks = 0;
 
+#ifndef LOCK_SH
+#define LOCK_SH 1
+#endif
+#ifndef LOCK_EX
+#define LOCK_EX 2
+#endif
+
 void
 lock_file(FdHandle_t *fdP, afs_int32 mode)
 {
