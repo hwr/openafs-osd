@@ -1134,12 +1134,14 @@ AddOsd(struct rx_call *call, struct osddb_osd_tab *in)
     if (!e)
 	return ENOMEM;
 
-    if (FindById(trans, OSDDB_OSD, in->id, e, &offs) == 0) {   /* already exists */
+    code = FindById(trans, OSDDB_OSD, in->id, e, &offs);
+    if (code == 0) {   /* already exists */
 	code = EEXIST;
 	goto abort;
     } else if (code != ENOENT)
 	goto abort;
-    if (FindByName(trans, OSDDB_OSD, in->name, e, &offs) == 0) { /* already exists */
+    code = FindByName(trans, OSDDB_OSD, in->name, e, &offs);
+    if (code == 0) { /* already exists */
 	code = EEXIST;
 	goto abort;
     } else if (code != ENOENT)
