@@ -238,10 +238,10 @@ extern off_t afs_lseek(int FD, off_t O, int F);
 #endif /* !O_LARGEFILE */
 /*@=fcnmacros =macrofcndecl@*/
 
+int check_dsmls(FILE *cmd_stdin, FILE *cmd_stdout, char *rock);
 #ifdef AFS_AIX53_ENV
 int HSM = 1;
 #define AFS_TSM_HSM_ENV 1
-int check_dsmls(FILE *cmd_stdin, FILE *cmd_stdout, char *rock);
 #else
 int HSM = 0;
 #endif
@@ -4962,7 +4962,6 @@ SRXOSD_md5sum230(struct rx_call *call, afs_uint64 part_id,
 }
 
 
-#ifdef AFS_TSM_HSM_ENV
 int check_dsmls(FILE *cmd_stdin, FILE *cmd_stdout, char *rock)
 {
     afs_int32 *status = (afs_uint32 *)rock;
@@ -4981,7 +4980,6 @@ int check_dsmls(FILE *cmd_stdin, FILE *cmd_stdout, char *rock)
     *status = string[0];
     return 0;
 }
-#endif /* AFS_TSM_HSM_ENV */
     
 afs_int32
 create_archive(struct rx_call *call, struct oparmT10 *o, 
