@@ -1059,6 +1059,7 @@ setActive(afs_int32 num, struct rx_call *call)
                 (IsActive[i].ip >> 24) & 0xff,
                 (IsActive[i].ip >> 16) & 0xff,
                 (IsActive[i].ip >> 8) & 0xff,
+                IsActive[i].ip  & 0xff,
                 i));
             return i;
         }
