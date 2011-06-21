@@ -1,0 +1,24 @@
+#!/bin/sh
+
+eval `/bin/sls $1 | awk '{getline; 
+                if ($1 == "Length:") { 
+			length = $2;
+		}
+		getline;
+		if ($1 == "offline;" {
+			offline = 1;
+		};
+		if ($2 == "archdone;") {
+			archived = 1;
+		}
+		if (archived && offline) {
+			mode = "m";
+		} else if (archived) {
+			mode = "p"
+		} else {
+			mode = "r";
+		}
+		printf("mode=%s; size=%llu;\n", mode, length);
+	}'`
+			
+echo $mode $size

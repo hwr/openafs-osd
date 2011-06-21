@@ -1,0 +1,10 @@
+#!/bin/sh
+
+eval `/bin/dsmls $1 | awk '{getline; getline; getline; getline;
+                getline; getline; getline; getline;
+                print "mode="$4"; size="$1";"}'`
+if [ $mode == "r" ]; then
+        echo "/usr/bin/dsmmigrate  "$1 >> /usr/afs/logs/migrate-me
+#       echo "/usr/bin/dsmmigrate -Premigrate "$1 >> /usr/afs/logs/migrate-me
+fi
+echo $mode $size

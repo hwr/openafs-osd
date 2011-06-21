@@ -203,6 +203,7 @@
 
 #define MD5SUM "/usr/bin/env md5sum %s"
 #define DSMLS "/usr/afs/bin/dsmls-wrapper %s"
+#define SLSCMD "/usr/afs/bin/sls-wrapper %s"
 
 #include <pthread.h>
 pthread_mutex_t osdproc_glock_mutex;
@@ -3043,7 +3044,11 @@ int examine(struct rx_call *call, t10rock *rock, struct oparmT10 *o,
 #ifdef AFS_TSM_HSM_ENV
     	    sprintf(input, DSMLS, name.n_path);
     	    code = Command(input, CHK_STDOUT, check_dsmls, statusp);
-#endif /* AFS_TSM_HSM_SEN */
+#endif /* AFS_TSM_HSM_ENV */
+#ifdef AFS_SUN510_ENV
+    	    sprintf(input, SLSCMD, name.n_path);
+    	    code = Command(input, CHK_STDOUT, check_dsmls, statusp);
+#endif 
 	}
     }
 #ifdef AFS_TSM_HSM_ENV
