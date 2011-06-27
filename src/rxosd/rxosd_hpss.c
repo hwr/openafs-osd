@@ -462,6 +462,7 @@ struct ih_posix_ops ih_hpss_ops = {
 #else
     myhpss_statfs,
 #endif
+    hpss_Ftruncate,
     myhpss_pread,
     myhpss_pwrite,
     NULL,

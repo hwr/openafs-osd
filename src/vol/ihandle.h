@@ -279,6 +279,7 @@ struct ih_posix_ops {
 #else
     int         (*statfs)(const char *, struct afs_statfs *);
 #endif
+    int		(*ftruncate)(int, afs_int64);
     ssize_t     (*pread)(int, void *, size_t, afs_foff_t);
     ssize_t     (*pwrite)(int, const void *, size_t, afs_foff_t);
     ssize_t     (*preadv)(int, const struct iovec *, int, afs_foff_t);
@@ -601,6 +602,7 @@ extern afs_sfsize_t ih_size(FD_t);
 #define IH_CLOSEDIR(D, H) ((H)->ih_ops->closedir)(D)
 #define FDH_PREAD(H, B, S, O) ((H)->fd_ih->ih_ops->pread)((H)->fd_fd, B, S, O)
 #define FDH_PWRITE(H, B, S, O) ((H)->fd_ih->ih_ops->pwrite)((H)->fd_fd, B, S, O)
+#define FDH_TRUNC(H, L) ((H)->fd_ih->ih_ops->ftruncate)((H)->fd_fd, L)
 #ifdef HAVE_PIOV
 #define FDH_PREADV(H, I, N, O) ((H)->fd_ih->ih_ops->preadv)((H)->fd_fd, I, N, O)
 #define FDH_PWRITEV(H, I, N, O) ((H)->fd_ih->ih_ops->pwritev)((H)->fd_fd, I, N, O)
@@ -629,10 +631,10 @@ extern afs_sfsize_t ih_size(FD_t);
 #define IH_OPENDIR(N, H) opendir(N)
 #define IH_READDIR(D, H) readdir(D)
 #define IH_CLOSEDIR(D, H) closedir(D)
+#define FDH_TRUNC(H, L) OS_TRUNC((H)->fd_fd, L)
 #endif /* defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL) */
 
 #define FDH_SYNC(H) ((H->fd_ih!=NULL) ? ( H->fd_ih->ih_synced = 1) - 1 : 1)
-#define FDH_TRUNC(H, L) OS_TRUNC((H)->fd_fd, L)
 #define FDH_SIZE(H) OS_SIZE((H)->fd_fd)
 #if defined(BUILDING_RXOSD)
 #define FDH_LOCKFILE(H, O) rxosdlock(H, LOCK_EX)

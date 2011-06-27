@@ -194,6 +194,7 @@ struct ih_posix_ops ih_dcache_ops = {
     NULL,
     NULL,
     NULL,
+    NULL,
     NULL
 };
 

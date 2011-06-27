@@ -152,6 +152,7 @@ struct ih_posix_ops ih_namei_ops = {
 #else
     afs_statfs,
 #endif
+    ftruncate,
     pread,
     pwrite,
 #ifdef HAVE_PIOV

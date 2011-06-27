@@ -3943,6 +3943,9 @@ Truncate(struct rx_call *call, struct oparmT10 *o, afs_uint64 length,
     }
     lock_file(fdP, LOCK_EX);
     code = FDH_TRUNC(fdP, length);
+    ViceLog(0,("SRXOSD_truncate of %s on lun %llu to length %llu filedesc %d\n",
+		sprint_oparmT10(o, string, sizeof(string)),
+                o->part_id >> 32, length, fdP->fd_fd));
     ViceLog(1,("SRXOSD_truncate of %s to length %llu returns %d\n",
 		sprint_oparmT10(o, string, sizeof(string)),
                 length, code));
