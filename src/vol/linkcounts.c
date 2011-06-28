@@ -156,7 +156,7 @@ Display(struct cmd_syndesc *as, char *arock)
 			highest = objectseen;
 	}
     } else {
-      printf("Error opening linktable. rc=%d\n",errno);
+      fprintf(stderr,"Error opening linktable %s for volume %d on part %s. rc=%d\n",path, volumeId,partition,errno);
       return errno;
     }			
     
