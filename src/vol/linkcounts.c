@@ -155,7 +155,11 @@ Display(struct cmd_syndesc *as, char *arock)
 		if (objectseen > highest)
 			highest = objectseen;
 	}
+    } else {
+      printf("Error opening linktable. rc=%d\n",errno);
+      return errno;
     }			
+    
     printf("Totals:\t %u object belonging to %u vnodes seen.\n", 
 		objects, vnodes);
     printf("\tMax number of different versions was %u, max tag %u, max linkcount %u.\n", 
