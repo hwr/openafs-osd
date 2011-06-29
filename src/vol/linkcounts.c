@@ -92,12 +92,13 @@ Display(struct cmd_syndesc *as, char *arock)
     if (fd>0) {
 	bytes = read(fd, &magic, sizeof(magic));
 	if (magic != LINKTABLEMAGIC) {
-		fprintf(stderr, "wrong magic number: 0x%x\n", magic);
+		fprintf(stderr, "wrong magic number: 0x%x for %u\n", magic, volumeId);
 		exit(1);
 	}
 	bytes = read(fd, &version, sizeof(version));
 	if (bytes != sizeof(version)) {
-		fprintf(stderr, "no version number found\n");
+		fprintf(stderr, "no version number found in linktable for %u\n",
+			 volumeId);
 		exit(1);
 	}
 	printf("Linktable version is %u\n", version);
