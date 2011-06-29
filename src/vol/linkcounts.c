@@ -92,13 +92,12 @@ Display(struct cmd_syndesc *as, char *arock)
     if (fd>0) {
 	bytes = read(fd, &magic, sizeof(magic));
 	if (magic != LINKTABLEMAGIC) {
-		fprintf(stderr, "wrong magic number: 0x%x for %u\n", magic, volumeId);
+		fprintf(stderr, "linktable %s for volume %d on part %s : wrong magic number: 0x%x\n", path, volumeId, partition, magic);
 		exit(1);
 	}
 	bytes = read(fd, &version, sizeof(version));
 	if (bytes != sizeof(version)) {
-		fprintf(stderr, "no version number found in linktable for %u\n",
-			 volumeId);
+		fprintf(stderr, "linktable %s for volume %d on part %s : no version number found\n", path, volumeId, partition);
 		exit(1);
 	}
 	printf("Linktable version is %u\n", version);
@@ -118,7 +117,7 @@ Display(struct cmd_syndesc *as, char *arock)
 		buf = (char *) &row;
 		break;
 	default:
-		fprintf(stderr, "unknown version %d found\n", version);
+		fprintf(stderr, "linktable %s for volume %d on part %s : unknown version %d found\n", path, volumeId, partition, version);
 		exit(1);
 	}
 	num = 0;
@@ -157,7 +156,7 @@ Display(struct cmd_syndesc *as, char *arock)
 			highest = objectseen;
 	}
     } else {
-      fprintf(stderr,"Error opening linktable %s for volume %d on part %s. rc=%d\n",path, volumeId,partition,errno);
+      fprintf(stderr,"linktable %s for volume %d on part %s : Cannot open file rc=%d\n", path, volumeId, partition, errno);
       return errno;
     }			
     
