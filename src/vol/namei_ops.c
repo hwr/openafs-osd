@@ -75,6 +75,8 @@
 #endif
 #endif
 
+afs_int32 defaultLinkCount = 5;
+
 #ifdef AFS_HPSS_SUPPORT
 char *hpssPath = NULL;
 char *hpssMeta = NULL;
@@ -1676,7 +1678,7 @@ int
 GetLinkTableVersion(FdHandle_t *fh)
 {
     if (!fh || !fh->fd_ih) {
-        ViceLog(0, ("namei_GetLinkTableVersion: no pointer to linkHandle\n"));
+        ViceLog(0, ("GetLinkTableVersion: no pointer to linkHandle\n"));
         errno = EINVAL;
         return -1;
     }
@@ -1685,22 +1687,54 @@ GetLinkTableVersion(FdHandle_t *fh)
         afs_uint64 offset = 0;
         if (OS_SEEK(fh->fd_fd, offset, SEEK_SET) != -1) {
             if (read(fh->fd_fd, &header, 8) != 8) {
-                ViceLog(0, ("namei_GetLinkTableVersion: read failed\n"));
+                ViceLog(0, ("GetLinkTableVersion: read failed\n"));
                 errno = EINVAL;
                 return -1;
             }
         }
         if (header[0] != LINKTABLEMAGIC) {
-            ViceLog(0, ("namei_GetLinkTableVersion: no magic found\n"));
-            errno = EINVAL;
-            return -1;
+    	    namei_t name;
+	    int code, fd, ogm_parm, tag;
+	    struct afs_stat tstat;
+	    char badlinktable[128];
+            time_t t;
+            struct timeval now;
+            struct tm *TimeFields;
+            gettimeofday(&now, 0);
+            t = now.tv_sec;
+            TimeFields = localtime(&t);
+            ViceLog(0, ("GetLinkTableVersion: no magic found in lun %u, linktable recreated: %u needs vos salvage\n", fh->fd_ih->ih_dev, fh->fd_ih->ih_vid));
+	    namei_HandleToName(&name, fh->fd_ih);
+            sprintf((char *)&badlinktable, "%s-bad-%d%02d%02d-%02d:%02d:%02d",
+                        (char *)&name.n_path, TimeFields->tm_year + 1900,
+                        TimeFields->tm_mon + 1, TimeFields->tm_mday,
+			TimeFields->tm_hour, TimeFields->tm_min, TimeFields->tm_sec);
+	    if (afs_stat(name.n_path, &tstat) >= 0) {
+		GetOGMFromStat(&tstat, &ogm_parm, &tag);
+                code = rename(name.n_path, &badlinktable);
+	        if (code == 0) {
+	            fd = afs_open(name.n_path, O_CREAT | O_EXCL | O_TRUNC | O_RDWR, 0);
+	            close(fh->fd_fd);
+	            fh->fd_fd = fd;
+	            header[0] = LINKTABLEMAGIC;
+	            header[1] = 2;
+	            write(fd, &header, sizeof(header));
+        	    SetOGM(fd, ogm_parm, tag, 1);
+	        } else {
+		   errno = EINVAL;
+		   return -1;
+	        }
+	    } else {
+		errno = EINVAL;
+		return -1;
+	    }
         }
         if (header[1] == 1)
             fh->fd_ih->ih_flags |= IH_LINKTABLE_V1;
         else if (header[1] == 2)
             fh->fd_ih->ih_flags |= IH_LINKTABLE_V2;
         else {
-            ViceLog(0, ("namei_GetLinkTableVersion: unknown version: %d\n",
+            ViceLog(0, ("GetLinkTableVersion: unknown version: %d\n",
                         header[1]));
             errno = EINVAL;
             return -1;
@@ -1847,6 +1881,7 @@ namei_GetLinkCount(FdHandle_t * h, Inode ino, int lockit, int fixup, int nowrite
     if (rc == 0 && fixup) {
 	/*
 	 * extend link table and write a link count of 1 for ino
+         * or when shared a link count of 3 for ino
 	 *
 	 * in order to make MT-safe, truncation (extension really)
 	 * must happen under a mutex
@@ -1858,7 +1893,7 @@ namei_GetLinkCount(FdHandle_t * h, Inode ino, int lockit, int fixup, int nowrite
 	}
         FDH_TRUNC(h, offset+length);
 	if (shared)
-            row = 1 << index;
+            row = defaultLinkCount << index;
 	else
 	    shortrow = 1 << index;
 	rc = OS_PWRITE(h->fd_fd, buf, length, offset);
@@ -1881,9 +1916,11 @@ namei_GetLinkCount(FdHandle_t * h, Inode ino, int lockit, int fixup, int nowrite
 	NAMEI_GLC_LOCK;
 	rc = OS_PREAD(h->fd_fd, buf, length, offset);
 	if (rc == length) {
-	    row |= 1<<index;
-	    if (shared)
+	    if (shared) {
+                row |= defaultLinkCount << index;
 		shortrow = row;
+	    } else
+	        row |= 1<<index;
 	    rc = OS_PWRITE(h->fd_fd, buf, length, offset);
 	}
 	NAMEI_GLC_UNLOCK;
@@ -2322,6 +2359,10 @@ namei_ListAFSFiles(char *dev,
 #else
     ih.ih_dev = volutil_GetPartitionID(dev);
 #endif
+#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+    ih.ih_ops = &ih_namei_ops;
+#endif
+    ih.ih_ino = namei_MakeSpecIno(ih.ih_vid, VI_LINKTABLE);
 
     if (singleVolumeNumber) {
 	ih.ih_vid = singleVolumeNumber;
@@ -2342,6 +2383,7 @@ namei_ListAFSFiles(char *dev,
 #ifdef AFS_NT40_ENV
 	    /* Heirarchy is one level on Windows */
 	    if (!DecodeVolumeName(dp1->d_name, &ih.ih_vid)) {
+    		ih.ih_ino = namei_MakeSpecIno(ih.ih_vid, VI_LINKTABLE);
 		ninodes +=
 		    namei_ListAFSSubDirs(&ih, writeFun, fp, judgeFun,
 					 0, rock);
@@ -2357,6 +2399,7 @@ namei_ListAFSFiles(char *dev,
 		    if (*dp2->d_name == '.')
 			continue;
 		    if (!DecodeVolumeName(dp2->d_name, &ih.ih_vid)) {
+    			ih.ih_ino = namei_MakeSpecIno(ih.ih_vid, VI_LINKTABLE);
 			ninodes +=
 			    namei_ListAFSSubDirs(&ih, writeFun, fp, judgeFun,
 						 0, rock);
@@ -2951,6 +2994,12 @@ namei_ListAFSSubDirs(IHandle_t * dirIH,
     (void)strcat(path1, NAMEI_SPECDIR);
 
     memset(&lth, 0, sizeof(lth));
+    lth.ih_dev = myIH.ih_dev;
+    lth.ih_vid = myIH.ih_vid;
+    lth.ih_ino = namei_MakeSpecIno(lth.ih_vid, VI_LINKTABLE);
+#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+    lth.ih_ops = &ih_namei_ops;
+#endif
     linkHandle.fd_fd = INVALID_FD;
     linkHandle.fd_ih = &lth;
 #ifdef AFS_SALSRV_ENV
