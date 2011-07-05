@@ -78,7 +78,7 @@ char **argv;
     bf_sc_attrib_t  *scattr_ptr;
     bf_vv_attrib_t  *vvattr_ptr;
     afs_uint64 size = 0;
-    char level = 0;
+    char level[2] = {0, 0};
     int cksum[4];
 
     code = hpss_SetLoginCred("afsipp", hpss_authn_mech_krb5,
@@ -117,11 +117,11 @@ char **argv;
         }
     }
     if (on_disk & on_tape)
-        level = 'p';
+        level[0] = 'p';
     else if (on_tape)
-        level = 'm';
+        level[0] = 'm';
     else
-        level = 'r';
+        level[0] = 'r';
 
     printf("%s has length %llu and tape status %s\n", filename, size, level);
    
