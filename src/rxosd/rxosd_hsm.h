@@ -27,6 +27,7 @@ struct ih_posix_ops {
 #else
     int         (*statfs)(const char *, struct afs_statfs *);
 #endif
+    int         (*ftruncate)(int, afs_int64);
     ssize_t     (*pread)(int, void *, size_t, afs_foff_t);
     ssize_t     (*pwrite)(int, const void *, size_t, afs_foff_t);
     ssize_t     (*preadv)(int, const struct iovec *, int, afs_foff_t);
