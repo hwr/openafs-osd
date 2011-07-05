@@ -98,6 +98,7 @@ extern void Log(const char *format, ...);
 extern time_t hpssLastAuth;
 
 #define HALFDAY 12*60*60
+#define FDOFFSET 10000
 
 int initialized = 0;
 
@@ -232,9 +233,9 @@ authenticate_for_hpss(char *principal, char *keytab)
     return code;
 }
 
-int myhpss_open(const char *path, int flags, mode_t mode, afs_uint64 size)
+int myhpss_Open(const char *path, int flags, mode_t mode, afs_uint64 size)
 {
-    int fd, i;
+    int fd, myfd, i;
     hpss_cos_hints_t cos_hints;
     hpss_cos_priorities_t cos_pri;
 
@@ -249,8 +250,19 @@ int myhpss_open(const char *path, int flags, mode_t mode, afs_uint64 size)
 	    break;
     	}
     }
-    fd = hpss_Open(path, flags, mode, &cos_hints, &cos_pri, NULL);
+    myfd = hpss_Open(path, flags, mode, &cos_hints, &cos_pri, NULL);
+    fd = myfd + FDOFFSET;
     return fd;
+}
+
+int
+myhpss_Close(int fd)
+{
+    afs_int32 code;
+    int myfd = fd - FDOFFSET;
+
+    code = hpss_Close(myfd);
+    return code;
 }
 
 
@@ -411,15 +423,46 @@ int myhpss_statfs(const char *path, struct afs_statfs *buf)
 }
 
 ssize_t
+myhpss_Read(int fd, void *buf, size_t len)
+{
+    ssize_t bytes;
+    int myfd = fd - FDOFFSET;
+    
+    bytes = hpss_Read(myfd, buf, len);
+    return bytes;	
+}
+
+ssize_t
+myhpss_Write(int fd, void *buf, size_t len)
+{
+    ssize_t bytes;
+    int myfd = fd - FDOFFSET;
+    
+    bytes = hpss_Write(myfd, buf, len);
+    return bytes;	
+}
+
+ssize_t
+myhpss_Ftruncate(int fd, afs_foff_t pos)
+{
+    afs_int32 code;
+    int myfd = fd - FDOFFSET;
+    
+    code = hpss_Ftruncate(myfd, pos);
+    return code;	
+}
+
+ssize_t
 myhpss_pread(int fd, void *buf, size_t len, afs_foff_t pos)
 {
     afs_offs_t offset;
     ssize_t bytes;
+    int myfd = fd - FDOFFSET;
     
-    offset = hpss_Lseek(fd, pos, SEEK_SET);
+    offset = hpss_Lseek(myfd, pos, SEEK_SET);
     if (offset < 0)
 	return offset;
-    bytes = hpss_Read(fd, buf, len);
+    bytes = hpss_Read(myfd, buf, len);
     return bytes;	
 }
 
@@ -428,20 +471,21 @@ myhpss_pwrite(int fd, void *buf, size_t len, afs_foff_t pos)
 {
     afs_offs_t offset;
     ssize_t bytes;
+    int myfd = fd - FDOFFSET;
     
-    offset = hpss_Lseek(fd, pos, SEEK_SET);
+    offset = hpss_Lseek(myfd, pos, SEEK_SET);
     if (offset < 0)
 	return offset;
-    bytes = hpss_Write(fd, buf, len);
+    bytes = hpss_Write(myfd, buf, len);
     return bytes;	
 }
 
 struct ih_posix_ops ih_hpss_ops = {
-    myhpss_open,
-    hpss_Close,
-    hpss_Read,
+    myhpss_Open,
+    myhpss_Close,
+    myhpss_Read,
     NULL,
-    hpss_Write,
+    myhpss_Write,
     NULL,
     hpss_Lseek,
     NULL,
@@ -462,7 +506,7 @@ struct ih_posix_ops ih_hpss_ops = {
 #else
     myhpss_statfs,
 #endif
-    hpss_Ftruncate,
+    myhpss_Ftruncate,
     myhpss_pread,
     myhpss_pwrite,
     NULL,
