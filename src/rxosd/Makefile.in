@@ -199,7 +199,7 @@ hpss_write: hpss_write.o
 hpss_tapeinfo.o: ${srcdir}/hpss_tapeinfo.c
 	${CCRULE} ${HSM_INC}
 
-hpss_tapeinfo: hpss_tapeoinfo.o
+hpss_tapeinfo: hpss_tapeinfo.o
 	${CC} ${LDFLAGS} -o hpss_tapeinfo hpss_tapeinfo.o ${LIBS} ${HSM_LIB}
 
 ${DEST}/root.server/usr/afs/bin/rxosd: rxosd  
