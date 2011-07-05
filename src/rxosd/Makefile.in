@@ -196,6 +196,12 @@ hpss_write.o: ${srcdir}/hpss_write.c
 hpss_write: hpss_write.o
 	${CC} ${LDFLAGS} -o hpss_write hpss_write.o ../rxkad/md5.o ${LIBS} ${HSM_LIB}
 
+hpss_tapeinfo.o: ${srcdir}/hpss_tapeinfo.c
+	${CCRULE} ${HSM_INC}
+
+hpss_tapeinfo: hpss_tapeoinfo.o
+	${CC} ${LDFLAGS} -o hpss_tapeinfo hpss_tapeinfo.o ${LIBS} ${HSM_LIB}
+
 ${DEST}/root.server/usr/afs/bin/rxosd: rxosd  
 	${INSTALL} $? $@
 
