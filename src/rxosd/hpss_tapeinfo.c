@@ -123,7 +123,7 @@ char **argv;
     else
         level = 'r';
 
-    printf("%s has length %llu and tape status %s\n", size, level);
+    printf("%s has length %llu and tape status %s\n", filename, size, level);
    
     exit(0);
 }
