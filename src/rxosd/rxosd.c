@@ -5219,7 +5219,8 @@ retry:
 		}
 	    }
 	    if (!rcall[j]) {
-		ViceLog(0,("SRXOSD_create_archive: no connection to remote osd\n"));
+		ViceLog(0,("SRXOSD_create_archive: %s no connection to remote osd\n",
+                                sprint_oparmT10(o, string, sizeof(string))));
 		code = EIO;
 		goto bad;
 	    }
@@ -5235,7 +5236,8 @@ retry:
 		    tlen = length;
 		bytes = rx_Read(rcall[j], bp, tlen);	
 		if (bytes != tlen) {
-		    ViceLog(0,("SRXOSD_create_archive: read only %d bytes instead of %d\n",
+		    ViceLog(0,("SRXOSD_create_archive: %s read only %d bytes instead of %d\n",
+                                sprint_oparmT10(o, string, sizeof(string)),
 				bytes, tlen));
 		    code = EIO;
 		    goto bad;
@@ -5248,7 +5250,8 @@ retry:
 	    MD5_Update(&md5, buf, writelen);
 	    bytes = FDH_WRITE(fdP, buf, writelen);
 	    if (bytes != writelen) {
-		    ViceLog(0,("SRXOSD_create_archive: written only %d bytes instead of %d\n",
+		    ViceLog(0,("SRXOSD_create_archive: %s written only %d bytes instead of %d\n",
+                                sprint_oparmT10(o, string, sizeof(string)),
 				bytes, writelen));
 		    code = EIO;
 		    goto bad;
