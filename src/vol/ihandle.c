@@ -571,6 +571,7 @@ fd_reallyclose(FdHandle_t * fdP)
 {
     FD_t closeFd;
     IHandle_t *ihP;
+    int rc = 0;
 
     if (!fdP)
 	return 0;
@@ -605,7 +606,7 @@ fd_reallyclose(FdHandle_t * fdP)
     if (fdP->fd_refcnt == 0) {
     IH_UNLOCK;
 #if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
-    (ihP->ih_ops->close)(closeFd);
+    rc = (ihP->ih_ops->close)(closeFd);
 #else
     OS_CLOSE(closeFd);
 #endif
@@ -623,7 +624,7 @@ fd_reallyclose(FdHandle_t * fdP)
 	ih_release(ihP);
     }
 
-    return 0;
+    return rc;
 }
 
 /* Enable buffered I/O on a file descriptor */
