@@ -3477,7 +3477,7 @@ int writePS(struct rx_call *call, t10rock *rock,
     }
     FreeSendBuffer((struct afs_buffer *)buffer);
 #endif
-    code = FDH_SYNC(fdP);
+    /* code = FDH_SYNC(fdP); does not a sync, sets only a flag in the ihandle */
     if (atime) {
         namei_t name;
 	namei_HandleToName(&name, oh->ih);
@@ -4722,7 +4722,7 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
             }
             length -= nbytes;
         }
-        code = FDH_SYNC(to_fdP);
+        /* code = FDH_SYNC(to_fdP); does not a sync, sets only a flag in the ihandle */
     }
 finis:
     if (tcall) {
@@ -5298,9 +5298,12 @@ bad:
 	free(buf);
 	
     if (fdP) {
-        FDH_SYNC(fdP);
+	int code2;
+        /* FDH_SYNC(fdP); does not a sync, sets only a flag in the ihandle */
 	unlock_file(fdP);
-        FDH_REALLYCLOSE(fdP);
+        code2 = FDH_REALLYCLOSE(fdP);
+	if (!code)
+	    code = code2;
     }
     oh_release(oh);
     if (code) {
@@ -6634,9 +6637,12 @@ bad:
 	free(buf);
 	
     if (fd) {
-        FDH_SYNC(fd);
+	int code2;
+        /* FDH_SYNC(fdP); does not a sync, sets only a flag in the ihandle */
 	unlock_file(fd);
-        FDH_REALLYCLOSE(fd);
+        code2 = FDH_REALLYCLOSE(fd);
+	if (!code)
+	    code = code2;
     }
     oh_release(oh);
     if (fdin) {
@@ -6840,7 +6846,7 @@ read_from_hpss(struct rx_call *call, struct oparmT10 *o,
 	total_bytes_sent += bytes;
 	length -= bytes;
     }
-    FDH_SYNC(fdout);
+    /* FDH_SYNC(fdout); does not a sync, sets only a flag in the ihandle */
     unlock_file(fdout);
     FDH_CLOSE(fdout);
     fdout = 0;
