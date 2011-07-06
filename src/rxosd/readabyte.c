@@ -49,6 +49,7 @@ struct ih_posix_ops clib_ops = {
     NULL,
     NULL,
     NULL,
+    NULL,
     NULL
 };
 
