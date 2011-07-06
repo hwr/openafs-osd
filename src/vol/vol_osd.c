@@ -6242,7 +6242,7 @@ list_objects_on_osd(struct rx_call *call, Volume *vol,  afs_int32 flag,
 			struct osd_p_obj *o =
 			    &s->objList.osd_p_objList_val[l];
 			if (o->osd_id == osd) {
-			    char md5str[32];
+			    char md5str[40];
 			    md5str[0] = 0;
 			    if (meta) 
 				sprintf(md5str, " %08x%08x%08x%08x",
