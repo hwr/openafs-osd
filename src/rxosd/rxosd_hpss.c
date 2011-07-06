@@ -100,7 +100,44 @@ extern time_t hpssLastAuth;
 #define HALFDAY 12*60*60
 #define FDOFFSET 10000
 
-int initialized = 0;
+#include <pthread.h>
+#include <afs/afs_assert.h>
+pthread_mutex_t rxosd_hpss_mutex;
+pthread_cond_t auth_cond;
+#define MUTEX_INIT(a, b, c, d) assert(pthread_mutex_init(a, NULL) == 0)
+#define HPSS_LOCK assert(pthread_mutex_lock(&rxosd_hpss_mutex) == 0)
+#define HPSS_UNLOCK assert(pthread_mutex_unlock(&rxosd_hpss_mutex) == 0)
+#define CV_WAIT(cv, l) assert(pthread_cond_wait(cv, l) == 0)
+
+static int initialized = 0;
+int HPSStransactions = 0;
+static int waiting = 0; 
+static int waiters = 0;
+
+void
+addHPSStransaction()
+{
+    HPSS_LOCK;
+    while (waiting) {
+	waiters++;
+	CV_WAIT(&auth_cond, &rxosd_hpss_mutex);
+	waiters--;
+    }
+    HPSStransactions++;
+    HPSS_UNLOCK;
+}
+
+void
+removeHPSStransaction()
+{
+    HPSS_LOCK;
+    HPSStransactions--;
+    if (HPSStransactions < 0)
+	HPSStransactions = 0;
+    if (HPSStransactions == 0 && waiting)
+	assert(pthread_cond_broadcast(&auth_cond) == 0);
+    HPSS_UNLOCK;
+}
 
 struct cosInfo {
     afs_int32 cosId;
@@ -161,6 +198,7 @@ readHPSSconf()
     static time_t lastVersion = 0;
 
     if (!initialized) {
+	MUTEX_INIT(&rxosd_hpss_mutex, "rxosd hpss lock", 0, 0);
 	memset(&info, 0, sizeof(info));
 	initialized = 1;
     }
@@ -222,6 +260,10 @@ authenticate_for_hpss(char *principal, char *keytab)
 	    hpss_PurgeLoginCred();
 	    authenticated = 0;
 	}
+	waiting = 1;
+	while (HPSStransactions > 0) {
+	    CV_WAIT(&auth_cond, &rxosd_hpss_mutex);
+	}
         code = hpss_SetLoginCred(principal, hpss_authn_mech_krb5,
                              hpss_rpc_cred_client,
                              hpss_rpc_auth_type_keytab, keytab);
@@ -229,6 +271,9 @@ authenticate_for_hpss(char *principal, char *keytab)
 	    authenticated = 1;
 	    hpssLastAuth = now;
 	}
+	waiting = 0;
+        if (waiters)
+	    assert(pthread_cond_broadcast(&auth_cond) == 0);
     }
     return code;
 }
@@ -250,18 +295,27 @@ int myhpss_Open(const char *path, int flags, mode_t mode, afs_uint64 size)
 	    break;
     	}
     }
+    addHPSStransaction();
     myfd = hpss_Open(path, flags, mode, &cos_hints, &cos_pri, NULL);
-    fd = myfd + FDOFFSET;
+    if (myfd >= 0) {
+        fd = myfd + FDOFFSET;
+    } else {
+	removeHPSStransaction();
+	fd = myfd;
+    }
     return fd;
 }
 
 int
 myhpss_Close(int fd)
 {
-    afs_int32 code;
+    afs_int32 code = 0;
     int myfd = fd - FDOFFSET;
 
-    code = hpss_Close(myfd);
+    if (myfd >= 0) {
+        code = hpss_Close(myfd);
+	removeHPSStransaction();
+    }
     return code;
 }
 
@@ -276,9 +330,12 @@ DIR* myhpss_opendir(const char* path)
     int dir_handle = 0;
     struct myDIR *mydir = 0;
     
+    addHPSStransaction();
     dir_handle = hpss_Opendir(path);
-    if (dir_handle < 0)
+    if (dir_handle < 0) {
+	removeHPSStransaction();
 	return (DIR*) 0;
+    }
     mydir = (struct myDir*) malloc(sizeof(struct myDIR));
     memset(mydir, 0, sizeof(struct myDIR));
     mydir->dir_handle = dir_handle;
@@ -311,8 +368,11 @@ int myhpss_closedir(DIR* dir)
 {
     struct myDIR *mydir = (struct myDIR *)dir;
     
-    hpss_Closedir(mydir->dir_handle);
-    free(mydir);
+    if (mydir) {
+        hpss_Closedir(mydir->dir_handle);
+        free(mydir);
+	removeHPSStransaction();
+    }
     return 0;
 }
     
@@ -321,7 +381,9 @@ int myhpss_stat64(const char *path, struct stat64 *buf)
     hpss_stat_t hs;
     int code;
 
+    addHPSStransaction();
     code = hpss_Stat(path, &hs);
+    removeHPSStransaction();
     if (code)
 	return code;
     memset(buf, 0, sizeof(struct stat64));
@@ -363,7 +425,9 @@ int myhpss_stat_tapecopies(const char *path, afs_int32 *level, afs_sfsize_t *siz
     *level = 0;
 
 #ifndef AFS_AIX53_ENV
+    addHPSStransaction();
     code = hpss_FileGetXAttributes(path, Flags, StorageLevel, &AttrOut);
+    removeHPSStransaction();
     if (code) 
 	return EIO;
 
@@ -407,7 +471,9 @@ int myhpss_statfs(const char *path, struct afs_statfs *buf)
 #else
     memset(buf, 0, sizeof(struct afs_statfs));
 #endif
+    addHPSStransaction();
     code = hpss_Statfs(MY_COSID, &hb);
+    removeHPSStransaction();
     if (code)
 	return -1;
 #if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
