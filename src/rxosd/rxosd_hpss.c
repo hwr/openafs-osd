@@ -98,6 +98,7 @@ extern void Log(const char *format, ...);
 extern time_t hpssLastAuth;
 
 #define HALFDAY 12*60*60
+#define TWENTYDAYS 20*24*60*60
 #define FDOFFSET 10000
 
 #include <pthread.h>
@@ -254,15 +255,15 @@ authenticate_for_hpss(char *principal, char *keytab)
 
     code = readHPSSconf();
 
-    if (now - hpssLastAuth > HALFDAY) {
+    if (now - hpssLastAuth > TWENTYDAYS) {
 	if (authenticated) {
+	    waiting = 1;
+	    while (HPSStransactions > 0) {
+	        CV_WAIT(&auth_cond, &rxosd_hpss_mutex);
+	    }
 	    hpss_ClientAPIReset();
 	    hpss_PurgeLoginCred();
 	    authenticated = 0;
-	}
-	waiting = 1;
-	while (HPSStransactions > 0) {
-	    CV_WAIT(&auth_cond, &rxosd_hpss_mutex);
 	}
         code = hpss_SetLoginCred(principal, hpss_authn_mech_krb5,
                              hpss_rpc_cred_client,
