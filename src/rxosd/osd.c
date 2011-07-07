@@ -2327,7 +2327,10 @@ CreateOsd(struct cmd_syndesc *as, void *rock)
 	return code;
     code = ubik_Call(OSDDB_AddOsd, osddb_client, 0, e);
     if (code) {
-	fprintf(stderr, "OSDDB_AddOsd failed with %d.\n", code);
+	if (code == 17)
+	    fprintf(stderr, "Could not create osd, id or name already exist.\n");
+	else
+	    fprintf(stderr, "OSDDB_AddOsd failed with %d.\n", code);
 	return EINVAL;
     }
     return code;
