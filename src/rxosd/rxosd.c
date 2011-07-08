@@ -4627,6 +4627,8 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
 	    afs_uint32 msec = (mt / 10000000);
 	    code = StartRXOSD_write_keep122(tcall, to->part_id, to->obj_id, offset,
 					    length, asec, msec);
+            ViceLog(1, ("SRXOSD_copy: StartRXOSD_write_keep122 to OSD %u started with code %d\n",
+                    to_osd, code));
 	} else
             code = StartRXOSD_write(tcall, &dummyrock, &p, &ometa);
         if (code) {
