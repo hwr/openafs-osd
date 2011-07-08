@@ -1526,6 +1526,9 @@ XferData(struct fetch_entry *f)
 	    f->oh = 0;
 	    conn = GetConnection(htonl(f->d.fileserver), 1, htons(7000), 1);
 	    code = RXAFS_SetOsdFileReady(conn, &fid, &new_md5.c);
+	    if (code == RXGEN_OPCODE) {
+	        code = RXAFS_SetOsdFileReady0(conn, &fid, &new_md5.c.cksum_u.md5);
+	    }
 	    if (code)
 	        f->error = code;
 	    f->refcnt--;
