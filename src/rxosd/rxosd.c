@@ -4606,12 +4606,7 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
     if (to_osd) {
 	afs_uint32 ip, lun;
 	struct RWparm p;
-	code = FindOsd(to_osd, &ip, &lun);
-        if (code) {
-            ViceLog(0, ("SRXOSD_copy: FindOSD failed for %s\n",
-		sprint_oparmT10(from, string, sizeof(string))));
-        }
-        conn = GetConnection(ip, 1, OSD_SERVER_PORT, 0);
+        conn = GetConnToOsd(to_osd);
         tcall = rx_NewCall(conn);
 	struct ometa ometa;
 	ometa.vsn = 1;
@@ -4734,7 +4729,10 @@ finis:
     if (tcall) {
         int code1, code2;
 	struct ometa out;
-        code1 = EndRXOSD_write(tcall, &out);
+	if (legacy)
+	    code1 = EndRXOSD_write_keep122(tcall);
+	else
+            code1 = EndRXOSD_write(tcall, &out);
         code2 = rx_EndCall(tcall, code);
         if (!code)
             code = code1;
@@ -4804,6 +4802,7 @@ SRXOSD_copy200(struct rx_call *call, afs_uint64 from_part, afs_uint64 to_part,
     to1.part_id = to_part;
     to1.obj_id = to_id;
     code = copy(call, &from1, &to1, to_osd, 1);
+    ViceLog(1,("SRXOSD_copy200: copy returned %d\n", code));
 
     SETTHREADINACTIVE();
     return code;
