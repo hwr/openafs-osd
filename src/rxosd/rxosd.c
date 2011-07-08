@@ -2567,9 +2567,8 @@ incdec(struct rx_call *call, struct oparmT10 *o, afs_int32 diff)
 
     extract_oparmT10(o, &lun, &vid, &vnode, &unique, NULL);
     ViceLog(1,("SRXOSD_incdec %s %d in lun %u from %u.%u.%u.%u\n",
-                diff,
                 sprint_oparmT10(o, string, sizeof(string)),
-		lun,
+                diff, lun,
                 (ntohl(call->conn->peer->host) >> 24) & 0xff,
                 (ntohl(call->conn->peer->host) >> 16) & 0xff,
                 (ntohl(call->conn->peer->host) >> 8) & 0xff,
