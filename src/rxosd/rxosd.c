@@ -4622,10 +4622,12 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
 	p.RWparm_u.p3.atime.type = 1;
 	p.RWparm_u.p3.atime.afstm_u.sec = at;
 	p.RWparm_u.p3.mtime.afstm_u.sec = mt;
-	if (legacy)
+	if (legacy) {
+	    afs_uint32 asec = (at / 10000000);
+	    afs_uint32 msec = (mt / 10000000);
 	    code = StartRXOSD_write_keep122(tcall, to->part_id, to->obj_id, offset,
-					    length, at, mt);
-	else
+					    length, asec, msec);
+	} else
             code = StartRXOSD_write(tcall, &dummyrock, &p, &ometa);
         if (code) {
             ViceLog(0, ("SRXOSD_copy: StartRXOSD_write to OSD %u failed with code %d\n",
