@@ -2584,9 +2584,15 @@ incdec(struct rx_call *call, struct oparmT10 *o, afs_int32 diff)
         code = EIO;
 	goto finis;
     }
+    ViceLog(2,("SRXOSD_incdec %s %d in lun %u after getlinkhandle\n",
+                sprint_oparmT10(o, string, sizeof(string)),
+                diff, lun, code));
     inode = o->obj_id;
     if (diff < 0) {
         oh = oh_init_oparmT10(o);
+        ViceLog(2,("SRXOSD_incdec %s %d in lun %u after oh_init_oparmT10\n",
+                sprint_oparmT10(o, string, sizeof(string)),
+                diff, lun, code));
         if (oh == NULL) {
 	    oh_release(lh);
 	    ViceLog(0,("SRXOSD_incdec: oh_init for the file %s failed.\n",
@@ -2595,19 +2601,34 @@ incdec(struct rx_call *call, struct oparmT10 *o, afs_int32 diff)
 	    goto finis;
         }
         oh_free(oh);
+        ViceLog(2,("SRXOSD_incdec %s %d in lun %u after oh_free\n",
+                sprint_oparmT10(o, string, sizeof(string)),
+                diff, lun, code));
         code = IH_DEC(lh->ih, inode, vid);
+        ViceLog(2,("SRXOSD_incdec %s %d in lun %u after IH_DEC\n",
+                sprint_oparmT10(o, string, sizeof(string)),
+                diff, lun, code));
         if (code)  {
             ViceLog(0,("SRXOSD_incdec: IH_DEC failed for %s with %d.\n",
                 	sprint_oparmT10(o, string, sizeof(string)), code));
        }
     } else {
 	code = IH_INC(lh->ih, inode, vid);
+        ViceLog(2,("SRXOSD_incdec %s %d in lun %u after IH_INC\n",
+                sprint_oparmT10(o, string, sizeof(string)),
+                diff, lun, code));
 	if (code)
             ViceLog(0,("SRXOSD_incdec: IH_INC failed for %s with %d.\n",
                 	sprint_oparmT10(o, string, sizeof(string)), code));
     }
+    ViceLog(2,("SRXOSD_incdec %s %d in lun %u before oh_release\n",
+                sprint_oparmT10(o, string, sizeof(string)),
+                diff, lun, code));
     oh_release(lh);
 finis:
+    ViceLog(1,("SRXOSD_incdec %s %d in lun %u returns %d\n",
+                sprint_oparmT10(o, string, sizeof(string)),
+                diff, lun, code));
     return code;
 } /* incdec */
 
