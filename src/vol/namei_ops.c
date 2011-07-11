@@ -1136,6 +1136,7 @@ namei_icreate_open(IHandle_t * lh, char *part, afs_uint32 p1, afs_uint32 p2,
 #else /* defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL) */
     fd = afs_open(name.n_path, O_CREAT | O_EXCL | O_TRUNC | O_RDWR, 0);
 #endif /* defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL) */
+    ViceLog(1, ("namei_icreate: opened %s as fd %d\n", name.n_path, fd));
     if (fd < 0) {
         if (errno == ENOTDIR
 #if defined(BUILDING_RXOSD) && defined(AFS_DCACHE_SUPPORT)
@@ -1148,6 +1149,7 @@ namei_icreate_open(IHandle_t * lh, char *part, afs_uint32 p1, afs_uint32 p2,
                 goto bad;
             fd = tmp.ih_ops->open(name.n_path, O_CREAT | O_EXCL | O_TRUNC
                                         | O_RDWR, mode);
+            ViceLog(1, ("namei_icreate: opened %s as fd %d\n", name.n_path, fd));
 #else
 	    if (namei_CreateDataDirectories(&name, &created_dir) < 0)
 		goto bad;
@@ -1183,8 +1185,12 @@ namei_icreate_open(IHandle_t * lh, char *part, afs_uint32 p1, afs_uint32 p2,
     if (fd >= 0) {
         if (open_fd)
             *open_fd = fd;
-        else
+        else {
+#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+    	    ViceLog(1, ("namei_icreate: fd %d closed\n", fd));
+#endif
             close(fd);
+	}
     }
 
     if (code || (fd < 0)) {
@@ -1221,6 +1227,7 @@ namei_iopen(IHandle_t * h)
     namei_HandleToName(&name, h);
 #if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
     fd = h->ih_ops->open((char *)name.n_path, O_RDWR, 0666);
+    ViceLog(1,("namei_iopen: opened %s as fd %d\n", name.n_path, fd));
 #else
     fd = afs_open((char *)&name.n_path, O_RDWR, 0666);
 #endif
@@ -1479,7 +1486,11 @@ namei_copy_on_write(IHandle_t *h)
 	if (!fdP)
 	    return EIO;
 	afs_snprintf(path, sizeof(path), "%s-tmp", name.n_path);
+#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+	fd = (h->ih_ops->open)(path, O_CREAT | O_EXCL | O_TRUNC | O_RDWR, 0);
+#else
 	fd = afs_open(path, O_CREAT | O_EXCL | O_TRUNC | O_RDWR, 0);
+#endif
 	if (fd < 0) {
 	    FDH_CLOSE(fdP);
 	    return EIO;
@@ -1497,12 +1508,20 @@ namei_copy_on_write(IHandle_t *h)
 	    tlen = size > 8192 ? 8192 : size;
 	    if (FDH_PREAD(fdP, buf, tlen, offset) != tlen)
 		break;
+#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+	    if ((h->ih_ops->write)(fd, buf, tlen) != tlen)
+#else
 	    if (write(fd, buf, tlen) != tlen)
+#endif
 		break;
 	    size -= tlen;
 	    offset += tlen;
 	}
+#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+	(h->ih_ops->close)(fd);
+#else
 	close(fd);
+#endif
 	FDH_REALLYCLOSE(fdP);
 	free(buf);
 	if (size)

@@ -40,6 +40,9 @@
 #include "viceinode.h"
 #include "afs/afs_assert.h"
 #include <limits.h>
+#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+#include "afs/afsutil.h"
+#endif
 
 #ifndef AFS_NT40_ENV
 #ifdef O_LARGEFILE
@@ -606,6 +609,7 @@ fd_reallyclose(FdHandle_t * fdP)
     if (fdP->fd_refcnt == 0) {
     IH_UNLOCK;
 #if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+    ViceLog(1, ("fd_reallyclose: closed %d\n", closeFd));
     rc = (ihP->ih_ops->close)(closeFd);
 #else
     OS_CLOSE(closeFd);
