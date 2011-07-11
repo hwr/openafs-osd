@@ -437,7 +437,7 @@ oh_free(struct o_handle *oh)
     afs_int32 h;
     if (!oh)
 	return;
-    fdP = IH_OPEN(oh->ih);
+    fdP = IH_REOPEN(oh->ih);
     if (fdP)
         FDH_REALLYCLOSE(fdP);
     OSD_LOCK;
