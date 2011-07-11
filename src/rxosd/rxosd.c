@@ -6253,7 +6253,7 @@ Variable(struct rx_call *call, afs_int32 cmd, char *name,
 	    code = 0;
 #ifdef AFS_HPSS_SUPPORT
 	} else if (!strcmp(name, "dontTrustHPSS")) {
-	    dontTrustHPSS = vlaue;
+	    dontTrustHPSS = value;
 	    *result = dontTrustHPSS;
 	    code = 0;
 #endif
