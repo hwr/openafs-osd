@@ -433,7 +433,7 @@ oh_release(struct o_handle *oh)
 oh_free(struct o_handle *oh)
 {
     struct o_handle *ohP;
-    FdHandle_t *fdP;
+    FdHandle_t *fdP = 0;
     afs_int32 h;
     if (!oh)
 	return;
@@ -3052,9 +3052,12 @@ int examine(struct rx_call *call, t10rock *rock, struct oparmT10 *o,
         *sizep = tstat.st_size;
     if ((mask & WANTS_HSM_STATUS) && statusp) {
 #ifdef AFS_RXOSD_SPECIAL
-	if (h.ih_ops->stat_tapecopies)
+	if (h.ih_ops->stat_tapecopies) {
 	    result = h.ih_ops->stat_tapecopies(name.n_path, statusp, sizep);
-	else
+#ifdef AFS_HPSS_SUPPORT
+	    *statusp = 0;	/* Don't trust HPSS for the moment */
+#endif
+	} else
 #endif
 	{
 	    char input[100];
