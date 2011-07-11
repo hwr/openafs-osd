@@ -255,6 +255,7 @@ extern struct ih_posix_ops ih_hpss_ops;
 extern struct ih_posix_ops ih_namei_ops;
 char *principal = NULL;
 char *keytab = NULL;
+int dontTrustHPSS = 1;
 #endif
 
 struct MHhost {
@@ -3055,7 +3056,8 @@ int examine(struct rx_call *call, t10rock *rock, struct oparmT10 *o,
 	if (h.ih_ops->stat_tapecopies) {
 	    result = h.ih_ops->stat_tapecopies(name.n_path, statusp, sizep);
 #ifdef AFS_HPSS_SUPPORT
-	    *statusp = 0;	/* Don't trust HPSS for the moment */
+	    if (dontTrustHPSS)
+	        *statusp = 0;	/* Don't trust HPSS for the moment */
 #endif
 	} else
 #endif
@@ -6194,6 +6196,11 @@ Variable(struct rx_call *call, afs_int32 cmd, char *name,
 	} else if (!strcmp(name, "oldRxosds")) {
 	    *result = oldRxosds;
 	    code = 0;
+#ifdef AFS_HPSS_SUPPORT
+	} else if (!strcmp(name, "dontTrustHPSS")) {
+	    *result = dontTrustHPSS;
+	    code = 0;
+#endif
 	} else
 	    code = ENOENT;
     } else if (cmd == 2) {					/* set */
@@ -6244,6 +6251,12 @@ Variable(struct rx_call *call, afs_int32 cmd, char *name,
 	    oldRxosds = value;
 	    *result = oldRxosds;
 	    code = 0;
+#ifdef AFS_HPSS_SUPPORT
+	} else if (!strcmp(name, "dontTrustHPSS")) {
+	    dontTrustHPSS = vlaue;
+	    *result = dontTrustHPSS;
+	    code = 0;
+#endif
 	} else
 	    code = ENOENT;
     }
@@ -6277,6 +6290,10 @@ char ExportedVariables[] =
     EXP_VAR_SEPARATOR
     "oldRxosds"
     EXP_VAR_SEPARATOR
+#ifdef AFS_HPSS_SUPPORT
+    "dontTrustHPSS"
+    EXP_VAR_SEPARATOR
+#endif
     "";
     
 /***************************************************************************
