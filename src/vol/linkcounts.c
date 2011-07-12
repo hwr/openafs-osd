@@ -100,7 +100,10 @@ Display(struct cmd_syndesc *as, char *arock)
     code = stat64(path, &tstat);
     if (code != 0) 
 	fprintf(stderr, "stat64 for %s failed with %d\n", path, code);
-    fd = open(path, O_RDONLY);
+    if (truncate)
+	fd = open64(path, O_RDWR);
+    else
+        fd = open(path, O_RDONLY);
     if (fd>0) {
 	bytes = read(fd, &magic, sizeof(magic));
 	offset += bytes;
@@ -258,7 +261,7 @@ Convert(struct cmd_syndesc *as, char *arock)
     code = stat64(path, &tstat);
     if (code != 0) 
 	fprintf(stderr, "stat64 for %s failed with %d\n", path, code);
-    fd = open(path, O_RDONLY);
+    fd = open64(path, O_RDONLY);
     if (fd>0) {
 	bytes = read(fd, &magic, sizeof(magic));
 	if (magic != LINKTABLEMAGIC) {
