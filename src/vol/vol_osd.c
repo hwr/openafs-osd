@@ -5978,6 +5978,19 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 						        s->length = objsize;
 							meta_changed = 1;
 						    }
+        /*
+         * If the file is not online and the archival copies have e length
+         * different from that in the vnode, we have to accept this archival
+         * length as new length of the file.
+         */
+                                                    if (!online && f->archiveVersion
+                                                      && s->length != size
+                                                      && f->archiveVersion
+                                                      == vd->dataVersion) {
+                                                        size = s->length;
+                                                        VNDISK_SET_LEN(vd, size);
+							changed = 1;
+                                                    }
 	/*
 	 * Mark this archive as out-dated. So either a new archive copy
 	 * will be created if the file is still on-line or if there are
