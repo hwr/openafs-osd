@@ -49,6 +49,7 @@ Display(struct cmd_syndesc *as, char *arock)
     Error ec;
     struct stat64 tstat;
     int verbose = 0;
+    int truncate = 0;
     int bless, unbless, nofssync;
     int volumeId;
     int lun = 0;
@@ -67,11 +68,13 @@ Display(struct cmd_syndesc *as, char *arock)
     char *buf;
     int fd, bytes;
     int num, count;
+    int highestnum = 0;
     int vnodes = 0;
     int objects = 0;
     int highest = 0;
     int highesttag = 0;
     int highestcount = 0;
+    afs_int64 offset = 0, highestoffset;
 
     volumeId = atoi(as->parms[0].items->data);
     if (as->parms[1].items)
@@ -82,6 +85,8 @@ Display(struct cmd_syndesc *as, char *arock)
     }
     if (as->parms[3].items) 
 	verbose = 1;
+    if (as->parms[4].items) 
+	truncate = 1;
     int32_to_flipbase64(V1, volumeId & 0xff);
     int32_to_flipbase64(V2, volumeId);
     tmp = volumeId;
@@ -98,11 +103,13 @@ Display(struct cmd_syndesc *as, char *arock)
     fd = open(path, O_RDONLY);
     if (fd>0) {
 	bytes = read(fd, &magic, sizeof(magic));
+	offset += bytes;
 	if (magic != LINKTABLEMAGIC) {
 		fprintf(stderr, "linktable %s for volume %d on part %s : wrong magic number: 0x%x\n", path, volumeId, partition, magic);
 		exit(1);
 	}
 	bytes = read(fd, &version, sizeof(version));
+	offset += bytes;
 	if (bytes != sizeof(version)) {
 		fprintf(stderr, "linktable %s for volume %d on part %s : no version number found\n", path, volumeId, partition);
 		exit(1);
@@ -131,6 +138,8 @@ Display(struct cmd_syndesc *as, char *arock)
 	bytes = read(fd, buf, length);
 	if (!bytes)
 		exit(1);
+	offset += bytes;
+	highestoffset = offset;
 	if (version == 1)
 		row = shortrow;
 	printf("linktable linkcount %u\n", row);
@@ -140,6 +149,7 @@ Display(struct cmd_syndesc *as, char *arock)
 		bytes = read(fd, buf, length);
 		if (!bytes)
 			break;
+		offset += bytes;
 		if (version == 1)
 			row = shortrow;
 		for (col = 0; col<maxindex; col++) {
@@ -157,6 +167,8 @@ Display(struct cmd_syndesc *as, char *arock)
 					highesttag = col;
 				if (count > highestcount)
 					highestcount = count;
+				highestnum = num;
+				highestoffset = offset;
 			}
 		}
 		if (objectseen > highest)
@@ -167,6 +179,14 @@ Display(struct cmd_syndesc *as, char *arock)
       return errno;
     }			
     
+    if (truncate) {
+	printf("Truncating linktable from %llu to %llu bytes\n", 
+			tstat.st_size, highestoffset);
+	code = ftruncate64(fd, highestoffset);
+	if (code) 
+	    fprintf(stderr, "ftruncate64 returns %d\n", code);
+    }
+    close(fd);
     if (verbose) {
 	printf("Totals for %u: %s length %llu %u objects of %u vnodes max versions %u higest tag %u max count %u\n",
 		volumeId, path, tstat.st_size, objects, vnodes, highest, highesttag,
@@ -383,6 +403,7 @@ main(int argc, char **argv)
     cmd_AddParm(ts, "-partition", CMD_SINGLE, CMD_OPTIONAL, "partition name (vicepb ...)");
     cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL, "partition number (1 for /vicepb ...)");
     cmd_AddParm(ts, "-verbose", CMD_FLAG, CMD_OPTIONAL, "");
+    cmd_AddParm(ts, "-truncate", CMD_FLAG, CMD_OPTIONAL, "cut off unused end of linktable");
 
     ts = cmd_CreateSyntax("convert", Convert, 0, "convert v1 LinkTable to v2");
     cmd_AddParm(ts, "-id", CMD_SINGLE, CMD_REQUIRED, "Volume id");
