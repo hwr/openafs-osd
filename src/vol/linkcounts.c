@@ -47,6 +47,8 @@ Display(struct cmd_syndesc *as, char *arock)
 {
     Volume *vp;
     Error ec;
+    struct stat64 tstat;
+    int verbose = 0;
     int bless, unbless, nofssync;
     int volumeId;
     int lun = 0;
@@ -78,6 +80,8 @@ Display(struct cmd_syndesc *as, char *arock)
         lun = atoi(as->parms[2].items->data);
 	sprintf(&partition,"vicep%s", part[lun]);
     }
+    if (as->parms[3].items) 
+	verbose = 1;
     int32_to_flipbase64(V1, volumeId & 0xff);
     int32_to_flipbase64(V2, volumeId);
     tmp = volumeId;
@@ -88,6 +92,9 @@ Display(struct cmd_syndesc *as, char *arock)
     sprintf(&path, "/%s/AFSIDat/%s/%s/special/%s",
 		partition, V1, V2, N);
     printf("%s\n", path);
+    code = stat64(path, &tstat);
+    if (code != 0) 
+	fprintf(stderr, "stat64 for %s failed with %d\n", path, code);
     fd = open(path, O_RDONLY);
     if (fd>0) {
 	bytes = read(fd, &magic, sizeof(magic));
@@ -160,10 +167,16 @@ Display(struct cmd_syndesc *as, char *arock)
       return errno;
     }			
     
-    printf("Totals:\t %u object belonging to %u vnodes seen.\n", 
+    if (verbose) {
+	printf("Totals for %u: %s length %llu %u objects of %u vnodes max versions %u higest tag %u max count %u\n",
+		volumeId, path, tstat.st_size, objects, vnodes, highest, highesttag,
+		highestcount);
+    } else {
+        printf("Totals:\t %u object belonging to %u vnodes seen.\n", 
 		objects, vnodes);
-    printf("\tMax number of different versions was %u, max tag %u, max linkcount %u.\n", 
+        printf("\tMax number of different versions was %u, max tag %u, max linkcount %u.\n", 
 		highest, highesttag, highestcount);
+    }
    
     return 0;
 }
@@ -173,6 +186,7 @@ Convert(struct cmd_syndesc *as, char *arock)
 {
     Volume *vp;
     Error ec;
+    struct stat64 tstat;
     int bless, unbless, nofssync;
     int volumeId;
     int lun = 0;
@@ -221,6 +235,9 @@ Convert(struct cmd_syndesc *as, char *arock)
     sprintf(&path, "/%s/AFSIDat/%s/%s/special/%s",
 		partition, V1, V2, N);
     printf("%s\n", path);
+    code = stat64(path, &tstat);
+    if (code != 0) 
+	fprintf(stderr, "stat64 for %s failed with %d\n", path, code);
     fd = open(path, O_RDONLY);
     if (fd>0) {
 	bytes = read(fd, &magic, sizeof(magic));
@@ -365,6 +382,7 @@ main(int argc, char **argv)
     cmd_AddParm(ts, "-id", CMD_SINGLE, CMD_REQUIRED, "Volume id");
     cmd_AddParm(ts, "-partition", CMD_SINGLE, CMD_OPTIONAL, "partition name (vicepb ...)");
     cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL, "partition number (1 for /vicepb ...)");
+    cmd_AddParm(ts, "-verbose", CMD_FLAG, CMD_OPTIONAL, "");
 
     ts = cmd_CreateSyntax("convert", Convert, 0, "convert v1 LinkTable to v2");
     cmd_AddParm(ts, "-id", CMD_SINGLE, CMD_REQUIRED, "Volume id");
