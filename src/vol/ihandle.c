@@ -77,6 +77,9 @@ FdHandle_t *fdLruTail;
 
 int ih_Inited = 0;
 int ih_PkgDefaultsSet = 0;
+#ifdef AFS_RXOSD_SPECIAL
+int log_open_close = 1;
+#endif
 
 #ifdef AFS_DCACHE_SUPPORT
 extern afs_int32 dcache;
@@ -609,7 +612,17 @@ fd_reallyclose(FdHandle_t * fdP)
     if (fdP->fd_refcnt == 0) {
     IH_UNLOCK;
 #if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
-    ViceLog(1, ("fd_reallyclose: closed %d\n", closeFd));
+    if (log_open_close) {
+	if (ihP->ih_ops->fstat64) {
+	    struct afs_stat tstat;
+	    (ihP->ih_ops->fstat64)(closeFd, &tstat);
+            ViceLog(0, ("fd_reallyclose: closed %d, file length %llu\n",
+		    closeFd, tstat.st_size));
+	} else {
+            ViceLog(0, ("fd_reallyclose: closed %d, file length unknown\n",
+		    closeFd));
+	}
+    }
     rc = (ihP->ih_ops->close)(closeFd);
 #else
     OS_CLOSE(closeFd);

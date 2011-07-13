@@ -6201,6 +6201,12 @@ Variable(struct rx_call *call, afs_int32 cmd, char *name,
 	    *result = dontTrustHPSS;
 	    code = 0;
 #endif
+#ifdef AFS_RXOSD_SPECIAL
+	} else if (!strcmp(name, "log_open_close")) {
+	    extern int log_open_close;
+	    *result = log_open_close;
+	    code = 0;
+#endif
 	} else
 	    code = ENOENT;
     } else if (cmd == 2) {					/* set */
@@ -6257,6 +6263,13 @@ Variable(struct rx_call *call, afs_int32 cmd, char *name,
 	    *result = dontTrustHPSS;
 	    code = 0;
 #endif
+#ifdef AFS_RXOSD_SPECIAL
+	} else if (!strcmp(name, "log_open_close")) {
+	    extern int log_open_close;
+	    log_open_close = value;
+	    *result = log_open_close;
+	    code = 0;
+#endif
 	} else
 	    code = ENOENT;
     }
@@ -6292,6 +6305,10 @@ char ExportedVariables[] =
     EXP_VAR_SEPARATOR
 #ifdef AFS_HPSS_SUPPORT
     "dontTrustHPSS"
+    EXP_VAR_SEPARATOR
+#endif
+#ifdef AFS_RXOSD_SPECIAL
+    "log_open_close"
     EXP_VAR_SEPARATOR
 #endif
     "";

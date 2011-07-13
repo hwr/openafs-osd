@@ -76,6 +76,7 @@
 #endif
 
 afs_int32 defaultLinkCount = 5;
+extern int log_open_close;
 
 #ifdef AFS_HPSS_SUPPORT
 char *hpssPath = NULL;
@@ -1136,7 +1137,6 @@ namei_icreate_open(IHandle_t * lh, char *part, afs_uint32 p1, afs_uint32 p2,
 #else /* defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL) */
     fd = afs_open(name.n_path, O_CREAT | O_EXCL | O_TRUNC | O_RDWR, 0);
 #endif /* defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL) */
-    ViceLog(1, ("namei_icreate: opened %s as fd %d\n", name.n_path, fd));
     if (fd < 0) {
         if (errno == ENOTDIR
 #if defined(BUILDING_RXOSD) && defined(AFS_DCACHE_SUPPORT)
@@ -1149,7 +1149,6 @@ namei_icreate_open(IHandle_t * lh, char *part, afs_uint32 p1, afs_uint32 p2,
                 goto bad;
             fd = tmp.ih_ops->open(name.n_path, O_CREAT | O_EXCL | O_TRUNC
                                         | O_RDWR, mode);
-            ViceLog(1, ("namei_icreate: opened %s as fd %d\n", name.n_path, fd));
 #else
 	    if (namei_CreateDataDirectories(&name, &created_dir) < 0)
 		goto bad;
@@ -1162,6 +1161,11 @@ namei_icreate_open(IHandle_t * lh, char *part, afs_uint32 p1, afs_uint32 p2,
 	    goto bad;
 	}
     }
+#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+    if (log_open_close) {
+        ViceLog(0, ("namei_icreate: opened %s as fd %d\n", name.n_path, fd));
+    }
+#endif
 #if defined(BUILDING_RXOSD) && defined(AFS_DCACHE_SUPPORT)
     if (!dcache || p2 == -1)
 #endif /* AFS_DCACHE_SUPPORT */
@@ -1187,7 +1191,9 @@ namei_icreate_open(IHandle_t * lh, char *part, afs_uint32 p1, afs_uint32 p2,
             *open_fd = fd;
         else {
 #if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
-    	    ViceLog(1, ("namei_icreate: fd %d closed\n", fd));
+	    if (log_open_close) {
+    	        ViceLog(0, ("namei_icreate: fd %d closed\n", fd));
+	    }
 #endif
             close(fd);
 	}
@@ -1226,8 +1232,18 @@ namei_iopen(IHandle_t * h)
     /* Convert handle to file name. */
     namei_HandleToName(&name, h);
 #if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
-    fd = h->ih_ops->open((char *)name.n_path, O_RDWR, 0666);
-    ViceLog(1,("namei_iopen: opened %s as fd %d\n", name.n_path, fd));
+    fd = (h->ih_ops->open)((char *)name.n_path, O_RDWR, 0666);
+    if (log_open_close && fd >= 0) {
+	if (h->ih_ops->fstat64) {
+	    struct afs_stat tstat;
+	    (h->ih_ops->fstat64)(fd, &tstat);
+            ViceLog(0,("namei_iopen: opened %s as fd %d file length %llu\n",
+		    name.n_path, fd, tstat.st_size));
+	} else {
+            ViceLog(0,("namei_iopen: opened %s as fd %d file length unknown\n",
+		    name.n_path, fd));
+	}
+    }
 #else
     fd = afs_open((char *)&name.n_path, O_RDWR, 0666);
 #endif
