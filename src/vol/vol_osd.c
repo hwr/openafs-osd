@@ -2263,7 +2263,7 @@ remove_osd_online_file(Vnode *vn, afs_uint32 version)
     struct osd_p_fileList list;
     afs_uint64 objsize;
     afs_uint64 filesize;
-    afs_uint32 modTime;
+    afs_uint32 modTime = vn->disk.unixModifyTime;
 
     VN_GET_LEN(filesize, vn);   
     code = read_osd_p_fileList(vn->volumePtr, &vn->disk, vn->vnodeNumber, &list);
@@ -2275,7 +2275,8 @@ remove_osd_online_file(Vnode *vn, afs_uint32 version)
 	    int good_version = 0;
 	    if (version && f->archiveVersion == version) {
 		good_version = 1;
-		modTime = f->archiveTime;
+		if (modTime > f->archiveTime)
+		    modTime = f->archiveTime;
 		filesize = f->segmList.osd_p_segmList_val[0].length;
 	    }
 	    if (!version && f->archiveVersion == vn->disk.dataVersion) 
@@ -2318,9 +2319,21 @@ remove_osd_online_file(Vnode *vn, afs_uint32 version)
 	    wipe_me = i;
 	}
     }
-    if (!good_archives_found || wipe_me < 0) 
-	code = EINVAL; 	/* either no archival version or already wiped */
-    else {
+    if (!good_archives_found || wipe_me < 0) { 
+        /*                                                                               
+         * If the file is already wiped, but the length doesn't match the one in         
+         * of the archival copy chosen, update the vnode fields accordingly.             
+         */                                                                              
+        if (good_archives_found && version) {                                            
+            vn->changed_newTime = 1;                                                    
+            vn->disk.dataVersion = version;                                              
+            VN_SET_LEN(vn, filesize);                                                    
+            if (modTime < vn->disk.unixModifyTime)                                       
+                vn->disk.unixModifyTime = modTime;                                       
+            code = 0; 
+	} else
+	    code = EINVAL; 	/* either no archival version or already wiped */
+    } else {
 	struct osd_p_file *f = &list.osd_p_fileList_val[wipe_me];
 	struct osd_p_file *tf = (struct osd_p_file *) 
 				malloc(sizeof(struct osd_p_file));
