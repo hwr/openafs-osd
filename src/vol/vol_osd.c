@@ -192,7 +192,10 @@ rxosd_create(afs_uint32 osd, afs_uint64 p_id, afs_uint64 o_id,
 	    o.ometa_u.t.obj_id = o_id;
 	    o.ometa_u.t.osd_id = osd;
 	    code = RXOSD_create(conn->conn, &o, &r);
-	    *new_id = r.ometa_u.t.obj_id;
+	    if (code == RXGEN_OPCODE) 
+	        code = RXOSD_create110(conn->conn, p_id, o_id, new_id);
+	    else
+	        *new_id = r.ometa_u.t.obj_id;
 	    PutOsdConn(&conn);
 	    if (!code) {	/* Little paranoia ... */
 		if ((*new_id & TAGBITSMASK) != (o_id & TAGBITSMASK)) {
