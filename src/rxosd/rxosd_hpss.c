@@ -412,6 +412,42 @@ int myhpss_stat64(const char *path, struct stat64 *buf)
     return 0;
 }
 
+int myhpss_fstat64(int fd, struct stat64 *buf)
+{
+    hpss_stat_t hs;
+    int myfd = fd - FDOFFSET;
+    int code;
+
+    addHPSStransaction();
+    code = hpss_Fstat(myfd, &hs);
+    removeHPSStransaction();
+    if (code)
+	return code;
+    memset(buf, 0, sizeof(struct stat64));
+    buf->st_dev = hs.st_dev;
+#if !defined(_LP64)
+    buf->st_ino = (((afs_int64)hs.st_ino.high) << 32) + hs.st_ino.low;
+#else
+    buf->st_ino = hs.st_ino;
+#endif
+    buf->st_nlink = hs.st_nlink;
+    buf->st_mode = hs.st_mode;
+    buf->st_uid = hs.st_uid;
+    buf->st_gid = hs.st_gid;
+    buf->st_rdev = hs.st_rdev;
+#if !defined(_LP64)
+    buf->st_size = (((afs_int64)hs.st_size.high) << 32) + hs.st_size.low;
+#else
+    buf->st_size = hs.st_size;
+#endif
+    buf->st_blksize = hs.st_blksize;
+    buf->st_blocks = hs.st_blocks;
+    buf->st_atime = hs.hpss_st_atime;    
+    buf->st_mtime = hs.hpss_st_mtime;    
+    buf->st_ctime = hs.hpss_st_ctime;    
+    return 0;
+}
+
 int myhpss_stat_tapecopies(const char *path, afs_int32 *level, afs_sfsize_t *size)
 {
     afs_int32 code, i;
@@ -562,7 +598,7 @@ struct ih_posix_ops ih_hpss_ops = {
     hpss_Chmod,
     hpss_Chown,
     myhpss_stat64,
-    NULL,
+    myhpss_fstat64,
     hpss_Rename,
     myhpss_opendir,
     myhpss_readdir,
