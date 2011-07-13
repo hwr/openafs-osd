@@ -284,7 +284,7 @@ rxosd_create_archive(struct ometa *om, struct osd_segm_descList *list, afs_int32
 		    for (j=0; j<s0->objList.osd_obj_desc0List_len; j++) {
 			struct osd_obj_desc0 *o0 = &s0->objList.osd_obj_desc0List_val[j];
 			struct osd_obj_desc *o = &s->objList.osd_obj_descList_val[j];
-			o0->oid = o->o.ometa_u.t.osd_id;
+			o0->oid = o->o.ometa_u.t.obj_id;
 			o0->pid = o->o.ometa_u.t.part_id;
 			o0->id = o->osd_id;
 			o0->stripe = o->stripe;
