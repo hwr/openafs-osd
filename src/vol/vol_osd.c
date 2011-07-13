@@ -1857,7 +1857,6 @@ fill_osd_file(Vnode *vn, struct async *a,
 	    vn->changed_newTime = 1;
    	} else if (*fileno < 0) {
 	    struct rxosd_conn *conn = 0;
-	    struct osd_segm_descList rlist;
 	    /*
 	     *  Start prefetch from tape
 	     */
@@ -2003,6 +2002,7 @@ retry:
 			om.ometa_u.t.obj_id = po->obj_id;
 			om.ometa_u.t.osd_id = osd;
                         code = rxosd_restore_archive(&om, user, &rlist, flag, &new_md5);
+			free_osd_segm_descList(&rlist);
                         if (!code && meta && !(flag & NO_CHECKSUM))
                             code = compare_md5(meta, &new_md5.c.cksum_u.md5[0]);
                     }
@@ -3770,6 +3770,35 @@ osd_archive(struct Vnode *vn, afs_uint32 Osd, afs_int32 flags)
 		    o->o.ometa_u.t.obj_id = po->obj_id;
 		    o->o.ometa_u.t.part_id = po->part_id;
 		    o->o.ometa_u.t.osd_id = po->osd_id;
+		    if (s->stripes == 1) {
+			/* Check immediately whether the object's length is correct */
+			struct exam e;
+			afs_int32 mask = WANTS_SIZE;
+		        code = rxosd_examine(po->osd_id, po->part_id, 
+					    po->obj_id, mask, &e); 
+			if (!code && e.type == 1) {
+			    if (e.exam_u.e1.size != s->length) {
+		    		Log("osd_archive: %u.%u.%u dv(%u) has wrong length on osd %u (%llu instead of %llu). Aborting\n",
+						V_id(vol), vN, vd->uniquifier, 
+						vd->dataVersion, po->osd_id,
+						e.exam_u.e1.size, s->length);
+				free_osd_segm_descList(&sl);
+				code = EIO;
+				goto bad;
+			    }
+			} else {
+			    if (code) {
+		    	        Log("osd_archive: examine for %u.%u.%u on osd %u returns %d\n",
+					V_id(vol), vN, vd->uniquifier, 
+					po->osd_id, code);
+				free_osd_segm_descList(&sl);
+				code = EIO;
+				goto bad;
+			    } else 
+		    	        Log("osd_archive: got unexpected exam.type %d from osd %u\n",
+					e.type, po->osd_id);
+			}
+		    }
 		}
 	    }
 	    om.vsn = 1;
@@ -3777,6 +3806,7 @@ osd_archive(struct Vnode *vn, afs_uint32 Osd, afs_int32 flags)
 	    om.ometa_u.t.obj_id = o_id;
 	    om.ometa_u.t.osd_id = osd;
 	    code = rxosd_create_archive(&om, &sl, 0, &md5);
+	    free_osd_segm_descList(&sl);
 	    if (!code && md5.size != size) {
 		Log("osd_archive: length returned is %llu instead of %llu for %u.%u.%u\n", md5.size, size, V_id(vol), vN, vd->uniquifier);
 		rxosd_incdec(osd, md5.o.ometa_u.t.part_id, md5.o.ometa_u.t.obj_id, -1);
