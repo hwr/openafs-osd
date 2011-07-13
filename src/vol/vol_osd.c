@@ -263,6 +263,54 @@ rxosd_create_archive(struct ometa *om, struct osd_segm_descList *list, afs_int32
         conn = FindOsdConnection(om->ometa_u.t.osd_id);
         if (conn) {
 	    code = RXOSD_create_archive(conn->conn, om, list, flag, md5);
+	    if (code == RXGEN_OPCODE) {	/* 1.4 archival rxosd */
+		afs_int32 i, j, lun;
+		struct osd_segm_desc0List l0;
+		struct osd_md5 oldmd5;
+		l0.osd_segm_desc0List_len = list->osd_segm_descList_len;
+		l0.osd_segm_desc0List_val = (struct osd_segm_desc0 *)
+			malloc(l0.osd_segm_desc0List_len
+		        * sizeof(struct osd_segm_desc0));
+		for (i=0; i<l0.osd_segm_desc0List_len; i++) {
+		    struct osd_segm_desc0 *s0 = &l0.osd_segm_desc0List_val[i];
+		    struct osd_segm_desc *s = &list->osd_segm_descList_val[i];
+		    s0->length = s->length;
+		    s0->stripes = s->stripes;
+		    s0->stripe_size = s->stripe_size;
+		    s0->objList.osd_obj_desc0List_len = s->objList.osd_obj_descList_len;
+		    s0->objList.osd_obj_desc0List_val = (struct osd_obj_desc0 *)
+			malloc(s0->objList.osd_obj_desc0List_len
+		        * sizeof(struct osd_obj_desc0));
+		    for (j=0; j<s0->objList.osd_obj_desc0List_len; j++) {
+			struct osd_obj_desc0 *o0 = &s0->objList.osd_obj_desc0List_val[j];
+			struct osd_obj_desc *o = &s->objList.osd_obj_descList_val[j];
+			o0->oid = o->o.ometa_u.t.osd_id;
+			o0->pid = o->o.ometa_u.t.part_id;
+			o0->id = o->osd_id;
+			o0->stripe = o->stripe;
+			FindOsd(o0->id, &o0->ip, &lun, 1);
+		    }
+		}
+	        code = RXOSD_create_archive240(conn->conn, om->ometa_u.t.part_id,
+					       om->ometa_u.t.obj_id, &l0, 
+					       &oldmd5);
+		for (i=0; i<l0.osd_segm_desc0List_len; i++) {
+		    struct osd_segm_desc0 *s0 = &l0.osd_segm_desc0List_val[i];
+		    free(s0->objList.osd_obj_desc0List_val);
+		}
+		free(l0.osd_segm_desc0List_val);
+		if (!code) {
+		    md5->o.vsn = 1;
+		    md5->o.ometa_u.t.part_id = oldmd5.pid;
+		    md5->o.ometa_u.t.obj_id = oldmd5.oid;
+		    md5->size = oldmd5.size;
+		    md5->c.cksum_u.md5[0] = oldmd5.md5[0];
+		    md5->c.cksum_u.md5[1] = oldmd5.md5[1];
+		    md5->c.cksum_u.md5[2] = oldmd5.md5[2];
+		    md5->c.cksum_u.md5[3] = oldmd5.md5[3];
+		}
+		
+	    }
 	    PutOsdConn(&conn);
 	    if (!code) {	/* Little paranoia ... */
 		if ((md5->o.ometa_u.t.obj_id & TAGBITSMASK) 
