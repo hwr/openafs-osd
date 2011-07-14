@@ -202,6 +202,7 @@
 #define READ_OBJ   2
 
 #define MD5SUM "/usr/bin/env md5sum %s"
+#define MD5SUM_HPSS "/usr/afs/bin/md5sum-wrapper %s"
 #define DSMLS "/usr/afs/bin/dsmls-wrapper %s"
 #define SLSCMD "/usr/afs/bin/sls-wrapper %s"
 
@@ -4925,11 +4926,15 @@ md5sum(struct rx_call *call, struct oparmT10 *o, struct osd_cksum *md5)
 	goto finis;
     }
     namei_HandleToName(&name, oh->ih);
-    oh_release(oh);
+#ifdef AFS_RXOSD_SPECIAL
+    if ((oh->ih->ih_ops->stat64)(name.n_path, &tstat) < 0) {
+#else
     if (stat64(name.n_path, &tstat) < 0) {
+#endif
         ViceLog(0,("SRXOSD_md5sum: stat64 failed for %s %s\n",
 		sprint_oparmT10(o, input, sizeof(input)),
 		name.n_path));
+        oh_release(oh);
         code = EIO;
 	goto finis;
     }
@@ -4937,7 +4942,13 @@ md5sum(struct rx_call *call, struct oparmT10 *o, struct osd_cksum *md5)
     md5->o.vsn = 1;
     md5->o.ometa_u.t.obj_id = o->obj_id;
     md5->o.ometa_u.t.part_id = o->part_id;
+#ifdef AFS_HPSS_SUPPORT
+    if (oh->ih->ih_dev == hpssDev) {
+        sprintf(input, MD5SUM_HPSS, name.n_path);
+    } else
+#endif
     sprintf(input, MD5SUM, name.n_path);
+    oh_release(oh);
     code = Command(input, CHK_STDOUT | CHK_STDERR, check_md5sum,
 		   (void *)&md5->c.cksum_u.md5);
 finis:
