@@ -3062,6 +3062,7 @@ int examine(struct rx_call *call, t10rock *rock, struct oparmT10 *o,
 		    *statusp = 'P';
 		if (*statusp == 'm')
 		    *statusp = 'M';
+	    }
 #endif
 	} else
 #endif
