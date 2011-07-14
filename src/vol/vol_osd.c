@@ -518,7 +518,7 @@ rxosd_examine(afs_uint32 osd, afs_uint64 p_id, afs_uint64 o_id,
             code = RXOSD_examine(conn->conn, &t, &o, mask, e);
 	    if (code == RXGEN_OPCODE) {
 		afs_int32 mtime, lc;
-		if (mask == (WANTS_SIZE | WANTS_LINKCOUNT) || mask = WANTS_SIZE) {
+		if (mask == (WANTS_SIZE | WANTS_LINKCOUNT) || mask == WANTS_SIZE) {
 		    e->type = 1;
 		    code = RXOSD_examine185(conn->conn, p_id, o_id,
 					    &e->exam_u.e1.size,
