@@ -3057,8 +3057,11 @@ int examine(struct rx_call *call, t10rock *rock, struct oparmT10 *o,
 	if (h.ih_ops->stat_tapecopies) {
 	    result = h.ih_ops->stat_tapecopies(name.n_path, statusp, sizep);
 #ifdef AFS_HPSS_SUPPORT
-	    if (dontTrustHPSS)
-	        *statusp = 0;	/* Don't trust HPSS for the moment */
+	    if (dontTrustHPSS) {
+		if (*statusp == 'p')
+		    *statusp = 'P';
+		if (*statusp == 'm')
+		    *statusp = 'M';
 #endif
 	} else
 #endif
