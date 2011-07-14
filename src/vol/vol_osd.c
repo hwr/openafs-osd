@@ -3778,13 +3778,24 @@ osd_archive(struct Vnode *vn, afs_uint32 Osd, afs_int32 flags)
 					    po->obj_id, mask, &e); 
 			if (!code && e.type == 1) {
 			    if (e.exam_u.e1.size != s->length) {
-		    		Log("osd_archive: %u.%u.%u dv(%u) has wrong length on osd %u (%llu instead of %llu). Aborting\n",
+				if (list.osd_p_fileList_len == 1) {
+				    /* The object with the wrong length is all we have */
+				    VNDISK_SET_LEN(vd, e.exam_u.e1.size);
+        			    vn->changed_newTime = 1;
+		    		    Log("osd_archive: Length of %u.%u.%u dv(%u) on osd %u is %llu instead of %llu. Vnode updated\n",
 						V_id(vol), vN, vd->uniquifier, 
 						vd->dataVersion, po->osd_id,
 						e.exam_u.e1.size, s->length);
-				free_osd_segm_descList(&sl);
-				code = EIO;
-				goto bad;
+				    s->length = e.exam_u.e1.size;
+				} else {
+		    		    Log("osd_archive: %u.%u.%u dv(%u) has wrong length on osd %u (%llu instead of %llu). Aborting\n",
+						V_id(vol), vN, vd->uniquifier, 
+						vd->dataVersion, po->osd_id,
+						e.exam_u.e1.size, s->length);
+				    free_osd_segm_descList(&sl);
+				    code = EIO;
+				    goto bad;
+				}
 			    }
 			} else {
 			    if (code) {
