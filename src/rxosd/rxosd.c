@@ -4946,6 +4946,7 @@ md5sum(struct rx_call *call, struct oparmT10 *o, struct osd_cksum *md5)
     md5->o.vsn = 1;
     md5->o.ometa_u.t.obj_id = o->obj_id;
     md5->o.ometa_u.t.part_id = o->part_id;
+    md5->c.type = 1;
 #ifdef AFS_HPSS_SUPPORT
     if (oh->ih->ih_dev == hpssDev) {
         sprintf(input, MD5SUM_HPSS, name.n_path);
