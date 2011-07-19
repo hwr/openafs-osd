@@ -521,7 +521,7 @@ int myhpss_statfs(const char *path, struct afs_statfs *buf)
     buf->f_blocks = hb.f_blocks;
     buf->f_files = hb.f_files;
     buf->f_bfree = hb.f_bfree;
-    buf->f_ffree = hb.f_bfree;
+    buf->f_ffree = hb.f_ffree;
     return 0;
 }
 
