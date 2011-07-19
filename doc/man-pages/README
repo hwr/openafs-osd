@@ -1,0 +1,296 @@
+                            OpenAFS Man Pages
+
+Overview
+
+  This directory contains the POD source and (in releases) the generated
+  man pages for OpenAFS commands and files.  The man pages are based on
+  the original IBM AFS Administration Reference manual, released with the
+  rest of AFS under the IBM Public License 1.0.  They were converted from
+  HTML to POD, editing, and are currently maintained in POD.
+
+  The man pages are very much a work in progress.  The original source
+  material dated from IBM's public release of AFS, and many changes since
+  made in OpenAFS are not reflected in the man pages.  Help and
+  contributions are actively solicited.  Please see "How You Can Help"
+  below for more information.
+
+  The long-term goal is for every command shipped with OpenAFS and every
+  configuration or data file written or read by OpenAFS to have its own
+  man page.  Section one is used for commands that don't require special
+  privileges, section eight for commands for AFS administrators and local
+  system administrators, and section five for file formats and
+  configuration files, with the exception that command suites are kept
+  together (so, for instance, all fs commands are documented in section
+  one even though some of them are only usable by a local system
+  administrator).
+
+  The OpenAFS man pages are discussed on the openafs-doc mailing list at
+  openafs.org.  If you plan on contributing to the man page project,
+  please join that mailing list and send suggestions, patches, and
+  contributions there.  The coordinator of the OpenAFS man page project is
+  Russ Allbery <rra@stanford.edu>; feel free to contact me directly with
+  questions (although using the mailing list is generally better and will
+  probably result in a faster response).
+
+POD and Man Page Generation
+
+  The OpenAFS man pages are maintained in POD (Plain Old Documentation),
+  the documentation system originally developed for Perl.  This is not an
+  uncontroversial choice, since POD isn't as rich and full-featured as
+  other possible alternatives such as Docbook RefEntry.  On the other
+  hand, POD is very close to plain text, can be easier to edit and
+  maintain for those not familiar with the documentation format, and has
+  more mature tools for conversion to formatted man pages, an output
+  format that is particularly important on Unix/Linux.  There are many
+  good arguments either way, and fundamentally the decision was made to
+  use POD because I prefer it and I'm volunteering to write and edit the
+  pages and maintain them going forward.
+
+  To convert the POD source to formatted man pages, you need the pod2man
+  utility.  This utility has come with Perl for many years, so if you have
+  Perl installed, you almost certainly have some version of it available.
+  For the best results, install Pod::Simple 3.03 or later and podlators
+  2.00 or later from CPAN and use that pod2man, but the results from the
+  pod2man that comes with Perl 5.8 or later will be very good.  If you are
+  using earlier versions of Perl, the output should be adequate and
+  readable but may contain some formatting glitches.
+
+  Preformatted man pages will be included in distribution tarballs, but
+  those man pages may be generated with older versions of the conversion
+  utilities.  To regenerate the man pages, run regen.sh at the top of the
+  OpenAFS source tree (this will also regenerate the Autoconf scripts).
+
+  Conversion to HTML can be done via any of the POD to HTML converters
+  available (there are many of them), but for best results (particularly
+  for crosslinks), use the generate-html script in this directory.  You
+  will need to have the Pod::Simple Perl module installed.  If your Perl
+  is not in /usr/bin, run generate-html explicitly with:
+
+      perl generate-html
+
+  It will generate HTML pages in the html subdirectory of this directory.
+
+Formatting Standards
+
+  Each command or configuration file should have a separate man page in a
+  separate POD file.  Command suites (fs, pts, vos, etc.) should have an
+  overview man page that lists the available subcommands by category,
+  documents common options, and discusses the general use of the suite.
+  Then, each operation code in the suite should have a separate man page,
+  named after the command with the space between the command suite and the
+  operation code replaced with an underscore.  The NAME section of the
+  operation man page must also use an underscore (fs_listacl, not fs
+  listacl) for compatibility with some man programs.  The SYNOPSIS section
+  should, of course, use a space, since that's what the user must type.
+
+  All man pages must follow the standard layout for man page sections and
+  formatting.  The best general reference is the pod2man man page,
+  although the sections used for OpenAFS man pages aren't quite the same
+  (see below).  In particular, please use the following markup:
+
+   * B<> for all commands, command/operation code pairs, and options.
+   * F<> for file names, directory names, partition names, or paths.
+   * <I<>> for user-provided arguments (note the surrounding <>).
+   * I<> for terms being defined or titles of works.
+   * C<> for command examples, ACL characters, and example arguments.
+   * S<<<>>> for text with non-breaking spaces (usually in synopsis).
+
+  Also see the afs(1) man page for general rules about how OpenAFS man
+  pages are formatted and for standard terminology to use when talking
+  about OpenAFS commands.
+
+  Each man page should have the following sections:  NAME, SYNOPSIS (for
+  commands only), DESCRIPTION, CAUTIONS, OPTIONS (for commands only),
+  OUTPUT (where appropriate), EXAMPLES, PRIVILEGE REQUIRED (for commands
+  only), SEE ALSO, and COPYRIGHT, generally in that order.  Be sure to
+  include the IBM copyright in all man pages derived from the original IBM
+  documentation.  If you wrote the man page yourself, please include your
+  own copyright and a statement that the man page is released under the
+  IBM Public License Version 1.0, or under some other license that is
+  sufficiently compatible that we can use your work.  If you use another
+  license and that license isn't "public domain" or one of the ones
+  already listed in our LICENSE file, you have to give the full license
+  text in the man page; please don't use a license so long that this is
+  annoying.
+
+  The SYNOPSIS section should start with the full command name and the
+  full names of all options, and then have a second section showing the
+  most abbreviated form of the command name and its options.  If the
+  command has aliases, it should have additional sections showing those.
+  Please be sure to follow all of the formatting requirements for
+  commands, flags, and options.  Enclose optional arguments in [] and
+  choices in () separated by |.  Command names and options are marked up
+  with B<> as mentioned above; all other literal text that should be
+  entered on the command line gets no markup.
+
+  References to other OpenAFS man pages should be given as L<afs(1)>.
+  Other man pages should be noted like df(1), without the L<> markup.
+  References to functions should be noted like function() with the
+  trailing parens.  The POD converters know how to format these sorts of
+  references appropriately.  References to other sections in the same page
+  should be given as L<SECTION>.  Man pages for all other AFS commands or
+  file formats referenced in the page should be listed in the SYNOPSIS.
+  List each reference on its own line for easier addition of other
+  references later, but don't put blank lines between them.  Don't forget
+  the commas at the end of each line but the last.
+
+  Command and output examples should be indented three spaces.  Commands
+  entered by the user should be given on a line beginning with %.  If the
+  command doesn't fit in 80 columns, put in a backslash at a logical break
+  point and continue the line with an additional four spaces of
+  indentation.  Output examples may be wrapped with an additional four
+  spaces of indentation but probably shouldn't be; not wrapping makes the
+  man page look somewhat less readable, but is less confusing when
+  converted to other formats such as HTML.
+
+  POD does not allow markup in verbatim paragraphs (which are indicated by
+  indenting the first line of the paragraph), so metasyntactic variables
+  in examples should be shown like <this> with simple angle brackets
+  surrounding the variable.  For consistency in formatting, references to
+  those variables should be formatted the same in following text.
+
+Man Page Sections
+
+  The section of a man page is determined by which directory it's in.
+  pod1 will be section 1 man pages, pod5 will be section 5, and pod8 will
+  be section 8.
+
+  The breakdown between section 1 and section 8 is fuzzy and it's hard to
+  get right.  The current layout balances the following goals:
+
+  * In general, section 1 is used for commands that can be executed by any
+    user and section 8 is used for commands that can only be meaningfully
+    issued as root.  If a command can be run with AFS privileged
+    credentials but still as a regular user on the local system, the
+    preference is for it to be in section 1, although some pages of that
+    type are in section 8.
+
+  * All the commands for a given suite should be kept together.  So, for
+    example, there are fs commands that can only be issued as root, but
+    since most of the suite is available to any user, all of the fs
+    commands are in section 1.
+
+  * The sections of the man pages should roughly correspond to the
+    installation paths of the binaries.  Binaries installed in bin should
+    have man pages in section 1 and binaries installed in sbin should have
+    man pages in section 8.
+
+  Section 5 should be used for all documentation of configuration files
+  and file formats.
+
+How You Can Help
+
+  A lot of work remains to be done on the OpenAFS man page project.  Any
+  and all contributions are greatly appreciated.  What follows is a list
+  of the ways that you can help in order of increasing helpfulness.  If
+  you only have time to do something near the top of the list, please do;
+  every little bit helps.  If you have more time and can do something
+  closer to the bottom of the list, that's even better and your
+  contribution can be included more rapidly.
+
+   * Point out places OpenAFS behavior has changed since the documentation
+     was written, or point out missing documentation.  Please check the
+     "Known Problems" list below to make sure that the item is not already
+     noted.
+
+   * Point out formatting problems, typos, formatting inconsistency, and
+     other markup or language problems in the man pages.
+
+   * Provide missing documentation in some form (text, HTML, whatever)
+     that can be incorporated into the man pages, or detailed explanations
+     of how the existing documentation needs to be changed to match what
+     the tools actually do.
+
+   * Provide missing man pages in POD format suitable for immediate
+     inclusion in the documentation.  Please try to follow the formatting
+     standards documented in the "Formatting Standards" section above, and
+     look at the existing man pages for examples.
+
+   * Provide patches against the POD source that correct formatting
+     problems, typos, formatting inconsistencies, or other markup or
+     language problems with the man pages.
+
+   * Provide patches against the POD source that add or correct the
+     documentation of commands or file formats for changes in OpenAFS.
+
+  Please submit contributions to Gerrit or send them either to the
+  openafs-doc list or as bugs filed via the bug reporting instructions at
+  <http://www.openafs.org/>.  If you do submit a bug, please send me a
+  note at rra@stanford.edu with the bug number so that I'm aware of it, as
+  I don't always notice new bugs.
+
+  You can test your new POD documentation by running the check-pod script
+  in this directory with "prove check-pod".  (And check other people's
+  documentation and find any problems that have crept in.)  You will need
+  to have Test::Pod installed.
+
+Known Problems
+
+  The current man pages have the following known deficiencies.  Please
+  don't just report the deficiency again, but any contributions towards
+  fixing it are greatly appreciated.
+
+   * There's no mention of the Kerberos v5 support.  At least, we need
+     some disclaimers under klog and friends talking about sites without
+     kaserver (and possibly without fakeka), and deprecation warnings
+     on the .krb varient commands.
+
+   * Linked cells are currently documented in fs newcell as being only
+     for DCE, which is not correct.  That documentation, aklog, and the
+     CellServDB documentation needs to be updated.
+
+   * We need a way to add links to other man pages (kinit most notably)
+     without creating dangling links in the HTML output.  This probably
+     means that the HTML conversion script needs to generate at startup
+     a list of all valid man page link targets and not linkify the ones
+     that don't match a valid target.
+
+   * Provide a way to substitute the correct paths into the HTML output
+     from Autoconf results.
+
+   * Review the sections used for all man pages against what directories
+     the commands are installed into.  (In some cases, it may be better to
+     change the directory than the section of the man page.)
+
+   * Consider using M4 or similar to operate on POD text before output.
+     This would allow common options like vos -c,-noa,-l,-v,-e,-nor to be
+     documented once and automatically included in all vos_ reference
+     pages, much like the vos.c source includes those arguments as
+     COMMONPARMS.
+
+   * Check that suite intro pages mention all subcommands
+
+   Changes needed to have vos suite commands completely up to date,
+   including the 1.5 branch:
+
+   * Document vos create -minquota which is available since 1.5.61
+
+   * Document vos restore -creation/-lastupdate and -nodelete
+
+   * Document vos delentry -noexecute. Should this option also be renamed
+     to -dryrun like others?
+
+   Man section 8 suite commands:
+
+   * Mention bos (un)blockscanner in bos.pod text, not just in See Also
+     at the end
+
+   * Update fstrace source to include option descriptions (for content,
+     use existing manpage information "condensed" to half line of text)
+
+   * Update backup source to include option descriptions (for content,
+     use existing manpage information "condensed" to half line of text)
+
+   * Document backup deletedump -port/-groupid/-dbonly/-force/-noexecute
+
+   * Replace backup diskrestore/dump -n option with -noexecute or -dryrun?
+
+   * Document backup help -admin
+
+   * Document backup volrestore -usedump. Also, s/-n/.../ as above?
+
+   * Replace backup volsetrestore -n option with -noexecute or -dryrun?
+
+  If you notice other problems, please send them to the openafs-doc list
+  even if you don't have time to fix them.  Someone else might, and we
+  want to track all of the issues.

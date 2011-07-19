@@ -1,0 +1,106 @@
+=head1 NAME
+
+fs_getcacheparms - Displays the current size and usage of the cache
+
+=head1 SYNOPSIS
+
+=for html
+<div class="synopsis">
+
+B<fs getcacheparms> [B<-help>] [B<-files>] [B<-excessive>]
+
+B<fs getca> [B<-h>] [B<-files>] [B<-excessive>]
+
+=for html
+</div>
+
+=head1 DESCRIPTION
+
+The B<fs getcacheparms> command displays the current size of the cache
+(which can be in memory or on disk), and the amount currently in use.
+
+The reported statistics are from kernel memory, so the reported size can
+differ from the setting specified in the F</usr/vice/etc/cacheinfo> file
+on a machine using a disk cache, if the B<fs setcachesize> command has
+been used to alter cache size.
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<-help>
+
+Prints the online help for this command. All other valid options are
+ignored.
+
+=item B<-files>
+
+Displays the current number of cache files in use, and the maximum
+available, as well as displaying the current cache size.
+
+=item B<-excessive>
+
+Displays detailed cache statistics, including the flags set on each
+cache element, and the distribution of cache entries by size.
+
+=back
+
+=head1 OUTPUT
+
+The output reports
+
+   AFS using <amount> of the cache's available <size> 1K byte blocks.
+
+where <amount> is the number of kilobyte blocks currently used to cache
+data and status information, and <size> is the total current cache size.
+
+=head1 EXAMPLES
+
+The following example shows the output on a machine with a 25000 kilobyte
+cache.
+
+   % fs getcacheparms
+   AFS using 22876 of the cache's available 25000 1K byte blocks.
+
+The following shows the output when asked to show file information.
+
+   % fs getcacheparm -files
+   AFS using     0% of cache blocks (897 of 200000 1k blocks)
+                 1% of the cache files (79 of 6250 files)
+
+And finally, the following detailed information can be obtained by using
+the excessive flag 
+
+   % fs getcacheparm -excessive
+   AFS using     0% of cache blocks (897 of 200000 1k blocks)
+                 1% of the cache files (79 of 6250 files)
+           afs_cacheFiles:       6250
+           IFFree:               6171
+           IFEverUsed:             79
+           IFDataMod:               0
+           IFDirtyPages:            0
+           IFAnyPages:              0
+           IFDiscarded:             1
+           DCentries:        3122
+            0k-   4K:         74
+            4k-  16k:       3045
+           16k-  64k:          2
+           64k- 256k:          0
+          256k-   1M:          1
+                >=1M:          0
+
+=head1 PRIVILEGE REQUIRED
+
+None
+
+=head1 SEE ALSO
+
+L<fs_setcachesize(1)>
+
+=head1 COPYRIGHT
+
+IBM Corporation 2000. <http://www.ibm.com/> All Rights Reserved.
+
+This documentation is covered by the IBM Public License Version 1.0.  It was
+converted from HTML to POD by software written by Chas Williams and Russ
+Allbery, based on work by Alf Wachsmann and Elizabeth Cassell.

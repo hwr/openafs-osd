@@ -1,0 +1,53 @@
+# Makefile for AFS man pages
+
+srcdir=@srcdir@
+include @TOP_OBJDIR@/src/config/Makefile.config
+INSTALL = @INSTALL@
+INSTALL_DATA = @INSTALL_DATA@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_SCRIPT = @INSTALL_SCRIPT@
+
+all:
+
+maintclean:
+	rm -rf html man1 man5 man8
+
+html:
+	perl generate-html
+
+LINKEDPAGES = klog pagsh tokens
+
+dest:
+	chmod +x install-man
+	mkdir -p $(DEST)/man/man1 $(DEST)/man/man5 $(DEST)/man/man8
+	set -e; for M in man1/*.1 man5/*.5 man8/*.8 ; do \
+	    ./install-man $$M $(DEST)/man/$$M ; \
+	done
+	set -e; for M in ${LINKEDPAGES}; do \
+	    test -h $(DEST)/man/man1/$$M.krb.1 \
+		|| ln -s $$M.1 $(DEST)/man/man1/$$M.krb.1 ; \
+	done
+	test -h $(DEST)/man/man8/dafssync-debug.8 \
+	    || ln -s fssync-debug.8 $(DEST)/man/man8/dafssync-debug.8
+	set -e; if [ -n "@ENABLE_FUSE_CLIENT@" ] ; then \
+	    test -h $(DEST)/man/man8/afsd.fuse.8 \
+		|| ln -s afsd.8 $(DEST)/man/man8/afsd.fuse.8; \
+	fi
+
+install: $(MAN1) $(MAN8)
+	chmod +x install-man
+	mkdir -p $(DESTDIR)$(mandir)/man1 $(DESTDIR)$(mandir)/man5 \
+	    $(DESTDIR)$(mandir)/man8
+	set -e; for M in man1/*.1 man5/*.5 man8/*.8 ; do \
+	    ./install-man $$M $(DESTDIR)$(mandir)/$$M ; \
+	done
+	set -e; for M in ${LINKEDPAGES}; do \
+	    test -h $(DESTDIR)$(mandir)/man1/$$M.krb.1 \
+		|| ln -s $$M.1 $(DESTDIR)$(mandir)/man1/$$M.krb.1 ; \
+	done
+	test -h $(DESTDIR)/$(mandir)/man8/dafssync-debug.8 \
+	    || ln -s fssync-debug.8 $(DESTDIR)/$(mandir)/man8/dafssync-debug.8
+	set -e; if [ -n "@ENABLE_FUSE_CLIENT@" ] ; then \
+	    test -h $(DESTDIR)$(mandir)/man8/afsd.fuse.8 \
+		|| ln -s afsd.8 $(DESTDIR)$(mandir)/man8/afsd.fuse.8; \
+	fi

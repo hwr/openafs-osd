@@ -1,0 +1,202 @@
+=head1 NAME
+
+ptserver - Initializes the Protection Server
+
+=head1 SYNOPSIS
+
+=for html
+<div class="synopsis">
+
+B<ptserver> S<<< [B<-database> | B<-db> <I<db path>>] >>> S<<< [B<-p> <I<number of threads>>] >>> S<<< [B<-d> <I<debug level>>] >>>
+    S<<< [B<-groupdepth> <I<# of nested groups>>] >>>
+    S<<< [B<-default_access> <I<user access mask>> <I<group access mask>>] >>>
+    [B<-restricted>] [B<-enable_peer_stats>]
+    [B<-enable_process_stats>] [B<-allow-dotted-principals>]
+    [B<-rxbind>] S<<< [B<-auditlog> <I<file path>>] >>>
+    S<<< [B<-audit-interface> (file | sysvmq)] >>>
+    S<<< [B<-syslog>[=<I<FACILITY>>]] >>> S<<< [B<-rxmaxmtu> <I<bytes>>] >>>
+    [B<-help>]
+
+=for html
+</div>
+
+=head1 DESCRIPTION
+
+The B<ptserver> command initializes the Protection Server, which must run
+on every database server machine. In the conventional configuration, its
+binary file is located in the F</usr/afs/bin> directory on a file server
+machine.
+
+The ptserver command is not normally issued at the command shell prompt,
+but rather placed into a database server machine's
+F</usr/afs/local/BosConfig> file with the B<bos create> command. If it is
+ever issued at the command shell prompt, the issuer must be logged onto a
+file server machine as the local superuser C<root>.
+
+The Protection Server performs the following tasks:
+
+=over 4
+
+=item *
+
+Maintains the Protection Database, which contains entries for every user
+and group in the cell. Use the B<pts> commands to administer the database.
+
+=item *
+
+Allocates AFS IDs for new user, machine and group entries and maps each ID
+to the corresponding name.
+
+=item *
+
+Generates a current protection subgroup (CPS) at the File Server's
+request. The CPS lists all groups to which a user or machine belongs.
+
+=back
+
+When using Kerberos 5, cross-realm authentication is possible. If the
+special pts group system:authuser@FOREIGN.REALM exists and its group quota
+is greater than zero, B<aklog> will automatically create an entry for the
+foreign user in the local PTS database and add the foreign user to the
+system:authuser@FOREIGN.REALM PTS group.  Each time a foreign user is
+created in the local PTS database, the group quota for the
+system:authuser@FOREIGN.REALM PTS group is decremented by one.
+
+This command does not use the syntax conventions of the AFS command
+suites. Provide the command name and all option names in full.
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<-d> <I<debug level>>
+
+Sets the detail level for the debugging trace written to the
+F</usr/afs/logs/PtLog> file. Provide one of the following values, each
+of which produces an increasingly detailed trace: C<0>, C<1>, C<5>, C<25>,
+and C<125>. 
+
+=item B<-database> <I<db path>>, B<-db> <I<db path>>
+
+Specifies the pathname of an alternate directory in which the Protection
+Database files reside. Provide the complete pathname, ending in the base
+filename to which the C<.DB0> and C<.DBSYS1> extensions are appended. For
+example, the appropriate value for the default database files is
+F</usr/afs/db/prdb>.
+
+=item B<-p> <I<number of threads>>
+
+Sets the number of server lightweight processes (LWPs or pthreads) to run.
+Provide a positive integer from the range C<3> to C<16>. The default
+value is C<3>.
+
+=item B<-groupdepth> <I<# of nested groups>>, B<-depth> <I<# of nested groups>>
+
+Specifies the group depth for nested groups when B<ptserver> is compiled
+with the SUPERGROUPS option enabled.  The default depth for nested groups
+is 5.  This option may be shortened to B<-depth>.
+
+=item B<-default_access> <I<user access>> <I<group access>>
+
+Specifies the default user and group privacy flags to apply to each
+entry. Provide a string of five characters, one for each of the
+permissions. See L<pts_examine(1)> or L<pts_setfields(1)> for more
+information on the flags.
+
+=item B<-restricted>
+
+Run the PT Server in restricted mode. While in restricted mode, only
+members of the system:administrators PTS group may make any PTS changes.
+
+=item B<-enable_peer_stats>
+
+Activates the collection of Rx statistics and allocates memory for their
+storage. For each connection with a specific UDP port on another machine,
+a separate record is kept for each type of RPC (FetchFile, GetStatus, and
+so on) sent or received. To display or otherwise access the records, use
+the Rx Monitoring API.
+
+=item B<-enable_process_stats>
+
+Activates the collection of Rx statistics and allocates memory for their
+storage. A separate record is kept for each type of RPC (FetchFile,
+GetStatus, and so on) sent or received, aggregated over all connections to
+other machines. To display or otherwise access the records, use the Rx
+Monitoring API.
+
+=item B<-allow-dotted-principals>
+
+By default, the RXKAD security layer will disallow access by Kerberos
+principals with a dot in the first component of their name. This is to
+avoid the confusion where principals user/admin and user.admin are both
+mapped to the user.admin PTS entry. Sites whose Kerberos realms don't have
+these collisions between principal names may disable this check by
+starting the server with this option.
+
+=item B<-rxbind>
+
+Bind the Rx socket to the primary interface only.  (If not specified, the
+Rx socket will listen on all interfaces.)
+
+=item B<-syslog>[=<I<syslog facility>>]
+
+Specifies that logging output should go to syslog instead of the normal
+log file.  B<-syslog>=I<FACILITY> can be used to specify to which facility
+the log message should be sent.  Logging message sent to syslog are tagged
+with the string "ptserver".
+
+=item B<-auditlog> <I<log path>>
+
+Turns on audit logging, and sets the path for the audit log.  The audit
+log records information about RPC calls, including the name of the RPC
+call, the host that submitted the call, the authenticated entity (user)
+that issued the call, the parameters for the call, and if the call
+succeeded or failed.
+
+=item B<-audit-interface> (file | sysvmq)
+
+Specifies what audit interface to use. Defaults to C<file>. See
+L<fileserver(8)> for an explanation of each interface.
+
+=item B<-rxmaxmtu> <I<bytes>>
+
+Sets the maximum transmission unit for the RX protocol.
+
+=item B<-help>
+
+Prints the online help for this command. All other valid options are
+ignored.
+
+=back
+
+=head1 EXAMPLES
+
+The following B<bos create> command creates a C<ptserver> process on the
+machine C<fs3.abc.com>. The command appears here on multiple lines only
+for legibility.
+
+   % bos create -server fs3.abc.com -instance ptserver \
+                -type simple -cmd /usr/afs/bin/ptserver
+
+=head1 PRIVILEGE REQUIRED
+
+The issuer must be logged in as the superuser C<root> on a file server
+machine to issue the command at a command shell prompt. It is conventional
+instead to create and start the process by issuing the B<bos create>
+command.
+
+=head1 SEE ALSO
+
+L<BosConfig(5)>,
+L<prdb.DB0(5)>,
+L<bos_create(8)>,
+L<bos_getlog(8)>,
+L<pts(1)>
+
+=head1 COPYRIGHT
+
+IBM Corporation 2000. <http://www.ibm.com/> All Rights Reserved.
+
+This documentation is covered by the IBM Public License Version 1.0.  It was
+converted from HTML to POD by software written by Chas Williams and Russ
+Allbery, based on work by Alf Wachsmann and Elizabeth Cassell.
