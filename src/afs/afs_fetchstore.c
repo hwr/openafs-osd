@@ -455,6 +455,8 @@ rxfs_storeInit(struct vcache *avc, struct afs_conn *tc, afs_size_t base,
     v->InStatus.ClientModTime = avc->f.m.Date;
     v->InStatus.Mask = AFS_SETMODTIME;
     v->vcache = avc;
+    if (base + bytes > length)
+	length = base + bytes;
     if (sync & AFS_SYNC)
         v->InStatus.Mask |= AFS_FSYNC;
     RX_AFS_GUNLOCK();
