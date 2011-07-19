@@ -500,7 +500,7 @@ int myhpss_statvfs(const char *path, struct afs_statvfs *buf)
 int myhpss_statfs(const char *path, struct afs_statfs *buf)
 #endif
 {
-    int code;
+    int code, i;
     hpss_statfs_t hb;
 
 #if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
@@ -508,20 +508,36 @@ int myhpss_statfs(const char *path, struct afs_statfs *buf)
 #else
     memset(buf, 0, sizeof(struct afs_statfs));
 #endif
-    addHPSStransaction();
-    code = hpss_Statfs(MY_COSID, &hb);
-    removeHPSStransaction();
+    for (i=0; i<MAXCOS && info[i].cosId != 0; i++) {
+        addHPSStransaction();
+        code = hpss_Statfs(info[i].cosId, &hb);
+        removeHPSStransaction();
+	if (!code) {
+#if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
+	    if (buf->f_frsize && buf->f_frsize != hb.f_bsize)
+		break;
+    	    buf->f_frsize = hb.f_bsize;
+#else
+	    if (buf->f_bsize && buf->f_bsize != hb.f_bsize)
+		break;
+    	    buf->f_bsize = hb.f_bsize;
+#endif
+    	    buf->f_blocks += hb.f_blocks;
+    	    buf->f_bfree += hb.f_bfree;
+    	    buf->f_files += hb.f_files;
+            buf->f_ffree += hb.f_ffree;
+	}
+	if (!code && ((100 * hb.f_bfree)/hb.f_blocks) < 10) {
+	    /* Let caller see that this file system is nearly full */
+    	    buf->f_blocks = hb.f_blocks;
+    	    buf->f_bfree = hb.f_bfree;
+    	    buf->f_files = hb.f_files;
+            buf->f_ffree = hb.f_ffree;
+	    break;
+	}
+    }
     if (code)
 	return -1;
-#if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
-    buf->f_frsize = hb.f_bsize;
-#else
-    buf->f_bsize = hb.f_bsize;
-#endif
-    buf->f_blocks = hb.f_blocks;
-    buf->f_files = hb.f_files;
-    buf->f_bfree = hb.f_bfree;
-    buf->f_ffree = hb.f_ffree;
     return 0;
 }
 
