@@ -20,6 +20,7 @@ extern int (*swapNameProgram) (PROCESS, const char *, char *);
 extern int (*rx_justReceived) (struct rx_packet *, struct sockaddr_in *);
 extern int (*rx_almostSent) (struct rx_packet *, struct sockaddr_in *);
 
+extern void rx_rto_setPeerTimeoutSecs(struct rx_peer *, int secs);
 
 extern void rx_SetEpoch(afs_uint32 epoch);
 extern int rx_Init(u_int port);
@@ -157,12 +158,7 @@ extern void rxi_ResetCall(struct rx_call *call,
 extern struct rx_packet *rxi_SendAck(struct rx_call *call, struct rx_packet
 				     *optionalPacket, int serial, int reason,
 				     int istack);
-extern void rxi_StartUnlocked(struct rxevent *event,
-			      void *call, /* struct rx_call */
-			      void *arg1, int istack);
-extern void rxi_Start(struct rxevent *event,
-		      void *call, /* struct rx_call */
-		      void *arg1, int istack);
+extern void rxi_Start(struct rx_call *call, int istack);
 extern void rxi_Send(struct rx_call *call,
 		     struct rx_packet *p, int istack);
 #ifdef RX_ENABLE_LOCKS
@@ -441,8 +437,12 @@ extern int osi_NetSend(osi_socket asocket, struct sockaddr_in *addr,
 		       struct iovec *dvec, int nvecs, afs_int32 asize,
 		       int istack);
 # endif
+# ifdef RXK_UPCALL_ENV
+extern void rx_upcall(socket_t so, void *arg, __unused int waitflag);
+# else
 extern int osi_NetReceive(osi_socket so, struct sockaddr_in *addr,
 			  struct iovec *dvec, int nvecs, int *lengthp);
+# endif
 # if defined(AFS_SUN510_ENV)
 extern void osi_StartNetIfPoller(void);
 extern void osi_NetIfPoller(void);
@@ -456,8 +456,8 @@ extern void rxi_ListenerProc(osi_socket usockp, int *tnop,
 			     struct rx_call **newcallp);
 # endif
 
-# ifndef RXK_LISTENER_ENV
-extern void rxk_init();
+# if !defined(RXK_LISTENER_ENV) && !defined(RXK_UPCALL_ENV)
+extern void rxk_init(void);
 # endif
 
 /* UKERNEL/rx_knet.c */
@@ -575,7 +575,9 @@ extern void rxi_PrepareSendPacket(struct rx_call *call,
 extern int rxi_AdjustIfMTU(int mtu);
 extern int rxi_AdjustMaxMTU(int mtu, int peerMaxMTU);
 extern int rxi_AdjustDgramPackets(int frags, int mtu);
-
+#ifdef  AFS_GLOBAL_RXLOCK_KERNEL
+extern void rxi_WaitforTQBusy(struct rx_call *call);
+#endif
 
 /* rxperf.c */
 

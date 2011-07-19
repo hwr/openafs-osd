@@ -424,6 +424,13 @@ DoCloneIndex(Volume * rwvp, Volume * clvp, VnodeClass class, int reclone)
 	ERROR_EXIT(EIO);
     STREAM_ASEEK(rwfile, vcp->diskSize);	/* Will fail if no vnodes */
 
+    /* Initialize list of inodes to nuke - must do this before any calls
+     * to ERROR_EXIT, as the error handler requires an initialised list
+     */
+    ci_InitHead(&decHead);
+    decRock.h = V_linkHandle(rwvp);
+    decRock.vol = V_parentId(rwvp);
+
     /* Open the clone volume's index file and seek to beginning */
     IH_COPY(clHout, clvp->vnodeIndex[class].handle);
     clFdOut = IH_OPEN(clHout);
@@ -450,11 +457,6 @@ DoCloneIndex(Volume * rwvp, Volume * clvp, VnodeClass class, int reclone)
 	    ERROR_EXIT(EIO);
 	STREAM_ASEEK(clfilein, vcp->diskSize);	/* Will fail if no vnodes */
     }
-
-    /* Initialize list of inodes to nuke */
-    ci_InitHead(&decHead);
-    decRock.h = V_linkHandle(rwvp);
-    decRock.vol = V_parentId(rwvp);
 
 #ifdef AFS_RXOSD_SUPPORT
     /* We need to increment/decrement the link counts of the objects

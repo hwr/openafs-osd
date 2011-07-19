@@ -757,7 +757,22 @@ struct fvcache {
     /*! The old parent FID for renamed vnodes */
     struct afs_vnuniq oldParent;
 };
-    
+
+#ifdef AFS_SUN5_ENV
+/*
+ * This is for the multiPage field in struct vcache. Each one of these
+ * represents an outstanding getpage request that is larger than a single page.
+ * Recording these is necessary to prevent afs_GetOnePage from trying to evict
+ * a dcache entry that an earlier afs_GetOnePage call got in the same getpage
+ * request. See osi_VM_MultiPageConflict and afs_getpage.
+ */
+struct multiPage_range {
+    struct afs_q q;
+    offset_t off;    /**< offset of getpage request */
+    u_int len;       /**< length of getpage request */
+};
+#endif
+ 
 /* INVARIANTs: (vlruq.next != NULL) == (vlruq.prev != NULL)
  *             nextfree => !vlruq.next && ! vlruq.prev
  * !(avc->nextfree) && !avc->vlruq.next => (FreeVCList == avc->nextfree)
@@ -878,7 +893,7 @@ struct vcache {
     afs_ucred_t *uncred;
     int asynchrony;		/* num kbytes to store behind */
 #ifdef AFS_SUN5_ENV
-    short multiPage;		/* count of multi-page getpages in progress */
+    struct afs_q multiPage;	/* count of multi-page getpages in progress */
 #endif
     int protocol;               /* RX_FILESERVER, RX_OSD, ... */
 #if !defined(UKERNEL)

@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -104,7 +104,7 @@ static char *CbCounterStrings[] = {
 };
 
 /*________________________________________________________________________
-				FS STATS ROUTINES 
+				FS STATS ROUTINES
  *_______________________________________________________________________*/
 
 /*------------------------------------------------------------------------
@@ -389,35 +389,32 @@ Print_fs_FullPerfInfo(struct xstat_fs_ProbeResults *a_fs_Results)
     static afs_int32 fullPerfLongs = (sizeof(struct fs_stats_FullPerfStats) >> 2);	/*Correct # longs to rcv */
     afs_int32 numLongs;		/*# longwords received */
     struct fs_stats_FullPerfStats *fullPerfP;	/*Ptr to full perf stats */
+    struct fs_stats_FullPerfStats buffer;
     char *printableTime;	/*Ptr to printable time string */
     time_t probeTime;
+    int code;
 
 
     probeTime = a_fs_Results->probeTime;
     printableTime = ctime(&probeTime);
     printableTime[strlen(printableTime) - 1] = '\0';
-    fullPerfP = (struct fs_stats_FullPerfStats *)
-	(a_fs_Results->data.AFS_CollData_val);
 
     fprintf(fs_outFD,
 	    "AFS_XSTATSCOLL_FULL_PERF_INFO (coll %d) for FS %s\n[Probe %d, %s]\n\n",
 	    a_fs_Results->collectionNumber, a_fs_Results->connP->hostName,
 	    a_fs_Results->probeNum, printableTime);
 
-    numLongs = a_fs_Results->data.AFS_CollData_len;
-    if (numLongs != fullPerfLongs) {
+    code = xstat_fs_DecodeFullPerfStats(&fullPerfP,
+					a_fs_Results->data.AFS_CollData_val,
+					a_fs_Results->data.AFS_CollData_len,
+					&buffer);
+    if (code) {
+	numLongs = a_fs_Results->data.AFS_CollData_len;
 	fprintf(fs_outFD,
 		" ** Data size mismatch in full performance collection!\n");
 	fprintf(fs_outFD, " ** Expecting %d, got %d\n", fullPerfLongs,
 		numLongs);
 
-	/* Unfortunately, the full perf stats contain timeval structures which
-	 * do not have the same size everywhere. At least try to print
-	 * the overall stats.
-	 */
-	if (numLongs >= (sizeof(struct afs_stats_CMPerf) / sizeof(afs_int32))) {
-	    Print_fs_OverallPerfInfo(&(fullPerfP->overall));
-	}
     } else {
 	Print_fs_OverallPerfInfo(&(fullPerfP->overall));
 	Print_fs_DetailedPerfInfo(&(fullPerfP->det));
@@ -471,7 +468,7 @@ Print_fs_CallBackStats(struct xstat_fs_ProbeResults *a_fs_Results)
  * afsmon_fsOutput()
  *
  * Description:
- *	Prints the contents of xstat_fs_Results to an output file. The 
+ *	Prints the contents of xstat_fs_Results to an output file. The
  *	output is either in a compact (longs only) format or a detailed
  *	format giving the names of each of the datums. Output is appended.
  *
@@ -846,7 +843,7 @@ Print_cm_OpTiming(int a_opIdx, char *a_opNames[],
  *------------------------------------------------------------------------*/
 
 void
-Print_cm_XferTiming(int a_opIdx, char *a_opNames[], 
+Print_cm_XferTiming(int a_opIdx, char *a_opNames[],
 		    struct afs_stats_xferData *a_xferP)
 {				/*Print_cm_XferTiming */
 
@@ -1044,7 +1041,7 @@ Print_cm_FullPerfInfo(void)
  * afsmon_cmOutput()
  *
  * Description:
- *	Prints the contents of xstat_cm_Results to an output file. The 
+ *	Prints the contents of xstat_cm_Results to an output file. The
  *	output is either in a compact (longs only) format or a detailed
  *	format giving the names of each of the datums. Output is appended.
  *

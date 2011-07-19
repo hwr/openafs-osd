@@ -21,47 +21,19 @@ my $buildall = 0;
 my $ignorerelease = 1;
 my @newrpms;
 
-# Words cannot describe how gross this is. Yum no longer provides usable
-# output, so we need to call the python interface. At some point this
-# probably means this script should be entirely rewritten in python,
-# but this is not that point.
-
-sub findKernelModules {
+sub findKernels {
   my ($root, $uname, @modules) = @_;
 
-  my $modlist = join(",",map { "'".$_."'" } @modules);
-  my $python = <<EOS;
-import yum;
-import sys;
-base = yum.YumBase();
-base.doConfigSetup('$root/etc/yum.conf', '$root');
-base.doRepoSetup();
-base.doSackSetup();
-EOS
+  my $modlist = join(" ", @modules);
 
+  my @kernels;
   if ($uname) {
-    $python.= <<EOS;
-
-for pkg, values in base.searchPackageProvides(['kernel-devel-uname-r']).items():
-  if values[0].find('kernel-devel-uname-r = ') != -1:
-    print '%s.%s %s' % (pkg.name, pkg.arch, values[0].replace('kernel-devel-uname-r = ',''));
-
-EOS
+    @kernels = `repoquery --whatprovides kernel-devel-uname-r --qf "%{name}.%{arch} %{version}-%{release}" -c $root/etc/yum.conf`;
   } else {
-    $python.= <<EOS;
-
-print '\\n'.join(['%s.%s %s' % (x.name, x.arch, x.printVer()) for x in base.searchPackageProvides([$modlist]).keys()]);
-
-EOS
+    @kernels = `repoquery --whatprovides $modlist --qf "%{name}.%{arch} %{version}-%{release}" -c $root/etc/yum.conf`;
   }
 
-#  my $output = `$suser -c "python -c \\\"$python\\\"" `;
-  my $output = `python -c "$python"`;
-
-  die "Python script to figure out available kernels failed : $output" 
-    if $?;
-
-  return $output;
+  return @kernels;
 }
 
 
@@ -213,10 +185,22 @@ if (!$ok || $help || !$srpm || $#platforms==-1) {
 
 my $oafsversion = `rpm -q --queryformat=%{VERSION} -p $srpm` or die $!;
 chomp $oafsversion;
+$oafsversion=~/([0-9]+)\.([0-9]+)\.([0-9]+)/;
+my $major = $1;
+my $minor = $2;
+my $pathlevel = $3;
+
+# OpenAFS SRPMs newer than 1.6.0 use the dist, rather than osvers variable
+
+my $usedist = ($minor >= 6);
+
 my $oafsrelease = `rpm -q --queryformat=%{RELEASE} -p $srpm` or die $!;
 chomp $oafsrelease;
-$oafsrelease=~s/^[^\.]*\.(.*)$/$1/;
 
+# Before we used the dist tag, the release variable of the srpm was 1.<release>
+if (!$usedist) {
+	$oafsrelease=~s/^[^\.]*\.(.*)$/$1/;
+}
 print "Release is $oafsrelease\n";
 
 if ($platforms[0] eq "all" and $#platforms == 0) {
@@ -253,19 +237,19 @@ foreach my $platform (@platforms) {
 
   my $arbitraryversion = "";
 
-  my $modules;
+  my @kernels;
   if ($platform=~/fedora-development/) {
-    $modules = findKernelModules($root, 0, "kernel-devel");
+    @kernels = findKernels($root, 0, "kernel-devel");
   } elsif ($platform=~/centos-4/) {
-    $modules = findKernelModules($root, 0, "kernel-devel", "kernel-smp-devel", 
+    @kernels = findKernels($root, 0, "kernel-devel", "kernel-smp-devel", 
 				 "kernel-hugemem-devel", "kernel-xenU-devel");
   } else {
-    $modules = findKernelModules($root, 0, 'kernel-devel');
+    @kernels = findKernels($root, 0, 'kernel-devel');
   }
 
-  foreach my $module (split(/\n/, $modules)) {
-      chomp $module;
-      my ($package, $version, $repo)=split(/\s+/, $module);
+  foreach my $kernel (@kernels) {
+      chomp $kernel;
+      my ($package, $version)=split(/\s+/, $kernel);
       my ($arch) = ($package=~/\.(.*)$/);
       my ($variant) = ($package=~/kernel-(.*)-devel/);
       $variant = "" if !defined($variant);
@@ -301,12 +285,18 @@ foreach my $platform (@platforms) {
 
   my $missing = 0;
   foreach my $rpm (@rpms) {
-    if (! -f $resultdir."/".$rpm."-".$oafsversion."-".$osver.".".
-	     $oafsrelease.".".$basearch.".rpm") {
+    my $rpmname;
+    if ($usedist) {
+	$rpmname = $rpm."-".$oafsversion."-".$oafsrelease.".".$osver.".".
+		   $basearch.".rpm";
+    } else {
+	$rpmname = $rpm."-".$oafsversion."-".$osver.".".$oafsrelease.".".
+		   $basearch.".rpm";
+    }
+    if (! -f $resultdir."/".$rpmname) {
       $missing++;
-      print $resultdir."/".$rpm."-".$oafsversion."-".$osver.".".
-	    $oafsrelease.".".$basearch.".rpm is missing!\n";
-      push @missingrpms, $rpm;
+      print "$resultdir/$rpmname is missing!\n";
+      push @missingrpms, $rpmname;
     }
   }
   if ($missing) {
@@ -314,27 +304,25 @@ foreach my $platform (@platforms) {
 		        ' --define "fedorakmod 1" '.
 		        ' --define "kernvers '.$arbitraryversion.'" '.
 		        ' --define "osvers '.$osver.'" '.
+			' --define "dist .'.$osver.'" '.
 		        ' --define "build_modules 0" '.
 		        ' --define "build_userspace 1" '.
 		        ' --define "build_authlibs 1" '.
 		        $srpm) == 0
       or die "build failed with : $!\n";
-    foreach my $rpm (@missingrpms) {
-      system("cp ".$mockresults."/".$rpm."-".$oafsversion."-".
-		   $osver.".".$oafsrelease.".".$basearch.".rpm ".
-		   $resultdir) == 0
+    foreach my $rpmname (@missingrpms) {
+      system("cp ".$mockresults."/".$rpmname." ".$resultdir) == 0
           or die "Copy failed with : $!\n";
-      push @newrpms, $resultdir."/".$rpm."-".$oafsversion."-".
-		     $osver.".".$oafsrelease.".".$basearch.".rpm";
+      push @newrpms, $resultdir."/".$rpmname;
     }
   } else {
     print "All userland RPMs present for $platform. Skipping build\n";
   }
 
-   print "-------------------------------------------------------------------\n";
+  print "-------------------------------------------------------------------\n";
   print "Building kernel modules\n";
 
- foreach my $arch (keys(%modulelist)) {
+  foreach my $arch (keys(%modulelist)) {
     foreach my $version (keys(%{$modulelist{$arch}})) {
       my $kversion = $version;
       $kversion=~s/-/_/g;
@@ -372,6 +360,7 @@ foreach my $platform (@platforms) {
 			     " --arch ".$arch.
 			     ' --define "fedorakmod 1" '.
 			     ' --define "osvers '.$osver.'" '.
+			     ' --define "dist .'.$osver.'" '.
 			     ' --define "kernvers '.$version.'" '.
 			     ' --define "kvariants '.$variants.'" '.
 			     ' --define "build_modules 1" '.
