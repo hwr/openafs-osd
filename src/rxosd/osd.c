@@ -1734,6 +1734,7 @@ int md5sum(struct cmd_syndesc *as, void *rock)
     afs_uint64 size;
     afs_uint32 vid, vnode, unique, tag, linkCount, time;
     struct osd_md5 md5;
+    struct osd_cksum cksum;
     int code;
 
     thost = as->parms[0].items->data;
@@ -1769,12 +1770,19 @@ int md5sum(struct cmd_syndesc *as, void *rock)
 	return EINVAL;
     }
 
-    code = RXOSD_md5sum(Conn, &Oprm, &md5);
+    code = RXOSD_md5sum(Conn, &Oprm, &cksum);
     if (!code) {
+	if (cksum.c.type != 1) {
+	    fprintf(stderr, "Unkown checksum type %d found, don't know how to interpret\n",
+			cksum.c.type);
+	    return EIO;
+	}
     	printf("%08x%08x%08x%08x %llu.%llu.%llu.%u, %llu bytes\n",
-	       md5.md5[0], md5.md5[1], md5.md5[2], md5.md5[3],
+	       cksum.c.cksum_u.md5[0], cksum.c.cksum_u.md5[1],
+	       cksum.c.cksum_u.md5[2], cksum.c.cksum_u.md5[3],
 	       Oprm.ometa_u.f.rwvol, Oprm.ometa_u.f.vN,
-	       Oprm.ometa_u.f.unique, Oprm.ometa_u.f.tag);
+	       Oprm.ometa_u.f.unique, Oprm.ometa_u.f.tag,
+	       cksum.size);
 	return 0;
     }
 	
