@@ -2360,7 +2360,7 @@ volume_groups(struct rx_call *call, struct ometa *o)
     XDR xdr;
     char *buf = 0;
     
-    ViceLog(1,("SRXOSD_volume_groups\n")); 
+    ViceLog(1,("volume_groups\n")); 
     if (!afsconf_SuperUser(confDir, call, (char *)0)) {
         code = EACCES;
 	goto finis;
@@ -2376,7 +2376,7 @@ volume_groups(struct rx_call *call, struct ometa *o)
     code = namei_ListVolumeGroups(lun, &count, &dirp1, &dirp2, &dp1, &dp2, 
 		(char *) 0, &buflen);
     if (code) {
-	ViceLog(0,("SRXOSD_volume_groups: namei_ListVolumeGroups failed with code %d\n", code));
+	ViceLog(0,("volume_groups: namei_ListVolumeGroups failed with code %d\n", code));
 	goto finis; 
     }
     xdrrx_create(&xdr, call, XDR_ENCODE);
@@ -2395,7 +2395,7 @@ volume_groups(struct rx_call *call, struct ometa *o)
 	if (!code) 
 	    more = 0;
 	if (code && code != 1) {
-	    ViceLog(0,("SRXOSD_volume_groups: namei_ListVolumeGroups failed with code %d\n", code));
+	    ViceLog(0,("volume_groups: namei_ListVolumeGroups failed with code %d\n", code));
 	    break;
 	}
 	vid = (afs_uint32 *)buf;
@@ -2403,14 +2403,14 @@ volume_groups(struct rx_call *call, struct ometa *o)
 	for (; count>0 ; count--) {
 	    if (o->vsn == 1) {
                 if (!xdr_afs_uint32(&xdr, vid)) {
-	            ViceLog(0,("SRXOSD_volume_groups: xdr_uint32 failed\n"));
+	            ViceLog(0,("volume_groups: xdr_uint32 failed\n"));
 	            more = 0;
 		    break;
 	        }
 	    } else if (o->vsn == 2) {
 		afs_uint64 rwvol = *vid;
                 if (!xdr_afs_uint64(&xdr, &rwvol)) {
-	            ViceLog(0,("SRXOSD_volume_groups: xdr_uint64 failed\n"));
+	            ViceLog(0,("volume_groups: xdr_uint64 failed\n"));
 	            more = 0;
 		    break;
 	        }
@@ -2484,7 +2484,7 @@ create(struct rx_call *call, afs_uint64 part_id, afs_uint64 from_id,
     lun = (part_id >> 32);
     code = getlinkhandle(&lh, part_id);
     if (lh == NULL) {
-        ViceLog(0,("SRXOSD_create: oh_init failed.\n"));
+        ViceLog(0,("create: oh_init failed.\n"));
         code = EIO;
 	goto finis;
     }
@@ -2568,7 +2568,7 @@ incdec(struct rx_call *call, struct oparmT10 *o, afs_int32 diff)
     char string[FIDSTRLEN];
 
     extract_oparmT10(o, &lun, &vid, &vnode, &unique, NULL);
-    ViceLog(1,("SRXOSD_incdec %s %d in lun %u from %u.%u.%u.%u\n",
+    ViceLog(1,("incdec %s %d in lun %u from %u.%u.%u.%u\n",
                 sprint_oparmT10(o, string, sizeof(string)),
                 diff, lun,
                 (ntohl(call->conn->peer->host) >> 24) & 0xff,
@@ -2581,49 +2581,49 @@ incdec(struct rx_call *call, struct oparmT10 *o, afs_int32 diff)
     }
     getlinkhandle(&lh, o->part_id);
     if (lh == NULL) {
-        ViceLog(0,("SRXOSD_incdec: oh_init failed for linktable of %s\n",
+        ViceLog(0,("incdec: oh_init failed for linktable of %s\n",
                 sprint_oparmT10(o, string, sizeof(string))));
         code = EIO;
 	goto finis;
     }
-    ViceLog(2,("SRXOSD_incdec %s %d in lun %u after getlinkhandle\n",
+    ViceLog(2,("incdec %s %d in lun %u after getlinkhandle\n",
                 sprint_oparmT10(o, string, sizeof(string)), diff, lun));
     inode = o->obj_id;
     if (diff < 0) {
         oh = oh_init_oparmT10(o);
-        ViceLog(2,("SRXOSD_incdec %s %d in lun %u after oh_init_oparmT10\n",
+        ViceLog(2,("incdec %s %d in lun %u after oh_init_oparmT10\n",
                 sprint_oparmT10(o, string, sizeof(string)), diff, lun));
         if (oh == NULL) {
 	    oh_release(lh);
-	    ViceLog(0,("SRXOSD_incdec: oh_init for the file %s failed.\n",
+	    ViceLog(0,("incdec: oh_init for the file %s failed.\n",
                 sprint_oparmT10(o, string, sizeof(string))));
 	    code = EIO;
 	    goto finis;
         }
         oh_free(oh);
-        ViceLog(2,("SRXOSD_incdec %s %d in lun %u after oh_free\n",
+        ViceLog(2,("incdec %s %d in lun %u after oh_free\n",
                 sprint_oparmT10(o, string, sizeof(string)), diff, lun));
         code = IH_DEC(lh->ih, inode, vid);
-        ViceLog(2,("SRXOSD_incdec %s %d in lun %u after IH_DEC\n",
+        ViceLog(2,("incdec %s %d in lun %u after IH_DEC\n",
                 sprint_oparmT10(o, string, sizeof(string)),
                 diff, lun));
         if (code)  {
-            ViceLog(0,("SRXOSD_incdec: IH_DEC failed for %s with %d.\n",
+            ViceLog(0,("incdec: IH_DEC failed for %s with %d.\n",
                 	sprint_oparmT10(o, string, sizeof(string)), code));
        }
     } else {
 	code = IH_INC(lh->ih, inode, vid);
-        ViceLog(2,("SRXOSD_incdec %s %d in lun %u after IH_INC\n",
+        ViceLog(2,("incdec %s %d in lun %u after IH_INC\n",
                 sprint_oparmT10(o, string, sizeof(string)), diff, lun));
 	if (code)
-            ViceLog(0,("SRXOSD_incdec: IH_INC failed for %s with %d.\n",
+            ViceLog(0,("incdec: IH_INC failed for %s with %d.\n",
                 	sprint_oparmT10(o, string, sizeof(string)), code));
     }
-    ViceLog(2,("SRXOSD_incdec %s %d in lun %u before oh_release\n",
+    ViceLog(2,("incdec %s %d in lun %u before oh_release\n",
                 sprint_oparmT10(o, string, sizeof(string)), diff, lun));
     oh_release(lh);
 finis:
-    ViceLog(1,("SRXOSD_incdec %s %d in lun %u returns %d\n",
+    ViceLog(1,("incdec %s %d in lun %u returns %d\n",
                 sprint_oparmT10(o, string, sizeof(string)),
                 diff, lun, code));
     return code;
@@ -2715,7 +2715,7 @@ SRXOSD_bulkincdec(struct rx_call *call, struct osd_incdecList *list)
 	    part_id = otP->part_id;
 	    getlinkhandle(&lh, part_id);
             if (!lh) {
-                ViceLog(0,("SRXOSD_bulkincdec: oh_init failed.\n"));
+                ViceLog(0,("bulkincdec: oh_init failed.\n"));
                 code = EIO;
 		goto finis;
             }
@@ -2724,7 +2724,7 @@ SRXOSD_bulkincdec(struct rx_call *call, struct osd_incdecList *list)
 	if (list->osd_incdecList_val[i].todo == 1) {
 	    code = IH_INC(lh->ih, inode, vid);
 	    if (code < 0) {
-                ViceLog(0,("SRXOSD_bulkincdec: IH_INC failed for %u.%u.%u.%u with %d.\n",
+                ViceLog(0,("bulkincdec: IH_INC failed for %u.%u.%u.%u with %d.\n",
 			vid, (afs_uint32)(inode & RXOSD_VNODEMASK), 
 			(afs_uint32)(inode >> RXOSD_UNIQUESHIFT), 
 			(afs_uint32)(inode >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK,
@@ -2737,7 +2737,7 @@ SRXOSD_bulkincdec(struct rx_call *call, struct osd_incdecList *list)
         } else if (list->osd_incdecList_val[i].todo == -1) {
             code = IH_DEC(lh->ih, inode, vid);
 	    if (code < 0) /* we ignore errors during decr, but trace them */
-                ViceLog(0,("SRXOSD_bulkincdec: IH_DEC failed for %u.%u.%u.%u with %d.\n",
+                ViceLog(0,("bulkincdec: IH_DEC failed for %u.%u.%u.%u with %d.\n",
 			vid, (afs_uint32)(inode & RXOSD_VNODEMASK), 
 			(afs_uint32)(inode >> RXOSD_UNIQUESHIFT), 
 			(afs_uint32)(inode >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK,
@@ -2783,7 +2783,7 @@ SRXOSD_bulkincdec152(struct rx_call *call, osd_incdec0List *list)
 	    part_id = list->osd_incdec0List_val[i].pid;
 	    getlinkhandle(&lh, part_id);
             if (!lh) {
-                ViceLog(0,("SRXOSD_bulkincdec: oh_init failed.\n"));
+                ViceLog(0,("bulkincdec: oh_init failed.\n"));
                 code = EIO;
 		goto finis;
             }
@@ -2792,7 +2792,7 @@ SRXOSD_bulkincdec152(struct rx_call *call, osd_incdec0List *list)
 	if (list->osd_incdec0List_val[i].todo == 1) {
 	    code = IH_INC(lh->ih, inode, vid);
 	    if (code < 0) {
-                ViceLog(0,("SRXOSD_bulkincdec: IH_INC failed for %u.%u.%u.%u with %d.\n",
+                ViceLog(0,("bulkincdec: IH_INC failed for %u.%u.%u.%u with %d.\n",
 			vid, (afs_uint32)(inode & RXOSD_VNODEMASK), 
 			(afs_uint32)(inode >> RXOSD_UNIQUESHIFT), 
 			(afs_uint32)(inode >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK,
@@ -2805,7 +2805,7 @@ SRXOSD_bulkincdec152(struct rx_call *call, osd_incdec0List *list)
         } else if (list->osd_incdec0List_val[i].todo == -1) {
             code = IH_DEC(lh->ih, inode, vid);
 	    if (code < 0) /* we ignore errors during decr, but trace them */
-                ViceLog(0,("SRXOSD_bulkincdec: IH_DEC failed for %u.%u.%u.%u with %d.\n",
+                ViceLog(0,("bulkincdec: IH_DEC failed for %u.%u.%u.%u with %d.\n",
 			vid, (afs_uint32)(inode & RXOSD_VNODEMASK), 
 			(afs_uint32)(inode >> RXOSD_UNIQUESHIFT), 
 			(afs_uint32)(inode >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK,
@@ -3206,7 +3206,7 @@ SRXOSD_examine185(struct rx_call *call, afs_uint64 part_id, afs_uint64 obj_id,
 	*linkcount = e.exam_u.e3.linkcount;
 	*mtime = e.exam_u.e3.mtime;
     } else {
-	ViceLog(0,("SRXOSD_examine185: Unexpected e.type %d\n", e.type));
+	ViceLog(0,("examine185: Unexpected e.type %d\n", e.type));
 	code = EINVAL;
     }
     SETTHREADINACTIVE();
@@ -3233,7 +3233,7 @@ SRXOSD_examine187(struct rx_call *call, afs_uint64 part_id, afs_uint64 obj_id,
 	*mtime = e.exam_u.e4.mtime;
 	*atime = e.exam_u.e4.atime;
     } else {
-	ViceLog(0,("SRXOSD_examine187: Unexpected e.type %d\n", e.type));
+	ViceLog(0,("examine187: Unexpected e.type %d\n", e.type));
 	code = EINVAL;
     }
 
@@ -3261,7 +3261,7 @@ SRXOSD_examineHSM186(struct rx_call *call, afs_uint64 part_id, afs_uint64 obj_id
 	*mtime = e.exam_u.e4.mtime;
 	*status = e.exam_u.e4.status;
     } else {
-	ViceLog(0,("SRXOSD_examineHSM186: Unexpected e.type %d\n", e.type));
+	ViceLog(0,("examineHSM186: Unexpected e.type %d\n", e.type));
 	code = EINVAL;
     }
     SETTHREADINACTIVE();
@@ -3313,13 +3313,13 @@ int writePS(struct rx_call *call, t10rock *rock,
         inode = o->obj_id;
         getlinkhandle(&lh, o->part_id);
         if (lh == NULL) {
-            ViceLog(0,("SRXOSD_writePS: oh_init for linktable failed.\n"));
+            ViceLog(0,("writePS: oh_init for linktable failed.\n"));
             code = EIO;
 	    goto finis;
         }
         lhp = IH_OPEN(lh->ih);
         if (!lhp) {	
-            ViceLog(0,("SRXOSD_writePS: IH_OPEN for linktable failed.\n"));
+            ViceLog(0,("writePS: IH_OPEN for linktable failed.\n"));
 	    oh_release(lh);
             code = EIO;
 	    goto finis;
@@ -3334,7 +3334,7 @@ int writePS(struct rx_call *call, t10rock *rock,
 	    new.vsn = 1;
 	    new.ometa_u.t = *o;
 	    code = CopyOnWrite(call, o, offset, length, 0, &new.ometa_u.t);
-            ViceLog(0,("SRXOSD_writePS: link count was %d.\n", linkCount));
+            ViceLog(0,("writePS: link count was %d.\n", linkCount));
 	    if (!code) {
 		struct rx_connection *conn;
 	        conn = GetConnection(fs_host, 1, fs_port, 1);
@@ -3930,7 +3930,7 @@ Truncate(struct rx_call *call, struct oparmT10 *o, afs_uint64 length,
         goto finis;
     lhp = IH_OPEN(lh->ih);
     if (!lhp) {
-        ViceLog(0,("SRXOSD_truncate: IH_OPEN for linktable failed for %s\n",
+        ViceLog(0,("truncate: IH_OPEN for linktable failed for %s\n",
 		sprint_oparmT10(o, string, sizeof(string))));
         oh_release(lh);
         code = EIO;
@@ -3943,13 +3943,13 @@ Truncate(struct rx_call *call, struct oparmT10 *o, afs_uint64 length,
 	if (out) {
 	    code = CopyOnWrite(call, o, 0, 0, length, out);
 	    if (code) {
-        	ViceLog(0,("SRXOSD_truncate: copy on write for %s failed with %d\n",
+        	ViceLog(0,("truncate: copy on write for %s failed with %d\n",
 			sprint_oparmT10(o, string, sizeof(string)), code));
 		goto finis;
 	    }
 	    *o = *out;
 	} else {
-            ViceLog(0,("SRXOSD_truncate: linkcount for %s not 1 but %u\n",
+            ViceLog(0,("truncate: linkcount for %s not 1 but %u\n",
 		    sprint_oparmT10(o, string, sizeof(string)), lc));
             code = EINVAL;
 	    goto finis;
@@ -3957,24 +3957,24 @@ Truncate(struct rx_call *call, struct oparmT10 *o, afs_uint64 length,
     }
     oh = oh_init_oparmT10(o);
     if (oh == NULL) {
-	ViceLog(0,("SRXOSD_truncate: oh_init failed for %s\n",
+	ViceLog(0,("truncate: oh_init failed for %s\n",
 		sprint_oparmT10(o, string, sizeof(string))));
         code = EIO;
 	goto finis;
     }
     fdP = IH_OPEN(oh->ih);
     if (fdP == NULL) {
-        ViceLog(0,("SRXOSD_truncate: IH_OPEN failed for %s\n",
+        ViceLog(0,("truncate: IH_OPEN failed for %s\n",
 		sprint_oparmT10(o, string, sizeof(string))));
         code = EIO;
 	goto finis;
     }
     lock_file(fdP, LOCK_EX);
     code = FDH_TRUNC(fdP, length);
-    ViceLog(0,("SRXOSD_truncate of %s on lun %llu to length %llu filedesc %d\n",
+    ViceLog(0,("truncate of %s on lun %llu to length %llu filedesc %d\n",
 		sprint_oparmT10(o, string, sizeof(string)),
                 o->part_id >> 32, length, fdP->fd_fd));
-    ViceLog(1,("SRXOSD_truncate of %s to length %llu returns %d\n",
+    ViceLog(1,("truncate of %s to length %llu returns %d\n",
 		sprint_oparmT10(o, string, sizeof(string)),
                 length, code));
 finis:
@@ -4059,7 +4059,7 @@ readPS(struct rx_call *call, t10rock *rock, struct oparmT10 * o,
     afs_int64 bytesToXfer;
 
     vid = o->part_id & 0xffffffff;
-    ViceLog(3,("SRXOSD_readPS: %u.%u.%u tag %d, stripe_size %u, nstripes %u, stripe %u, offset %llu, length %llu\n",
+    ViceLog(3,("readPS: %u.%u.%u tag %d, stripe_size %u, nstripes %u, stripe %u, offset %llu, length %llu\n",
                 vid,
                 (afs_uint32)(o->obj_id & RXOSD_VNODEMASK),
                 (afs_uint32)(o->obj_id >> RXOSD_UNIQUESHIFT),
@@ -4073,7 +4073,7 @@ readPS(struct rx_call *call, t10rock *rock, struct oparmT10 * o,
     }
     oh = oh_init_oparmT10(o);
     if (!oh) {
-	ViceLog(0,("SRXOSD_readPS: oh_init failed for %u.%u.%u tag %d\n",
+	ViceLog(0,("readPS: oh_init failed for %u.%u.%u tag %d\n",
                 vid, (afs_uint32)(o->obj_id & RXOSD_VNODEMASK),
                 (afs_uint32)(o->obj_id >> RXOSD_UNIQUESHIFT),
                 (afs_uint32)((o->obj_id >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK)));
@@ -4098,7 +4098,7 @@ readPS(struct rx_call *call, t10rock *rock, struct oparmT10 * o,
 #else
     if (stat64(name.n_path, &tstat) < 0) {
 #endif
-        ViceLog(0,("SRXOSD_readPS: stat64 failed for %u.%u.%u tag %d\n",
+        ViceLog(0,("readPS: stat64 failed for %u.%u.%u tag %d\n",
                 vid, (afs_uint32)(o->obj_id & RXOSD_VNODEMASK),
                 (afs_uint32)(o->obj_id >> RXOSD_UNIQUESHIFT),
                 (afs_uint32)((o->obj_id >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK)));
@@ -4145,7 +4145,7 @@ readPS(struct rx_call *call, t10rock *rock, struct oparmT10 * o,
         if (bytesToXfer < 0)
             bytesToXfer = 0;
         bufsize = stripe_size;
-        ViceLog(1,("SRXOSD_readPS:  for %u.%u.%u tag %d stripe %u toffset %llu, bytes %llu\n",
+        ViceLog(1,("readPS:  for %u.%u.%u tag %d stripe %u toffset %llu, bytes %llu\n",
                 vid, (afs_uint32)(o->obj_id & RXOSD_VNODEMASK),
                 (afs_uint32)(o->obj_id >> RXOSD_UNIQUESHIFT),
                 (afs_uint32)((o->obj_id >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK),
@@ -4172,7 +4172,7 @@ readPS(struct rx_call *call, t10rock *rock, struct oparmT10 * o,
 		list.osd_segm_descList_len = 0;
 		code = FindInFetchqueue(call, o, user, &list, 0);
 	    } else {
-                ViceLog(0,("SRXOSD_readPS: IH_OPEN failed for %u.%u.%u tag %d\n",
+                ViceLog(0,("readPS: IH_OPEN failed for %u.%u.%u tag %d\n",
                     vid, (afs_uint32)(o->obj_id & RXOSD_VNODEMASK),
                     (afs_uint32)(o->obj_id >> RXOSD_UNIQUESHIFT),
                     (afs_uint32)((o->obj_id >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK)));
@@ -4187,7 +4187,7 @@ readPS(struct rx_call *call, t10rock *rock, struct oparmT10 * o,
 	goto finis;
     }
     xdrrx_create(&xdr, call, XDR_ENCODE);
-    ViceLog(3, ("SRXOSD_readPS: %llu bytes To Xfer of %u.%u.%u.%u offs %llu from lun %u, tstat.st_size %llu fd %u\n",
+    ViceLog(3, ("readPS: %llu bytes To Xfer of %u.%u.%u.%u offs %llu from lun %u, tstat.st_size %llu fd %u\n",
                 bytesToXfer,
                 vid, (afs_uint32)(o->obj_id & RXOSD_VNODEMASK),
                 (afs_uint32)(o->obj_id >> RXOSD_UNIQUESHIFT),
@@ -4212,13 +4212,13 @@ readPS(struct rx_call *call, t10rock *rock, struct oparmT10 * o,
             if (bytes > 0) {
                 nbytes = bytes;
             } else {
-                ViceLog(0,("SRXOSD_readPS: rx_WritevAlloc returned %dh\n", bytes));
+                ViceLog(0,("readPS: rx_WritevAlloc returned %dh\n", bytes));
                 code = EIO;
 	        goto finis;
             }
             result = FDH_SEEK(fdP, toffset, SEEK_SET);
             if (result != toffset){
-                ViceLog(0,("SRXOSD_readPS: FDH_SEEK ot offset %llu failed for %u.%u.%u tag %d\n",
+                ViceLog(0,("readPS: FDH_SEEK ot offset %llu failed for %u.%u.%u tag %d\n",
                     toffset,
                     vid, (afs_uint32)(o->obj_id & RXOSD_VNODEMASK),
                     (afs_uint32)(o->obj_id >> RXOSD_UNIQUESHIFT),
@@ -4256,7 +4256,7 @@ readPS(struct rx_call *call, t10rock *rock, struct oparmT10 * o,
                 nbytes = bytesToXfer > bufsize ?  bufsize : bytesToXfer;
             result = FDH_SEEK(fdP, toffset, SEEK_SET);
             if (result < 0){
-                ViceLog(0,("SRXOSD_readPS: FDH_SEEK at offset %llu failed for %u.%u.%u tag %d\n",
+                ViceLog(0,("readPS: FDH_SEEK at offset %llu failed for %u.%u.%u tag %d\n",
                     toffset,
                     vid, (afs_uint32)(o->obj_id & RXOSD_VNODEMASK),
                     (afs_uint32)(o->obj_id >> RXOSD_UNIQUESHIFT),
@@ -4272,7 +4272,7 @@ readPS(struct rx_call *call, t10rock *rock, struct oparmT10 * o,
             if (bytes > 0)
                 written = rx_Write(call, buffer, bytes);
             if (bytes != nbytes) {
-                ViceLog(0,("SRXOSD_readPS: failed at offset %llu for %u.%u.%u.%u: should read %u, but read only %u of totally %llu\n",
+                ViceLog(0,("readPS: failed at offset %llu for %u.%u.%u.%u: should read %u, but read only %u of totally %llu\n",
                     toffset,
                     vid, (afs_uint32)(o->obj_id & RXOSD_VNODEMASK),
                     (afs_uint32)(o->obj_id >> RXOSD_UNIQUESHIFT),
@@ -4283,7 +4283,7 @@ readPS(struct rx_call *call, t10rock *rock, struct oparmT10 * o,
 	        goto finis;
             }
             if ( bytes != written) {
-                ViceLog(0,("SRXOSD_readPS: failed at offset %llu for %u.%u.%u.%u: should write %u to client %u.%u.%u.%u, but wrote only %u of totally %llu\n",
+                ViceLog(0,("readPS: failed at offset %llu for %u.%u.%u.%u: should write %u to client %u.%u.%u.%u, but wrote only %u of totally %llu\n",
                     toffset,
                     vid, (afs_uint32)(o->obj_id & RXOSD_VNODEMASK),
                     (afs_uint32)(o->obj_id >> RXOSD_UNIQUESHIFT),
@@ -4305,7 +4305,7 @@ readPS(struct rx_call *call, t10rock *rock, struct oparmT10 * o,
         FreeSendBuffer((struct afs_buffer *)buffer);
 #endif /* USE_IOV */
     }
-    ViceLog(1,("SRXOSD_readPS for %u.%u.%u tag %d returns 0\n",
+    ViceLog(1,("readPS for %u.%u.%u tag %d returns 0\n",
                 vid, (afs_uint32)(o->obj_id & RXOSD_VNODEMASK),
                 (afs_uint32)(o->obj_id >> RXOSD_UNIQUESHIFT),
                 (afs_uint32)((o->obj_id >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK)));
@@ -4327,7 +4327,7 @@ finis:
         oh_release(oh);
 	
     if (code && code != OSD_WAIT_FOR_TAPE)
-        ViceLog(0,("SRXOSD_readPS for %u.%u.%u tag %d returns %d\n",
+        ViceLog(0,("readPS for %u.%u.%u tag %d returns %d\n",
                 vid, (afs_uint32)(o->obj_id & RXOSD_VNODEMASK),
                 (afs_uint32)(o->obj_id >> RXOSD_UNIQUESHIFT),
                 (afs_uint32)((o->obj_id >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK),
@@ -4454,14 +4454,14 @@ hardlink(struct rx_call *call, afs_uint64 from_part,
 
     code = create(call, to_part, to_id, obj_id);
     if (code) {
-	ViceLog(0,("SRXOSD_hardlink: couldn't create new object %u.%u.%u\n",
+	ViceLog(0,("hardlink: couldn't create new object %u.%u.%u\n",
 			to_vid, to_vnode, to_unique));
 	return EIO;
     }
 	
     from_oh = oh_init(from_part, from_id);
     if (from_oh == NULL) {
-        ViceLog(0,("SRXOSD_hardlink: oh_init failed for %u.%u.%u tag %d\n",
+        ViceLog(0,("hardlink: oh_init failed for %u.%u.%u tag %d\n",
 		from_vid, from_vnode & RXOSD_VNODEMASK,
 		from_unique, (from_vnode >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK));
         code = EIO;
@@ -4469,7 +4469,7 @@ hardlink(struct rx_call *call, afs_uint64 from_part,
     }
     to_oh = oh_init(to_part, *obj_id);
     if (to_oh == NULL) {
-        ViceLog(0,("SRXOSD_hardlink: oh_init failed for %u.%u.%u tag %d\n",
+        ViceLog(0,("hardlink: oh_init failed for %u.%u.%u tag %d\n",
 		to_vid, to_vnode & RXOSD_VNODEMASK,
 		to_unique, (to_vnode >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK));
         code = EIO;
@@ -4499,7 +4499,7 @@ SRXOSD_hardlink(struct rx_call *call, struct ometa *from, struct ometa *to,
         code = hardlink(call, from->ometa_u.t.part_id, from->ometa_u.t.obj_id,
 		        to->ometa_u.t.part_id, to->ometa_u.t.obj_id,
 		        &res->ometa_u.t.obj_id);
-        ViceLog(1, ("SRXOSD_hardlink for %s to %s in lun %u returns %d\n",
+        ViceLog(1, ("hardlink for %s to %s in lun %u returns %d\n",
 		sprint_oparmT10(&from->ometa_u.t, string, sizeof(string)),
 		sprint_oparmT10(&to->ometa_u.t, string2, sizeof(string2)),
 		(afs_uint32)(from->ometa_u.t.part_id >> 32),
@@ -4511,7 +4511,7 @@ SRXOSD_hardlink(struct rx_call *call, struct ometa *from, struct ometa *to,
 	    code = convert_ometa_2_1(&to->ometa_u.f, &t);
 	if (!code)
             code = hardlink(call, f.part_id, f.obj_id, t.part_id, t.obj_id, &r.obj_id);
-        ViceLog(1, ("SRXOSD_hardlink for %s to %s returns %d\n",
+        ViceLog(1, ("hardlink for %s to %s returns %d\n",
 		sprint_oparmT10(&f, string, sizeof(string)),
 		sprint_oparmT10(&t, string2, sizeof(string2)),
 		code));
@@ -4566,18 +4566,18 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
     vid = from->part_id & RXOSD_VOLIDMASK;
     lun = (afs_uint64)(from->part_id >> RXOSD_LUNSHIFT);
     inode = from->obj_id;
-    ViceLog(3,("SRXOSD_copy %s to %u\n",
+    ViceLog(3,("copy %s to %u\n",
 		sprint_oparmT10(from, string, sizeof(string)), to_osd));
     from_oh = oh_init_oparmT10(from);
     if (from_oh == NULL) {
-        ViceLog(0,("SRXOSD_copy: oh_init failed for %s\n",
+        ViceLog(0,("copy: oh_init failed for %s\n",
 		sprint_oparmT10(from, string, sizeof(string))));
         code = EIO;
 	goto finis;
     }
     namei_HandleToName(&name, from_oh->ih);
     if (stat64(name.n_path, &tstat) < 0) {
-        ViceLog(0,("SRXOSD_copy: stat64 failed for %s\n",
+        ViceLog(0,("copy: stat64 failed for %s\n",
 		sprint_oparmT10(from, string, sizeof(string))));
         code = EIO;
 	goto finis;
@@ -4609,11 +4609,11 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
     at = 10000000 * (afs_uint64) tstat.st_atim.tv_sec + tstat.st_atim.tv_nsec/100;
     mt = 10000000 * (afs_uint64) tstat.st_mtim.tv_sec + tstat.st_mtim.tv_nsec/100;
 #endif
-    ViceLog(1,("SRXOSD_copy: %s has atime %llu and mtime %llu\n",
+    ViceLog(1,("copy: %s has atime %llu and mtime %llu\n",
 		sprint_oparmT10(from, string, sizeof(string)), at, mt));
     from_fdP = IH_OPEN(from_oh->ih);
     if (from_fdP == NULL) {
-        ViceLog(0,("SRXOSD_copy: IH_OPEN failed for %s\n",
+        ViceLog(0,("copy: IH_OPEN failed for %s\n",
 		sprint_oparmT10(from, string, sizeof(string))));
         oh_release(from_oh);
         code = EIO;
@@ -4622,7 +4622,7 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
     lock_file(from_fdP, LOCK_SH);
     offset = 0;
     if (FDH_SEEK(from_fdP, offset, SEEK_SET) < 0) {
-        ViceLog(0,("SRXOSD_copy: FDH_SEEK ot offset %llu failed for %s\n",
+        ViceLog(0,("copy: FDH_SEEK ot offset %llu failed for %s\n",
             offset, sprint_oparmT10(from, string, sizeof(string))));
         code = EIO;
 	goto finis;
@@ -4648,12 +4648,12 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
 	    afs_uint32 msec = (mt / 10000000);
 	    code = StartRXOSD_write_keep122(tcall, to->part_id, to->obj_id, offset,
 					    length, asec, msec);
-            ViceLog(1, ("SRXOSD_copy: StartRXOSD_write_keep122 to OSD %u started with code %d\n",
+            ViceLog(1, ("copy: StartRXOSD_write_keep122 to OSD %u started with code %d\n",
                     to_osd, code));
 	} else
             code = StartRXOSD_write(tcall, &dummyrock, &p, &ometa);
         if (code) {
-            ViceLog(0, ("SRXOSD_copy: StartRXOSD_write to OSD %u failed with code %d\n",
+            ViceLog(0, ("copy: StartRXOSD_write to OSD %u failed with code %d\n",
                     to_osd, code));
 	    if (code != RXOSD_RESTARTING)
                 code = -1;
@@ -4664,7 +4664,7 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
             nbytes = length > bufsize ? bufsize : length;
             bytes = FDH_READ(from_fdP, buffer, nbytes);
             if (bytes != nbytes) {
-                ViceLog(0,("SRXOSD_copy: only read %d bytes instead of %d\n", bytes, nbytes));
+                ViceLog(0,("copy: only read %d bytes instead of %d\n", bytes, nbytes));
                 code = EIO;
                 goto finis;
             }
@@ -4678,7 +4678,7 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
     	    if (MBperSecSleep) 
 		bytesWritten += bytes;
             if (bytes != nbytes) {
-                ViceLog(0,("SRXOSD_copy: only written %d bytes instead of %d\n",
+                ViceLog(0,("copy: only written %d bytes instead of %d\n",
                                                         bytes, nbytes));
 		code = rx_Error(tcall);
 		if (code != RXOSD_RESTARTING)
@@ -4689,7 +4689,7 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
             length -= nbytes;
         }
         if (stat64(name.n_path, &tstat) < 0) {
-            ViceLog(0,("SRXOSD_copy: 2nd stat64 failed for %s\n",
+            ViceLog(0,("copy: 2nd stat64 failed for %s\n",
 		sprint_oparmT10(from, string, sizeof(string))));
             code = EIO;
         }
@@ -4704,7 +4704,7 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
         if (mtime.tv_sec != tstat.st_mtim.tv_sec 
           || mtime.tv_nsec != tstat.st_mtim.tv_nsec) {
 #endif
-            ViceLog(0,("SRXOSD_copy: %s modified during copy\n",
+            ViceLog(0,("copy: %s modified during copy\n",
 		sprint_oparmT10(from, string, sizeof(string))));
             code = EAGAIN;
         }
@@ -4712,21 +4712,21 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
         Inode to_inode = to->obj_id;
         to_oh = oh_init_oparmT10(to);
         if (to_oh == NULL) {
-            ViceLog(0,("SRXOSD_copy: oh_init failed for %s\n",
+            ViceLog(0,("copy: oh_init failed for %s\n",
 		sprint_oparmT10(to, string, sizeof(string))));
             code = EIO;
             goto finis;
         }
         to_fdP = IH_OPEN(to_oh->ih);
         if (to_fdP == NULL) {
-            ViceLog(0,("SRXOSD_copy: IH_OPEN failed for %s\n",
+            ViceLog(0,("copy: IH_OPEN failed for %s\n",
 		sprint_oparmT10(to, string, sizeof(string))));
             code = EIO;
             goto finis;
         }
 	lock_file(to_fdP, LOCK_EX);
         if (FDH_SEEK(to_fdP, offset, SEEK_SET) < 0){
-            ViceLog(0,("SRXOSD_copy: FDH_SEEK ot offset %llu failed for %s\n",
+            ViceLog(0,("copy: FDH_SEEK ot offset %llu failed for %s\n",
                     offset, sprint_oparmT10(to, string, sizeof(string))));
             code = EIO;
             goto finis;
@@ -4735,14 +4735,14 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
             nbytes = length > bufsize ? bufsize : length;
             bytes = FDH_READ(from_fdP, buffer, nbytes);
             if (bytes != nbytes) {
-                ViceLog(0,("SRXOSD_copy: only read %d bytes instead of %d of %s\n",
+                ViceLog(0,("copy: only read %d bytes instead of %d of %s\n",
 		        bytes, nbytes, sprint_oparmT10(from, string, sizeof(string))));
                 code = EIO;
                 goto finis;
             }
             bytes = FDH_WRITE(to_fdP, buffer, nbytes);
             if (bytes != nbytes) {
-                ViceLog(0,("SRXOSD_copy: only written %d bytes instead of %d to %s\n",
+                ViceLog(0,("copy: only written %d bytes instead of %d to %s\n",
 		        bytes, nbytes, sprint_oparmT10(to, string, sizeof(string))));
                 code = EIO;
                 goto finis;
@@ -4828,7 +4828,7 @@ SRXOSD_copy200(struct rx_call *call, afs_uint64 from_part, afs_uint64 to_part,
     to1.part_id = to_part;
     to1.obj_id = to_id;
     code = copy(call, &from1, &to1, to_osd, 1);
-    ViceLog(1,("SRXOSD_copy200: copy returned %d\n", code));
+    ViceLog(1,("copy200: copy returned %d\n", code));
 
     SETTHREADINACTIVE();
     return code;
@@ -4919,12 +4919,12 @@ md5sum(struct rx_call *call, struct oparmT10 *o, struct osd_cksum *md5)
 	goto finis;
     }
 
-    ViceLog(3,("SRXOSD_md5sum(%u): %s\n",
+    ViceLog(3,("md5sum(%u): %s\n",
                 *call->callNumber,
 		sprint_oparmT10(o, input, sizeof(input))));
     oh = oh_init_oparmT10(o);
     if (oh == NULL) {
-        ViceLog(0,("SRXOSD_md5sum: oh_init failed for %s\n",
+        ViceLog(0,("md5sum: oh_init failed for %s\n",
 		sprint_oparmT10(o, input, sizeof(input))));
         code = EIO;
 	goto finis;
@@ -4935,7 +4935,7 @@ md5sum(struct rx_call *call, struct oparmT10 *o, struct osd_cksum *md5)
 #else
     if (stat64(name.n_path, &tstat) < 0) {
 #endif
-        ViceLog(0,("SRXOSD_md5sum: stat64 failed for %s %s\n",
+        ViceLog(0,("md5sum: stat64 failed for %s %s\n",
 		sprint_oparmT10(o, input, sizeof(input)),
 		name.n_path));
         oh_release(oh);
@@ -5066,7 +5066,7 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
     lun = (afs_uint64)(o->part_id >> 32);
     code = getlinkhandle(&lh, o->part_id);
     if (lh == NULL) {
-        ViceLog(0,("SRXOSD_create_archive: oh_init failed.\n"));
+        ViceLog(0,("create_archive: oh_init failed.\n"));
         code = EIO;
 	goto finis;
     }
@@ -5092,14 +5092,14 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
 			vnode, unique, 1, length, &open_fd);
 	if (!VALID_INO(inode)) {
     	    oh_release(lh);
-            ViceLog(0,("SRXOSD_create_archive: namei_icreate_open failed (invalid inode).\n"));
+            ViceLog(0,("create_archive: namei_icreate_open failed (invalid inode).\n"));
 	    code = ENOSPC;
 	    goto finis;
 	}
     }
     oh_release(lh);
     if (open_fd < 0) {
-        ViceLog(0,("SRXOSD_create_archive: namei_icreate_open failed (not open).\n"));
+        ViceLog(0,("create_archive: namei_icreate_open failed (not open).\n"));
 	code = EIO;
 	goto finis;
     }
@@ -5111,7 +5111,7 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
     oh = oh_init(o->part_id, inode);
     fdP = ih_fakeopen(oh->ih, open_fd);
     if (!fdP) {
-	ViceLog(0,("SRXOSD_create_archive: couldn't open output file\n"));
+	ViceLog(0,("create_archive: couldn't open output file\n"));
 	code = EIO;
 	goto bad;
     }
@@ -5148,7 +5148,7 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
 				    obj->o.ometa_u.t.osd_id, code));
 	                fdP = IH_OPEN(oh->ih);
 		        if (!fdP) {
-			    ViceLog(0,("SRXOSD_create_archive: couldn't reopen output file for %u.%u.%u.%u\n",
+			    ViceLog(0,("create_archive: couldn't reopen output file for %u.%u.%u.%u\n",
 				    sprint_oparmT10(o, string, sizeof(string))));
 			    code = EIO;
 			    goto bad;
@@ -5236,7 +5236,7 @@ retry:
 			}
 			if (code != OSD_WAIT_FOR_TAPE) {
                 	    h = ntohl(rcall[j]->conn->peer->host);
-                	    ViceLog(0,("SRXOSD_create_archive: couldn't read size of stripe %u of %s from osd on %u.%u.%u.%u\n",
+                	    ViceLog(0,("create_archive: couldn't read size of stripe %u of %s from osd on %u.%u.%u.%u\n",
                                 j, sprint_oparmT10(o, string, sizeof(string)),
                                 (h >> 24) & 0xff,
                                 (h >> 16) & 0xff,
@@ -5248,7 +5248,7 @@ retry:
 	    	    }
 	    	    if (size != striperesid[j]) {
                 	h = ntohl(rcall[j]->conn->peer->host);
-                	ViceLog(0,("SRXOSD_create_archive: wrong length %llu instead of %llu for stripe %u in segm %u of %s from %u.%u.%u.%u\n",
+                	ViceLog(0,("create_archive: wrong length %llu instead of %llu for stripe %u in segm %u of %s from %u.%u.%u.%u\n",
                                 size, striperesid[j], j, i,
                                 sprint_oparmT10(o, string, sizeof(string)),
                                 (h >> 24) & 0xff,
@@ -5261,7 +5261,7 @@ retry:
 		}
 	    }
 	    if (!rcall[j]) {
-		ViceLog(0,("SRXOSD_create_archive: %s no connection to remote osd\n",
+		ViceLog(0,("create_archive: %s no connection to remote osd\n",
                                 sprint_oparmT10(o, string, sizeof(string))));
 		code = EIO;
 		goto bad;
@@ -5278,7 +5278,7 @@ retry:
 		    tlen = length;
 		bytes = rx_Read(rcall[j], bp, tlen);	
 		if (bytes != tlen) {
-		    ViceLog(0,("SRXOSD_create_archive: %s read only %d bytes instead of %d\n",
+		    ViceLog(0,("create_archive: %s read only %d bytes instead of %d\n",
                                 sprint_oparmT10(o, string, sizeof(string)),
 				bytes, tlen));
 		    code = EIO;
@@ -5292,7 +5292,7 @@ retry:
 	    MD5_Update(&md5, buf, writelen);
 	    bytes = FDH_WRITE(fdP, buf, writelen);
 	    if (bytes != writelen) {
-		    ViceLog(0,("SRXOSD_create_archive: %s written only %d bytes instead of %d\n",
+		    ViceLog(0,("create_archive: %s written only %d bytes instead of %d\n",
                                 sprint_oparmT10(o, string, sizeof(string)),
 				bytes, writelen));
 		    code = EIO;
@@ -5317,11 +5317,11 @@ retry:
     if (diff == 0)
 	diff = 1;
     datarate = (output->size / diff) >> 20;
-    ViceLog(0,("SRXOSD_create_archive: md5 checksum for %s is %08x%08x%08x%08x %llu MB/s\n",
+    ViceLog(0,("create_archive: md5 for %s is %08x%08x%08x%08x length %llu %llu MB/s\n",
                 sprint_oparmT10(o, string, sizeof(string)),
 		output->c.cksum_u.md5[0], output->c.cksum_u.md5[1],
 	        output->c.cksum_u.md5[2], output->c.cksum_u.md5[3],
-		datarate));
+		output->size, datarate));
 done:
 #ifdef AFS_HPSS_SUPPORT
     if (HSM || oh->ih->ih_dev == hpssDev) {
@@ -5935,7 +5935,7 @@ wipe_candidates(struct rx_call *call, afs_uint32 lun, afs_uint32 maxcand,
 			(void)strcat(path6, "/");
 			(void)strcat(path6, dp5->d_name);
 			if (afs_stat(path6, &tstat) < 0) {
-			    ViceLog(0,("SRXOSD_wipe_candiates: stat of %s failed\n",					path6));
+			    ViceLog(0,("wipe_candiates: stat of %s failed\n", path6));
 			    continue;
 			}
 			if (tstat.st_size < minsize)
