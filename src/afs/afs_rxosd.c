@@ -1119,6 +1119,8 @@ rxosd_storeInit(struct vcache *avc, struct afs_conn *tc, afs_offs_t base,
                    ICL_TYPE_STRING, __FILE__,
                    ICL_TYPE_INT32, __LINE__, ICL_TYPE_INT32, code);
 
+    if (base + bytes > length)
+	length = base + bytes;
 #if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
     if (vicep_fastread)
        afs_fast_vpac_check(avc, tc, 1, &osd_id);
@@ -1137,7 +1139,7 @@ rxosd_storeInit(struct vcache *avc, struct afs_conn *tc, afs_offs_t base,
 	p.type = 6;
 	p.RWparm_u.p6.offset = base;
 	p.RWparm_u.p6.length = bytes;
-	p.RWparm_u.p6.filelength = avc->f.m.Length;
+	p.RWparm_u.p6.filelength = length;
 	p.RWparm_u.p6.flag = SEND_PORT_SERVICE;
 	startTime = osi_Time();
 	code = RXAFS_StartAsyncStore(tc->id, (struct AFSFid *) &avc->f.fid.Fid,
@@ -1145,7 +1147,7 @@ rxosd_storeInit(struct vcache *avc, struct afs_conn *tc, afs_offs_t base,
 				&v->OutStatus);
 	if (code == RXGEN_OPCODE)
 	    code = RXAFS_StartAsyncStore1(tc->id, (struct AFSFid *) &avc->f.fid.Fid,
-				base, bytes, avc->f.m.Length, 0, &v->a,
+				base, bytes, length, 0, &v->a,
 				&v->maxlength, &v->transid, &v->expires, &v->OutStatus);
 
         RX_AFS_GLOCK();
