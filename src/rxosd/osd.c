@@ -3877,7 +3877,7 @@ int main (int argc, char **argv)
     do {
         code = rx_Init(htons(Port));
 	if (code) {
-	    if (code = RX_ADDRINUSE && (Port < MAX_PORT_TRIES + InitialPort)) {
+	    if (code == RX_ADDRINUSE && (Port < MAX_PORT_TRIES + InitialPort)) {
 		Port++;
 	    } else if (Port < MAX_PORT_TRIES + InitialPort) {
 		fprintf(stderr,"rx_Init didn't succeed.  We tried port numbers %d through %d\n",
