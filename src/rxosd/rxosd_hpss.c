@@ -250,7 +250,7 @@ static void checkCode(afs_int32 code)
      * authentication. Try to force e new authentication.
      */
     if (code == -13) 	/* permission */
-	hpssLastAuth = 0
+	hpssLastAuth = 0;
 }
 
 /* 
