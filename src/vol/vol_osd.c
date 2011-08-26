@@ -1812,10 +1812,14 @@ fill_osd_file(Vnode *vn, struct async *a,
 	afs_int32 flag, afs_int32 *fileno, afs_uint32 user)
 {
     struct osd_p_fileList list;
+    struct osd_segm_descList rlist;
     struct osd_p_file *pfile;
     afs_uint64 oldsize;
     afs_int32 code, i, j, k;
     afs_uint32 tlun;
+
+    rlist.osd_segm_descList_len = 0;
+    rlist.osd_segm_descList_val = NULL;
 
     *fileno = -1;
     if (a->type == 1) {
@@ -1881,7 +1885,6 @@ fill_osd_file(Vnode *vn, struct async *a,
 	    afs_uint32 osd;
 	    afs_uint32 nosds = 0;
 	    afs_uint32 osds[MAX_ARCHIVAL_COPIES];
-	    struct osd_segm_descList rlist;
 	    code = copy_osd_p_file_to_osd_segm_descList(pfile, &rlist, size);
 	    if (code) 
 		goto bad;
@@ -2002,7 +2005,6 @@ retry:
 			om.ometa_u.t.obj_id = po->obj_id;
 			om.ometa_u.t.osd_id = osd;
                         code = rxosd_restore_archive(&om, user, &rlist, flag, &new_md5);
-			free_osd_segm_descList(&rlist);
                         if (!code && meta && !(flag & NO_CHECKSUM))
                             code = compare_md5(meta, &new_md5.c.cksum_u.md5[0]);
                     }
@@ -2176,6 +2178,7 @@ retry:
     }
 #endif
 bad:
+    free_osd_segm_descList(&rlist);
     destroy_osd_p_fileList(&list);
     return code;
 }

@@ -178,5 +178,7 @@ free_osd_segm_descList(struct osd_segm_descList *l)
 	}
 	free(l->osd_segm_descList_val);
     }
+    l->osd_segm_descList_len = 0;
+    l->osd_segm_descList_val = NULL;
 }
 #endif
