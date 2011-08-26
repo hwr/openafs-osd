@@ -243,6 +243,16 @@ readHPSSconf()
     return code;
 }
 
+static void checkCode(afs_int32 code)
+{
+    /*
+     * If we get a code of -13 back from HPSS something is wrong with our
+     * authentication. Try to force e new authentication.
+     */
+    if (code == -13) 	/* permission */
+	hpssLastAuth = 0
+}
+
 /* 
  * This routine is called by the FiveMinuteCcheck
  */
@@ -254,6 +264,8 @@ authenticate_for_hpss(char *principal, char *keytab)
     static int authenticated = 0;
 
     code = readHPSSconf();
+    if (code)
+	return code;
 
     if (now - hpssLastAuth > TWENTYDAYS) {
 	if (authenticated) {
@@ -275,6 +287,8 @@ authenticate_for_hpss(char *principal, char *keytab)
 	waiting = 0;
         if (waiters)
 	    assert(pthread_cond_broadcast(&auth_cond) == 0);
+	if (authenticated)
+	    return authenticated;
     }
     return code;
 }
@@ -317,6 +331,7 @@ myhpss_Close(int fd)
         code = hpss_Close(myfd);
 	removeHPSStransaction();
     }
+    checkCode(code);
     return code;
 }
 
@@ -385,6 +400,7 @@ int myhpss_stat64(const char *path, struct stat64 *buf)
     addHPSStransaction();
     code = hpss_Stat(path, &hs);
     removeHPSStransaction();
+    checkCode(code);
     if (code)
 	return code;
     memset(buf, 0, sizeof(struct stat64));
@@ -421,6 +437,7 @@ int myhpss_fstat64(int fd, struct stat64 *buf)
     addHPSStransaction();
     code = hpss_Fstat(myfd, &hs);
     removeHPSStransaction();
+    checkCode(code);
     if (code)
 	return code;
     memset(buf, 0, sizeof(struct stat64));
@@ -465,6 +482,7 @@ int myhpss_stat_tapecopies(const char *path, afs_int32 *level, afs_sfsize_t *siz
     addHPSStransaction();
     code = hpss_FileGetXAttributes(path, Flags, StorageLevel, &AttrOut);
     removeHPSStransaction();
+    checkCode(code);
     if (code) 
 	return EIO;
 
@@ -512,6 +530,7 @@ int myhpss_statfs(const char *path, struct afs_statfs *buf)
         addHPSStransaction();
         code = hpss_Statfs(info[i].cosId, &hb);
         removeHPSStransaction();
+        checkCode(code);
 	if (!code) {
 #if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
 	    if (buf->f_frsize && buf->f_frsize != hb.f_bsize)
@@ -568,6 +587,7 @@ myhpss_Ftruncate(int fd, afs_foff_t pos)
     int myfd = fd - FDOFFSET;
     
     code = hpss_Ftruncate(myfd, pos);
+    checkCode(code);
     return code;	
 }
 
