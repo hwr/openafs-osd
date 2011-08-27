@@ -1132,7 +1132,7 @@ FiveMinuteCheckLWP()
 #ifdef AFS_HPSS_SUPPORT
 			code = authenticate_for_hpss(principal, keytab);
 			if (code) {
-			    ViceLog(5,("authenticate_for_hpss returns %d\n", code));
+			    ViceLog(0,("authenticate_for_hpss returns %d\n", code));
 			}
 			if (hpssPath && e->t.etype_u.osd.flags & OSDDB_ARCHIVAL)
 			    hpssDev = e->t.etype_u.osd.lun;
