@@ -1770,6 +1770,7 @@ int md5sum(struct cmd_syndesc *as, void *rock)
 	return EINVAL;
     }
 
+restart:
     code = RXOSD_md5sum(Conn, &Oprm, &cksum);
     if (!code) {
 	if (cksum.c.type != 1) {
@@ -1794,7 +1795,14 @@ int md5sum(struct cmd_syndesc *as, void *rock)
 #endif
 	
     if (code) {
-	fprintf(stderr, "RXOSD_md5sum failed with code %d\n", code);
+	if (code == -100) {	/* restarting */
+	    fprintf(stderr, "waiting for restarting rxosd\n");
+	    sleep(10);
+	    goto restart;
+	}
+	fprintf(stderr, "RXOSD_md5sum failed with code %d for %u.%u.%u.%u\n",
+		Oprm.ometa_u.f.rwvol, Oprm.ometa_u.f.vN,
+		Oprm.ometa_u.f.unique, Oprm.ometa_u.f.tag, code);
 	return EINVAL;
     } 
 #ifdef ALLOW_OLD
