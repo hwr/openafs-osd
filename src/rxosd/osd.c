@@ -1795,14 +1795,14 @@ restart:
 #endif
 	
     if (code) {
-	if (code == -100) {	/* restarting */
+	if (code == -100) { 		/* rxosd restarting */
 	    fprintf(stderr, "waiting for restarting rxosd\n");
 	    sleep(10);
 	    goto restart;
 	}
 	fprintf(stderr, "RXOSD_md5sum failed with code %d for %u.%u.%u.%u\n",
-		Oprm.ometa_u.f.rwvol, Oprm.ometa_u.f.vN,
-		Oprm.ometa_u.f.unique, Oprm.ometa_u.f.tag, code);
+		code, Oprm.ometa_u.f.rwvol, Oprm.ometa_u.f.vN,
+		Oprm.ometa_u.f.unique, Oprm.ometa_u.f.tag);
 	return EINVAL;
     } 
 #ifdef ALLOW_OLD
