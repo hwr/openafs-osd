@@ -175,7 +175,8 @@ struct rxosd_Variables {
 
 static afs_int32
 getRxosdConn(struct rxosd_Variables *v, struct osd_obj *o,
-	     struct server **ts, struct afs_conn **conn)
+	     struct server **ts, struct afs_conn **conn,
+	     struct rx_connection **rxconn)
 {
     afs_uint32 ip;
     afs_uint16 port = AFS_RXOSDPORT;
@@ -211,18 +212,18 @@ getRxosdConn(struct rxosd_Variables *v, struct osd_obj *o,
 	tu = afs_GetUser(v->areq->uid, v->avc->f.fid.Cell, SHARED_LOCK);
 	if (service)
             *conn = afs_ConnBySAsrv((*ts)->addr, port, service, v->avc->f.fid.Cell,
-	 		   tu, 1, 1, SHARED_LOCK);
+	 		   tu, 1, 1, SHARED_LOCK, rxconn);
 	else
             *conn = afs_ConnBySA((*ts)->addr, port, v->avc->f.fid.Cell,
-	 		   tu, 1, 1, SHARED_LOCK);
+	 		   tu, 1, 1, SHARED_LOCK, rxconn);
 	afs_PutUser(tu, SHARED_LOCK);
     } else {
 	if (service)
             *conn = afs_ConnBySAsrv((*ts)->addr, port, service, v->avc->f.fid.Cell,
-		    (struct unixuser *)&dummyuser, 1, 1, SHARED_LOCK);
+		    (struct unixuser *)&dummyuser, 1, 1, SHARED_LOCK, rxconn);
 	else
             *conn = afs_ConnBySA((*ts)->addr, port, v->avc->f.fid.Cell,
-		    (struct unixuser *)&dummyuser, 1, 1, SHARED_LOCK);
+		    (struct unixuser *)&dummyuser, 1, 1, SHARED_LOCK, rxconn);
     }
     if (!*conn) {
     	afs_PutServer(*ts, WRITE_LOCK);
@@ -250,13 +251,14 @@ check_for_vicep_access(struct rxosd_Variables *v, int writing, afs_uint32 *osd_i
 	    afs_int32 mask = WANTS_PATH;
     	    struct server *ts;
     	    struct afs_conn *tc2;
+	    struct rx_connection *rxconn2;
 #ifndef NEW_OSD_FILE
 	    struct ometa p;
 	    p.vsn = 1;
 	    p.ometa_u.t.part_id = o->part_id;
 	    p.ometa_u.t.obj_id = o->obj_id;
 #endif
-	    code = getRxosdConn(v, o, &ts, &tc2);
+	    code = getRxosdConn(v, o, &ts, &tc2, &rxconn2);
 	    if (code) { 
 	        code = EIO;
 	        return code;
@@ -264,12 +266,12 @@ check_for_vicep_access(struct rxosd_Variables *v, int writing, afs_uint32 *osd_i
 	    memset(&e, 0, sizeof(e));
             RX_AFS_GUNLOCK();
 #ifdef NEW_OSD_FILE
-	    code = RXOSD_examine(tc2->id, &o->rock, &o->m, mask, &e);
+	    code = RXOSD_examine(rxconn2, &o->rock, &o->m, mask, &e);
 #else
-	    code = RXOSD_examine(tc2->id, &o->rock, &p, mask, &e);
+	    code = RXOSD_examine(rxconn2, &o->rock, &p, mask, &e);
 #endif
             RX_AFS_GLOCK();
-    	    afs_PutConn(tc2, SHARED_LOCK);
+    	    afs_PutConn(tc2, rxconn2, SHARED_LOCK);
     	    afs_PutServer(ts, WRITE_LOCK);
 	    if (!code) {
 #ifdef NEW_OSD_FILE
@@ -362,11 +364,11 @@ rxosd_Destroy(void **r, afs_int32 error)
 static void
 adaptNumberOfStreams(struct rxosd_Variables *v)
 {
-    afs_int32 rtt;
+    afs_int32 code, rtt;
     struct server *ts;
     struct afs_conn *tc;
+    struct rx_connection *rxconn;
     struct osd_segm *segm;
-    afs_int32 code;
 
     v->doFakeStriping = 0;
     if (fakeStripes < 2)
@@ -375,12 +377,12 @@ adaptNumberOfStreams(struct rxosd_Variables *v)
    	return;
 	
     segm = &v->osd_file->segmList.osd_segmList_val[v->segmindex];
-    code = getRxosdConn(v, &segm->objList.osd_objList_val[0], &ts, &tc);
+    code = getRxosdConn(v, &segm->objList.osd_objList_val[0], &ts, &tc, &rxconn);
     if (code)
 	return;
     afs_PutServer(ts, WRITE_LOCK);
     rtt = tc->id->peer->rtt;
-    afs_PutConn(tc, SHARED_LOCK);
+    afs_PutConn(tc, rxconn, SHARED_LOCK);
     if (rtt < 80)
 	return;
 /*  afs_warn("Faking %d stripes for %u.%u.%u.%u at %u.%u.%u.%u\n",
@@ -505,6 +507,7 @@ start_store(struct rxosd_Variables *v, afs_uint64 offset)
         for (l=0; l < v->stripes; l++) {
 	    struct server *ts;
 	    struct afs_conn *tc;
+	    struct rx_connection *rxconn;
 	    if (v->doFakeStriping)
 		j = 0;
 	    else {
@@ -524,13 +527,14 @@ start_store(struct rxosd_Variables *v, afs_uint64 offset)
 	        }
 	    }
 	    lc = k + m * v->stripes;
-	    code = getRxosdConn(v, &segm->objList.osd_objList_val[j], &ts, &tc);
+	    code = getRxosdConn(v, &segm->objList.osd_objList_val[j], &ts, &tc,
+				&rxconn);
 	    v->osd[lc] = segm->objList.osd_objList_val[j].osd_id;
 	    if (code) { 
 	        code = EIO;
 	        goto bad;
 	    }
-	    v->call[lc] = rx_NewCall(tc->id);
+	    v->call[lc] = rx_NewCall(rxconn);
             RX_AFS_GUNLOCK();
 #ifdef NEW_OSD_FILE
 	    if (!(ts->flags & SRVR_USEOLDRPCS)) {
@@ -621,7 +625,7 @@ start_store(struct rxosd_Variables *v, afs_uint64 offset)
                    ICL_TYPE_STRING, __FILE__,
                    ICL_TYPE_INT32, __LINE__, ICL_TYPE_INT32, code);
 	    afs_PutServer(ts, WRITE_LOCK);
-	    afs_PutConn(tc, SHARED_LOCK);
+	    afs_PutConn(tc, rxconn, SHARED_LOCK);
             if (code) {
     	        afs_warn("RX StartRXOSD_write error\n");
 	        rx_EndCall(v->call[lc], 0);
@@ -1082,7 +1086,8 @@ struct storeOps rxosd_storeMemOps = {
 };
 
 afs_int32
-rxosd_storeInit(struct vcache *avc, struct afs_conn *tc, afs_offs_t base,
+rxosd_storeInit(struct vcache *avc, struct afs_conn *tc,
+		struct rx_connection *rxconn, afs_offs_t base,
                 afs_size_t bytes, afs_size_t length,
                 int sync,  struct vrequest *areq,
 		struct storeOps **ops, void **rock)
@@ -1123,7 +1128,7 @@ rxosd_storeInit(struct vcache *avc, struct afs_conn *tc, afs_offs_t base,
 	length = base + bytes;
 #if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
     if (vicep_fastread)
-       afs_fast_vpac_check(avc, tc, 1, &osd_id);
+       afs_fast_vpac_check(avc, tc, rxconn, 1, &osd_id);
 #endif
     /* get file description from AFS fileserver */
     while (1) {
@@ -1142,11 +1147,11 @@ rxosd_storeInit(struct vcache *avc, struct afs_conn *tc, afs_offs_t base,
 	p.RWparm_u.p6.filelength = length;
 	p.RWparm_u.p6.flag = SEND_PORT_SERVICE;
 	startTime = osi_Time();
-	code = RXAFS_StartAsyncStore(tc->id, (struct AFSFid *) &avc->f.fid.Fid,
+	code = RXAFS_StartAsyncStore(rxconn, (struct AFSFid *) &avc->f.fid.Fid,
 				&p, &v->a, &v->maxlength, &v->transid, &v->expires, 
 				&v->OutStatus);
 	if (code == RXGEN_OPCODE)
-	    code = RXAFS_StartAsyncStore1(tc->id, (struct AFSFid *) &avc->f.fid.Fid,
+	    code = RXAFS_StartAsyncStore1(rxconn, (struct AFSFid *) &avc->f.fid.Fid,
 				base, bytes, length, 0, &v->a,
 				&v->maxlength, &v->transid, &v->expires, &v->OutStatus);
 
@@ -1198,7 +1203,7 @@ rxosd_storeInit(struct vcache *avc, struct afs_conn *tc, afs_offs_t base,
     code = check_for_vicep_access(v, 1, &osd_id);
 #endif
     if (!code) {
-	code = fake_vpac_storeInit(avc, tc, base, bytes, length, sync,
+	code = fake_vpac_storeInit(avc, tc, rxconn, base, bytes, length, sync,
 				areq, ops, rock, v->transid, v->expires, 
 				v->maxlength, osd_id);
 	if (!code) {
@@ -1272,7 +1277,7 @@ rxosd_serverUp(struct rxosd_Variables *v, struct osd_obj *o)
     afs_int32 up = 1;
     afs_uint32 ip; 
     struct server *ts;
-    afs_int16 port = AFS_RXOSDPORT;
+    afs_uint16 port = AFS_RXOSDPORT;
     
 #ifdef NEW_OSD_FILE
     if (o->addr.protocol == RX_PROTOCOL_UDP
@@ -1323,6 +1328,7 @@ start_fetch(struct rxosd_Variables *v, afs_uint64 offset)
 	struct osd_obj *o;
 	struct server *ts;
 	struct afs_conn *tc;
+	struct rx_connection *rxconn;
 	afs_int32 retry = 10;
 	int checkUp = 0;
 	if (v->doFakeStriping)
@@ -1384,7 +1390,8 @@ start_fetch(struct rxosd_Variables *v, afs_uint64 offset)
         tc = 0;
 	v->osd[k] = segm->objList.osd_objList_val[j].osd_id;
 	while (!tc && retry) {
-	    code = getRxosdConn(v, &segm->objList.osd_objList_val[j], &ts, &tc);
+	    code = getRxosdConn(v, &segm->objList.osd_objList_val[j], &ts, &tc,
+				&rxconn);
 	    if (code) {
 		afs_warn("rxosd start_fetch: afs_ConnBySA to 0x%x failed\n",
 			ts->addr->sa_ip);
@@ -1402,7 +1409,7 @@ start_fetch(struct rxosd_Variables *v, afs_uint64 offset)
 	    }
 	}
 	if (tc) {
-	    v->call[k] = rx_NewCall(tc->id);
+	    v->call[k] = rx_NewCall(rxconn);
 	    if (!v->call[k])
 		continue;
 
@@ -1558,7 +1565,7 @@ retry:
 		    }
 		}
 	    }
-	    afs_PutConn(tc, SHARED_LOCK);
+	    afs_PutConn(tc, rxconn, SHARED_LOCK);
 	}
 	if (!v->call[k]) {
             afs_Trace3(afs_iclSetp, CM_TRACE_WASHERE,
@@ -1952,7 +1959,8 @@ struct fetchOps rxosd_fetchBypassCacheOps = {
 #endif
 
 afs_int32
-rxosd_fetchInit(struct afs_conn *tc, struct vcache *avc, afs_offs_t base,
+rxosd_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
+		struct vcache *avc, afs_offs_t base,
                 afs_uint32 bytes, afs_uint32 *length, void* bypassparms,
                 struct osi_file *fP, struct vrequest *areq, 
 		struct fetchOps **ops, void **rock)
@@ -1986,9 +1994,9 @@ rxosd_fetchInit(struct afs_conn *tc, struct vcache *avc, afs_offs_t base,
     v->areq = areq;
 #if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
     if (vicep_fastread) {
-        code = afs_fast_vpac_check(avc, tc, 0, &osd_id);
+        code = afs_fast_vpac_check(avc, tc, rxconn, 0, &osd_id);
         if (!code) {
-	    code = fake_vpac_fetchInit(tc, avc, base, bytes, length,
+	    code = fake_vpac_fetchInit(tc, rxconn, avc, base, bytes, length,
 				       bypassparms, fP, areq, ops,
 				       rock, 0, 0, osd_id);
 	    if (!code) {
@@ -2016,11 +2024,11 @@ rxosd_fetchInit(struct afs_conn *tc, struct vcache *avc, afs_offs_t base,
 	v->a.async_u.l2.osd_file2List_val = NULL;
 #endif
         RX_AFS_GUNLOCK();
-	code = RXAFS_StartAsyncFetch(tc->id, (struct AFSFid *) &avc->f.fid.Fid,
+	code = RXAFS_StartAsyncFetch(rxconn, (struct AFSFid *) &avc->f.fid.Fid,
 				&p, &v->a, &v->transid, &v->expires,
 		 		&v->OutStatus, &v->CallBack);
 	if (code == RXGEN_OPCODE)
-	    code = RXAFS_StartAsyncFetch1(tc->id, (struct AFSFid *) &avc->f.fid.Fid,
+	    code = RXAFS_StartAsyncFetch1(rxconn, (struct AFSFid *) &avc->f.fid.Fid,
 				base, bytes, 0, &v->a, &v->transid, &v->expires,
 		 		&v->OutStatus, &v->CallBack);
         RX_AFS_GLOCK();
@@ -2067,7 +2075,7 @@ rxosd_fetchInit(struct afs_conn *tc, struct vcache *avc, afs_offs_t base,
 #if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
     code = check_for_vicep_access(v, 0, &osd_id);
     if (!code) {
-	code = fake_vpac_fetchInit(tc, avc, base, bytes, length, bypassparms,
+	code = fake_vpac_fetchInit(tc, rxconn, avc, base, bytes, length, bypassparms,
 				fP, areq, ops, rock, v->transid, v->expires,
 				osd_id);
 	if (!code) {
@@ -2138,7 +2146,7 @@ rxosd_fetchInit(struct afs_conn *tc, struct vcache *avc, afs_offs_t base,
 bad:
     if (code) {
         /* make sure it's not a decryption problem after rxosd restart */
-	RXAFS_CheckOSDconns(v->fs_conn->id);
+	RXAFS_CheckOSDconns(rxconn);
 	rxosd_Destroy((void**)&v, code);
 	return code;
     }
@@ -2189,10 +2197,11 @@ rxosd_bringOnline(struct vcache *avc, struct vrequest *areq)
     struct rxosd_Variables *v;
     struct afs_conn *tc;
     afs_int32 waitcount = 0;
+    struct rx_connection *rxconn;
 
     if (afs_dontRecallFromHSM)
 	return ENODEV;
-    tc = afs_Conn(&avc->f.fid, areq, SHARED_LOCK);
+    tc = afs_Conn(&avc->f.fid, areq, SHARED_LOCK, &rxconn);
     if (!tc) 
 	return -1;
     ALLOC_RXOSD(v, struct rxosd_Variables);
@@ -2206,7 +2215,7 @@ rxosd_bringOnline(struct vcache *avc, struct vrequest *areq)
 	v->a.type = 2;
 #endif
         RX_AFS_GUNLOCK();
-        code = RXAFS_GetPath(tc->id, (struct AFSFid *) &avc->f.fid.Fid,
+        code = RXAFS_GetPath(rxconn, (struct AFSFid *) &avc->f.fid.Fid,
 				&v->a);
         RX_AFS_GLOCK();
 	if (code != OSD_WAIT_FOR_TAPE && code != VBUSY && code != VRESTARTING) 

@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -20,9 +20,14 @@
 #include "afs/sysincludes.h"	/* Standard vendor system headers */
 
 #if !defined(UKERNEL)
+
 #if !defined(AFS_LINUX20_ENV)
-#include <net/if.h>
-#include "stdarg.h"
+# include <net/if.h>
+# if defined(AFS_SUN58_ENV)
+#  include <sys/varargs.h>
+# else
+#  include <stdarg.h>
+# endif
 #endif
 #include <netinet/in.h>
 

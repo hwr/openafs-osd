@@ -581,7 +581,8 @@ struct storeOps vpac_storeMemOps = {
 };
 
 static afs_int32
-common_storeInit(struct vcache *avc, struct afs_conn *tc, afs_offs_t base, 
+common_storeInit(struct vcache *avc, struct afs_conn *tc,
+		struct rx_connection *rxconn, afs_offs_t base, 
 		afs_size_t bytes, afs_size_t length,
   		int sync, struct vrequest * areq,
 		struct storeOps **ops, void **rock,
@@ -620,7 +621,7 @@ common_storeInit(struct vcache *avc, struct afs_conn *tc, afs_offs_t base,
     v->osd = osd;
     if (r->transid) { 	/* we must end the read transaction first */
 	RX_AFS_GUNLOCK();
-	code = RXAFS_EndAsyncFetch(tc->id, &avc->f.fid.Fid, r->transid,
+	code = RXAFS_EndAsyncFetch(rxconn, &avc->f.fid.Fid, r->transid,
 			r->bytes_sent, r->osd);
 	RX_AFS_GLOCK();
 	r->transid = 0;
@@ -640,7 +641,7 @@ common_storeInit(struct vcache *avc, struct afs_conn *tc, afs_offs_t base,
 	p.RWparm_u.p4.length = bytes;
 	p.RWparm_u.p4.filelength = avc->f.m.Length;
         RX_AFS_GUNLOCK();
-        code = RXAFS_StartAsyncStore(tc->id, (struct AFSFid *) &avc->f.fid.Fid,
+        code = RXAFS_StartAsyncStore(rxconn, (struct AFSFid *) &avc->f.fid.Fid,
                                     &p, &v->a, &v->maxlength, &v->transid,
 				    &v->expires, &v->OutStatus);
         RX_AFS_GLOCK();
@@ -718,21 +719,23 @@ common_storeInit(struct vcache *avc, struct afs_conn *tc, afs_offs_t base,
 }
 
 afs_int32
-vpac_storeInit(struct vcache *avc, struct afs_conn *tc, afs_offs_t base, 
+vpac_storeInit(struct vcache *avc, struct afs_conn *tc,
+		struct rx_connection *rxconn, afs_offs_t base, 
 		afs_size_t bytes, afs_size_t length,
   		int sync, struct vrequest * areq,
 		struct storeOps **ops, void **rock)
 {
     afs_int32 code;
 
-    code = common_storeInit(avc, tc, base, bytes, length, sync, areq, ops,
+    code = common_storeInit(avc, tc, rxconn, base, bytes, length, sync, areq, ops,
 				rock, 0, 0, 0, 0);
 
     return code;
 }
 
 afs_int32
-fake_vpac_storeInit(struct vcache *avc, struct afs_conn *tc, afs_offs_t base, 
+fake_vpac_storeInit(struct vcache *avc, struct afs_conn *tc,
+		struct rx_connection *rxconn, afs_offs_t base, 
 		afs_size_t bytes, afs_size_t length,
   		int sync, struct vrequest * areq,
 		struct storeOps **ops, void **rock,
@@ -741,7 +744,7 @@ fake_vpac_storeInit(struct vcache *avc, struct afs_conn *tc, afs_offs_t base,
 {
     afs_int32 code;
 
-    code = common_storeInit(avc, tc, base, bytes, length, sync, areq, ops,
+    code = common_storeInit(avc, tc, rxconn, base, bytes, length, sync, areq, ops,
 				rock, transid, expires, maxlength, osd);
 
     return code;
@@ -1060,7 +1063,8 @@ struct fetchOps vpac_fetchBypassCacheOps = {
 #endif
 
 static afs_int32
-common_fetchInit(struct afs_conn *tc, struct vcache *avc, afs_offs_t base, 
+common_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
+		struct vcache *avc, afs_offs_t base, 
 		afs_uint32 bytes, afs_uint32 *length, 
 		void *bypassparms,
   		struct osi_file *fP, struct vrequest *areq,
@@ -1112,7 +1116,7 @@ common_fetchInit(struct afs_conn *tc, struct vcache *avc, afs_offs_t base,
     if (r->transid) {
 	if (r->expires + 1 <= osi_Time()) {
 	    RX_AFS_GUNLOCK();
-	    code = RXAFS_ExtendAsyncFetch(tc->id, &avc->f.fid.Fid, r->transid,
+	    code = RXAFS_ExtendAsyncFetch(rxconn, &avc->f.fid.Fid, r->transid,
 					&r->expires);
 	    RX_AFS_GLOCK();
 	    if (code) {
@@ -1152,7 +1156,7 @@ common_fetchInit(struct afs_conn *tc, struct vcache *avc, afs_offs_t base,
 	        p.RWparm_u.p1.length = bytes;
 		transidP = &v->transid;
 	    }
-            code = RXAFS_StartAsyncFetch(tc->id, 
+            code = RXAFS_StartAsyncFetch(rxconn, 
 			    (struct AFSFid *) &avc->f.fid.Fid,
 			    &p, &v->a, transidP, &r->expires,
 			    &v->OutStatus, &v->CallBack);
@@ -1243,7 +1247,8 @@ common_fetchInit(struct afs_conn *tc, struct vcache *avc, afs_offs_t base,
 }
 
 afs_int32
-vpac_fetchInit(struct afs_conn *tc, struct vcache *avc, afs_offs_t base, 
+vpac_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
+		struct vcache *avc, afs_offs_t base, 
 		afs_uint32 bytes, afs_uint32 *length,
 		void *bypassparms,
   		struct osi_file *fP, struct vrequest *areq,
@@ -1251,7 +1256,7 @@ vpac_fetchInit(struct afs_conn *tc, struct vcache *avc, afs_offs_t base,
 {
     afs_int32 code;
 
-    code = common_fetchInit(tc, avc, base, bytes, length, bypassparms, fP,
+    code = common_fetchInit(tc, rxconn, avc, base, bytes, length, bypassparms, fP,
 				areq, ops, rock, 0, 0, 0);
     return code;
 }
@@ -1261,7 +1266,8 @@ vpac_fetchInit(struct afs_conn *tc, struct vcache *avc, afs_offs_t base,
  *
  */
 afs_int32
-fake_vpac_fetchInit(struct afs_conn *tc, struct vcache *avc, afs_offs_t base, 
+fake_vpac_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
+		struct vcache *avc, afs_offs_t base, 
 		afs_uint32 bytes, afs_uint32 *length, void *bypassparms,
   		struct osi_file *fP, struct vrequest *areq,
 	        struct fetchOps **ops, void **rock, afs_uint64 transid,
@@ -1269,7 +1275,7 @@ fake_vpac_fetchInit(struct afs_conn *tc, struct vcache *avc, afs_offs_t base,
 {
     afs_int32 code;
 
-    code = common_fetchInit(tc, avc, base, bytes, length, bypassparms, fP,
+    code = common_fetchInit(tc, rxconn, avc, base, bytes, length, bypassparms, fP,
 				areq, ops, rock, transid, expires, osd);
     return code;
 }
@@ -1373,10 +1379,11 @@ afs_open_vicep_localFile(struct vcache *avc, struct vrequest *treq)
     if ((afs_protocols & VICEP_ACCESS) && (avc->f.states & CPartVisible))  {
         long startTime;
         struct afs_conn *tc;
+	struct rx_connection *rxconn;
 
 	if (avc->protocol & RX_OSD)
 	    return;
-        tc = afs_Conn(&avc->f.fid, treq, SHARED_LOCK);
+        tc = afs_Conn(&avc->f.fid, treq, SHARED_LOCK, &rxconn);
         if (tc) {
 	    struct async a;
             startTime = osi_Time();
@@ -1384,7 +1391,7 @@ afs_open_vicep_localFile(struct vcache *avc, struct vrequest *treq)
 	    a.async_u.p3.path.path_info_val = NULL;
 	    a.async_u.p3.path.path_info_len = 0;
             RX_AFS_GUNLOCK();
-	    code = RXAFS_GetPath(tc->id, &avc->f.fid.Fid, &a );
+	    code = RXAFS_GetPath(rxconn, &avc->f.fid.Fid, &a );
 	    RX_AFS_GLOCK();
 	    if (!code) {
 		for (i=0; i<nServerUuids; i++) {
@@ -1415,7 +1422,7 @@ afs_open_vicep_localFile(struct vcache *avc, struct vrequest *treq)
 	        t = (struct GetPathOutputs *)osi_Alloc(sizeof(struct GetPathOutputs));
 	        memset(t, 0, sizeof(struct GetPathOutputs));
                 RX_AFS_GUNLOCK();
-	        code = RXAFS_GetPath0(tc->id, &avc->f.fid.Fid, &t->ino, &t->lun, 
+	        code = RXAFS_GetPath0(rxconn, &avc->f.fid.Fid, &t->ino, &t->lun, 
 				&t->RWvol, &t->algorithm, &t->uuid);
 	        RX_AFS_GLOCK();
 	        if (!code) {
@@ -1443,6 +1450,7 @@ afs_open_vicep_localFile(struct vcache *avc, struct vrequest *treq)
                 }
                 afs_osi_Free(t, sizeof(struct GetPathOutputs));
 	    }
+	    afs_PutConn(tc, rxconn, SHARED_LOCK);
         }
     }
 }
@@ -1513,6 +1521,7 @@ afs_close_vicep_file(struct vcache *avc, struct vrequest *areq,
 {
 #if defined(AFS_LINUX26_ENV) || defined(AFS_AIX53_ENV)
     struct afs_conn *tc;
+    struct rx_connection *rxconn;
     afs_int32 code;
 #ifdef AFS_LINUX22_ENV
     struct file *tfp;
@@ -1540,17 +1549,18 @@ afs_close_vicep_file(struct vcache *avc, struct vrequest *areq,
 	}
 	if (r->transid) { /* permanently open file for read */
   	    if (areq) 
-	        tc = afs_Conn(&avc->f.fid, areq, 0);
+	        tc = afs_Conn(&avc->f.fid, areq, SHARED_LOCK, &rxconn);
 	    else {
 	        struct vrequest treq;
 		afs_InitReq(&treq, afs_osi_credp);
-	        tc = afs_Conn(&avc->f.fid, &treq, 0);
+	        tc = afs_Conn(&avc->f.fid, &treq, SHARED_LOCK, &rxconn);
 	    }
 	    if (tc) {
 	        RX_AFS_GUNLOCK();
-		code = RXAFS_EndAsyncFetch(tc->id, &avc->f.fid.Fid,
+		code = RXAFS_EndAsyncFetch(rxconn, &avc->f.fid.Fid,
 				r->transid, r->bytes_sent, r->osd);
 	        RX_AFS_GLOCK();
+		afs_PutConn(tc, rxconn, SHARED_LOCK);
 	    }
 	    r->transid = 0;
 	    r->bytes_sent = 0;
@@ -1626,7 +1636,7 @@ afs_set_serveruuid(long parm2, long parm3, long parm4, long parm5)
 {
     afs_int32 code = 0;
     char cellname[MAXCELLCHARS];
-    struct cell *tc = 0;
+    struct cell *tcell = 0;
     afsUUID tuuid;
     int i;
 
@@ -1637,15 +1647,15 @@ afs_set_serveruuid(long parm2, long parm3, long parm4, long parm5)
     AFS_COPYIN((char *)parm3, cellname, MAXCELLCHARS, code);
     if (code)
 	return code;
-    tc = afs_GetCellByName(cellname, READ_LOCK);
-    if (!tc) {
+    tcell = afs_GetCellByName(cellname, READ_LOCK);
+    if (!tcell) {
 	afs_warn("afs_GetCellByName failed for %s\n", cellname);
 	return EFAULT;
     }
     for (i = 0; i < nServerUuids; i++) {
         if (!memcmp((char *)&afs_visiblePart[i].uuid, (char *)&tuuid,
                                 sizeof(struct afsUUID)) 
-	  && afs_visiblePart[i].cell == tc->cellNum
+	  && afs_visiblePart[i].cell == tcell->cellNum
 	  && afs_visiblePart[i].lun == parm5)
             break;
     }
@@ -1653,7 +1663,7 @@ afs_set_serveruuid(long parm2, long parm3, long parm4, long parm5)
 	AFS_COPYIN(parm4, (char *)&afs_visiblePart[i].path, 64, code);
 	if (code)
 	    return code;
-        afs_visiblePart[i].cell = tc->cellNum;
+        afs_visiblePart[i].cell = tcell->cellNum;
         afs_visiblePart[i].lun = parm5;
         memcpy((char *)&afs_visiblePart[i].uuid, (char *)&tuuid,
                            sizeof(struct afsUUID));
@@ -1689,22 +1699,22 @@ afs_set_visible_osd(long parm2, long parm3, long parm4, long parm5)
 {
     afs_int32 code = 0;
     char cellname[MAXCELLCHARS];
-    struct cell *tc = 0;
+    struct cell *tcell = 0;
     int i;
 
     AFS_COPYIN((char *)parm2, cellname, MAXCELLCHARS, code);
     if (code)
 	afs_warn("AFS_COPYIN for cellname failed with code %d\n", code);
     else {
-        tc = afs_GetCellByName(cellname, READ_LOCK);
-	if (!tc) {
+        tcell = afs_GetCellByName(cellname, READ_LOCK);
+	if (!tcell) {
 	    afs_warn("afs_GetCellByName failed for %s\n", cellname);
 	    code = EFAULT;
 	}
     }
     if (!code) {
         for (i = 0; i < afs_nVisibleOsds; i++) {
-            if (afs_visibleOsd[i].cell == tc->cellNum 
+            if (afs_visibleOsd[i].cell == tcell->cellNum 
 	      && afs_visibleOsd[i].osd == parm4)
                 break;
         }
@@ -1712,7 +1722,7 @@ afs_set_visible_osd(long parm2, long parm3, long parm4, long parm5)
 	    AFS_COPYIN(parm3, (char *)&afs_visibleOsd[i].path, 64, code);
 	    if (code)
 		return code;
-            afs_visibleOsd[i].cell = tc->cellNum;
+            afs_visibleOsd[i].cell = tcell->cellNum;
             afs_visibleOsd[i].osd = parm4;
             afs_visibleOsd[i].lun = parm5;
 	    afs_warn("Visible OSD %u lun %u cell %u == %s at %s\n",
@@ -1730,7 +1740,8 @@ afs_set_visible_osd(long parm2, long parm3, long parm4, long parm5)
 }
 
 afs_int32
-afs_fast_vpac_check(struct vcache *avc, struct afs_conn *tc, afs_int32 storing,
+afs_fast_vpac_check(struct vcache *avc, struct afs_conn *tc,
+			struct rx_connection *rxconn, afs_int32 storing,
 			afs_uint32 *osd)
 {
     struct vpacRock *r;
@@ -1745,7 +1756,7 @@ afs_fast_vpac_check(struct vcache *avc, struct afs_conn *tc, afs_int32 storing,
 	if (r->transid) {
 	    if (storing) {
                 RX_AFS_GUNLOCK();
-		code = RXAFS_EndAsyncFetch(tc->id, &avc->f.fid.Fid, r->transid,
+		code = RXAFS_EndAsyncFetch(rxconn, &avc->f.fid.Fid, r->transid,
 					r->bytes_sent, r->osd);
                 RX_AFS_GLOCK();
 		r->transid = 0;
@@ -1765,7 +1776,7 @@ afs_fast_vpac_check(struct vcache *avc, struct afs_conn *tc, afs_int32 storing,
 		if (!found || r->expires < osi_Time()) {
 		    afs_uint32 texpires;
 	            RX_AFS_GUNLOCK();
-	            code = RXAFS_ExtendAsyncFetch(tc->id, &avc->f.fid.Fid, 
+	            code = RXAFS_ExtendAsyncFetch(rxconn, &avc->f.fid.Fid, 
 						r->transid, &texpires);
 	            RX_AFS_GLOCK();
 	            if (code) {

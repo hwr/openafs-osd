@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -74,7 +74,7 @@ static int inVolList(struct VenusFid *fid, afs_int32 nvols, afs_int32 * vID,
 
 
 /**
- * Convert a volume name to a number; 
+ * Convert a volume name to a number;
  * @param aname Volume name.
  * @return return 0 if can't parse as a number.
  */
@@ -106,8 +106,8 @@ afs_vtoi(char *aname)
 static struct fvolume staticFVolume;
 afs_int32 afs_FVIndex = -1;
 
-/** 
- * UFS specific version of afs_GetVolSlot 
+/**
+ * UFS specific version of afs_GetVolSlot
  * @return
  */
 struct volume *
@@ -232,9 +232,9 @@ afs_UFSGetVolSlot(void)
 
 
 /**
- *   Get an available volume list slot. If the list does not exist, 
+ *   Get an available volume list slot. If the list does not exist,
  * create one containing a single element.
- * @return 
+ * @return
  */
 struct volume *
 afs_MemGetVolSlot(void)
@@ -256,7 +256,7 @@ afs_MemGetVolSlot(void)
 
 }				/*afs_MemGetVolSlot */
 
-/** 
+/**
  *   Reset volume information for all volume structs that
  * point to a speicific server.
  * @param srvp
@@ -282,7 +282,7 @@ afs_ResetVolumes(struct server *srvp)
 }
 
 
-/** 
+/**
  *   Reset volume name to volume id mapping cache.
  * @param flags
  */
@@ -454,7 +454,7 @@ inVolList(struct VenusFid *fid, afs_int32 nvols, afs_int32 * vID,
 /* afs_PutVolume is now a macro in afs.h */
 
 
-/** 
+/**
  *    Return volume struct if we have it cached and it's up-to-date.
  *  Environment: Must be called with afs_xvolume unlocked.
  *  @param afid Volume FID.
@@ -517,12 +517,12 @@ afs_GetVolume(struct VenusFid *afid, struct vrequest *areq,
 
 
 /**
- * 
+ *
  * @param volid Volume ID. If it's 0, get it from the name.
  * @param aname Volume name.
  * @param ve Volume entry.
  * @param tcell The cell containing this volume.
- * @param agood 
+ * @param agood
  * @param type Type of volume.
  * @param areq Request.
  * @return Volume or NULL if failure.
@@ -559,7 +559,7 @@ afs_SetupVolume(afs_int32 volid, char *aname, void *ve, struct cell *tcell,
 		volid = nve->volumeId[whichType];
 	    } else {
 		volid = ove->volumeId[whichType];
-	    } 
+	    }
 	} /* end of if (volid == 0) */
     } /* end of if (!volid) */
 
@@ -646,11 +646,11 @@ afs_SetupVolume(afs_int32 volid, char *aname, void *ve, struct cell *tcell,
  * Seek volume by it's name and attributes.
  * If volume not found, try to add one.
  * @param aname Volume name.
- * @param acell Cell 
+ * @param acell Cell
  * @param agood
  * @param areq
  * @param locktype Type of lock to be used.
- * @return 
+ * @return
  */
 struct volume *
 afs_GetVolumeByName(char *aname, afs_int32 acell, int agood,
@@ -683,7 +683,7 @@ afs_GetVolumeByName(char *aname, afs_int32 acell, int agood,
 
 /**
  *   Init a new dynroot volume.
- * @param Volume FID. 
+ * @param Volume FID.
  * @return Volume or NULL if not found.
  */
 static struct volume *
@@ -718,7 +718,7 @@ int lastnvcode;
 /**
  * @param aname Volume name.
  * @param acell Cell id.
- * @param agood 
+ * @param agood
  * @param areq Request type.
  * @param locktype Type of lock to be used.
  * @return Volume or NULL if failure.
@@ -736,6 +736,7 @@ afs_NewVolumeByName(char *aname, afs_int32 acell, int agood,
     char *tbuffer, *ve;
     struct afs_conn *tconn;
     struct vrequest treq;
+    struct rx_connection *rxconn;
 
     if (strlen(aname) > VL_MAXNAMELEN)	/* Invalid volume name */
 	return NULL;
@@ -760,34 +761,34 @@ afs_NewVolumeByName(char *aname, afs_int32 acell, int agood,
     do {
 	tconn =
 	    afs_ConnByMHosts(tcell->cellHosts, tcell->vlport, tcell->cellNum,
-			     &treq, SHARED_LOCK);
+			     &treq, SHARED_LOCK, &rxconn);
 	if (tconn) {
 	    if (tconn->srvr->server->flags & SNO_LHOSTS) {
 		type = 0;
 		RX_AFS_GUNLOCK();
-		code = VL_GetEntryByNameO(tconn->id, aname, tve);
+		code = VL_GetEntryByNameO(rxconn, aname, tve);
 		RX_AFS_GLOCK();
 	    } else if (tconn->srvr->server->flags & SYES_LHOSTS) {
 		type = 1;
 		RX_AFS_GUNLOCK();
-		code = VL_GetEntryByNameN(tconn->id, aname, ntve);
+		code = VL_GetEntryByNameN(rxconn, aname, ntve);
 		RX_AFS_GLOCK();
 	    } else {
 		type = 2;
 		RX_AFS_GUNLOCK();
-		code = VL_GetEntryByNameU(tconn->id, aname, utve);
+		code = VL_GetEntryByNameU(rxconn, aname, utve);
 		RX_AFS_GLOCK();
 		if (!(tconn->srvr->server->flags & SVLSRV_UUID)) {
 		    if (code == RXGEN_OPCODE) {
 			type = 1;
 			RX_AFS_GUNLOCK();
-			code = VL_GetEntryByNameN(tconn->id, aname, ntve);
+			code = VL_GetEntryByNameN(rxconn, aname, ntve);
 			RX_AFS_GLOCK();
 			if (code == RXGEN_OPCODE) {
 			    type = 0;
 			    tconn->srvr->server->flags |= SNO_LHOSTS;
 			    RX_AFS_GUNLOCK();
-			    code = VL_GetEntryByNameO(tconn->id, aname, tve);
+			    code = VL_GetEntryByNameO(rxconn, aname, tve);
 			    RX_AFS_GLOCK();
 			} else if (!code)
 			    tconn->srvr->server->flags |= SYES_LHOSTS;
@@ -798,7 +799,7 @@ afs_NewVolumeByName(char *aname, afs_int32 acell, int agood,
 	    }
 	} else
 	    code = -1;
-    } while (afs_Analyze(tconn, code, NULL, &treq, -1,	/* no op code for this */
+    } while (afs_Analyze(tconn, rxconn, code, NULL, &treq, -1,	/* no op code for this */
 			 SHARED_LOCK, tcell));
 
     if (code) {
@@ -873,9 +874,9 @@ afs_NewVolumeByName(char *aname, afs_int32 acell, int agood,
 
 
 
-/** 
+/**
  *   Call this with the volume structure locked; used for new-style vldb requests.
- * @param av Volume 
+ * @param av Volume
  * @param ve
  * @param acell
  */
@@ -916,8 +917,8 @@ InstallVolumeEntry(struct volume *av, struct vldbentry *ve, int acell)
 
     cellp = afs_GetCell(acell, 0);
 
-    /* This volume, av, is locked. Zero out the serverHosts[] array 
-     * so that if afs_GetServer() decides to replace the server 
+    /* This volume, av, is locked. Zero out the serverHosts[] array
+     * so that if afs_GetServer() decides to replace the server
      * struct, we don't deadlock trying to afs_ResetVolumeInfo()
      * this volume.
      */
@@ -994,8 +995,8 @@ InstallNVolumeEntry(struct volume *av, struct nvldbentry *ve, int acell)
 
     cellp = afs_GetCell(acell, 0);
 
-    /* This volume, av, is locked. Zero out the serverHosts[] array 
-     * so that if afs_GetServer() decides to replace the server 
+    /* This volume, av, is locked. Zero out the serverHosts[] array
+     * so that if afs_GetServer() decides to replace the server
      * struct, we don't deadlock trying to afs_ResetVolumeInfo()
      * this volume.
      */
@@ -1074,8 +1075,8 @@ InstallUVolumeEntry(struct volume *av, struct uvldbentry *ve, int acell,
 
     cellp = afs_GetCell(acell, 0);
 
-    /* This volume, av, is locked. Zero out the serverHosts[] array 
-     * so that if afs_GetServer() decides to replace the server 
+    /* This volume, av, is locked. Zero out the serverHosts[] array
+     * so that if afs_GetServer() decides to replace the server
      * struct, we don't deadlock trying to afs_ResetVolumeInfo()
      * this volume.
      */
@@ -1096,6 +1097,10 @@ InstallUVolumeEntry(struct volume *av, struct uvldbentry *ve, int acell,
 
 	if (!(ve->serverFlags[i] & VLSERVER_FLAG_UUID)) {
 	    /* The server has no uuid */
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
+		if (afs_compare_serveruuid((char *)&ve->serverNumber))
+		    av->states |= VPartVisible;
+#endif
 	    serverid = htonl(ve->serverNumber[i].time_low);
 	    ts = afs_GetServer(&serverid, 1, acell, cellp->fsport, WRITE_LOCK,
 			       (afsUUID *) 0, 0);
@@ -1104,16 +1109,13 @@ InstallUVolumeEntry(struct volume *av, struct uvldbentry *ve, int acell,
 	    if (ts && (ts->sr_addr_uniquifier == ve->serverUnique[i])
 		&& ts->addr) {
 		/* uuid, uniquifier, and portal are the same */
-#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
-                if (afs_compare_serveruuid((char *)&ve->serverNumber))
-                    av->states |= VPartVisible;
-#endif
 	    } else {
 		afs_uint32 *addrp, code;
 		afs_int32 nentries, unique;
 		bulkaddrs addrs;
 		ListAddrByAttributes attrs;
 		afsUUID uuid;
+		struct rx_connection *rxconn;
 
 		memset(&attrs, 0, sizeof(attrs));
 		attrs.Mask = VLADDR_UUID;
@@ -1123,11 +1125,12 @@ InstallUVolumeEntry(struct volume *av, struct uvldbentry *ve, int acell,
 		do {
 		    tconn =
 			afs_ConnByMHosts(tcell->cellHosts, tcell->vlport,
-					 tcell->cellNum, areq, SHARED_LOCK);
+					 tcell->cellNum, areq, SHARED_LOCK,
+					 &rxconn);
 		    if (tconn) {
 			RX_AFS_GUNLOCK();
 			code =
-			    VL_GetAddrsU(tconn->id, &attrs, &uuid, &unique,
+			    VL_GetAddrsU(rxconn, &attrs, &uuid, &unique,
 					 &nentries, &addrs);
 			RX_AFS_GLOCK();
 		    } else {
@@ -1139,7 +1142,7 @@ InstallUVolumeEntry(struct volume *av, struct uvldbentry *ve, int acell,
 			code = VL_NOENT;
 
 		} while (afs_Analyze
-			 (tconn, code, NULL, areq, -1, SHARED_LOCK, tcell));
+			 (tconn, rxconn, code, NULL, areq, -1, SHARED_LOCK, tcell));
 		if (code) {
 		    /* Better handing of such failures; for now we'll simply retry this call */
 		    areq->volumeError = 1;
@@ -1176,9 +1179,9 @@ InstallUVolumeEntry(struct volume *av, struct uvldbentry *ve, int acell,
 
 
 /**
- *   Reset volume info for the specified volume strecture. Mark volume 
+ *   Reset volume info for the specified volume strecture. Mark volume
  * to be rechecked next time.
- * @param tv 
+ * @param tv
  */
 void
 afs_ResetVolumeInfo(struct volume *tv)

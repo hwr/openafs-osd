@@ -102,8 +102,8 @@ void cm_InitVolume(int newFile, long maxVols)
                 afs_uint32 volType;
 
                 lock_InitializeRWLock(&volp->rw, "cm_volume_t rwlock", LOCK_HIERARCHY_VOLUME);
-                volp->flags |= CM_VOLUMEFLAG_RESET;
-                volp->flags &= ~CM_VOLUMEFLAG_UPDATING_VL;
+                _InterlockedOr(&volp->flags, CM_VOLUMEFLAG_RESET);
+                _InterlockedAnd(&volp->flags, ~CM_VOLUMEFLAG_UPDATING_VL);
                 for (volType = RWVOL; volType < NUM_VOL_TYPES; volType++) {
                     volp->vol[volType].state = vl_unknown;
                     volp->vol[volType].serversp = NULL;
@@ -230,7 +230,7 @@ long cm_UpdateVolumeLocation(struct cm_cell *cellp, cm_user_t *userp, cm_req_t *
             }
         }
 
-        volp->flags |= CM_VOLUMEFLAG_UPDATING_VL;
+        _InterlockedOr(&volp->flags, CM_VOLUMEFLAG_UPDATING_VL);
         lock_ReleaseWrite(&volp->rw);
 
         if (cellp->flags & CM_CELLFLAG_VLSERVER_INVALID)
@@ -469,7 +469,7 @@ long cm_UpdateVolumeLocation(struct cm_cell *cellp, cm_user_t *userp, cm_req_t *
         }
 
         if (flags & VLF_DFSFILESET) {
-            volp->flags |= CM_VOLUMEFLAG_DFS_VOLUME;
+            _InterlockedOr(&volp->flags, CM_VOLUMEFLAG_DFS_VOLUME);
             osi_Log1(afsd_logp, "cm_UpdateVolume Volume Group '%s' is a DFS File Set.  Correct behavior is not implemented.",
                      osi_LogSaveString(afsd_logp, volp->namep));
         }
@@ -520,7 +520,8 @@ long cm_UpdateVolumeLocation(struct cm_cell *cellp, cm_user_t *userp, cm_req_t *
             tsockAddr.sin_family = AF_INET;
             tempAddr = htonl(serverNumber[i]);
             tsockAddr.sin_addr.s_addr = tempAddr;
-            tsp = cm_FindServer(&tsockAddr, CM_SERVER_FILE);
+            tsp = cm_FindServer(&tsockAddr, CM_SERVER_FILE, FALSE);
+#ifdef MULTIHOMED
             if (tsp && (method == 2) && (tsp->flags & CM_SERVERFLAG_UUID)) {
                 /*
                  * Check to see if the uuid of the server we know at this address
@@ -541,6 +542,7 @@ long cm_UpdateVolumeLocation(struct cm_cell *cellp, cm_user_t *userp, cm_req_t *
                               osi_LogSaveString(afsd_logp, hoststr));
                 }
             }
+#endif
             if (!tsp) {
                 /*
                  * cm_NewServer will probe the file server which in turn will
@@ -564,7 +566,7 @@ long cm_UpdateVolumeLocation(struct cm_cell *cellp, cm_user_t *userp, cm_req_t *
             if ( (method == 2) && !(tsp->flags & CM_SERVERFLAG_UUID) &&
                  !afs_uuid_is_nil(&serverUUID[i])) {
                 tsp->uuid = serverUUID[i];
-                tsp->flags |= CM_SERVERFLAG_UUID;
+                _InterlockedOr(&tsp->flags, CM_SERVERFLAG_UUID);
             }
 
             /* and add it to the list(s). */
@@ -577,20 +579,12 @@ long cm_UpdateVolumeLocation(struct cm_cell *cellp, cm_user_t *userp, cm_req_t *
             if ((tflags & VLSF_RWVOL) && (flags & VLF_RWEXISTS)) {
                 tsrp = cm_NewServerRef(tsp, rwID);
                 cm_InsertServerList(&volp->vol[RWVOL].serversp, tsrp);
-
-                lock_ObtainWrite(&cm_serverLock);
-                tsrp->refCount--;       /* drop allocation reference */
-                lock_ReleaseWrite(&cm_serverLock);
-
                 if (!(tsp->flags & CM_SERVERFLAG_DOWN))
                     rwServers_alldown = 0;
             }
             if ((tflags & VLSF_ROVOL) && (flags & VLF_ROEXISTS)) {
                 tsrp = cm_NewServerRef(tsp, roID);
                 cm_InsertServerList(&volp->vol[ROVOL].serversp, tsrp);
-                lock_ObtainWrite(&cm_serverLock);
-                tsrp->refCount--;       /* drop allocation reference */
-                lock_ReleaseWrite(&cm_serverLock);
                 ROcount++;
 
                 if (!(tsp->flags & CM_SERVERFLAG_DOWN))
@@ -604,9 +598,6 @@ long cm_UpdateVolumeLocation(struct cm_cell *cellp, cm_user_t *userp, cm_req_t *
             if ((tflags & VLSF_RWVOL) && (flags & VLF_BACKEXISTS)) {
                 tsrp = cm_NewServerRef(tsp, bkID);
                 cm_InsertServerList(&volp->vol[BACKVOL].serversp, tsrp);
-                lock_ObtainWrite(&cm_serverLock);
-                tsrp->refCount--;       /* drop allocation reference */
-                lock_ReleaseWrite(&cm_serverLock);
 
                 if (!(tsp->flags & CM_SERVERFLAG_DOWN))
                     bkServers_alldown = 0;
@@ -633,9 +624,9 @@ long cm_UpdateVolumeLocation(struct cm_cell *cellp, cm_user_t *userp, cm_req_t *
         roNewstate = roServers_alldown ? vl_alldown : vl_online;
         bkNewstate = bkServers_alldown ? vl_alldown : vl_online;
 
-        volp->flags &= ~CM_VOLUMEFLAG_NOEXIST;
+        _InterlockedAnd(&volp->flags, ~CM_VOLUMEFLAG_NOEXIST);
     } else if (code == CM_ERROR_NOSUCHVOLUME || code == VL_NOENT || code == VL_BADNAME) {
-        volp->flags |= CM_VOLUMEFLAG_NOEXIST;
+        _InterlockedOr(&volp->flags, CM_VOLUMEFLAG_NOEXIST);
     } else {
         rwNewstate = roNewstate = bkNewstate = vl_alldown;
     }
@@ -659,9 +650,9 @@ long cm_UpdateVolumeLocation(struct cm_cell *cellp, cm_user_t *userp, cm_req_t *
     volp->lastUpdateTime = time(NULL);
 
     if (code == 0)
-        volp->flags &= ~CM_VOLUMEFLAG_RESET;
+        _InterlockedAnd(&volp->flags, ~CM_VOLUMEFLAG_RESET);
 
-    volp->flags &= ~CM_VOLUMEFLAG_UPDATING_VL;
+    _InterlockedAnd(&volp->flags, ~CM_VOLUMEFLAG_UPDATING_VL);
     osi_Log4(afsd_logp, "cm_UpdateVolumeLocation done, waking others name %s:%s flags 0x%x code 0x%x",
              osi_LogSaveString(afsd_logp,volp->cellp->name),
              osi_LogSaveString(afsd_logp,volp->namep), volp->flags, code);
@@ -1080,7 +1071,7 @@ long cm_ForceUpdateVolume(cm_fid_t *fidp, cm_user_t *userp, cm_req_t *reqp)
     /* update it */
     cm_data.mountRootGen = time(NULL);
     lock_ObtainWrite(&volp->rw);
-    volp->flags |= CM_VOLUMEFLAG_RESET;
+    _InterlockedOr(&volp->flags, CM_VOLUMEFLAG_RESET);
 
     code = cm_UpdateVolumeLocation(cellp, userp, reqp, volp);
     lock_ReleaseWrite(&volp->rw);
@@ -1114,7 +1105,7 @@ cm_serverRef_t **cm_GetVolServers(cm_volume_t *volp, afs_uint32 volume, cm_user_
             afs_int32 code;
             firstTry = 0;
             lock_ObtainWrite(&volp->rw);
-            volp->flags |= CM_VOLUMEFLAG_RESET;
+            _InterlockedOr(&volp->flags, CM_VOLUMEFLAG_RESET);
             code = cm_UpdateVolumeLocation(volp->cellp, userp, reqp, volp);
             lock_ReleaseWrite(&volp->rw);
             if (code == 0)
@@ -1128,7 +1119,7 @@ cm_serverRef_t **cm_GetVolServers(cm_volume_t *volp, afs_uint32 volume, cm_user_
      * They will be freed by cm_FreeServerList when they get to zero
      */
     for (current = *serverspp; current; current = current->next)
-        current->refCount++;
+        cm_GetServerRef(current, TRUE);
 
     lock_ReleaseWrite(&cm_serverLock);
 
@@ -1182,7 +1173,7 @@ void cm_RefreshVolumes(int lifetime)
         if (!(volp->flags & CM_VOLUMEFLAG_RESET)) {
             lock_ObtainWrite(&volp->rw);
             if (volp->lastUpdateTime + lifetime <= now)
-                volp->flags |= CM_VOLUMEFLAG_RESET;
+                _InterlockedOr(&volp->flags, CM_VOLUMEFLAG_RESET);
             lock_ReleaseWrite(&volp->rw);
         }
 
@@ -1226,6 +1217,7 @@ cm_CheckOfflineVolumeState(cm_volume_t *volp, cm_vol_state_t *statep, afs_uint32
             *volumeUpdatedp = 1;
         }
 
+        lock_ObtainRead(&cm_serverLock);
         if (statep->serversp) {
             alldown = 1;
             alldeleted = 1;
@@ -1240,6 +1232,7 @@ cm_CheckOfflineVolumeState(cm_volume_t *volp, cm_vol_state_t *statep, afs_uint32
                 if (serversp->status == srv_busy || serversp->status == srv_offline)
                     serversp->status = srv_not_busy;
             }
+            lock_ReleaseRead(&cm_serverLock);
 
             if (alldeleted && !(*volumeUpdatedp)) {
                 cm_InitReq(&req);
@@ -1280,6 +1273,7 @@ cm_CheckOfflineVolumeState(cm_volume_t *volp, cm_vol_state_t *statep, afs_uint32
                 statep->state = vl_alldown;
             }
         } else if (statep->state != vl_alldown) {
+            lock_ReleaseRead(&cm_serverLock);
             cm_VolumeStatusNotification(volp, statep->ID, statep->state, vl_alldown);
             statep->state = vl_alldown;
         }
@@ -1601,7 +1595,7 @@ void cm_AddVolumeToNameHashTable(cm_volume_t *volp)
 
     volp->nameNextp = cm_data.volumeNameHashTablep[i];
     cm_data.volumeNameHashTablep[i] = volp;
-    volp->qflags |= CM_VOLUME_QFLAG_IN_HASH;
+    _InterlockedOr(&volp->qflags, CM_VOLUME_QFLAG_IN_HASH);
 }
 
 /* call with volume write-locked and mutex held */
@@ -1619,7 +1613,7 @@ void cm_RemoveVolumeFromNameHashTable(cm_volume_t *volp)
 	     lvolpp = &tvolp->nameNextp, tvolp = tvolp->nameNextp) {
 	    if (tvolp == volp) {
 		*lvolpp = volp->nameNextp;
-		volp->qflags &= ~CM_VOLUME_QFLAG_IN_HASH;
+		_InterlockedAnd(&volp->qflags, ~CM_VOLUME_QFLAG_IN_HASH);
                 volp->nameNextp = NULL;
 		break;
 	    }
@@ -1654,7 +1648,7 @@ void cm_AddVolumeToIDHashTable(cm_volume_t *volp, afs_uint32 volType)
         cm_data.volumeBKIDHashTablep[i] = volp;
         break;
     }
-    statep->qflags |= CM_VOLUME_QFLAG_IN_HASH;
+    _InterlockedOr(&statep->qflags, CM_VOLUME_QFLAG_IN_HASH);
 }
 
 
@@ -1691,7 +1685,7 @@ void cm_RemoveVolumeFromIDHashTable(cm_volume_t *volp, afs_uint32 volType)
 	do {
 	    if (tvolp == volp) {
 		*lvolpp = statep->nextp;
-                statep->qflags &= ~CM_VOLUME_QFLAG_IN_HASH;
+                _InterlockedAnd(&statep->qflags, ~CM_VOLUME_QFLAG_IN_HASH);
                 statep->nextp = NULL;
 		break;
 	    }
@@ -1713,7 +1707,7 @@ void cm_AdjustVolumeLRU(cm_volume_t *volp)
     if (volp->qflags & CM_VOLUME_QFLAG_IN_LRU_QUEUE)
         osi_QRemoveHT((osi_queue_t **) &cm_data.volumeLRUFirstp, (osi_queue_t **) &cm_data.volumeLRULastp, &volp->q);
     osi_QAddH((osi_queue_t **) &cm_data.volumeLRUFirstp, (osi_queue_t **) &cm_data.volumeLRULastp, &volp->q);
-    volp->qflags |= CM_VOLUME_QFLAG_IN_LRU_QUEUE;
+    _InterlockedOr(&volp->qflags, CM_VOLUME_QFLAG_IN_LRU_QUEUE);
 
     osi_assertx(cm_data.volumeLRULastp != NULL, "null cm_data.volumeLRULastp");
 }
@@ -1729,7 +1723,7 @@ void cm_MoveVolumeToLRULast(cm_volume_t *volp)
     if (volp->qflags & CM_VOLUME_QFLAG_IN_LRU_QUEUE)
         osi_QRemoveHT((osi_queue_t **) &cm_data.volumeLRUFirstp, (osi_queue_t **) &cm_data.volumeLRULastp, &volp->q);
     osi_QAddT((osi_queue_t **) &cm_data.volumeLRUFirstp, (osi_queue_t **) &cm_data.volumeLRULastp, &volp->q);
-    volp->qflags |= CM_VOLUME_QFLAG_IN_LRU_QUEUE;
+    _InterlockedOr(&volp->qflags, CM_VOLUME_QFLAG_IN_LRU_QUEUE);
 
     osi_assertx(cm_data.volumeLRULastp != NULL, "null cm_data.volumeLRULastp");
 }
@@ -1741,7 +1735,7 @@ void cm_RemoveVolumeFromLRU(cm_volume_t *volp)
 
     if (volp->qflags & CM_VOLUME_QFLAG_IN_LRU_QUEUE) {
         osi_QRemoveHT((osi_queue_t **) &cm_data.volumeLRUFirstp, (osi_queue_t **) &cm_data.volumeLRULastp, &volp->q);
-        volp->qflags &= ~CM_VOLUME_QFLAG_IN_LRU_QUEUE;
+        _InterlockedAnd(&volp->qflags, ~CM_VOLUME_QFLAG_IN_LRU_QUEUE);
     }
 
     osi_assertx(cm_data.volumeLRULastp != NULL, "null cm_data.volumeLRULastp");

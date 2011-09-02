@@ -11,7 +11,8 @@
 #define _AFS_PROTOTYPES_H_
 
 /* afs_analyze.c */
-extern int afs_Analyze(struct afs_conn *aconn, afs_int32 acode,
+extern int afs_Analyze(struct afs_conn *aconn,
+		       struct rx_connection *rxconn, afs_int32 acode,
 		       struct VenusFid *afid, struct vrequest *areq,
 		       int op, afs_int32 locktype, struct cell *cellp);
 
@@ -175,25 +176,32 @@ extern afs_rwlock_t afs_xinterface;
 extern afs_rwlock_t afs_xconn;
 extern struct afs_conn *afs_Conn(struct VenusFid *afid,
 			     struct vrequest *areq,
-			     afs_int32 locktype);
+			     afs_int32 locktype,
+			     struct rx_connection **rxconn);
 extern struct afs_conn *afs_ConnBySAsrv(struct srvAddr *sap,
 				 unsigned short aport, afs_int32 service,
 				 afs_int32 acell, struct unixuser *tu,
 				 int force_if_down, afs_int32 create,
-				 afs_int32 locktype);
+				 afs_int32 locktype,
+				 struct rx_connection **rxconn);
 extern struct afs_conn *afs_ConnBySA(struct srvAddr *sap, unsigned short aport,
 				 afs_int32 acell, struct unixuser *tu,
 				 int force_if_down, afs_int32 create,
-				 afs_int32 locktype);
+				 afs_int32 locktype,
+				 struct rx_connection **rxconn);
 extern struct afs_conn *afs_ConnByMHosts(struct server *ahosts[],
 				     unsigned short aport, afs_int32 acell,
 				     struct vrequest *areq,
-				     afs_int32 locktype);
+				     afs_int32 locktype,
+				     struct rx_connection **rxconn);
 extern struct afs_conn *afs_ConnByHost(struct server *aserver,
 				   unsigned short aport, afs_int32 acell,
 				   struct vrequest *areq, int aforce,
+				   afs_int32 locktype,
+				   struct rx_connection **rxconn);
+extern void afs_PutConn(struct afs_conn *ac,
+				   struct rx_connection *rxconn,
 				   afs_int32 locktype);
-extern void afs_PutConn(struct afs_conn *ac, afs_int32 locktype);
 extern void ForceNewConnections(struct srvAddr *sap);
 
 
@@ -499,7 +507,8 @@ extern int afs_CacheStoreVCache(struct dcache **dcList, struct vcache *avc,
 				unsigned int high, unsigned int moredata,
 				afs_hyper_t *anewDV,
                                  afs_size_t *amaxStoredLength);
-extern int afs_FetchProc(struct afs_conn *tc, struct osi_file *fP,
+extern int afs_FetchProc(struct afs_conn *tc, struct rx_connection *rxconn,
+			        struct osi_file *fP,
 				struct vrequest *areq,
 				afs_size_t abase, struct dcache *adc,
 				struct vcache *avc, afs_int32 size,
@@ -1367,10 +1376,12 @@ extern afs_int32 afs_GenericStoreProc(struct vcache *avc,
 /* afs_rxosd.c */
 
 extern afs_int32 rxosd_storeInit(struct vcache *avc, struct afs_conn *tc,
+		struct rx_connection *rxconn,
                 afs_offs_t base, afs_size_t bytes, afs_size_t length,
                 int sync, struct vrequest *areq, struct storeOps **ops,
                 void **rock);
-extern afs_int32 rxosd_fetchInit(struct afs_conn *tc, struct vcache *avc,
+extern afs_int32 rxosd_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
+		struct vcache *avc,
                 afs_offs_t base, afs_uint32 bytes, afs_uint32 *length,
 		void *bypassparms,
                 struct osi_file *fP, struct vrequest *areq, 
@@ -1379,19 +1390,23 @@ extern afs_int32 rxosd_fetchInit(struct afs_conn *tc, struct vcache *avc,
 /* afs_vicep.c */
 
 extern afs_int32 vpac_storeInit(struct vcache *avc, struct afs_conn *tc,
+		struct rx_connection *rxconn,
                 afs_offs_t base, afs_size_t bytes, afs_size_t length, int sync,
                 struct vrequest * areq, struct storeOps **ops, void **rock);
 extern afs_int32 fake_vpac_storeInit(struct vcache *avc, struct afs_conn *tc,
+		struct rx_connection *rxconn,
                 afs_offs_t base, afs_size_t bytes, afs_size_t length, int sync,
                 struct vrequest * areq, struct storeOps **ops, void **rock,
                 afs_uint64 transid, afs_uint32 expires, afs_uint64 maxlength,
                 afs_uint32 osd);
-extern afs_int32 vpac_fetchInit(struct afs_conn *tc, struct vcache *avc,
+extern afs_int32 vpac_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
+		struct vcache *avc,
                 afs_offs_t base, afs_uint32 bytes, afs_uint32 *length,
 		void *bypassparms,
                 struct osi_file *fP, struct vrequest *areq,
 		struct fetchOps **ops, void **rock);
-extern afs_int32 fake_vpac_fetchInit(struct afs_conn *tc, struct vcache *avc,
+extern afs_int32 fake_vpac_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
+		struct vcache *avc,
                 afs_offs_t base, afs_uint32 bytes, afs_uint32 *length,
 		void *bypassparms, struct osi_file *fP,
                 struct vrequest *areq, struct fetchOps **ops, void **rock,
@@ -1403,7 +1418,7 @@ extern afs_int32 afs_open_vicep_osdfile(struct vcache *avc, afs_uint32 osd,
 extern void afs_close_vicep_file(struct vcache *avc, struct vrequest *areq,
                 afs_int32 locked);
 extern afs_int32 afs_fast_vpac_check(struct vcache *avc, struct afs_conn *tc,
-                afs_int32 storing, afs_uint32 *osd);
+                struct rx_connection *rxconn, afs_int32 storing, afs_uint32 *osd);
 extern void vpac_fsync(struct vcache *avc);
 extern afs_int32 afs_set_serveruuid(long parm2, long parm3, long parm4,
                 long parm5);

@@ -1688,8 +1688,13 @@ long cm_Unlink(cm_scache_t *dscp, fschar_t *fnamep, clientchar_t * cnamep,
         cm_ReleaseSCache(scp);
         if (code == 0) {
 	    lock_ObtainWrite(&scp->rw);
-            if (--scp->linkCount == 0)
+            if (--scp->linkCount == 0) {
                 scp->flags |= CM_SCACHEFLAG_DELETED;
+		lock_ObtainWrite(&cm_scacheLock);
+                cm_AdjustScacheLRU(scp);
+                cm_RemoveSCacheFromHashTable(scp);
+		lock_ReleaseWrite(&cm_scacheLock);
+            }
             cm_DiscardSCache(scp);
 	    lock_ReleaseWrite(&scp->rw);
         }
@@ -3446,6 +3451,10 @@ long cm_RemoveDir(cm_scache_t *dscp, fschar_t *fnamep, clientchar_t *cnamep, cm_
         if (code == 0) {
 	    lock_ObtainWrite(&scp->rw);
             scp->flags |= CM_SCACHEFLAG_DELETED;
+            lock_ObtainWrite(&cm_scacheLock);
+            cm_AdjustScacheLRU(scp);
+            cm_RemoveSCacheFromHashTable(scp);
+            lock_ReleaseWrite(&cm_scacheLock);
 	    lock_ReleaseWrite(&scp->rw);
         }
     }
@@ -4406,6 +4415,11 @@ long cm_IntReleaseLock(cm_scache_t * scp, cm_user_t * userp,
     struct rx_connection * rxconnp;
     AFSVolSync volSync;
 
+    if (scp->flags & CM_SCACHEFLAG_DELETED) {
+        osi_Log1(afsd_logp, "CALL ReleaseLock on Deleted Vnode scp 0x%p", scp);
+        return 0;
+    }
+
     memset(&volSync, 0, sizeof(volSync));
 
     tfid.Volume = scp->fid.volume;
@@ -4438,7 +4452,7 @@ long cm_IntReleaseLock(cm_scache_t * scp, cm_user_t * userp,
 
     lock_ObtainWrite(&scp->rw);
 
-    return code;
+    return (code != CM_ERROR_BADFD ? code : 0);
 }
 
 /* called with scp->rw held.  May release it during processing, but

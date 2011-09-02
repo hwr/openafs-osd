@@ -667,11 +667,12 @@ cm_Analyze(cm_conn_t *connp, cm_user_t *userp, cm_req_t *reqp,
 		    pscp = cm_FindSCacheParent(scp);
 
 		lock_ObtainWrite(&scp->rw);
+		scp->flags |= CM_SCACHEFLAG_DELETED;
 		lock_ObtainWrite(&cm_scacheLock);
-		cm_RemoveSCacheFromHashTable(scp);
+                cm_AdjustScacheLRU(scp);
+                cm_RemoveSCacheFromHashTable(scp);
 		lock_ReleaseWrite(&cm_scacheLock);
                 cm_LockMarkSCacheLost(scp);
-		scp->flags |= CM_SCACHEFLAG_DELETED;
 		lock_ReleaseWrite(&scp->rw);
 		cm_ReleaseSCache(scp);
 
@@ -788,7 +789,7 @@ cm_Analyze(cm_conn_t *connp, cm_user_t *userp, cm_req_t *reqp,
             if (errorCode == RX_CALL_DEAD &&
                 (reqp->flags & CM_REQ_NEW_CONN_FORCED)) {
                 if (!(serverp->flags & CM_SERVERFLAG_DOWN)) {
-                    serverp->flags |= CM_SERVERFLAG_DOWN;
+                    _InterlockedOr(&serverp->flags, CM_SERVERFLAG_DOWN);
                     serverp->downTime = time(NULL);
                 }
             } else {
@@ -816,7 +817,7 @@ cm_Analyze(cm_conn_t *connp, cm_user_t *userp, cm_req_t *reqp,
                 free(ucellp->ticketp);
                 ucellp->ticketp = NULL;
             }
-            ucellp->flags &= ~CM_UCELLFLAG_RXKAD;
+            _InterlockedAnd(&ucellp->flags, ~CM_UCELLFLAG_RXKAD);
             ucellp->gen++;
             lock_ReleaseMutex(&userp->mx);
             if ( timeLeft > 2 )

@@ -1527,8 +1527,8 @@ cm_IoctlNewCell(struct cm_ioctl *ioctlp, struct cm_user *userp)
                 code = cm_SearchCellByDNS(cp->name, cp->name, &ttl, cm_AddCellProc, &rock);
                 if ( code == 0 ) { /* got cell from DNS */
                     lock_ObtainMutex(&cp->mx);
-                    cp->flags |= CM_CELLFLAG_DNS;
-                    cp->flags &= ~CM_CELLFLAG_VLSERVER_INVALID;
+                    _InterlockedOr(&cp->flags, CM_CELLFLAG_DNS);
+                    _InterlockedAnd(&cp->flags, ~CM_CELLFLAG_VLSERVER_INVALID);
                     cp->timeout = time(0) + ttl;
                     lock_ReleaseMutex(&cp->mx);
                 }
@@ -1536,18 +1536,18 @@ cm_IoctlNewCell(struct cm_ioctl *ioctlp, struct cm_user *userp)
         }
         else {
             lock_ObtainMutex(&cp->mx);
-            cp->flags &= ~CM_CELLFLAG_DNS;
+            _InterlockedAnd(&cp->flags, ~CM_CELLFLAG_DNS);
             lock_ReleaseMutex(&cp->mx);
         }
         if (code) {
             lock_ObtainMutex(&cp->mx);
-            cp->flags |= CM_CELLFLAG_VLSERVER_INVALID;
+            _InterlockedOr(&cp->flags, CM_CELLFLAG_VLSERVER_INVALID);
             lock_ReleaseMutex(&cp->mx);
             lock_ObtainWrite(&cm_cellLock);
         }
         else {
             lock_ObtainMutex(&cp->mx);
-            cp->flags &= ~CM_CELLFLAG_VLSERVER_INVALID;
+            _InterlockedAnd(&cp->flags, ~CM_CELLFLAG_VLSERVER_INVALID);
             lock_ReleaseMutex(&cp->mx);
             lock_ObtainWrite(&cm_cellLock);
             cm_RandomizeServer(&cp->vlServersp);
@@ -1827,9 +1827,9 @@ cm_IoctlSetCellStatus(struct cm_ioctl *ioctlp, struct cm_user *userp)
 
     lock_ObtainMutex(&cellp->mx);
     if (flags & CM_SETCELLFLAG_SUID)
-        cellp->flags |= CM_CELLFLAG_SUID;
+        _InterlockedOr(&cellp->flags, CM_CELLFLAG_SUID);
     else
-        cellp->flags &= ~CM_CELLFLAG_SUID;
+        _InterlockedAnd(&cellp->flags, ~CM_CELLFLAG_SUID);
     lock_ReleaseMutex(&cellp->mx);
 
     return 0;
@@ -1873,12 +1873,12 @@ cm_IoctlSetSPrefs(struct cm_ioctl *ioctlp, struct cm_user *userp)
         }
         tmp.sin_family = AF_INET;
 
-        tsp = cm_FindServer(&tmp, type);
+        tsp = cm_FindServer(&tmp, type, FALSE);
         if ( tsp )		/* an existing server - ref count increased */
         {
             lock_ObtainMutex(&tsp->mx);
             tsp->ipRank = rank;
-            tsp->flags |= CM_SERVERFLAG_PREF_SET;
+            _InterlockedOr(&tsp->flags, CM_SERVERFLAG_PREF_SET);
 	    tsp->adminRank = tsp->ipRank;
             lock_ReleaseMutex(&tsp->mx);
 
@@ -1902,7 +1902,7 @@ cm_IoctlSetSPrefs(struct cm_ioctl *ioctlp, struct cm_user *userp)
             tsp = cm_NewServer(&tmp, type, NULL, NULL, CM_FLAG_NOPROBE); /* refcount = 1 */
             lock_ObtainMutex(&tsp->mx);
             tsp->ipRank = rank;
-            tsp->flags |= CM_SERVERFLAG_PREF_SET;
+            _InterlockedOr(&tsp->flags, CM_SERVERFLAG_PREF_SET);
 	    tsp->adminRank = tsp->ipRank;
             lock_ReleaseMutex(&tsp->mx);
             tsp->ipRank = rank;
@@ -2562,7 +2562,7 @@ cm_IoctlSetToken(struct cm_ioctl *ioctlp, struct cm_user *userp)
 	cm_UsernameToId(uname, ucellp, &ucellp->uid);
 #endif
     }
-    ucellp->flags |= CM_UCELLFLAG_RXKAD;
+    _InterlockedOr(&ucellp->flags, CM_UCELLFLAG_RXKAD);
     lock_ReleaseMutex(&userp->mx);
 
     if (flags & PIOCTL_LOGON) {
@@ -2787,7 +2787,7 @@ cm_IoctlDelToken(struct cm_ioctl *ioctlp, struct cm_user *userp)
     ucellp->kvno = 0;
     ucellp->expirationTime = 0;
     ucellp->userName[0] = '\0';
-    ucellp->flags &= ~CM_UCELLFLAG_RXKAD;
+    _InterlockedAnd(&ucellp->flags, ~CM_UCELLFLAG_RXKAD);
     ucellp->gen++;
 
     lock_ReleaseMutex(&userp->mx);
@@ -2821,7 +2821,7 @@ cm_IoctlDelAllToken(struct cm_ioctl *ioctlp, struct cm_user *userp)
 	ucellp->kvno = 0;
 	ucellp->expirationTime = 0;
 	ucellp->userName[0] = '\0';
-        ucellp->flags &= ~CM_UCELLFLAG_RXKAD;
+        _InterlockedAnd(&ucellp->flags, ~CM_UCELLFLAG_RXKAD);
         ucellp->gen++;
     }
 

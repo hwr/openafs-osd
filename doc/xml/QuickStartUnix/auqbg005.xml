@@ -205,7 +205,7 @@
         </listitem>
 
         <listitem>
-          <para>Start the server portion of the Update Server</para>
+          <para>Optionally, start the server portion of the Update Server</para>
         </listitem>
 
       </orderedlist></para>
@@ -408,7 +408,7 @@
         </listitem>
 
         <listitem>
-          <para>On some system types, install and configure a modified <emphasis role="bold">fsck</emphasis> program which
+          <para>On system types using the <emphasis role="bold">inode</emphasis> storage format, install and configure a modified <emphasis role="bold">fsck</emphasis> program which
           recognizes the structures that the File Server uses to organize volume data on AFS server partitions. The <emphasis
           role="bold">fsck</emphasis> program provided with the operating system does not understand the AFS data structures, and so
           removes them to the <emphasis role="bold">lost+found</emphasis> directory.</para>
@@ -1700,8 +1700,8 @@
     instructions are provided for those building from source.</para>
 
     <para>Begin by running the AFS client startup scripts, which call the
-    <emphasis role="bold">modprobe</emphasis> program, which dynamically
-    loads AFS modifications into the kernel. Then create partitions for
+    <emphasis role="bold">modprobe</emphasis> program to dynamically
+    load the AFS modifications into the kernel. Then create partitions for
     storing AFS volumes. You do not need to replace the Linux <emphasis
     role="bold">fsck</emphasis> program. If the machine is to remain an
     AFS client machine, incorporate AFS into the machine's Pluggable
@@ -1747,26 +1747,44 @@
       <para>The procedure for starting up OpenAFS depends upon your distribution</para>
       <sect3>
         <title>Fedora and RedHat Enterprise Linux</title>
-        <para>OpenAFS ship RPMS for all current Fedora and RHEL releases.
+        <para>OpenAFS provides RPMS for all current Fedora and RedHat Enterprise Linux (RHEL) releases on the OpenAFS web site and the OpenAFS yum repository.
         <orderedlist>
           <listitem>
-            <para>Download and install the RPM set for your operating system.
-            RPMs are available from the OpenAFS web site. You will need the 
-            <emphasis role="bold">openafs</emphasis>
-            <emphasis role="bold">openafs-client></emphasis>
-            <emphasis role="bold">openafs-server</emphasis> packages, along with
-            an <emphasis role="bold">openafs-kernel</emphasis> package matching
-            your current, running, kernel.</para>
-            <para>You can find the version of your current kernel by running
-<programlisting>
-  # uname -r
-<replaceable>2.6.20-1.2933.fc6</replaceable>
-</programlisting></para>
-            <para>Once downloaded, the packages may be installed with the
-            <emphasis role="bold">rpm</emphasis> command
-<programlisting>
-  # rpm -U openafs-* openafs-client-* openafs-server-* openafs-kernel-*
-</programlisting></para>
+            <para>Browse to
+            http://dl.openafs.org/dl/openafs/<replaceable>VERSION</replaceable>,
+            where VERSION is the latest stable release of
+            OpenAFS. Download the
+            openafs-repository-<replaceable>VERSION</replaceable>.noarch.rpm
+            file for Fedora systems or the
+            openafs-repository-rhel-<replaceable>VERSION</replaceable>.noarch.rpm
+            file for RedHat-based systems.
+            </para>
+          </listitem>
+          <listitem>
+            <para>Install the downloaded RPM file using the following command:
+              <programlisting>
+                # rpm -U openafs-repository*.rpm
+              </programlisting>
+            </para>
+          </listitem>
+          <listitem>
+            <para>Install the RPM set for your operating system using the yum command as follows:
+              <programlisting>
+                # yum -y install openafs-client openafs-server openafs-krb5 kmod-openafs
+              </programlisting>
+
+            </para>
+            <para>Alternatively, you may use dynamically-compiled kernel
+              modules if you have the kernel headers, a compiler, and the
+              dkms package from
+              <ulink url="http://fedoraproject.org/wiki/EPEL"><citetitle>EPEL</citetitle></ulink> installed. 
+
+            </para>
+            <para>To use dynamically-compiled kernel modules instead of statically compiled modules, use the following command instead of the kmod-openafs as shown above:
+              <programlisting>
+                # yum install openafs-client openafs-server openafs-krb5 dkms-openafs
+              </programlisting>
+            </para>
           </listitem>
 <!-- If you do this with current RHEL and Fedora releases you end up with
      a dynroot'd client running - this breaks setting up the root.afs volume
@@ -1794,7 +1812,7 @@
           <listitem>
             <para>Unpack the distribution tarball. The examples below assume
             that you have unpacked the files into the
-            <emphasis role="bold">/tmp/afsdist</emphasis>directory. If you
+            <emphasis role="bold">/tmp/afsdist</emphasis> directory. If you
             pick a different location, substitute this in all of the following
             examples. Once you have unpacked the distribution,
             change directory as indicated.
@@ -3277,6 +3295,9 @@ auth  required                pam_unix.so try_first_pass</literallayout>
           <para>The entry for AFS server processes, called either 
           <emphasis role="bold">afs</emphasis> or 
           <emphasis role="bold">afs/<replaceable>cell</replaceable></emphasis>. 
+          The latter form is preferred since it works regardless of whether
+          your cell name matches your Kerberos realm name and allows multiple
+	  AFS cells to be served from a single Kerberos realm.  
           No user logs in under this identity, but it is used to encrypt the
           server tickets that granted to AFS clients for presentation to 
           server processes during mutual authentication. (The
@@ -3399,7 +3420,7 @@ Entry for principal afs/&lt;<replaceable>cell name</replaceable>&gt; with kvno 3
 
         </listitem>
         <listitem>
-          <para>Issue the <emphasis role="bold">kadmin quit</emphasis> command to leave <emphasis role="bold">kadmin</emphasis>
+          <para>Issue the <emphasis role="bold">quit</emphasis> command to leave <emphasis role="bold">kadmin</emphasis>
           interactive mode. <programlisting>
    kadmin: <emphasis role="bold">quit</emphasis>
 </programlisting> <indexterm>
@@ -3467,11 +3488,11 @@ Entry for principal afs/&lt;<replaceable>cell name</replaceable>&gt; with kvno 3
 
           <para>asetkey requires the key version number (or kvno) of the 
           <emphasis role="bold">afs/</emphasis><replaceable>cell</replaceable>
-          key. You should have noted this down when creating the key earlier. 
-          The key version number can also be found by running the 
+          key. You should have made note of the kvno when creating the key
+          earlier.  The key version number can also be found by running the 
           <emphasis role="bold">kvno</emphasis> command</para>
 <programlisting>
-   # <emphasis role="bold">kvno afs/</emphasis>&lt;<replaceable>cell name</replaceable>&gt;
+   # <emphasis role="bold">kvno -k /etc/afs.keytab afs/</emphasis>&lt;<replaceable>cell name</replaceable>&gt;
 </programlisting>
 
           <para>Once the kvno is known, the key can then be extracted using 

@@ -365,8 +365,8 @@ afs_PrefetchNoCache(struct vcache *avc,
     struct iovec *iovecp;
     struct vrequest *areq;
     afs_int32 code = 0;    
-	
     struct afs_conn *tc;
+    struct rx_connection *rxconn;
     afs_int32 i;
     struct afs_FetchOutput *tcallspec;
 			
@@ -376,19 +376,19 @@ afs_PrefetchNoCache(struct vcache *avc,
 	
     tcallspec = (struct afs_FetchOutput *) osi_Alloc(sizeof(struct afs_FetchOutput));
     do {
-	tc = afs_Conn(&avc->f.fid, areq, SHARED_LOCK /* ignored */);
+	tc = afs_Conn(&avc->f.fid, areq, SHARED_LOCK /* ignored */, &rxconn);
 	if (tc) { 
 	    avc->callback = tc->srvr->server;
 	    i = osi_Time();
 	    ObtainReadLock(&avc->lock);
-	    code = afs_FetchProc(tc, NULL, areq, bparms->offset, NULL,
+	    code = afs_FetchProc(tc, rxconn, NULL, areq, bparms->offset, NULL,
 					avc, bparms->length, 
 				        (void *)bparms, tcallspec);
 	    ReleaseReadLock(&avc->lock);
 	} else
 	    code = -1;
 
-    } while (afs_Analyze(tc, code, &avc->f.fid, areq,
+    } while (afs_Analyze(tc, rxconn, code, &avc->f.fid, areq,
 						 AFS_STATS_FS_RPCIDX_FETCHDATA,
 						 SHARED_LOCK,0));
     if (code) {

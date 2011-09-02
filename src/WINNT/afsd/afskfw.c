@@ -67,6 +67,8 @@
 #include <osilog.h>
 #include <afs/ptserver.h>
 #include <afs/ptuser.h>
+#include <afs/auth.h>
+#include <afs/com_err.h>
 #include <rx/rxkad.h>
 #include <WINNT\afsreg.h>
 #include "cm.h"
@@ -481,6 +483,9 @@ KFW_initialize(void)
         }
         ReleaseMutex(hMutex);
         CloseHandle(hMutex);
+
+        initialize_KTC_error_table();
+        initialize_PT_error_table();
     }
 }
 
@@ -1393,8 +1398,9 @@ KFW_AFS_get_cred( char * username,
             while ( dot = strchr(pname,'.') ) {
                 *dot = '/';
             }
-            *userrealm++ = '@';
+            *userrealm = '@';
         }
+        userrealm++;
     } else {
         size_t len = strlen(username) + strlen(realm) + 2;
         pname = malloc(len);
@@ -1418,7 +1424,7 @@ KFW_AFS_get_cred( char * username,
         OutputDebugString(realm);
         OutputDebugString("\n");
         OutputDebugString("Realm of User: ");
-        OutputDebugString(userrealm);
+        OutputDebugString(userrealm?userrealm:"<NULL>");
         OutputDebugString("\n");
     }
 
@@ -1529,15 +1535,20 @@ KFW_AFS_get_cred( char * username,
         free(cellconfig.linkedCell);
 
     if ( code && reasonP ) {
-        if (pkrb5_get_error_message) {
-            char *msg = pkrb5_get_error_message(ctx, code);
-            StringCbCopyN( reason, sizeof(reason),
-                           msg, sizeof(reason) - 1);
-            *reasonP = reason;
-            pkrb5_free_error_message(ctx, msg);
-        } else {
-            *reasonP = perror_message(code);
+        int freemsg = 0;
+        char *msg = (char *)afs_error_message(code);
+        if (strncmp(msg, "unknown", strlen(msg)) == 0) {
+            if (pkrb5_get_error_message) {
+                msg = pkrb5_get_error_message(ctx, code);
+                freemsg = 1;
+            } else
+                msg = (char *)perror_message(code);
         }
+        StringCbCopyN( reason, sizeof(reason),
+                       msg, sizeof(reason) - 1);
+        *reasonP = reason;
+        if (freemsg)
+            pkrb5_free_error_message(ctx, msg);
     }
     return(code);
 }
@@ -3189,9 +3200,16 @@ KFW_AFS_klog(
          * commented out in the code below
          */
         if (KFW_use_krb524() ||
-            k5creds->ticket.length > MAXKTCTICKETLEN)
+            k5creds->ticket.length > MAXKTCTICKETLEN) {
+            if ( IsDebuggerPresent() ) {
+                char message[256];
+                StringCbPrintf(message, sizeof(message),
+                               "switching to krb524 .. ticket length %u\n",
+                               k5creds->ticket.length);
+                OutputDebugString(message);
+            }
             goto try_krb524d;
-
+        }
         memset(&aserver, '\0', sizeof(aserver));
         StringCbCopyN(aserver.name, sizeof(aserver.name),
                       ServiceName, sizeof(aserver.name) - 1);
@@ -3208,6 +3226,11 @@ KFW_AFS_klog(
 
       retry_gettoken5:
         rc = ktc_GetToken(&aserver, &btoken, sizeof(btoken), &aclient);
+        if ( IsDebuggerPresent() ) {
+            char message[256];
+            StringCbPrintf(message, sizeof(message), "ktc_GetToken returns: %d\n", rc);
+            OutputDebugString(message);
+        }
         if (rc != 0 && rc != KTC_NOENT && rc != KTC_NOCELL) {
             if ( rc == KTC_NOCM && retry < 20 ) {
                 Sleep(500);
@@ -3245,13 +3268,10 @@ KFW_AFS_klog(
         StringCbCopyN( aclient.cell, sizeof(aclient.cell),
                        realm_of_cell, sizeof(aclient.cell) - 1);
 
-        len = min(k5creds->client->realm.length,(int)strlen(realm_of_cell));
         /* For Khimaira, always append the realm name */
-        if ( 1 /* strncmp(realm_of_cell, k5creds->client->realm.data, len) */ ) {
-            StringCbCat( aclient.name, sizeof(aclient.name), "@");
-            len = min(k5creds->client->realm.length, (int)(sizeof(aclient.name) - strlen(aclient.name) - 1));
-            StringCbCatN( aclient.name, sizeof(aclient.name), k5creds->client->realm.data, len);
-        }
+        StringCbCat( aclient.name, sizeof(aclient.name), "@");
+        len = min(k5creds->client->realm.length, (int)(sizeof(aclient.name) - strlen(aclient.name) - 1));
+        StringCbCatN( aclient.name, sizeof(aclient.name), k5creds->client->realm.data, len);
 
 	GetEnvironmentVariable(DO_NOT_REGISTER_VARNAME, NULL, 0);
 	if (GetLastError() == ERROR_ENVVAR_NOT_FOUND)
@@ -3264,8 +3284,20 @@ KFW_AFS_klog(
         } else {
             aclient.smbname[0] = '\0';
         }
+        if ( IsDebuggerPresent() ) {
+            char message[256];
+            StringCbPrintf(message, sizeof(message), "aclient.name: %s\n", aclient.name);
+            OutputDebugString(message);
+            StringCbPrintf(message, sizeof(message), "aclient.smbname: %s\n", aclient.smbname);
+            OutputDebugString(message);
+        }
 
         rc = ktc_SetToken(&aserver, &atoken, &aclient, (aclient.smbname[0]?AFS_SETTOK_LOGON:0));
+        if ( IsDebuggerPresent() ) {
+            char message[256];
+            StringCbPrintf(message, sizeof(message), "ktc_SetToken returns: %d\n", rc);
+            OutputDebugString(message);
+        }
         if (!rc)
             goto cleanup;   /* We have successfully inserted the token */
 
@@ -3340,6 +3372,11 @@ KFW_AFS_klog(
 
   retry_gettoken:
     rc = ktc_GetToken(&aserver, &btoken, sizeof(btoken), &aclient);
+    if ( IsDebuggerPresent() ) {
+        char message[256];
+        StringCbPrintf(message, sizeof(message), "ktc_GetToken returns: %d\n", rc);
+        OutputDebugString(message);
+    }
     if (rc != 0 && rc != KTC_NOENT && rc != KTC_NOCELL) {
         if ( rc == KTC_NOCM && retry < 20 ) {
             Sleep(500);
@@ -3388,6 +3425,14 @@ KFW_AFS_klog(
                        smbname, sizeof(aclient.smbname) - 1);
     } else {
         aclient.smbname[0] = '\0';
+    }
+
+    if ( IsDebuggerPresent() ) {
+        char message[256];
+        StringCbPrintf(message, sizeof(message), "aclient.name: %s\n", aclient.name);
+        OutputDebugString(message);
+        StringCbPrintf(message, sizeof(message), "aclient.smbname: %s\n", aclient.smbname);
+        OutputDebugString(message);
     }
 
     if (rc = ktc_SetToken(&aserver, &atoken, &aclient, (aclient.smbname[0]?AFS_SETTOK_LOGON:0)))

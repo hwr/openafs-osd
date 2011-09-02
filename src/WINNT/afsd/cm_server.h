@@ -86,6 +86,10 @@ extern cm_server_t *cm_NewServer(struct sockaddr_in *addrp, int type,
 
 extern cm_serverRef_t *cm_NewServerRef(struct cm_server *serverp, afs_uint32 volID);
 
+extern void cm_GetServerRef(cm_serverRef_t *tsrp, int locked);
+
+extern afs_int32 cm_PutServerRef(cm_serverRef_t *tsrp, int locked);
+
 extern LONG_PTR cm_ChecksumServerList(cm_serverRef_t *serversp);
 
 extern void cm_GetServer(cm_server_t *);
@@ -96,7 +100,7 @@ extern void cm_PutServer(cm_server_t *);
 
 extern void cm_PutServerNoLock(cm_server_t *);
 
-extern cm_server_t *cm_FindServer(struct sockaddr_in *addrp, int type);
+extern cm_server_t *cm_FindServer(struct sockaddr_in *addrp, int type, int locked);
 
 extern osi_rwlock_t cm_serverLock;
 
@@ -132,9 +136,9 @@ extern void cm_SetServerNo64Bit(cm_server_t * serverp, int no64bit);
 
 extern void cm_SetServerNoInlineBulk(cm_server_t * serverp, int no);
 
-extern cm_server_t * cm_FindServerByIP(afs_uint32 addr, unsigned short port, int type);
+extern cm_server_t * cm_FindServerByIP(afs_uint32 addr, unsigned short port, int type, int locked);
 
-extern cm_server_t * cm_FindServerByUuid(afsUUID* uuid, int type);
+extern cm_server_t * cm_FindServerByUuid(afsUUID* uuid, int type, int locked);
 
 extern void cm_SetLanAdapterChangeDetected(void);
 

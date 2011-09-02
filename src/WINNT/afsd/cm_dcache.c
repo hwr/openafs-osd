@@ -110,13 +110,14 @@ long cm_BufWrite(void *vscp, osi_hyper_t *offsetp, long length, long flags,
     }
 
     /* prepare the output status for the store */
-    scp->mask |= CM_SCACHEMASK_CLIENTMODTIME;
+    _InterlockedOr(&scp->mask, CM_SCACHEMASK_CLIENTMODTIME);
     cm_StatusFromAttr(&inStatus, scp, NULL);
     truncPos = scp->length;
     if ((scp->mask & CM_SCACHEMASK_TRUNCPOS)
-        && LargeIntegerLessThan(scp->truncPos, truncPos))
+         && LargeIntegerLessThan(scp->truncPos, truncPos)) {
         truncPos = scp->truncPos;
-	scp->mask &= ~CM_SCACHEMASK_TRUNCPOS;
+        _InterlockedAnd(&scp->mask, ~CM_SCACHEMASK_TRUNCPOS);
+    }
 
     /* compute how many bytes to write from this buffer */
     thyper = LargeIntegerSubtract(scp->length, biod.offset);
@@ -376,14 +377,14 @@ long cm_BufWrite(void *vscp, osi_hyper_t *offsetp, long length, long flags,
         }
 
         if (LargeIntegerGreaterThanOrEqualTo(t, scp->length))
-            scp->mask &= ~CM_SCACHEMASK_LENGTH;
+            _InterlockedAnd(&scp->mask, ~CM_SCACHEMASK_LENGTH);
 
         cm_MergeStatus(NULL, scp, &outStatus, &volSync, userp, reqp, CM_MERGEFLAG_STOREDATA);
     } else {
         if (code == CM_ERROR_SPACE)
-            scp->flags |= CM_SCACHEFLAG_OUTOFSPACE;
+            _InterlockedOr(&scp->flags, CM_SCACHEFLAG_OUTOFSPACE);
         else if (code == CM_ERROR_QUOTA)
-            scp->flags |= CM_SCACHEFLAG_OVERQUOTA;
+            _InterlockedOr(&scp->flags, CM_SCACHEFLAG_OVERQUOTA);
     }
     cm_SyncOpDone(scp, NULL, CM_SCACHESYNC_STOREDATA_EXCL);
 
@@ -423,14 +424,14 @@ long cm_StoreMini(cm_scache_t *scp, cm_user_t *userp, cm_req_t *reqp)
     /* prepare the output status for the store */
     inStatus.Mask = AFS_SETMODTIME;
     inStatus.ClientModTime = scp->clientModTime;
-    scp->mask &= ~CM_SCACHEMASK_CLIENTMODTIME;
+    _InterlockedAnd(&scp->mask, ~CM_SCACHEMASK_CLIENTMODTIME);
 
     /* calculate truncation position */
     truncPos = scp->length;
     if ((scp->mask & CM_SCACHEMASK_TRUNCPOS)
         && LargeIntegerLessThan(scp->truncPos, truncPos))
         truncPos = scp->truncPos;
-    scp->mask &= ~CM_SCACHEMASK_TRUNCPOS;
+    _InterlockedAnd(&scp->mask, ~CM_SCACHEMASK_TRUNCPOS);
 
     if (LargeIntegerGreaterThan(truncPos,
                                 ConvertLongToLargeInteger(LONG_MAX))) {
@@ -528,7 +529,7 @@ long cm_StoreMini(cm_scache_t *scp, cm_user_t *userp, cm_req_t *reqp)
         }
 
         if (LargeIntegerGreaterThanOrEqualTo(t, scp->length))
-            scp->mask &= ~CM_SCACHEMASK_LENGTH;
+            _InterlockedAnd(&scp->mask, ~CM_SCACHEMASK_LENGTH);
         cm_MergeStatus(NULL, scp, &outStatus, &volSync, userp, reqp, CM_MERGEFLAG_STOREDATA);
     }
     cm_SyncOpDone(scp, NULL, CM_SCACHESYNC_STOREDATA_EXCL);
@@ -781,7 +782,7 @@ void cm_ClearPrefetchFlag(long code, cm_scache_t *scp, osi_hyper_t *base, osi_hy
         if (LargeIntegerGreaterThan(end, scp->prefetch.end))
             scp->prefetch.end = end;
     }
-    scp->flags &= ~CM_SCACHEFLAG_PREFETCHING;
+    _InterlockedAnd(&scp->flags, ~CM_SCACHEFLAG_PREFETCHING);
 }
 
 /* do the prefetch.  if the prefetch fails, return 0 (success)
@@ -838,7 +839,7 @@ cm_BkgPrefetch(cm_scache_t *scp, afs_uint32 p1, afs_uint32 p2, afs_uint32 p3, af
                 lock_ObtainWrite(&scp->rw);
                 rxheld = 1;
             }
-            bp->cmFlags &= ~CM_BUF_CMBKGFETCH;
+            _InterlockedAnd(&bp->cmFlags, ~CM_BUF_CMBKGFETCH);
             buf_Release(bp);
             bp = NULL;
             continue;
@@ -853,7 +854,7 @@ cm_BkgPrefetch(cm_scache_t *scp, afs_uint32 p1, afs_uint32 p2, afs_uint32 p3, af
         if (code == 0)
             fetched = LargeIntegerAdd(fetched, tblocksize);
         buf_Release(bp);
-        bp->cmFlags &= ~CM_BUF_CMBKGFETCH;
+        _InterlockedAnd(&bp->cmFlags, ~CM_BUF_CMBKGFETCH);
     }
 
     if (!rxheld) {
@@ -868,7 +869,7 @@ cm_BkgPrefetch(cm_scache_t *scp, afs_uint32 p1, afs_uint32 p2, afs_uint32 p3, af
     {
         bp = buf_Find(scp, &offset);
         if (bp) {
-            bp->cmFlags &= ~CM_BUF_CMBKGFETCH;
+            _InterlockedAnd(&bp->cmFlags, ~CM_BUF_CMBKGFETCH);
             buf_Release(bp);
         }
     }
@@ -919,7 +920,7 @@ void cm_ConsiderPrefetch(cm_scache_t *scp, osi_hyper_t *offsetp, afs_uint32 coun
         lock_ReleaseWrite(&scp->rw);
         return;
     }
-    scp->flags |= CM_SCACHEFLAG_PREFETCHING;
+    _InterlockedOr(&scp->flags, CM_SCACHEFLAG_PREFETCHING);
 
     /* start the scan at the latter of the end of this read or
      * the end of the last fetched region.
@@ -930,7 +931,7 @@ void cm_ConsiderPrefetch(cm_scache_t *scp, osi_hyper_t *offsetp, afs_uint32 coun
     code = cm_CheckFetchRange(scp, &readBase, &readLength, userp, reqp,
                               &realBase);
     if (code) {
-        scp->flags &= ~CM_SCACHEFLAG_PREFETCHING;
+        _InterlockedAnd(&scp->flags, ~CM_SCACHEFLAG_PREFETCHING);
         lock_ReleaseWrite(&scp->rw);
         return;	/* can't find something to prefetch */
     }
@@ -959,7 +960,7 @@ void cm_ConsiderPrefetch(cm_scache_t *scp, osi_hyper_t *offsetp, afs_uint32 coun
             rwheld = 1;
         }
 
-        bp->cmFlags |= CM_BUF_CMBKGFETCH;
+        _InterlockedOr(&bp->cmFlags, CM_BUF_CMBKGFETCH);
         buf_Release(bp);
     }
 
@@ -1046,7 +1047,7 @@ long cm_SetupStoreBIOD(cm_scache_t *scp, osi_hyper_t *inOffsetp, long inSize,
             if (bufp->flags & CM_BUF_DIRTY) {
                 osi_assertx(!(bufp->flags & CM_BUF_WRITING),
                             "WRITING w/o CMSTORING in SetupStoreBIOD");
-                bufp->flags |= CM_BUF_WRITING;
+                _InterlockedOr(&bufp->flags, CM_BUF_WRITING);
                 break;
             }
 
@@ -1489,7 +1490,7 @@ void cm_ReleaseBIOD(cm_bulkIO_t *biop, int isStore, long code, int scp_locked)
 		    osi_Wakeup((LONG_PTR) bufp);
 		}
 		if (code) {
-		    bufp->flags &= ~CM_BUF_WRITING;
+		    _InterlockedAnd(&bufp->flags, ~CM_BUF_WRITING);
                     switch (code) {
                     case CM_ERROR_NOSUCHFILE:
                     case CM_ERROR_BADFD:
@@ -1502,8 +1503,8 @@ void cm_ReleaseBIOD(cm_bulkIO_t *biop, int isStore, long code, int scp_locked)
                         /*
                          * Apply the fatal error to this buffer.
                          */
-                        bufp->flags &= ~CM_BUF_DIRTY;
-                        bufp->flags |= CM_BUF_ERROR;
+                        _InterlockedAnd(&bufp->flags, ~CM_BUF_DIRTY);
+                        _InterlockedOr(&bufp->flags, CM_BUF_ERROR);
                         bufp->dirty_offset = 0;
                         bufp->dirty_length = 0;
                         bufp->error = code;
@@ -1522,7 +1523,7 @@ void cm_ReleaseBIOD(cm_bulkIO_t *biop, int isStore, long code, int scp_locked)
                         break;
                     }
 		} else {
-		    bufp->flags &= ~(CM_BUF_WRITING | CM_BUF_DIRTY);
+		    _InterlockedAnd(&bufp->flags, ~(CM_BUF_WRITING | CM_BUF_DIRTY));
                     bufp->dirty_offset = bufp->dirty_length = 0;
                 }
 	    }
@@ -1951,7 +1952,7 @@ long cm_GetBuffer(cm_scache_t *scp, cm_buf_t *bufp, int *cpffp, cm_user_t *userp
                         * PREFETCHING flag, so the reader waiting for
                         * this buffer will start a prefetch.
                         */
-                        tbufp->cmFlags |= CM_BUF_CMFULLYFETCHED;
+                        _InterlockedOr(&tbufp->cmFlags, CM_BUF_CMFULLYFETCHED);
                         lock_ObtainWrite(&scp->rw);
                         if (scp->flags & CM_SCACHEFLAG_WAITING) {
                             osi_Log1(afsd_logp, "CM GetBuffer Waking scp 0x%p", scp);
@@ -2008,7 +2009,7 @@ long cm_GetBuffer(cm_scache_t *scp, cm_buf_t *bufp, int *cpffp, cm_user_t *userp
                  * PREFETCHING flag, so the reader waiting for
                  * this buffer will start a prefetch.
                  */
-                tbufp->cmFlags |= CM_BUF_CMFULLYFETCHED;
+                _InterlockedOr(&tbufp->cmFlags, CM_BUF_CMFULLYFETCHED);
                 lock_ObtainWrite(&scp->rw);
                 if (scp->flags & CM_SCACHEFLAG_WAITING) {
                     osi_Log1(afsd_logp, "CM GetBuffer Waking scp 0x%p", scp);

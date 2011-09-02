@@ -128,13 +128,13 @@ cm_PingServer(cm_server_t *tsp)
 	lock_ObtainMutex(&tsp->mx);
 	tsp->waitCount--;
 	if (tsp->waitCount == 0)
-	    tsp->flags &= ~CM_SERVERFLAG_PINGING;
+	    _InterlockedAnd(&tsp->flags, ~CM_SERVERFLAG_PINGING);
 	else
 	    osi_Wakeup((LONG_PTR)tsp);
 	lock_ReleaseMutex(&tsp->mx);
 	return;
     }
-    tsp->flags |= CM_SERVERFLAG_PINGING;
+    _InterlockedOr(&tsp->flags, CM_SERVERFLAG_PINGING);
     wasDown = tsp->flags & CM_SERVERFLAG_DOWN;
     afs_inet_ntoa_r(tsp->addr.sin_addr.S_un.S_addr, hoststr);
     lock_ReleaseMutex(&tsp->mx);
@@ -171,7 +171,7 @@ cm_PingServer(cm_server_t *tsp)
     lock_ObtainMutex(&tsp->mx);
     if (code >= 0 || code == RXGEN_OPCODE) {
 	/* mark server as up */
-	tsp->flags &= ~CM_SERVERFLAG_DOWN;
+	_InterlockedAnd(&tsp->flags, ~CM_SERVERFLAG_DOWN);
         tsp->downTime = 0;
 
 	/* we currently handle 32-bits of capabilities */
@@ -215,7 +215,7 @@ cm_PingServer(cm_server_t *tsp)
     } else {
 	/* mark server as down */
         if (!(tsp->flags & CM_SERVERFLAG_DOWN)) {
-            tsp->flags |= CM_SERVERFLAG_DOWN;
+            _InterlockedOr(&tsp->flags, CM_SERVERFLAG_DOWN);
             tsp->downTime = time(NULL);
         }
 	if (code != VRESTARTING) {
@@ -254,7 +254,7 @@ cm_PingServer(cm_server_t *tsp)
     }
 
     if (tsp->waitCount == 0)
-	tsp->flags &= ~CM_SERVERFLAG_PINGING;
+	_InterlockedAnd(&tsp->flags, ~CM_SERVERFLAG_PINGING);
     else
 	osi_Wakeup((LONG_PTR)tsp);
     lock_ReleaseMutex(&tsp->mx);
@@ -410,7 +410,7 @@ static void cm_CheckServersMulti(afs_uint32 flags, cm_cell_t *cellp)
                 continue;
             }
 
-            tsp->flags |= CM_SERVERFLAG_PINGING;
+            _InterlockedOr(&tsp->flags, CM_SERVERFLAG_PINGING);
             lock_ReleaseMutex(&tsp->mx);
 
             serversp[nconns] = tsp;
@@ -454,7 +454,7 @@ static void cm_CheckServersMulti(afs_uint32 flags, cm_cell_t *cellp)
 
             if (results[i] >= 0 || results[i] == RXGEN_OPCODE)  {
                 /* mark server as up */
-                tsp->flags &= ~CM_SERVERFLAG_DOWN;
+                _InterlockedAnd(&tsp->flags, ~CM_SERVERFLAG_DOWN);
                 tsp->downTime = 0;
 
                 /* we currently handle 32-bits of capabilities */
@@ -499,7 +499,7 @@ static void cm_CheckServersMulti(afs_uint32 flags, cm_cell_t *cellp)
             } else {
                 /* mark server as down */
                 if (!(tsp->flags & CM_SERVERFLAG_DOWN)) {
-                    tsp->flags |= CM_SERVERFLAG_DOWN;
+                    _InterlockedOr(&tsp->flags, CM_SERVERFLAG_DOWN);
                     tsp->downTime = time(NULL);
                 }
                 if (code != VRESTARTING) {
@@ -539,7 +539,7 @@ static void cm_CheckServersMulti(afs_uint32 flags, cm_cell_t *cellp)
             }
 
             if (tsp->waitCount == 0)
-                tsp->flags &= ~CM_SERVERFLAG_PINGING;
+                _InterlockedAnd(&tsp->flags, ~CM_SERVERFLAG_PINGING);
             else
                 osi_Wakeup((LONG_PTR)tsp);
 
@@ -574,7 +574,7 @@ static void cm_CheckServersMulti(afs_uint32 flags, cm_cell_t *cellp)
                 continue;
             }
 
-            tsp->flags |= CM_SERVERFLAG_PINGING;
+            _InterlockedOr(&tsp->flags, CM_SERVERFLAG_PINGING);
             lock_ReleaseMutex(&tsp->mx);
 
             serversp[nconns] = tsp;
@@ -619,7 +619,7 @@ static void cm_CheckServersMulti(afs_uint32 flags, cm_cell_t *cellp)
 
             if (results[i] >= 0)  {
                 /* mark server as up */
-                tsp->flags &= ~CM_SERVERFLAG_DOWN;
+                _InterlockedAnd(&tsp->flags, ~CM_SERVERFLAG_DOWN);
                 tsp->downTime = 0;
                 tsp->capabilities = 0;
 
@@ -631,7 +631,7 @@ static void cm_CheckServersMulti(afs_uint32 flags, cm_cell_t *cellp)
             } else {
                 /* mark server as down */
                 if (!(tsp->flags & CM_SERVERFLAG_DOWN)) {
-                    tsp->flags |= CM_SERVERFLAG_DOWN;
+                    _InterlockedOr(&tsp->flags, CM_SERVERFLAG_DOWN);
                     tsp->downTime = time(NULL);
                 }
                 if (code != VRESTARTING) {
@@ -647,7 +647,7 @@ static void cm_CheckServersMulti(afs_uint32 flags, cm_cell_t *cellp)
             }
 
             if (tsp->waitCount == 0)
-                tsp->flags &= ~CM_SERVERFLAG_PINGING;
+                _InterlockedAnd(&tsp->flags, ~CM_SERVERFLAG_PINGING);
             else
                 osi_Wakeup((LONG_PTR)tsp);
 
@@ -745,9 +745,9 @@ void cm_SetServerNo64Bit(cm_server_t * serverp, int no64bit)
 {
     lock_ObtainMutex(&serverp->mx);
     if (no64bit)
-        serverp->flags |= CM_SERVERFLAG_NO64BIT;
+        _InterlockedOr(&serverp->flags, CM_SERVERFLAG_NO64BIT);
     else
-        serverp->flags &= ~CM_SERVERFLAG_NO64BIT;
+        _InterlockedAnd(&serverp->flags, ~CM_SERVERFLAG_NO64BIT);
     lock_ReleaseMutex(&serverp->mx);
 }
 
@@ -755,9 +755,9 @@ void cm_SetServerNoInlineBulk(cm_server_t * serverp, int no)
 {
     lock_ObtainMutex(&serverp->mx);
     if (no)
-        serverp->flags |= CM_SERVERFLAG_NOINLINEBULK;
+        _InterlockedOr(&serverp->flags, CM_SERVERFLAG_NOINLINEBULK);
     else
-        serverp->flags &= ~CM_SERVERFLAG_NOINLINEBULK;
+        _InterlockedAnd(&serverp->flags, ~CM_SERVERFLAG_NOINLINEBULK);
     lock_ReleaseMutex(&serverp->mx);
 }
 
@@ -831,6 +831,20 @@ cm_server_t *cm_NewServer(struct sockaddr_in *socketp, int type, cm_cell_t *cell
 
     osi_assertx(socketp->sin_family == AF_INET, "unexpected socket family");
 
+    lock_ObtainWrite(&cm_serverLock); 	/* get server lock */
+    tsp = cm_FindServer(socketp, type, TRUE);
+    if (tsp) {
+        /* we might have found a server created by set server prefs */
+        if (uuidp && !afs_uuid_is_nil(uuidp) &&
+            !(tsp->flags & CM_SERVERFLAG_UUID))
+        {
+            tsp->uuid = *uuidp;
+            _InterlockedOr(&tsp->flags, CM_SERVERFLAG_UUID);
+        }
+        lock_ReleaseWrite(&cm_serverLock);
+        return tsp;
+    }
+
     tsp = malloc(sizeof(*tsp));
     if (tsp) {
         memset(tsp, 0, sizeof(*tsp));
@@ -838,7 +852,7 @@ cm_server_t *cm_NewServer(struct sockaddr_in *socketp, int type, cm_cell_t *cell
         tsp->cellp = cellp;
         if (uuidp && !afs_uuid_is_nil(uuidp)) {
             tsp->uuid = *uuidp;
-            tsp->flags |= CM_SERVERFLAG_UUID;
+            _InterlockedOr(&tsp->flags, CM_SERVERFLAG_UUID);
         }
         tsp->refCount = 1;
         lock_InitializeMutex(&tsp->mx, "cm_server_t mutex", LOCK_HIERARCHY_SERVER);
@@ -846,7 +860,6 @@ cm_server_t *cm_NewServer(struct sockaddr_in *socketp, int type, cm_cell_t *cell
 
         cm_SetServerPrefs(tsp);
 
-        lock_ObtainWrite(&cm_serverLock); 	/* get server lock */
         tsp->allNextp = cm_allServersp;
         cm_allServersp = tsp;
 
@@ -858,23 +871,25 @@ cm_server_t *cm_NewServer(struct sockaddr_in *socketp, int type, cm_cell_t *cell
             cm_numFileServers++;
             break;
         }
-
-        lock_ReleaseWrite(&cm_serverLock); 	/* release server lock */
-
-        if ( !(flags & CM_FLAG_NOPROBE) ) {
-            tsp->flags |= CM_SERVERFLAG_DOWN;	/* assume down; ping will mark up if available */
-            cm_PingServer(tsp);	                /* Obtain Capabilities and check up/down state */
-        }
     }
+    lock_ReleaseWrite(&cm_serverLock); 	/* release server lock */
+
+    if (!(flags & CM_FLAG_NOPROBE) && tsp) {
+        _InterlockedOr(&tsp->flags, CM_SERVERFLAG_DOWN);	/* assume down; ping will mark up if available */
+        cm_PingServer(tsp);	                                /* Obtain Capabilities and check up/down state */
+    }
+
     return tsp;
 }
 
 cm_server_t *
-cm_FindServerByIP(afs_uint32 ipaddr, unsigned short port, int type)
+cm_FindServerByIP(afs_uint32 ipaddr, unsigned short port, int type, int locked)
 {
     cm_server_t *tsp;
 
-    lock_ObtainRead(&cm_serverLock);
+    if (!locked)
+        lock_ObtainRead(&cm_serverLock);
+
     for (tsp = cm_allServersp; tsp; tsp = tsp->allNextp) {
         if (tsp->type == type &&
             tsp->addr.sin_addr.S_un.S_addr == ipaddr &&
@@ -886,17 +901,20 @@ cm_FindServerByIP(afs_uint32 ipaddr, unsigned short port, int type)
     if (tsp)
         cm_GetServerNoLock(tsp);
 
-    lock_ReleaseRead(&cm_serverLock);
+    if (!locked)
+        lock_ReleaseRead(&cm_serverLock);
 
     return tsp;
 }
 
 cm_server_t *
-cm_FindServerByUuid(afsUUID *serverUuid, int type)
+cm_FindServerByUuid(afsUUID *serverUuid, int type, int locked)
 {
     cm_server_t *tsp;
 
-    lock_ObtainRead(&cm_serverLock);
+    if (!locked)
+        lock_ObtainRead(&cm_serverLock);
+
     for (tsp = cm_allServersp; tsp; tsp = tsp->allNextp) {
         if (tsp->type == type && !afs_uuid_equal(&tsp->uuid, serverUuid))
             break;
@@ -906,35 +924,18 @@ cm_FindServerByUuid(afsUUID *serverUuid, int type)
     if (tsp)
         cm_GetServerNoLock(tsp);
 
-    lock_ReleaseRead(&cm_serverLock);
+    if (!locked)
+        lock_ReleaseRead(&cm_serverLock);
 
     return tsp;
 }
 
 /* find a server based on its properties */
-cm_server_t *cm_FindServer(struct sockaddr_in *addrp, int type)
+cm_server_t *cm_FindServer(struct sockaddr_in *addrp, int type, int locked)
 {
-    cm_server_t *tsp;
-
     osi_assertx(addrp->sin_family == AF_INET, "unexpected socket value");
 
-    lock_ObtainRead(&cm_serverLock);
-    for (tsp = cm_allServersp; tsp; tsp=tsp->allNextp) {
-        if (tsp->type == type &&
-            tsp->addr.sin_addr.s_addr == addrp->sin_addr.s_addr &&
-            (tsp->addr.sin_port == addrp->sin_port || tsp->addr.sin_port == 0))
-            break;
-    }
-
-    /* bump ref count if we found the server */
-    if (tsp)
-        cm_GetServerNoLock(tsp);
-
-    /* drop big table lock */
-    lock_ReleaseRead(&cm_serverLock);
-
-    /* return what we found */
-    return tsp;
+    return cm_FindServerByIP(addrp->sin_addr.s_addr, addrp->sin_port, type, locked);
 }
 
 cm_server_vols_t *cm_NewServerVols(void) {
@@ -947,6 +948,10 @@ cm_server_vols_t *cm_NewServerVols(void) {
     return tsvp;
 }
 
+/*
+ * cm_NewServerRef() returns with the allocated cm_serverRef_t
+ * with a refCount of 1.
+ */
 cm_serverRef_t *cm_NewServerRef(cm_server_t *serverp, afs_uint32 volID)
 {
     cm_serverRef_t *tsrp;
@@ -1007,6 +1012,34 @@ cm_serverRef_t *cm_NewServerRef(cm_server_t *serverp, afs_uint32 volID)
     return tsrp;
 }
 
+void cm_GetServerRef(cm_serverRef_t *tsrp, int locked)
+{
+    afs_int32 refCount;
+
+    if (!locked)
+        lock_ObtainRead(&cm_serverLock);
+    refCount = InterlockedIncrement(&tsrp->refCount);
+    if (!locked)
+        lock_ReleaseRead(&cm_serverLock);
+}
+
+afs_int32 cm_PutServerRef(cm_serverRef_t *tsrp, int locked)
+{
+    afs_int32 refCount;
+
+    if (!locked)
+        lock_ObtainRead(&cm_serverLock);
+    refCount = InterlockedDecrement(&tsrp->refCount);
+    osi_assertx(refCount >= 0, "cm_serverRef_t refCount underflow");
+
+    if (!locked)
+        lock_ReleaseRead(&cm_serverLock);
+
+    return refCount;
+}
+
+
+
 LONG_PTR cm_ChecksumServerList(cm_serverRef_t *serversp)
 {
     LONG_PTR sum = 0;
@@ -1032,7 +1065,7 @@ LONG_PTR cm_ChecksumServerList(cm_serverRef_t *serversp)
 ** Insert a server into the server list keeping the list sorted in
 ** ascending order of ipRank.
 **
-** The refCount of the cm_serverRef_t is increased
+** The refCount of the cm_serverRef_t is not altered.
 */
 void cm_InsertServerList(cm_serverRef_t** list, cm_serverRef_t* element)
 {
@@ -1040,28 +1073,91 @@ void cm_InsertServerList(cm_serverRef_t** list, cm_serverRef_t* element)
     unsigned short ipRank;
 
     lock_ObtainWrite(&cm_serverLock);
-    current=*list;
-    ipRank = element->server->ipRank;
+    /*
+     * Since we are grabbing the serverLock exclusively remove any
+     * deleted serverRef objects with a zero refcount before
+     * inserting the new item.
+     */
+    if (*list) {
+        cm_serverRef_t  **currentp = list;
+        cm_serverRef_t  **nextp = NULL;
+        cm_serverRef_t  * next = NULL;
 
-    element->refCount++;                /* increase refCount */
+        for (currentp = list; *currentp; currentp = nextp)
+        {
+            nextp = &(*currentp)->next;
+            if ((*currentp)->refCount == 0 &&
+                (*currentp)->status == srv_deleted) {
+                next = *nextp;
+
+                if ((*currentp)->volID)
+                    cm_RemoveVolumeFromServer((*currentp)->server, (*currentp)->volID);
+                cm_FreeServer((*currentp)->server);
+                free(*currentp);
+                nextp = &next;
+            }
+        }
+    }
 
     /* insertion into empty list  or at the beginning of the list */
-    if ( !current || (current->server->ipRank > ipRank) )
+    if (!(*list))
+    {
+        element->next = NULL;
+        *list = element;
+        goto done;
+    }
+
+    /*
+     * Now that deleted entries have been removed and we know that the
+     * list was not empty, look for duplicates.  If the element we are
+     * inserting already exists, discard it.
+     */
+    for ( current = *list; current; current = current->next)
+    {
+        cm_server_t * server1 = current->server;
+        cm_server_t * server2 = element->server;
+
+        if (current->status == srv_deleted)
+            continue;
+
+        if (server1->type != server2->type)
+            continue;
+
+        if (server1->addr.sin_addr.s_addr != server2->addr.sin_addr.s_addr)
+            continue;
+
+        if ((server1->flags & CM_SERVERFLAG_UUID) != (server2->flags & CM_SERVERFLAG_UUID))
+            continue;
+
+        if ((server1->flags & CM_SERVERFLAG_UUID) &&
+            !afs_uuid_equal(&server1->uuid, &server2->uuid))
+            continue;
+
+        /* we must have a match, discard the new element */
+        free(element);
+        goto done;
+    }
+
+    ipRank = element->server->ipRank;
+
+	/* insertion at the beginning of the list */
+    if ((*list)->server->ipRank > ipRank)
     {
         element->next = *list;
         *list = element;
-        lock_ReleaseWrite(&cm_serverLock);
-        return ;
+        goto done;
     }
 
-    while ( current->next ) /* find appropriate place to insert */
+    /* find appropriate place to insert */
+    for ( current = *list; current->next; current = current->next)
     {
         if ( current->next->server->ipRank > ipRank )
             break;
-        else current = current->next;
     }
     element->next = current->next;
     current->next = element;
+
+  done:
     lock_ReleaseWrite(&cm_serverLock);
 }
 /*
@@ -1090,7 +1186,7 @@ long cm_ChangeRankServer(cm_serverRef_t** list, cm_server_t*	server)
         if ( (*current)->server == server)
         {
             element = (*current);
-            *current = (*current)->next; /* delete it */
+            *current = element->next; /* delete it */
             break;
         }
         current = & ( (*current)->next);
@@ -1104,10 +1200,6 @@ long cm_ChangeRankServer(cm_serverRef_t** list, cm_server_t*	server)
     /* re-insert deleted element into the list with modified rank*/
     cm_InsertServerList(list, element);
 
-    /* reduce refCount which was increased by cm_InsertServerList */
-    lock_ObtainWrite(&cm_serverLock);
-    element->refCount--;
-    lock_ReleaseWrite(&cm_serverLock);
     return 0;
 }
 /*
@@ -1252,6 +1344,7 @@ void cm_FreeServerList(cm_serverRef_t** list, afs_uint32 flags)
     cm_serverRef_t  **current;
     cm_serverRef_t  **nextp;
     cm_serverRef_t  * next;
+    afs_int32         refCount;
 
     lock_ObtainWrite(&cm_serverLock);
     current = list;
@@ -1264,7 +1357,8 @@ void cm_FreeServerList(cm_serverRef_t** list, afs_uint32 flags)
     while (*current)
     {
         nextp = &(*current)->next;
-        if (--((*current)->refCount) == 0) {
+        refCount = cm_PutServerRef(*current, TRUE);
+        if (refCount == 0) {
             next = *nextp;
 
             if ((*current)->volID)

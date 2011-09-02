@@ -437,7 +437,8 @@ struct storeOps rxfs_storeMemOps = {
 };
 
 afs_int32
-rxfs_storeInit(struct vcache *avc, struct afs_conn *tc, afs_size_t base,
+rxfs_storeInit(struct vcache *avc, struct afs_conn *tc,
+		struct rx_connection *rxconn,  afs_size_t base,
 		afs_size_t bytes, afs_size_t length,
 		int sync, struct storeOps **ops, void **rock)
 {
@@ -460,7 +461,7 @@ rxfs_storeInit(struct vcache *avc, struct afs_conn *tc, afs_size_t base,
     if (sync & AFS_SYNC)
         v->InStatus.Mask |= AFS_FSYNC;
     RX_AFS_GUNLOCK();
-    v->call = rx_NewCall(tc->id);
+    v->call = rx_NewCall(rxconn);
     if (v->call) {
 #ifdef AFS_64BIT_CLIENT
 	if (!afs_serverHasNo64Bit(tc))
@@ -665,7 +666,8 @@ afs_CacheStoreVCache(struct dcache **dcList, struct vcache *avc,
     afs_size_t base, bytes, length;
     int nomore;
     unsigned int first = 0;
-    struct afs_conn *tc;
+    struct afs_conn *tc = NULL;
+    struct rx_connection *rxconn;
 
     for (bytes = 0, j = 0; !code && j <= high; j++) {
 	if (dcList[j]) {
@@ -713,11 +715,13 @@ afs_CacheStoreVCache(struct dcache **dcList, struct vcache *avc,
                 afs_int32 code;
                 afs_uint32 protocol = 0;
 
-                tc = afs_Conn(&avc->f.fid, areq, 0);
+                tc = afs_Conn(&avc->f.fid, areq, 0, &rxconn);
 		RX_AFS_GUNLOCK();
-                code = RXAFS_ApplyOsdPolicy(tc->id, &avc->f.fid.Fid, length,
+                code = RXAFS_ApplyOsdPolicy(rxconn, &avc->f.fid.Fid, length,
                                                 &protocol);
 		RX_AFS_GLOCK();
+		afs_PutConn(tc, rxconn, 0);
+		tc = NULL;
                 if (!code) {
 #if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
                     if (avc->protocol & VICEP_ACCESS) {
@@ -745,20 +749,20 @@ afs_CacheStoreVCache(struct dcache **dcList, struct vcache *avc,
 #endif
 
 	    do {
-	        tc = afs_Conn(&avc->f.fid, areq, 0);
+	 	tc = afs_Conn(&avc->f.fid, areq, 0, &rxconn);
 
 #ifdef AFS_64BIT_CLIENT
 	      restart:
 #endif
                 switch (avc->protocol & PROTOCOL_MASK) {
                 case RX_OSD:
-                    code =  rxosd_storeInit(avc, tc, base, bytes, length,
+                    code =  rxosd_storeInit(avc, tc, rxconn, base, bytes, length,
                                         sync, areq, &ops, &rock);
                     break;
 #if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
                 case VICEP_ACCESS:
                     if (afs_protocols & VICEP_ACCESS) {
-                        code = vpac_storeInit(avc, tc, base, bytes, length,
+                        code = vpac_storeInit(avc, tc, rxconn, base, bytes, length,
                                         sync, areq, &ops, &rock);
                         if (!code)
                             break;
@@ -766,7 +770,7 @@ afs_CacheStoreVCache(struct dcache **dcList, struct vcache *avc,
 #endif
                 case RX_FILESERVER:
                 default:
-		    code = rxfs_storeInit(avc, tc, base, bytes, length,
+		    code = rxfs_storeInit(avc, tc, rxconn, base, bytes, length,
 				      sync, &ops, &rock);
                 } /* switch */
 
@@ -788,7 +792,7 @@ afs_CacheStoreVCache(struct dcache **dcList, struct vcache *avc,
                     goto leave_analyze_loop;
                 }
 	    } while (afs_Analyze
-		     (tc, code, &avc->f.fid, areq,
+		     (tc, rxconn, code, &avc->f.fid, areq,
 		      AFS_STATS_FS_RPCIDX_STOREDATA, SHARED_LOCK,
 		      NULL));
 leave_analyze_loop:
@@ -1153,7 +1157,8 @@ struct fetchOps rxfs_fetchBypassCacheOps = {
 #endif
 
 afs_int32
-rxfs_fetchInit(struct afs_conn *tc, struct vcache *avc, afs_offs_t base,
+rxfs_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
+	       struct vcache *avc, afs_offs_t base,
 	       afs_uint32 size, afs_int32 *alength, struct dcache *adc,
 	       void *bypassparms,
 	       struct osi_file *fP, struct fetchOps **ops, void **rock)
@@ -1170,7 +1175,7 @@ rxfs_fetchInit(struct afs_conn *tc, struct vcache *avc, afs_offs_t base,
     bparms  = (struct nocache_read_request *) bypassparms;
 #endif
 
-    if (!tc)
+    if (!tc || !rxconn)
         return -1;
     v = (struct rxfs_fetchVariables *)
 	    osi_AllocSmallSpace(sizeof(struct rxfs_fetchVariables));
@@ -1180,7 +1185,7 @@ rxfs_fetchInit(struct afs_conn *tc, struct vcache *avc, afs_offs_t base,
 
     v->fP = fP;
     RX_AFS_GUNLOCK();
-    v->call = rx_NewCall(tc->id);
+    v->call = rx_NewCall(rxconn);
     RX_AFS_GLOCK();
     if (v->call) {
 #ifdef AFS_64BIT_CLIENT
@@ -1217,7 +1222,7 @@ rxfs_fetchInit(struct afs_conn *tc, struct vcache *avc, afs_offs_t base,
 		pos = base;
 		RX_AFS_GUNLOCK();
 		if (!v->call)
-		    v->call = rx_NewCall(tc->id);
+		    v->call = rx_NewCall(rxconn);
 		code =
 		    StartRXAFS_FetchData(
 		    		v->call, (struct AFSFid*)&avc->f.fid.Fid,
@@ -1339,7 +1344,8 @@ rxfs_fetchInit(struct afs_conn *tc, struct vcache *avc, afs_offs_t base,
  * Routine called on fetch; also tells people waiting for data
  *	that more has arrived.
  *
- * \param tc Ptr to the Rx connection structure.
+ * \param tc Ptr to the afs_conn structure.
+ * \param rxconn Ptr to the Rx connection structure.
  * \param fP File descriptor for the cache file.
  * \param areq Ptr to vrequest structure.
  * \param base Base offset to fetch.
@@ -1359,8 +1365,8 @@ rxfs_fetchInit(struct afs_conn *tc, struct vcache *avc, afs_offs_t base,
  *     avc->lock(R) 
  */
 int
-afs_FetchProc(struct afs_conn *tc, struct osi_file *fP, 
-	      struct vrequest *areq, afs_size_t base,
+afs_FetchProc(struct afs_conn *tc, struct rx_connection *rxconn,
+	      struct osi_file *fP, struct vrequest *areq, afs_size_t base,
 	      struct dcache *adc, struct vcache *avc, afs_int32 size,
 	      void *bypassparms, struct afs_FetchOutput *tsmall)
 {
@@ -1405,14 +1411,14 @@ restart:
     switch (avc->protocol & PROTOCOL_MASK) {
         case RX_OSD:
             code = rxosd_fetchInit(
-			tc, avc, base, size, &length, bypassparms,
+			tc, rxconn, avc, base, size, &length, bypassparms,
 			fP, areq, &ops, &rock);
             break;
 #if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
         case VICEP_ACCESS:
             if (afs_protocols & VICEP_ACCESS) {
                 code = vpac_fetchInit(
-			    tc, avc, base, size, &length, bypassparms,
+			    tc, rxconn, avc, base, size, &length, bypassparms,
 			    fP, areq, &ops, &rock);
                 if (!code)
                     break;
@@ -1421,7 +1427,7 @@ restart:
         case RX_FILESERVER:
         default:
             code = rxfs_fetchInit(
-			tc, avc, base, size, &length, adc, bypassparms,
+			tc, rxconn, avc, base, size, &length, adc, bypassparms,
 			fP, &ops, &rock);
     }
 
