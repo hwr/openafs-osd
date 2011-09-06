@@ -1059,7 +1059,7 @@ doSweepAFSCache(int *vFilesFound,
 		/* If we're in a real subdir, mark this file to be moved
 		 * if we've already got too many files in this directory
 		 */
-		osi_Assert(dirNum >= 0);
+		assert(dirNum >= 0);
 		cache_dir_list[dirNum]++;	/* keep directory's file count */
 		if (cache_dir_list[dirNum] > nFilesPerDir) {
 		    /* Too many files -- add to filelist */
@@ -1193,7 +1193,7 @@ doSweepAFSCache(int *vFilesFound,
 		else {
 		    struct stat statb;
 #if !defined(AFS_CACHE_VNODE_PATH) && !defined(AFS_LINUX26_ENV)
-		    osi_Assert(inode_for_V[vFileNum] == (AFSD_INO_T) 0);
+		    assert(inode_for_V[vFileNum] == (AFSD_INO_T) 0);
 #endif
 		    sprintf(vFilePtr, "D%d/V%d", thisDir, vFileNum);
 		    if (afsd_verbose)
