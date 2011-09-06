@@ -34,7 +34,7 @@ LIBS=${TOP_LIBDIR}/libgtx.a \
 	${TOP_LIBDIR}/librxkad.a \
 	${TOP_LIBDIR}/libdes.a \
 	${TOP_LIBDIR}/libcmd.a \
-	${TOP_LIBDIR}/libacl.a \
+	${TOP_LIBDIR}/vlib.a ${TOP_LIBDIR}/libacl.a \
         ${TOP_LIBDIR}/libvldb.a \
 	${TOP_LIBDIR}/libafsint.a \
 	${TOP_LIBDIR}/libsys.a \

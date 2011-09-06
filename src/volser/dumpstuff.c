@@ -14,6 +14,7 @@
 #include <ctype.h>
 #include <stdio.h>
 #include <errno.h>
+#include <string.h>
 #ifdef AFS_NT40_ENV
 #include <fcntl.h>
 #else
@@ -23,7 +24,6 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #endif
-#include <string.h>
 #include <sys/stat.h>
 #include <afs/afs_assert.h>
 #include <rx/xdr.h>
@@ -379,7 +379,7 @@ ReadStandardTagLen(struct iod *iodp, unsigned char tag, afs_int32 section,
 	    *length = len;
 	else {
 	    len &= 0x7f;
-	    if (code = iod_Read(iodp, (char *)buf, len) != len) 
+	    if ((code = iod_Read(iodp, (char *)buf, len)) != len) 
 		return VOLSERDUMPERROR;
 	    *length = 0;
 	    p = (unsigned char *)&buf;
@@ -664,7 +664,7 @@ DumpArrayInt32(struct iod *iodp, char tag,
 	return VOLSERDUMPERROR;
     while (nelem--) {
 	p = (unsigned char *)tbuffer;
-	v = *array++;		/*this was */
+	v = *array++;		/*this was register */
 
 	putint32(p, v);
 	code = iod_Write(iodp, tbuffer, 4);

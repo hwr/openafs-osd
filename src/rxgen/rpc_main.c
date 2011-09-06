@@ -541,7 +541,7 @@ h_output(char *infile, char *define, int extend, char *outfile, int append)
 	f_print(fout, "#include <rx/rx_globals.h>\n");
     }
     if (brief_flag) {
-	f_print(fout, "#include \"rx/rx_opaque.h\"\n");
+	f_print(fout, "#include <rx/rx_opaque.h>\n");
     }
     f_print(fout, "#include <afs/rxgen_consts.h>\n");
     if (uflag)
@@ -705,7 +705,7 @@ C_output(char *infile, char *define, int extend, char *outfile, int append)
 		f_print(fout, "#include <rx/rx_globals.h>\n");
 	    }
     	    if (brief_flag) {
-		f_print(fout, "#include \"rx/rx_opaque.h\"\n");
+		f_print(fout, "#include <rx/rx_opaque.h>\n");
     	    }
 	    f_print(fout, "#include <afs/rxgen_consts.h>\n");
 	}
@@ -776,7 +776,7 @@ S_output(char *infile, char *define, int extend, char *outfile, int append)
 		f_print(fout, "#include <rx/rx_globals.h>\n");
 	    }
     	    if (brief_flag) {
-		f_print(fout, "#include \"rx/rx_opaque.h\"\n");
+		f_print(fout, "#include <rx/rx_opaque.h>\n");
     	    }
 	    f_print(fout, "#include <afs/rxgen_consts.h>\n");
 	}
