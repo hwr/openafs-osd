@@ -413,6 +413,17 @@ struct dentry _d;
 		       [])
 ])
 
+AC_DEFUN([LINUX_HAVE_FILE_FSYNC], [
+  AC_CHECK_LINUX_BUILD([whether file_fsync is exists],
+                       [ac_cv_linux_func_file_fsync],
+                       [#include <linux/buffer_head.h>],
+[
+file_fsync(NULL,NULL,0);],
+                       [HAVE_LINUX_FILE_FSYNC],
+                       [define if file_fsync is exists],
+                       [])
+])
+
 
 AC_DEFUN([LINUX_HAVE_KMEM_CACHE_T], [
   AC_CHECK_LINUX_BUILD([whether kmem_cache_t exists],

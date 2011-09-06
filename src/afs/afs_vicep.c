@@ -453,8 +453,11 @@ vpac_storeClose(void *rock, struct AFSFetchStatus *OutStatus, int *doProcessFS)
         set_fs(KERNEL_DS);
         RX_AFS_GUNLOCK();
         tfp->f_op = fops_get(tfp->f_dentry->d_inode->i_fop);
+        #if defined(HAVE_LINUX_FILE_FSYNC)
+        /* just to be sure */
 	if (tfp->f_op && tfp->f_op->fsync)
             code = file_fsync(tfp, tfp->f_dentry, 0);
+        #endif
         RX_AFS_GLOCK();
 #if !defined(STRUCT_TASK_STRUCT_HAS_CRED)
         current_fsuid() = fsuid;
