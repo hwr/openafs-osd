@@ -32,7 +32,9 @@ extern int pioctl(char *path, afs_int32 cmd, struct ViceIoctl *data,
 #ifdef AFS_DUX40_ENV
 extern int afs_setpag(void);
 #else
+#ifndef UKERNEL
 extern int setpag(void);
+#endif
 #endif
 
 /* rmtsysnet.c */

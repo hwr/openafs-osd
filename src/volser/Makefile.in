@@ -27,12 +27,12 @@ INTINCLS=volint.h volser.h volser_prototypes.h volser_internal.h
 
 LIBS=\
 	${TOP_LIBDIR}/libaudit.a \
+	${TOP_LIBDIR}/libcmd.a \
 	${TOP_LIBDIR}/libacl.a \
 	${TOP_LIBDIR}/libsys.a \
 	${TOP_LIBDIR}/libvldb.a \
 	${TOP_LIBDIR}/libubik.a \
 	${TOP_LIBDIR}/libauth.a \
-	${TOP_LIBDIR}/libcmd.a \
 	${TOP_LIBDIR}/librxkad.a \
 	${TOP_LIBDIR}/libdes.a \
 	${TOP_LIBDIR}/librxstat.a \
@@ -68,7 +68,7 @@ SOBJS=volmain.o volprocs.o physio.o common.o voltrans.o volerr.o \
  vol_split.o
 
 # remove "vos" from lower all:target
-all: volserver vos restorevol voldump \
+all: restorevol voldump \
 	${TOP_INCDIR}/afs/volser.h \
 	${TOP_INCDIR}/afs/vsutils_prototypes.h \
 	${TOP_INCDIR}/afs/volser_prototypes.h \
@@ -181,7 +181,7 @@ vol_split.o: vol_split.c ${VINCLS} ${INTINCLS} ${RINCLS}
 #
 # Installation targets
 #
-install: restorevol voldump volser.h volint.h vos volserver libvolser.a
+install: restorevol voldump volser.h volint.h vos libvolser.a
 	${INSTALL} -d ${DESTDIR}${sbindir}
 	${INSTALL} -d ${DESTDIR}${afssrvsbindir}
 	${INSTALL} -d ${DESTDIR}${includedir}/afs
@@ -212,7 +212,7 @@ install: restorevol voldump volser.h volint.h vos volserver libvolser.a
 			${DESTDIR}${afssrvlibexecdir}/volserver ;; \
 	esac
 
-dest: restorevol voldump volser.h volint.h vos volserver libvolser.a
+dest: restorevol voldump volser.h volint.h vos libvolser.a
 	${INSTALL} -d ${DEST}/etc
 	${INSTALL} -d ${DEST}/include/afs
 	${INSTALL} -d ${DEST}/lib/afs
