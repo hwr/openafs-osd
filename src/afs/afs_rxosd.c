@@ -2217,6 +2217,11 @@ rxosd_bringOnline(struct vcache *avc, struct vrequest *areq)
         RX_AFS_GUNLOCK();
         code = RXAFS_GetPath(rxconn, (struct AFSFid *) &avc->f.fid.Fid,
 				&v->a);
+	if (code == RXGEN_OPCODE) {
+	    code = RXAFS_GetOSDlocation(tc->id, (struct AFSFid *) &avc->f.fid.Fid,
+					v->resid, v->resid, 0, 0, /* all zero */
+					&v->OutStatus, &v->a.async_u.l2);
+	}
         RX_AFS_GLOCK();
 	if (code != OSD_WAIT_FOR_TAPE && code != VBUSY && code != VRESTARTING) 
 	    break;

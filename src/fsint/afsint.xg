@@ -852,7 +852,7 @@ GetStatistics64(
  *      65558   InverseLookup           currently used
  *      65559   CheckOSDconns           currently used
  *      65560   ApplyOsdPolicy          currently used
- *      65561   GetPath                 currently used
+ *      65561   GetPath1                still used by some clients (same number as SetOSdFileReady0 in 1.4-osd)
  *      65562   GetOsdMetadata          currently used
  *      65563   GetOSDlocation1         still used by some clients
  *      65564   ServerPath1             still used by some clients
@@ -880,6 +880,7 @@ GetStatistics64(
  *      65586   UpdateOSDmetadata	currently used
  *      65587   Variable                currently used
  *      65588   SetOsdFileReady0        currently used
+ *      65589   GetPath                 currently used
  */
 
 /* Now first the actual RPCs which will go into git */
@@ -988,7 +989,7 @@ Statistic(
 GetPath(
   IN  AFSFid *Fid,
   INOUT struct async *a
-) = 65561;
+) = 65589;
 
 /***************************************************************
  * Called by rxosd after copy on write to inform fileserver about
@@ -1201,4 +1202,9 @@ SetOsdFileReady0(
   IN AFSFid *Fid,
   IN struct viced_md5 *md5
 ) = 65568;
+
+GetPath1(
+  IN  AFSFid *Fid,
+  INOUT struct async *a
+) = 65561;
 

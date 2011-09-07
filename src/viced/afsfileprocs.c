@@ -9597,11 +9597,11 @@ FetchData_OSD(Volume * volptr, Vnode **targetptr,
 }
 #endif /* AFS_RXOSD_SUPPRT */
 
-afs_int32 
-SRXAFS_GetPath(struct rx_call *acall, AFSFid *Fid, struct async *a)
-{
-    afs_int32 errorCode = RXGEN_OPCODE;
 #if defined(AFS_ENABLE_VICEP_ACCESS) || defined(AFS_RXOSD_SUPPORT)
+afs_int32 
+common_GetPath(struct rx_call *acall, AFSFid *Fid, struct async *a)
+{
+    afs_int32 errorCode;
     Vnode *targetptr = 0;       /* pointer to input fid */
     Vnode *parentwhentargetnotdir = 0;  /* parent of Fid to get ACL */
     Vnode tparentwhentargetnotdir;      /* parent vnode for GetStatus */
@@ -9614,7 +9614,6 @@ SRXAFS_GetPath(struct rx_call *acall, AFSFid *Fid, struct async *a)
     afs_uint64 maxlen;
     afsUUID *tuuid;
     afs_int32 lockType;
-    SETTHREADACTIVE(acall, 65561, Fid);
 
     ViceLog(1,("SRXAFS_GetPath: %lu.%lu.%lu\n",
 	Fid->Volume, Fid->Vnode, Fid->Unique));
@@ -9687,8 +9686,31 @@ Bad_GetPath:
     (void)PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *) 0,
                            volptr, &client);
     errorCode = CallPostamble(tcon, errorCode, thost);
-    SETTHREADINACTIVE();
+    return errorCode;
+}
 #endif
+
+afs_int32 
+SRXAFS_GetPath(struct rx_call *acall, AFSFid *Fid, struct async *a)
+{
+    afs_int32 errorCode = RXGEN_OPCODE;
+    SETTHREADACTIVE(acall, 65589, Fid);
+#if defined(AFS_ENABLE_VICEP_ACCESS) || defined(AFS_RXOSD_SUPPORT)
+    errorCode = common_GetPath(acall, Fid, a);
+#endif
+    SETTHREADINACTIVE();
+    return errorCode;
+}
+
+afs_int32 
+SRXAFS_GetPath1(struct rx_call *acall, AFSFid *Fid, struct async *a)
+{
+    afs_int32 errorCode = RXGEN_OPCODE;
+    SETTHREADACTIVE(acall, 65561, Fid);
+#if defined(AFS_ENABLE_VICEP_ACCESS) || defined(AFS_RXOSD_SUPPORT)
+    errorCode = common_GetPath(acall, Fid, a);
+#endif
+    SETTHREADINACTIVE();
     return errorCode;
 }
 
