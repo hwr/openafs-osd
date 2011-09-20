@@ -3255,6 +3255,7 @@ Threads(struct cmd_syndesc *as, void *rock)
 			(w->ip.ipadd_u.ipv4 >> 8) & 0xff,
 			w->ip.ipadd_u.ipv4 & 0xff);
 	}
+	return 0;
     }
 #ifdef ALLOW_OLD
     if (code == RXGEN_OPCODE) {
