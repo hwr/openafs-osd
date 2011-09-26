@@ -5075,6 +5075,7 @@ afs_int32 ReplaceOsd(struct cmd_syndesc *as, void *arock)
     char *fname;
     char *t;
     afs_uint32 old, new = 0;
+    int toLocal=0,removeOSD=0,toOSD=0;
     struct FsCmdInputs * Inputs;
     struct FsCmdOutputs * Outputs;
     afs_int32 fid = 0;
@@ -5083,15 +5084,57 @@ afs_int32 ReplaceOsd(struct cmd_syndesc *as, void *arock)
     if (as->name[0] == 'f')
 	fid = 1;
     fname = as->parms[0].items->data;
-    old = strtol(as->parms[1].items->data, &t, 10);
+    if (as->parms[1].items)
+        old = strtol(as->parms[1].items->data, &t, 10);
     if (as->parms[2].items)
         new = strtol(as->parms[2].items->data, &t, 10);
     if (as->parms[3].items) 
-	cell = as->parms[3].items->data;
+	toLocal = 1;
+    if (as->parms[4].items)
+        removeOSD = 1;
+    if (as->parms[5].items)
+        toOSD = 1;
+    if (as->parms[6].items) 
+	cell = as->parms[6].items->data;
+
+    if ( !old &&  !(toLocal || toOSD) ) {
+        fprintf(stderr, "fs (fid)replaceosd: required argument -old # missing.\n");
+        return 1;
+    }
+
+    if ( (toLocal && removeOSD) || (toLocal && toOSD) || (removeOSD && toOSD) ) {
+        fprintf(stderr, "fs (fid)replaceosd: -local,-remove,-toosd are mutually exclusive.\n");
+        return 1;
+    }
+
+    if ( (toLocal || removeOSD) && new) {
+        fprintf(stderr, "fs (fid)replaceosd: -new is mutally exclusive to -local and -remove.\n");
+        return 1;
+    }
     
     InitPioctlParams(Inputs, Outputs, CMD_REPLACE_OSD);
-    Inputs->int32s[0] = old;
-    Inputs->int32s[1] = new;
+    if (toOSD) { 
+        if (old)
+            fprintf(stderr,"fs (fid)replaceosd: warning! Ignoring option -old=%d for moving this file onto an OSD\n",old);
+        Inputs->int32s[0] = 1;
+    }
+    else { 
+        Inputs->int32s[0] = old;
+    }
+    Inputs->int32s[1] = 0;
+
+    if (new) 
+        Inputs->int32s[1] = new;
+    else {
+        if (toLocal)  {
+            Inputs->int32s[1] = 1;
+            if (old)
+                fprintf(stderr,"fs (fid)replaceosd: warning! Ignoring option -old=%d for moving this file onto the fileserver\n",old);
+        }
+        if (removeOSD) 
+            Inputs->int32s[1] = -1;
+    }
+    
     if (fid) {
 	code = ScanVnode(fname, cell);
         if (code) return code;
@@ -5101,13 +5144,31 @@ afs_int32 ReplaceOsd(struct cmd_syndesc *as, void *arock)
     if (!code) {
 	code = Outputs->code;
 	if (code) 
-	    fprintf(stderr, "failed to replace osd %d for %s, error code is %d\n",
+	    fprintf(stderr, "fs (fid)replaceosd: failed to replace osd %d for %s, error code is %d.\n",
 				old, fname, code);
-	else
-	    printf("Osd %d replaced by %d for %s\n", 
-				old, Outputs->int32s[0], fname);
+	else {
+          
+            switch (Outputs->int32s[0]) {
+                case -1 : 
+	            printf("Removed object \"%s\" from OSD %d.\n", 
+				fname,old);
+                    break;
+                 case 1 : 
+	            printf("Brought object \"%s\" to local fileserver disk.\n", 
+				fname);
+                    break;
+                 default :
+                    if (toOSD)
+                        printf("Moved file \"%s\" to Osd %d.\n",
+                                fname, Outputs->int32s[0]);
+                    else  
+                        printf("Moved object \"%s\" from Osd %d to %d.\n",
+                                fname,old, Outputs->int32s[0]);
+                 
+            }
+        }
     } else
-	fprintf(stderr, "failed to replace osd %d for %s, pioctl returned %d\n",
+	fprintf(stderr, "fs (fid)replaceosd: failed to replace osd %d for %s, pioctl returned %d.\n",
 				old, fname, code);
     return code;
 }
@@ -6716,14 +6777,20 @@ defect 3069
     ts = cmd_CreateSyntax("replaceosd", ReplaceOsd, NULL, 
 		"replace an osd by another one or transfer file to local_disk");
     cmd_AddParm(ts, "-file", CMD_SINGLE, CMD_REQUIRED, "filename");
-    cmd_AddParm(ts, "-old", CMD_SINGLE, CMD_REQUIRED, "id of osd to replace");
-    cmd_AddParm(ts, "-new", CMD_SINGLE, CMD_OPTIONAL, "id of new osd or 1 for local_disk)");
+    cmd_AddParm(ts, "-old", CMD_SINGLE, CMD_OPTIONAL, "id of osd to replace");
+    cmd_AddParm(ts, "-new", CMD_SINGLE, CMD_OPTIONAL, "id of new osd");
+    cmd_AddParm(ts, "-local", CMD_FLAG, CMD_OPTIONAL, "transfer to local_disk");
+    cmd_AddParm(ts, "-remove", CMD_FLAG, CMD_OPTIONAL, "remove this copy on old osd (only if other copy still exists)");
+    cmd_AddParm(ts, "-toosd", CMD_FLAG, CMD_OPTIONAL, "turn a file on the fileserver into an osd-object");
     
     ts = cmd_CreateSyntax("fidreplaceosd", ReplaceOsd, NULL, 
 		"replace an osd by another one or transfer file to local_disk");
     cmd_AddParm(ts, "-fid", CMD_SINGLE, CMD_REQUIRED, "Fid");
-    cmd_AddParm(ts, "-old", CMD_SINGLE, CMD_REQUIRED, "id of osd to replace");
-    cmd_AddParm(ts, "-new", CMD_SINGLE, CMD_OPTIONAL, "id of new osd or 1 for local_disk)");
+    cmd_AddParm(ts, "-old", CMD_SINGLE, CMD_OPTIONAL, "id of osd to replace");
+    cmd_AddParm(ts, "-new", CMD_SINGLE, CMD_OPTIONAL, "id of new osd");
+    cmd_AddParm(ts, "-local", CMD_FLAG, CMD_OPTIONAL, "turn an object into a normal file on local_disk");
+    cmd_AddParm(ts, "-remove", CMD_FLAG, CMD_OPTIONAL, "remove this copy on old osd (only if other copy still exists)");
+    cmd_AddParm(ts, "-toosd", CMD_FLAG, CMD_OPTIONAL, "turn a file on the fileserver into an osd-object");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell where file lives");
     
     ts = cmd_CreateSyntax("prefetch", Prefetch, NULL, 
