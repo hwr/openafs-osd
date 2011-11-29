@@ -1253,6 +1253,8 @@ StartFetch()
                 (afs_uint32) (f->d.o.obj_id & RXOSD_VNODEMASK),
                 (afs_uint32) (f->d.o.obj_id >> 32)));
     switch (FetchProc[i].pid = fork()) {
+	char *arguments[MAXARGS]; 
+	char ** argList = &arguments[0];
     case -1:
 	ViceLog(0,("StartFetch: fork failed\n"));
 	FetchProc[i].request = 0;
@@ -1265,15 +1267,8 @@ StartFetch()
                possible contention for any sockets being
                used.*/
             close(i);
-#ifdef AFS_TSM_HSM_ENV
-	(void) execlp("/usr/afs/bin/dsmrecall-wrapper", "dsmrecall",
-			name.n_path, 0);
-#else
-	{
-	    char *arguments[MAXARGS]; 
-	    char ** argList = &arguments[0];
-	    memset(&arguments, 0, sizeof(arguments));
-	    arguments[0] = "readabyte";
+	memset(&arguments, 0, sizeof(arguments));
+	arguments[0] = AFSDIR_RECALL_MIGRATED_FILE_FILE;
 #ifdef AFS_HPSS_SUPPORT
 	    arguments[1] = "-h";
 	    arguments[2] = principal;
@@ -1282,10 +1277,8 @@ StartFetch()
 #else
 	    arguments[1] = name.n_path;
 #endif
-	    (void) execv("/usr/afs/bin/readabyte", argList); 
-	}
-#endif
-	ViceLog(0,("StartFetch: execclp failed\n"));
+	(void) execv(AFSDIR_SERVER_RECALL_MIGRATED_FILE_FILEPATH, argList);
+	ViceLog(0,("StartFetch: execv failed\n"));
 	exit(-1);
     }   
     if (FetchProc[i].pid > 0) 
