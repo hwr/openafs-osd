@@ -326,7 +326,7 @@ static int incrlc_obj(struct cmd_syndesc *as, void *rock)
     }
     code = RXOSD_incdec(Conn, &Oprm, 1);
     if (!code) {
-        printf("Link count of following object object incemented:%u.%u.%u.%u", 
+        printf("Link count of following object object incremented:%u.%u.%u.%u", 
 		Oprm.ometa_u.f.rwvol,
 		Oprm.ometa_u.f.vN,
 		Oprm.ometa_u.f.unique,
@@ -394,7 +394,7 @@ static int decrlc_obj(struct cmd_syndesc *as, void *rock)
     }
     code = RXOSD_incdec(Conn, &Oprm, -1);
     if (!code) {
-        printf("Link count of following object object decemented:%u.%u.%u.%u", 
+        printf("Link count of following object object decremented:%u.%u.%u.%u", 
 		Oprm.ometa_u.f.rwvol,
 		Oprm.ometa_u.f.vN,
 		Oprm.ometa_u.f.unique,
