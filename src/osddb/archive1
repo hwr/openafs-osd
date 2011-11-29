@@ -1,7 +1,7 @@
 #!/usr/bin/env pagsh
 #
-#  This script archives files to a single archival OSD which's number
-#  must be supplied as argument.
+#  This script archives files to a single archival OSD whose number
+#  must be supplied as argument (-o).
 #
 #  The way the servers to ask for files must be adopted to the local site.
 #  In our (RZG) case we have a file in AFS which describes all servers.
@@ -18,19 +18,27 @@
 # 5 tape            7442 gb  56.4 % up   arch  64  30     styx.rzg  0 (1mb-100gb)
 #13 hsmgpfs         3139 gb  38.1 % up   arch  50  32     tsm.rzg. 12 (8mb-100gb)
 #
-# Syntax
-#
-# archive1 <OSD> [-grep <string> <file>] [-copies <n>]
-#
-# default for n is 2
-#
+
+# magix
+Principal=archwipe
+Keytab=/root/archwipe.keytab
+ServerlistFile=/afs/ipp-garching.mpg.de/backups/servers
+ArchiveGroup="__ALL__"
+maxNumCandidates=2048
+highWaterMark=800
+osddbPort=7012
+Interval=1800
+TokenMaxLifeTime=36000
+MsgDateFormat=+"%d.%m.%Y-%k:%M:%S"
+
+# binaries, simple switch for transarc/Linux-system
+
 if [ -d /var/log/openafs ]; then
     BOS=/usr/sbin/bos
     VOS=/usr/sbin/vos
     OSD=/usr/bin/osd
     FS=/usr/bin/fs
     TOKENS=/usr/bin/tokens
-    LOCALAUTH=/usr/sbin/localauth
     UDEBUG=/usr/sbin/udebug
     LogDir=/var/log/openafs
 else 
@@ -39,69 +47,170 @@ else
     OSD=/usr/afs/bin/osd
     TOKENS=/usr/afs/bin/tokens
     FS=/usr/afs/bin/fs
-    LOCALAUTH=/usr/afs/bin/localauth
     UDEBUG=/usr/afs/bin/udebug
     LogDir=/usr/afs/logs
 fi
-logfile=$LogDir/Archive${1}${2}${3}Log
-copies=2
+KINIT=/usr/bin/kinit
+KDESTROY=/usr/lib/mit/bin/kdestroy
+AKLOG=/usr/bin/aklog
 
-grep=0
-if [ "a$2" != "a" ]; then
-    if [ "$2" == "-wipeable" ]; then
-    	flag="-wipeable"
-    else
-	if [ "$2" == "-grep" ]; then
-	    grep=1
-	    str1=$3
-	    if [ "a$4" != "a" ]; then
-		if [ "$4" == "-copies" ]; then
-		    copies=$5
-		fi
-	    fi
-	else
-	    if [ "$2" == "-copies" ]; then
-		copies=$3
-	    fi
-	fi
-    fi
-fi
+# variables default, may be changed on command line
+Servers=
+LogFileBaseName=
+numCopies=2
+doRedirect=0
+flagWipeable=""
+archivalOSD=0
 
-if [ -f ${logfile} ]; then
-    mv ${logfile} ${logfile}.`date +"%F"`
-fi
-
-exec > ${logfile} 2>&1
-
-if [ $grep -eq 1 ]; then
-    servers=`grep openafs /afs/ipp/backups/servers | grep $str1 | awk '{print $1}'`
-else
-    servers=`grep openafs /afs/ipp/backups/servers | awk '{print $1}'`
-fi
-
-minpriority=48
-interval=1800
-wanted=2048
-highWaterMark=800
-osddbPort=7012
+# helper variables
 skipped=0
 dontsleep=0
 
-startday=`date +%d`
+# helper functions
+rotateLog() {
+    today=`date +%F`
+    if [ "$today" != "$LogDay" ]; then
+        mv $LogFile ${LogFileBaseName}-${LogDay}.log
+        LogDay=$today
+        LogFile=$LogDir/${LogFileBaseName}.log
+        exec >> ${LogFile} 2>&1
+        echo `date $MsgDateFormat` : Logfile rotated.
+        echo `date $MsgDateFormat` : Started with options archivalOSD=$archivalOSD, ArchiveGroup=$ArchiveGroup, onlyWipeable=$flagWipeable, numCopies=$numCopies
+    fi 
+}
+
+refreshServerList() {
+    if [ "x$ArchiveGroup" = "x" -o "$ArchiveGroup" = "__ALL__" ]; then
+        Servers=`grep openafs $ServerlistFile | awk '{print $1}'`
+    else
+        Servers=`grep openafs $ServerlistFile | grep $ArchiveGroup | awk '{print $1}'`
+    fi
+    echo `date $MsgDateFormat` :  New ServerList: $Servers 
+    numServers=`echo "$Servers" | wc -l`
+    echo `date $MsgDateFormat` : ServerList has $numServers entries. 
+}
+
+refreshToken() {
+    if [ -e $KRB5CCNAME ]; then
+        echo `date $MsgDateFormat` : Kerberos CCache $KRB5CCNAME already exists! 
+        if [ -f $KRB5CCNAME ]; then
+            rm $KRB5CCNAME
+            echo `date $MsgDateFormat` : $KRB5CCNAME removed 
+        else 
+            echo `date $MsgDateFormat` : $KRB5CCNAME is not a file. Remove it by hand.
+            exit 1 
+        fi
+    fi
+    $KINIT -t $Keytab -k -c $KRB5CCNAME $Principal
+    rc=$?
+    if [ $rc != 0 ]; then
+        echo `date $MsgDateFormat` : "Cannot get a kerberos-ticket. rc=$rc." 
+        exit 1
+    fi
+    $AKLOG 
+    rc=$?
+    if [ $rc != 0 ]; then
+        echo `date $MsgDateFormat` : "Cannot get an afs-token. rc=$rc."
+        exit 1
+    fi
+    $KDESTROY
+    echo `date $MsgDateFormat` : checking for tokens :
+    out=`$TOKENS`
+    echo `date $MsgDateFormat` : $out
+}
+
+
+# Parse command line options.
+USAGE="Usage: `basename $0` [-hvRw] [-a ArchiveGroup] [-c numCopies] [-L logfilebasename], where:"
+USAGE_1="-R=redirect all output,"
+USAGE_2="-w=ignore files < minWipesize "
+USAGE_3="logfilebasename will be extended by suffix '.log'"
+
+while getopts ha:c:l:o:Rw OPT; do
+    case "$OPT" in
+        h)
+            echo $USAGE
+            echo $USAGE_1
+            echo $USAGE_2
+            exit 0
+            ;;
+        o)
+            archivalOSD=$OPTARG
+            ;;
+        a)
+            ArchiveGroup=$OPTARG
+            ;;
+        c)
+            numCopies=$OPTARG
+            ;;
+        l)
+            LogFileBaseName=$OPTARG
+            ;;
+        R)
+            doRedirect=1
+            ;;
+        w)
+            flagWipeable="-wipeable"
+            ;;
+        \?)
+            # getopts issues an error message
+            echo $USAGE >&2
+            echo $USAGE_1 >&2
+            echo $USAGE_2 >&2
+            exit 1
+            ;;
+    esac
+done
+
+# set variables based on cmdline-args
+
+KRB5CCNAME=/tmp/archive1-$archivalOSD-$ArchiveGroup
+export KRB5CCNAME
+LogDay=`date +%F`
+if [ "x$LogFileBaseName" = "x" ]; then
+    LogFileBaseName=Archive-${archivalOSD}-${ArchiveGroup}
+fi
+LogFile=$LogDir/${LogFileBaseName}.log
+
+if [ $archivalOSD = 0 ];then
+   echo "no archival OSD given." >&2
+   exit 1
+fi
+isArchivalOSD=`$OSD listosds  | grep -v sizerange | awk '{if ($12 == "arch") {print $1}}' | grep -c -E "^$archivalOSD\$"`
+
+if [ $isArchivalOSD = 0 ]; then 
+   echo "Given OSD $archivalOSD not archival" >&2
+   exit 1
+fi
+
+
+# redirect to Logfile if requested
+
+if [ $doRedirect != 0 ]; then
+    exec >> ${LogFile} 2>&1 # append if logfile exists   else 
+fi
+
+echo  `date $MsgDateFormat` : Started with options archivalOSD=$archivalOSD, ArchiveGroup=$ArchiveGroup, onlyWipeable=$flagWipeable, numCopies=$numCopies
+
+
+# main loop
 
 while [ 1 ]
 do
-    starttime=`date +%s`
+    startTime=`date +%s`
     IamSyncsite=`$UDEBUG localhost $osddbPort | grep -c "I am sync site"`
-    if [ $IamSyncsite -ne 0 ]; then
-        $LOCALAUTH
-	$TOKENS
+    refreshServerList 
+    if [ "x$Servers" = "x" ]; then # die if serverlist empty, so that it can be seen in bos status, if it persists
+        echo `date $MsgDateFormat` : "Serverlist is empty! Dying..."
+        exit 2
+    fi
+    if [ $IamSyncsite -ne 0 ]; then # only execute sth, when syncsite
+        refreshToken
         authtime=`date +%s`
-	error=0
 	pmUsed=999
-	while [ $pmUsed -gt $highWaterMark ]
+	while [ $pmUsed -gt $highWaterMark ] # wait until archivalOSD is below highWatermark 
 	do
-		eval `$OSD osd $1 | awk '{
+		eval `$OSD osd $archivalOSD | awk '{
 	        	if ($1 == "minSize") {
 		    	    	printf("minSize=%u;\n", $3 * 1024)
 	        	}
@@ -119,58 +228,63 @@ do
 			}
 	    	}'`
 		if [ $pmUsed -gt $highWaterMark ]; then
-			echo `date +"%k:%M:%S"` archival OSD $1 too full, $pmUsed per mille, waiting 5 minutes
+			echo `date $MsgDateFormat` : archival OSD $archivalOSD too full, $pmUsed per mille, waiting 5 minutes
 			sleep 300
 		fi
 	done
 	
-	echo Archival OSD $1 has minsize $minSize and maxsize $maxSize
-	for s in $servers
+	echo `date $MsgDateFormat` : Archival OSD $archivalOSD has minsize $minSize and maxsize $maxSize
+
+	for s in $Servers 
         do
-	    # start with different offsets
-            if [ $skipped -lt $1 ]; then
+	    # start with $archivalOSD-ID as offset, so that other instances start at a different server
+            if [ $skipped -lt $archivalOSD ]; then
                 skipped=`expr $skipped + 1`
 		dontsleep=1
                 continue
             fi
-	    echo `date +"%k:%M:%S"` Server $s
-	    echo vos arch $s -copies $copies -minsize $minSize -maxsize $maxSize -osd $1 $flag
-	    fids=`$VOS arch $s -copies $copies -minsize $minSize -maxsize $maxSize -osd $1 -candidates $wanted $flag -localauth | grep -v Fid |grep -v Tot |  awk '{print $1}'`
+	    echo `date $MsgDateFormat` : Server $s
+	    echo `date $MsgDateFormat` : vos arch $s -copies $numCopies -minsize $minSize -maxsize $maxSize -osd $archivalOSD $flagWipeable
+	    fids=`$VOS arch $s -copies $numCopies -minsize $minSize -maxsize $maxSize -osd $archivalOSD -candidates $maxNumCandidates $flagWipeable -localauth | grep -v Fid |grep -v Tot |  awk '{print $1}'`
 	    while [ "x$fids" != "x" ]
 	    do
 		archived=0
-	        got=`echo $fids | wc | awk '{print $2}'`
-	        echo `date +"%k:%M:%S"` Got $got fids on server $s to archive on $1
+	        thisNumCand=`echo $fids | wc | awk '{print $2}'`
+	        echo `date $MsgDateFormat` : Got $thisNumCand fids on server $s to archive on $archivalOSD
 	        for f in $fids
 	        do 	
 		    $FS checkserver > /dev/null 2>&1
-		    error=0
 		    vol_vnode=`echo $f | awk -F\. '{print $1"."$2}'`
-		    inuse=`fs threads -serv $s | grep -c $vol_vnode`
-		    if [ $inuse -gt 0 ]; then
-			echo skiping $f, is already in use
+		    inUse=`fs threads -serv $s | grep -c $vol_vnode`
+		    if [ $inUse -gt 0 ]; then
+			echo `date $MsgDateFormat` : skipping $f, is presently in use
 			continue
 		    fi
 		    existing_copies=`fs fidlistarch $f | grep -c ArchiveOsd`
-		    if [ $existing_copies -ge $copies ]; then
-			echo skiping $f, has already $existing_copies copies
+		    if [ $existing_copies -ge $numCopies ]; then
+			echo `date $MsgDateFormat` : skipping $f, has already $existing_copies copies
 			continue
 		    fi
-		    echo `date +"%k:%M:%S"` fs fidarchive $f $1
-		    fs fidarchive $f $1
-		    error=$?
-		    if [ $error -eq 0 ]; then
+		    echo `date $MsgDateFormat` : fs fidarchive -fid $f -osd $archivalOSD
+		    output=`$FS fidarchive -fid $f -osd $archivalOSD  2>&1`
+		    rc=$?
+		    if [ $rc -eq 0 ]; then
 			archived=1
 		    else
-			echo Could not archive $f, error code was $error
+			echo `date $MsgDateFormat` : Could not archive $f, error code was $rc
+                        echo `date $MsgDateFormat` : Output=$output
+                        if [ $rc = 28 ]; then  # we got ENOSPACE
+			    echo `date $MsgDateFormat` : archival OSD $archivalOSD too full. rc=ENOSPC. Waiting 5 minutes
+			    sleep 300
+                        fi  
 		    fi
     		    now=`date +%s`
     		    tokenlife=`expr $now - $authtime`
-    		    if [ $tokenlife -gt 1800 ]; then
+    		    if [ $tokenlife -gt $TokenMaxLifeTime ]; then
 			pmUsed=999
 			while [ $pmUsed -gt $highWaterMark ]
 			do
-				eval `$OSD osd $1 | awk '{
+				eval `$OSD osd $archivalOSD | awk '{
 					if ($1 == "pmUsed") {
 		    				print "pmUsed="$3";"
 					}
@@ -179,48 +293,45 @@ do
 					}
 	    			}'`
 				if [ $pmUsed -gt $highWaterMark ]; then
-					echo `date +"%k:%M:%S"` archival OSD $1 too full, $mpUsed per mille, waiting 5 minutes
+					echo `date $MsgDateFormat` : archival OSD $archivalOSD too full, $mpUsed per mille, waiting 5 minutes
 					sleep 300
 				fi
-			done
-			echo token already $tokenlife seconds old
-			$LOCALAUTH
-			$TOKENS
+			done # while pmUsed
+			echo `date $MsgDateFormat` : token already $tokenlife seconds old
+                        refreshToken
     			authtime=`date +%s`
     		    fi
-	        done
-		if [ $got -eq $wanted ]; then
-		    if [ $archived -gt 0 ]; then
-	    		echo vos arch $s -copies 2 -minsize $minSize -maxsize $maxSize -osd $1   
-	    		fids=`$VOS arch $s -copies 2 -minsize $minSize -maxsize $maxSize -osd $1 -candidates $wanted -localauth | grep -v Fid |grep -v Tot |  awk '{print $1}'`
-		    else
+                rotateLog
+	        done # for fids
+		if [ $thisNumCand -eq $maxNumCandidates ]; then # the server has maybe more candidates available
+		    if [ $archived -gt 0 ]; then # we archived at least one file
+	    		echo `date $MsgDateFormat` : vos arch $s -copies $numCopies -minsize $minSize -maxsize $maxSize -osd $archivalOSD   
+	    		fids=`$VOS arch $s -copies $numCopies -minsize $minSize -maxsize $maxSize -osd $archivalOSD -candidates $maxNumCandidates -localauth | grep -v Fid |grep -v Tot |  awk '{print $1}'`
+		    else # we archived not a single object, so do not retry
 			fids=
 		    fi
-		else
-			fids=
+		else # we got less candidates from server than we asked for, so no more avaiablable.
+                    fids=
 		fi
-		today=`date +%d`
-		if [ "$today" != "$startday" ]; then
-			echo Enough for today
-			exit
-		fi 
-	    done
-        done
+	    done # while fids
+            rotateLog
+        done # for Servers
     else
-	echo `date` I am not syncsite
+	echo `date $MsgDateFormat` : I am not syncsite, doing nothing
     fi
-    endtime=`date +%s`
-    sleeptime=`expr $starttime + $interval - $endtime`
-    if [ $sleeptime -gt 0 ]; then
+    rotateLog
+    endTime=`date +%s`
+    sleepTime=`expr $startTime + $Interval - $endTime`
+    if [ $sleepTime -gt 0 ]; then
         if [ $dontsleep -eq 1 ]; then
-            if [ $skipped -ge $1 ]; then
+            if [ $skipped -ge $archivalOSD ]; then
                 dontsleep=0
             fi
         else
-            echo `date +"%k:%M:%S"` now sleeping $sleeptime seconds
-            sleep $sleeptime
+            echo `date $MsgDateFormat` : sleeping $sleepTime seconds
+            sleep $sleepTime
         fi
     else
-	echo `date +"%k:%M:%S"` no time to sleep!
+	echo `date $MsgDateFormat` : single execution of loop took longer than a normal interval, not sleeping.
     fi
-done
+done # while 1

@@ -318,11 +318,7 @@ typedef struct VolumeHeader {
     Inode smallVnodeIndex;
     Inode largeVnodeIndex;
     Inode volumeAcl;
-#ifdef AFS_RXOSD_SUPPORT
     Inode OsdMetadata;
-#else
-    Inode volumeMountTable;
-#endif
     Inode linkTable;
 } VolumeHeader_t;
 
@@ -336,20 +332,12 @@ typedef struct VolumeDiskHeader {
     afs_int32 smallVnodeIndex_lo;
     afs_int32 largeVnodeIndex_lo;
     afs_int32 volumeAcl_lo;
-#ifdef AFS_RXOSD_SUPPORT
     afs_int32 OsdMetadata_lo;
-#else
-    afs_int32 volumeMountTable_lo;
-#endif
     afs_int32 volumeInfo_hi;
     afs_int32 smallVnodeIndex_hi;
     afs_int32 largeVnodeIndex_hi;
     afs_int32 volumeAcl_hi;
-#ifdef AFS_RXOSD_SUPPORT
     afs_int32 OsdMetadata_hi;
-#else
-    afs_int32 volumeMountTable_hi;
-#endif
     afs_int32 linkTable_lo;
     afs_int32 linkTable_hi;
     /* If you add fields, add them before here and reduce the size of  array */
@@ -701,10 +689,8 @@ typedef struct Volume {
     VolumeVLRUState vlru;         /* state specific to the VLRU */
     FSSYNC_VolOp_info * pending_vol_op;  /* fssync command info for any pending vol ops */
 #endif /* AFS_DEMAND_ATTACH_FS */
-#ifdef AFS_RXOSD_SUPPORT
     IHandle_t *osdMetadataHandle;  /* for volume's osd metadata file */
     struct Lock lock;		/* lock used during osd metadata updates */
-#endif
 } Volume;
 
 struct volHeader {
@@ -1025,18 +1011,6 @@ extern int VWalkVolumeHeaders(struct DiskPartition64 *dp, const char *partpath,
 #else
 #define V_pref(vp,nearInode)   nearInode = 0
 #endif /* NEARINODE_HINT */
-
-#ifdef AFS_RXOSD_SUPPORT
-struct rxosd_conn {
-    struct rxosd_conn *next;
-    struct rx_connection * conn;
-    afs_uint32 usecount;
-    char checked;
-};
-
-#define USE_OSD_BYSIZE 1       /* special value for osdPolicy */
-#endif /* AFS_RXOSD_SUPPORT */
-
 
 hdr_static_inline(unsigned int)
 afs_printable_VolumeId_u(VolumeId d) { return (unsigned int) d; }

@@ -32,7 +32,7 @@ VOL=${srcdir}/../vol
 FSINT=${srcdir}/../fsint
 OSDDB=${srcdir}/../osddb
 
-VICEDOBJS=viced.o afsfileprocs.o host.o physio.o callback.o serialize_state.o	
+VICEDOBJS=viced.o afsfileprocs.o host.o physio.o callback.o serialize_state.o
 
 VLSERVEROBJS=vldbint.cs.o vldbint.xdr.o
 
@@ -47,9 +47,7 @@ DIROBJS=buffer.o dir.o salvage.o
 VOLOBJS= vnode.o volume.o vutil.o partition.o fssync-server.o \
 	 clone.o devname.o common.o ihandle.o listinodes.o namei_ops.o \
 	 fstab.o salvsync-client.o daemon_com.o vg_cache.o vg_scan.o \
-	 vol_osd.o vol_osd.xdr.o
-
-osdobjects= rxosd.cs.o rxosd.xdr.o osddbuser.o osddb.cs.o osddb.xdr.o
+	 libafsosd.o
 
 FSINTOBJS= afsaux.o afscbint.cs.o afsint.ss.o afsint.xdr.o
 
@@ -215,37 +213,11 @@ afsint.xdr.o: ../fsint/afsint.xdr.c
 state_analyzer.o: ${TVICED}/state_analyzer.c
 	${CCRULE}
 
-vol_osd.xdr.o: ../vol/vol_osd.xdr.c
-	${CCRULE}
-
-vol_osd.o: ${VOL}/vol_osd.c
-	${CCRULE} -I../vol
-
-rxosd.cs.o: ../rxosd/rxosd.cs.c
-	${CCRULE}
-
-rxosd.xdr.o: ../rxosd/rxosd.xdr.c
-	${CCRULE}
-
-osddb.cs.o: ../osddb/osddb.cs.c
-	${CCRULE}
-
-osddb.xdr.o: ../osddb/osddb.xdr.c
-	${CCRULE}
-
-osddbuser.o: ${OSDDB}/osddbuser.c
-	${CCRULE} -I../osddb
+libafsosd.o: ${VOL}/libafsosd.c
+	${CCRULE} -DBUILDING_FILESERVER
 
 dafileserver: ${objects} ${LIBS}
-	set -x; \
-	case ${WITH_OBJECT_STORAGE} in \
-	YES) \
-	make ${osdobjects} ; \
-	${CC} ${LDFLAGS} -o dafileserver ${objects} ${osdobjects} \
-		${LIBS} ${MT_LIBS} ${XLIBS} ;; \
-	*) \
-	${CC} ${LDFLAGS} -o dafileserver ${objects} ${LIBS} ${MT_LIBS} ${XLIBS} ;; \
-	esac
+	${CC} ${LDFLAGS} -o dafileserver ${objects} -ldl ${LIBS} ${MT_LIBS} ${XLIBS}
 
 state_analyzer: ${SDBGOBJS}
 	${CC} ${LDFLAGS} -o state_analyzer ${SDBGOBJS} ${MT_LIBS} ${XLIBS}

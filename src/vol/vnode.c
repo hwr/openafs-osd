@@ -64,6 +64,7 @@
 #ifdef HAVE_STDINT_H
 # include <stdint.h>
 #endif
+#include <afs/afsosd.h>
 
 struct VnodeClassInfo VnodeClassInfo[nVNODECLASSES];
 
@@ -381,17 +382,13 @@ VInitVnodes(VnodeClass class, int nVnodes)
 	vcp->lruHead = NULL;
 	vcp->residentSize = SIZEOF_SMALLVNODE;
 	vcp->diskSize = SIZEOF_SMALLDISKVNODE;
-#ifndef AFS_RXOSD_SUPPORT
 	vcp->magic = SMALLVNODEMAGIC;
-#endif
 	break;
     case vLarge:
 	vcp->lruHead = NULL;
 	vcp->residentSize = SIZEOF_LARGEVNODE;
 	vcp->diskSize = SIZEOF_LARGEDISKVNODE;
-#ifndef AFS_RXOSD_SUPPORT
 	vcp->magic = LARGEVNODEMAGIC;
-#endif
 	break;
     }
     {
@@ -627,19 +624,17 @@ VAllocVnode_r(Error * ec, Volume * vp, VnodeType type)
 	return NULL;
     }
 
-#ifdef AFS_RXOSD_SUPPORT
-    if (vp->nextVnodeUnique++ & ~UNIQUEMASK) {
-        vp->nextVnodeUnique = 1;
-        VUpdateVolume_r(ec,vp, 0);
-        if (*ec)
-            return NULL;
+    if (V_osdPolicy(vp)) {
+        if (vp->nextVnodeUnique++ & ~UNIQUEMASK) {
+            vp->nextVnodeUnique = 1;
+            VUpdateVolume_r(ec,vp, 0);
+            if (*ec)
+                return NULL;
+        }
     }
-#endif
     unique = vp->nextVnodeUnique++;
-#ifndef AFS_RXOSD_SUPPORT
     if (!unique)
 	unique = vp->nextVnodeUnique++;
-#endif
 
     if (vp->nextVnodeUnique > V_uniquifier(vp)) {
 	VUpdateVolume_r(ec, vp, 0);
@@ -869,9 +864,8 @@ VAllocVnode_r(Error * ec, Volume * vp, VnodeType type)
     vnp->changed_newTime = 0;	/* set this bit when vnode is updated */
     vnp->changed_oldTime = 0;	/* set this on CopyOnWrite. */
     vnp->delete = 0;
-#ifndef AFS_RXOSD_SUPPORT
-    vnp->disk.vnodeMagic = vcp->magic;
-#endif
+    if (!osdvol)
+        vnp->disk.vnodeMagic = vcp->magic;
     vnp->disk.type = type;
     vnp->disk.uniquifier = unique;
     vnp->handle = NULL;
@@ -956,11 +950,7 @@ VnLoad(Error * ec, Volume * vp, Vnode * vnp,
     VOL_LOCK;
 
     /* Quick check to see that the data is reasonable */
-#ifdef AFS_RXOSD_SUPPORT
-    if (vnp->disk.type == vNull) {
-#else
-    if (vnp->disk.vnodeMagic != vcp->magic || vnp->disk.type == vNull) {
-#endif
+    if (vnp->disk.type == vNull || (!osdvol && vnp->disk.vnodeMagic != vcp->magic)) {
 	if (vnp->disk.type == vNull) {
 	    *ec = VNOVNODE;
 	    dosalv = 0;
@@ -1326,7 +1316,6 @@ VGetVnode_r(Error * ec, Volume * vp, VnodeId vnodeNumber, int locktype)
     return vnp;
 }
 
-#ifdef AFS_RXOSD_SUPPORT
 /*
  * When the OSD-metadata-Index in the vnode changes because an update in place
  * was not possible it is necessary to make sure the changed vnode is on disk
@@ -1381,7 +1370,6 @@ afs_int32 VSyncVnode(Volume *vp, VnodeDiskObject *vd, afs_uint32 vN, int newtime
     VOL_UNLOCK;
     return code;
 }
-#endif /* AFS_RXOSD_SUPPORT */
 
 int TrustVnodeCacheEntry = 1;
 /* This variable is bogus--when it's set to 0, the hash chains fill
@@ -1426,9 +1414,8 @@ VPutVnode_r(Error * ec, Vnode * vnp)
     osi_Assert(Vn_refcount(vnp) != 0);
     class = vnodeIdToClass(Vn_id(vnp));
     vcp = &VnodeClassInfo[class];
-#ifndef AFS_RXOSD_SUPPORT
-    osi_Assert(vnp->disk.vnodeMagic == vcp->magic);
-#endif
+    if (!osdvol)
+        osi_Assert(vnp->disk.vnodeMagic == vcp->magic);
     VNLog(200, 2, Vn_id(vnp), (intptr_t) vnp, 0, 0);
 
 #ifdef AFS_DEMAND_ATTACH_FS
@@ -1573,9 +1560,8 @@ VVnodeWriteToRead_r(Error * ec, Vnode * vnp)
     osi_Assert(Vn_refcount(vnp) != 0);
     class = vnodeIdToClass(Vn_id(vnp));
     vcp = &VnodeClassInfo[class];
-#ifndef AFS_RXOSD_SUPPORT
-    osi_Assert(vnp->disk.vnodeMagic == vcp->magic);
-#endif
+    if (!osdvol)
+        osi_Assert(vnp->disk.vnodeMagic == vcp->magic);
     VNLog(300, 2, Vn_id(vnp), (intptr_t) vnp, 0, 0);
 
 #ifdef AFS_DEMAND_ATTACH_FS
@@ -1943,10 +1929,8 @@ int DumpLockedVnodes()
                     break;
                 case vFile:
                     buf[0]= 'F';
-#ifdef AFS_RXOSD_SUPPORT
-                    if (vnp->disk.osdMetadataIndex)
+                    if (osdvol && vnp->disk.osdMetadataIndex)
                         buf[0]= 'O';
-#endif
                     break;
                 case vSymlink:
                     buf[0]= 'S';
@@ -2030,29 +2014,26 @@ int ListDiskVnode(struct Volume *vp,  afs_uint32 vnodeNumber, afs_uint32 **ptr,
             *((*ptr)++) = vnp->disk.author;
             *((*ptr)++) = vnp->disk.owner;
             *((*ptr)++) = vnp->disk.group;
-
-#ifdef AFS_RXOSD_SUPPORT
-            *((*ptr)++) = vnp->disk.osdFileOnline;
-#else
-            (*ptr)++;
-#endif
+	    if (osdvol)
+                *((*ptr)++) = vnp->disk.osdFileOnline;
+	    else
+                (*ptr)++;
             *((*ptr)++) = vnp->disk.vn_length_hi;
             *((*ptr)++) = vnp->disk.length;
             *((*ptr)++) = vnp->disk.dataVersion;
             *((*ptr)++) = vnp->disk.unixModifyTime;
             *((*ptr)++) = vnp->disk.serverModifyTime;
             *((*ptr)++) = vnp->disk.vn_ino_lo;
-#ifdef AFS_RXOSD_SUPPORT
+#if 0
             *((*ptr)++) = vnp->disk.lastUsageTime;
 #else
             *((*ptr)++) = vnp->disk.vn_ino_hi;
 #endif
             *((*ptr)++) = vnp->disk.parent;
-#ifdef AFS_RXOSD_SUPPORT
-            *((*ptr)++) = vnp->disk.osdMetadataIndex;
-#else
-            (*ptr)++;
-#endif
+	    if (osdvol)
+                *((*ptr)++) = vnp->disk.osdMetadataIndex;
+	    else
+                (*ptr)++;
             if (v & 1)  /* Large vnode, copy ACL if buffer supplied */
                 memcpy(aclbuf, ((byte *)&vnp->disk)+SIZEOF_SMALLDISKVNODE,
                                                                 VAclSize(vnp));

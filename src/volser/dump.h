@@ -23,9 +23,7 @@
 #define D_VOLUMEHEADER  2
 #define D_VNODE		3
 #define D_DUMPEND	4
-#ifdef AFS_RXOSD_SUPPORT
 #define D_OSDMETADATA   5
-#endif
 
 #define D_MAX		20
 

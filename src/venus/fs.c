@@ -291,7 +291,7 @@ struct cellLookup *FindCell(cellName)
 	    return NULL;
         }
         len = MAXCELLCHARS;
-        afsconf_GetLocalCell(tdir, &name, len);
+        afsconf_GetLocalCell(tdir, name, len);
         np = (char *) &name;
     }
     SetCellFname(np);
@@ -4825,10 +4825,12 @@ struct cmd_syndesc *as;
                             printf(" tag = %d",
                                 (*(p+16) >> NAMEI_TAGSHIFT) & NAMEI_TAGMASK);
                         printf("\n");
+#if 0
 			if (type != vDirectory && *(p+19)) {
                             printf("\tlastUsageTime\t =");
                             PrintTime(p+17); printf("\n");
 			} else
+#endif
                             printf("\tvn_ino_hi\t = %u\t(0x%x)\n", *(p+17), *(p+17));
 			if (type == vDirectory) 
 			    printf("\tpolicyIndex\t = %u\n", *(p+19));
@@ -5075,7 +5077,6 @@ afs_int32 ReplaceOsd(struct cmd_syndesc *as, void *arock)
     char *fname;
     char *t;
     afs_uint32 old, new = 0;
-    int toLocal=0,removeOSD=0,toOSD=0;
     struct FsCmdInputs * Inputs;
     struct FsCmdOutputs * Outputs;
     afs_int32 fid = 0;
@@ -5084,57 +5085,15 @@ afs_int32 ReplaceOsd(struct cmd_syndesc *as, void *arock)
     if (as->name[0] == 'f')
 	fid = 1;
     fname = as->parms[0].items->data;
-    if (as->parms[1].items)
-        old = strtol(as->parms[1].items->data, &t, 10);
+    old = strtol(as->parms[1].items->data, &t, 10);
     if (as->parms[2].items)
         new = strtol(as->parms[2].items->data, &t, 10);
     if (as->parms[3].items) 
-	toLocal = 1;
-    if (as->parms[4].items)
-        removeOSD = 1;
-    if (as->parms[5].items)
-        toOSD = 1;
-    if (as->parms[6].items) 
-	cell = as->parms[6].items->data;
-
-    if ( !old &&  !(toLocal || toOSD) ) {
-        fprintf(stderr, "fs (fid)replaceosd: required argument -old # missing.\n");
-        return 1;
-    }
-
-    if ( (toLocal && removeOSD) || (toLocal && toOSD) || (removeOSD && toOSD) ) {
-        fprintf(stderr, "fs (fid)replaceosd: -local,-remove,-toosd are mutually exclusive.\n");
-        return 1;
-    }
-
-    if ( (toLocal || removeOSD) && new) {
-        fprintf(stderr, "fs (fid)replaceosd: -new is mutally exclusive to -local and -remove.\n");
-        return 1;
-    }
+	cell = as->parms[3].items->data;
     
     InitPioctlParams(Inputs, Outputs, CMD_REPLACE_OSD);
-    if (toOSD) { 
-        if (old)
-            fprintf(stderr,"fs (fid)replaceosd: warning! Ignoring option -old=%d for moving this file onto an OSD\n",old);
-        Inputs->int32s[0] = 1;
-    }
-    else { 
-        Inputs->int32s[0] = old;
-    }
-    Inputs->int32s[1] = 0;
-
-    if (new) 
-        Inputs->int32s[1] = new;
-    else {
-        if (toLocal)  {
-            Inputs->int32s[1] = 1;
-            if (old)
-                fprintf(stderr,"fs (fid)replaceosd: warning! Ignoring option -old=%d for moving this file onto the fileserver\n",old);
-        }
-        if (removeOSD) 
-            Inputs->int32s[1] = -1;
-    }
-    
+    Inputs->int32s[0] = old;
+    Inputs->int32s[1] = new;
     if (fid) {
 	code = ScanVnode(fname, cell);
         if (code) return code;
@@ -5144,31 +5103,13 @@ afs_int32 ReplaceOsd(struct cmd_syndesc *as, void *arock)
     if (!code) {
 	code = Outputs->code;
 	if (code) 
-	    fprintf(stderr, "fs (fid)replaceosd: failed to replace osd %d for %s, error code is %d.\n",
+	    fprintf(stderr, "failed to replace osd %d for %s, error code is %d\n",
 				old, fname, code);
-	else {
-          
-            switch (Outputs->int32s[0]) {
-                case -1 : 
-	            printf("Removed object \"%s\" from OSD %d.\n", 
-				fname,old);
-                    break;
-                 case 1 : 
-	            printf("Brought object \"%s\" to local fileserver disk.\n", 
-				fname);
-                    break;
-                 default :
-                    if (toOSD)
-                        printf("Moved file \"%s\" to Osd %d.\n",
-                                fname, Outputs->int32s[0]);
-                    else  
-                        printf("Moved object \"%s\" from Osd %d to %d.\n",
-                                fname,old, Outputs->int32s[0]);
-                 
-            }
-        }
+	else
+	    printf("Osd %d replaced by %d for %s\n", 
+				old, Outputs->int32s[0], fname);
     } else
-	fprintf(stderr, "fs (fid)replaceosd: failed to replace osd %d for %s, pioctl returned %d.\n",
+	fprintf(stderr, "failed to replace osd %d for %s, pioctl returned %d\n",
 				old, fname, code);
     return code;
 }
@@ -5659,7 +5600,7 @@ afs_int32 osd_parms(struct cmd_syndesc *as, void *arock)
 #else
 	a.type = 2;
 #endif
-        code = RXAFS_StartAsyncFetch(RXConn, &Fid, &p, &a, &transId,
+        code = RXAFS_StartAsyncFetch2(RXConn, &Fid, &p, &a, &transId,
 				     &expires, &OutStatus, &CallBack);
         if (!code) {
 	     RXAFS_EndAsyncFetch(RXConn, &Fid, transId, 0, 0);
@@ -6006,6 +5947,7 @@ struct cmd_syndesc *as;
 	return EINVAL;
     }
     if (as->parms[0].items) {			/* -server ... */
+	struct activecallList list;
         InitializeCBService();
         thp = hostutil_GetHostByName(as->parms[0].items->data);
 	if (!thp) {
@@ -6021,9 +5963,31 @@ struct cmd_syndesc *as;
 		as->parms[0].items->data);
             return -1;
         }
+	list.activecallList_len = 0;
+	list.activecallList_val = NULL;
+	code = RXAFS_Threads(conn, &list);
+	if (!code) {
+	    char name[20];
+	    for (i=0; i<list.activecallList_len; i++) {
+                struct activecall *w = &list.activecallList_val[i];
+                char *opname = RXAFS_TranslateOpCode(w->num & 0x7fffffff);
+		if (!opname)
+		    sprintf(name, "%s", "unknown");
+		else if (w->num & 0x80000000)
+		    sprintf(name, "RXAFSOSD_%s", opname+6);
+		else 
+		    sprintf(name, "%s", opname);
+		printf("rpc %5u %20s for %u.%u.%u since ",
+		    	w->num & 0x7fffffff,
+			name, w->volume, w->vnode, w->unique);
+		PrintTime(&w->timeStamp);
+		printf("\n");
+	    }
+	    return 0;
+	}
+	call = rx_NewCall(conn);
 	Fid.Volume = 0;
 	Fid.Vnode = CMD_SHOWTHREADS;
-	call = rx_NewCall(conn);
         code = RXAFS_FsCmd(conn, &Fid, Inputs, Outputs);
         if (code) {
             fprintf(stderr, "RXAFS_FsCmd to %s returns %d\n", 
@@ -6203,10 +6167,20 @@ Statistic(struct cmd_syndesc *as, char *rock)
         printf("Total number of bytes sent     %16llu %4llu %s\n", sent,
                     t64, unit[i]);
         for (i=0; i < l.viced_statList_len; i++) {
-	    char *opname = RXAFS_TranslateOpCode(l.viced_statList_val[i].rpc);
-            printf("rpc %5u %-20s %12llu\n", l.viced_statList_val[i].rpc,
-                                    opname ? opname+6 : "Unknown",
-                                    l.viced_statList_val[i].cnt);
+	    char name[32];
+	    char *opname = NULL;
+	    opname = RXAFS_TranslateOpCode(l.viced_statList_val[i].rpc & 0x7fffffff);
+	    if (opname) {
+	        if (l.viced_statList_val[i].rpc & 0x80000000)
+		    sprintf(name, "RXAFSOSD_%s", opname+6);
+		else
+		    sprintf(name, "%s", opname);
+	    }
+	    else
+		sprintf(name, "%s", "unknown"); 
+            printf("rpc %5u %-30s %12llu\n", 
+				    l.viced_statList_val[i].rpc & 0x7fffffff,
+                                    name, l.viced_statList_val[i].cnt);
         }
     }
     return code;
@@ -6224,6 +6198,8 @@ afs_int32 ListVariables(struct cmd_syndesc *as)
     struct FsCmdInputs *Inputs;
     struct FsCmdOutputs *Outputs;
     struct rx_call *call;
+    struct var_info in, out;
+    afs_int64 result = 0;
     AFSFid Fid;
 
     InitializeCBService();
@@ -6247,6 +6223,21 @@ afs_int32 ListVariables(struct cmd_syndesc *as)
         fprintf(stderr,"rx_NewConnection failed to server %s\n",
 		as->parms[1].items->data);
         return -1;
+    }
+    in.var_info_len = 0;
+    in.var_info_val = NULL;
+    out.var_info_len = 0;
+    out.var_info_val = NULL;
+    code = RXAFS_Variable(conn, 3, &in, result, &result, &out);
+    if (!code) {
+        if (out.var_info_val)
+	    printf("\t%s\n", out.var_info_val);
+        while (!code && result >= 0) {
+            code = RXAFS_Variable(conn, 3, &in, result, &result, &out);
+            if (!code && out.var_info_val)
+	        printf("\t%s\n", out.var_info_val);
+	}
+        return 0;
     }
     Fid.Volume = 0;
     Fid.Vnode = CMD_LIST_VARIABLES;
@@ -6777,20 +6768,14 @@ defect 3069
     ts = cmd_CreateSyntax("replaceosd", ReplaceOsd, NULL, 
 		"replace an osd by another one or transfer file to local_disk");
     cmd_AddParm(ts, "-file", CMD_SINGLE, CMD_REQUIRED, "filename");
-    cmd_AddParm(ts, "-old", CMD_SINGLE, CMD_OPTIONAL, "id of osd to replace");
-    cmd_AddParm(ts, "-new", CMD_SINGLE, CMD_OPTIONAL, "id of new osd");
-    cmd_AddParm(ts, "-local", CMD_FLAG, CMD_OPTIONAL, "transfer to local_disk");
-    cmd_AddParm(ts, "-remove", CMD_FLAG, CMD_OPTIONAL, "remove this copy on old osd (only if other copy still exists)");
-    cmd_AddParm(ts, "-toosd", CMD_FLAG, CMD_OPTIONAL, "turn a file on the fileserver into an osd-object");
+    cmd_AddParm(ts, "-old", CMD_SINGLE, CMD_REQUIRED, "id of osd to replace");
+    cmd_AddParm(ts, "-new", CMD_SINGLE, CMD_OPTIONAL, "id of new osd or 1 for local_disk)");
     
     ts = cmd_CreateSyntax("fidreplaceosd", ReplaceOsd, NULL, 
 		"replace an osd by another one or transfer file to local_disk");
     cmd_AddParm(ts, "-fid", CMD_SINGLE, CMD_REQUIRED, "Fid");
-    cmd_AddParm(ts, "-old", CMD_SINGLE, CMD_OPTIONAL, "id of osd to replace");
-    cmd_AddParm(ts, "-new", CMD_SINGLE, CMD_OPTIONAL, "id of new osd");
-    cmd_AddParm(ts, "-local", CMD_FLAG, CMD_OPTIONAL, "turn an object into a normal file on local_disk");
-    cmd_AddParm(ts, "-remove", CMD_FLAG, CMD_OPTIONAL, "remove this copy on old osd (only if other copy still exists)");
-    cmd_AddParm(ts, "-toosd", CMD_FLAG, CMD_OPTIONAL, "turn a file on the fileserver into an osd-object");
+    cmd_AddParm(ts, "-old", CMD_SINGLE, CMD_REQUIRED, "id of osd to replace");
+    cmd_AddParm(ts, "-new", CMD_SINGLE, CMD_OPTIONAL, "id of new osd or 1 for local_disk)");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell where file lives");
     
     ts = cmd_CreateSyntax("prefetch", Prefetch, NULL, 

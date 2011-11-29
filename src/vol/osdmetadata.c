@@ -8,8 +8,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-#ifdef AFS_RXOSD_SUPPORT
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
@@ -332,11 +330,3 @@ main(int argc, char **argv)
     code = cmd_Dispatch(argc, argv);
     return code;
 }
-
-#else
-int
-main(int argc, char **argv)
-{
-	printf("Not configured with --enable-object-storage.\n");
-}
-#endif /* AFS_RXOSD_SUPPORT */

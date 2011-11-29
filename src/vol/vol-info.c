@@ -66,6 +66,9 @@
 #define afs_open	open
 #endif /* !O_LARGEFILE */
 
+#include <afs/afsosd.h>
+struct osd_vol_ops_v0 *osdvol = NULL;
+
 int DumpVnodes = 0;		/* Dump everything, i.e. summary of all vnodes */
 int DumpInodeNumber = 0;	/* Dump inode numbers with vnodes */
 int DumpDate = 0;		/* Dump vnode date (server modify date) with vnode */
@@ -185,10 +188,8 @@ AttachVolume(struct DiskPartition64 * dp, char *volname,
     IH_INIT(vp->diskDataHandle, dp->device, header->parent,
 	    header->volumeInfo);
     IH_INIT(V_linkHandle(vp), dp->device, header->parent, header->linkTable);
-#ifdef AFS_RXOSD_SUPPORT
     IH_INIT(vp->osdMetadataHandle, dp->device, header->parent,
             header->OsdMetadata);
-#endif
     vp->cacheCheck = 0;		/* XXXX */
     vp->shuttingDown = 0;
     vp->goingOffline = 0;
@@ -206,13 +207,13 @@ AttachVolume(struct DiskPartition64 * dp, char *volname,
 	ec = ReadHdr1(vp->vnodeIndex[vLarge].handle, (char *)&iHead,
 		      sizeof(iHead), LARGEINDEXMAGIC, LARGEINDEXVERSION);
     }
-#ifdef AFS_RXOSD_SUPPORT
     if (!ec) {
         struct IndexFileHeader iHead;
         ec = ReadHdr1(vp->osdMetadataHandle, (char *)&iHead,
                       sizeof(iHead), OSDMETAMAGIC, OSDMETAVERSION);
+	if (!ec) /* seems to be an OSD volume */
+	    osdvol = 1;
     }
-#endif
 #ifdef AFS_NAMEI_ENV
     if (!ec) {
 	struct versionStamp stamp;
@@ -909,11 +910,9 @@ PrintVnode(afs_foff_t offset, VnodeDiskObject * vnode, VnodeId vnodeNumber,
 	printf(" ServerModTime: %s", date(vnode->serverModifyTime));
 #if defined(AFS_NAMEI_ENV)
     if (PrintFileNames) {
-#ifdef AFS_RXOSD_SUPPORT
-        if (vnode->osdMetadataIndex)
+        if (osdvol && vnode->osdMetadataIndex)
             printf(" File in OSD, index: %u", vnode->osdMetadataIndex);
         if (ino) {
-#endif /* AFS_RXOSD_SUPPORT */
 	    IH_INIT(ihtmpp, V_device(vp), V_parentId(vp), ino);
 	    namei_HandleToName(&filename, ihtmpp);
 #if !defined(AFS_NT40_ENV)
@@ -921,9 +920,7 @@ PrintVnode(afs_foff_t offset, VnodeDiskObject * vnode, VnodeId vnodeNumber,
 #else
 	    printf(" NTFS-Filename: %s", filename.n_path);
 #endif
-#ifdef AFS_RXOSD_SUPPORT
         }
-#endif
     }
 #endif
     printf("\n");

@@ -634,6 +634,7 @@ loop2:
 			ReleaseReadLock(&afs_xvcache);
 			afs_osi_Sleep(&tvc->f.states);
 			goto loop2;
+		    }
 		    vp = AFSTOV(tvc);
 		    if (vnode_get(vp))
 			continue;

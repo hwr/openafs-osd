@@ -30,15 +30,20 @@ PUBLICHEADERS=nfs.h vnode.h viceinode.h volume.h volume_inline.h voldefs.h parti
 VLIBOBJS=vnode.o volume.o vutil.o partition.o fssync-server.o fssync-client.o \
 	 clone.o nuke.o devname.o listinodes.o common.o ihandle.o purge.o \
 	 namei_ops.o salvsync-server.o salvsync-client.o daemon_com.o \
-	 vol_osd.o vol_osd.xdr.o vol_osdutil.o
+	 vol_osd.xdr.o vol_osdutil.o
 
 SALVOBJS=vnode.o volume.o vutil.o partition.o fssync.o  \
-	nuke.o devname.o listinodes.o ihandle.o namei_ops.o vol_osd_salv.o
+	nuke.o devname.o listinodes.o ihandle.o namei_ops.o
 
 OBJECTS=${VLIBOBJS} physio.o vol-salvage.o vol-info.o vol-dump.o vol-bless.o \
 	fssync-debug.o linkcounts.o osdmetadata.o
 
 all: gi \
+	${TOP_INCDIR}/afs/ihandle.h \
+	${TOP_INCDIR}/afs/volume.h \
+	${TOP_INCDIR}/afs/vnode.h \
+	${TOP_INCDIR}/afs/partition.h \
+	${TOP_INCDIR}/afs/afsosd.h \
 	${TOP_LIBDIR}/vlib.a \
 	${TOP_LIBDIR}/libvlib.a \
 	salvager \
@@ -58,7 +63,6 @@ all: gi \
 	${TOP_INCDIR}/afs/fssync.h \
 	${TOP_INCDIR}/afs/salvsync.h \
 	${TOP_INCDIR}/afs/daemon_com.h \
-	${TOP_INCDIR}/afs/ihandle.h \
 	${TOP_INCDIR}/afs/namei_ops.h \
 	${TOP_INCDIR}/afs/vol_prototypes.h \
 	${TOP_INCDIR}/afs/vol_osd_prototypes.h \
@@ -72,6 +76,9 @@ ${TOP_LIBDIR}/libvlib.a: vlib.a
 	${INSTALL_DATA} $? $@
 
 ${TOP_INCDIR}/afs/vol_osd.h: vol_osd.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/afs/afsosd.h: afsosd.h
 	${INSTALL_DATA} $? $@
 
 ${TOP_INCDIR}/afs/nfs.h: nfs.h
@@ -126,6 +133,9 @@ ${TOP_INCDIR}/afs/vol_osd_prototypes.h: vol_osd_prototypes.h
 	${INSTALL_DATA} $? $@
 
 ${TOP_INCDIR}/afs/vol_osd_inline.h: vol_osd_inline.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/afs/afsosd.h: afsosd.h
 	${INSTALL_DATA} $? $@
 
 #
@@ -204,9 +214,12 @@ dest: vlib.a salvager volinfo fssync-debug
 ${OBJECTS}: ${PUBLICHEADERS} ${TOP_INCDIR}/lwp.h ${TOP_INCDIR}/lock.h \
 	${TOP_INCDIR}/afs/afsint.h ${TOP_INCDIR}/afs/vol_osd_prototypes.h \
 	${TOP_INCDIR}/afs/vol_osd_inline.h vutils.h salvage.h \
-	AFS_component_version_number.c
+	${TOP_INCDIR}/afs/afsosd.h AFS_component_version_number.c
 
 clone.o: vol_osd.h
+libafsosd.o: libafsosd.c
+	${CC} ${CFLAGS} -DBUILD_SALVAGER -o libafsosd.o -c ${srcdir}/libafsosd.c
+
 vol-salvage.o vutil.o: volinodes.h
 vol-salvage.o salvager.o: vol-salvage.h
 vol-salvage.o: salvsync.h daemon_com.h
@@ -220,9 +233,9 @@ vlib.a:	${VLIBOBJS} AFS_component_version_number.o
 	$(RANLIB) $@
 
 # new salvager:  remove references to /vice by linking with novice.o
-salvager: vol-salvage.o physio.o vlib.a salvager.o vol_osd_salv.o ${LIBS}
-	${CC} ${LDFLAGS} -o salvager vol-salvage.o physio.o salvager.o \
-			vol_osd_salv.o ${LIBS} ${XLIBS}
+salvager: vol-salvage.o physio.o vlib.a salvager.o libafsosd.o ${LIBS}
+	${CC} ${LDFLAGS} -o salvager vol-salvage.o physio.o salvager.o libafsosd.o \
+			-ldl ${LIBS} ${XLIBS}
 
 salvager.o: AFS_component_version_number.c
 

@@ -320,13 +320,11 @@ typedef struct IHandle_s {
 /* Flags for the Inode handle */
 #define IH_REALLY_CLOSED		1
 #define IH_HSM_FILESYSTEM               8
-#ifdef AFS_RXOSD_SUPPORT
 #define IH_LINKTABLE_V1                 0x100
 #define IH_LINKTABLE_V2                 0x200
 #define IH_LINKTABLE_VERSIONS           0x300
 #ifdef AFS_DCACHE_SUPPORT
 #define IH_DCACHE_FILE                  0x800
-#endif
 #endif
 
 /* Hash function for inode handles */

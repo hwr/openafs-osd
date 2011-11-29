@@ -48,6 +48,12 @@
 #endif
 #include "osddb.h"
 #include "../osddb/volint.h"
+#include "osddbuser.h"
+#ifdef BUILD_SHLIBAFSOSD
+#include <afs/ihandle.h>
+#define COMPILING_OSDDBUSER 1
+#include <afs/afsosd.h>
+#endif
 
 #ifdef AFS_PTHREAD_ENV
 static int osddb_glock_inited = 0;

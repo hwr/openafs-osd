@@ -202,7 +202,9 @@ src/rxstat/Makefile \
 src/scout/Makefile \
 src/sgistuff/Makefile \
 src/shlibafsauthent/Makefile \
+src/shlibafsosd/Makefile \
 src/shlibafsrpc/Makefile \
+src/shlibdafsosd/Makefile \
 src/sys/Makefile \
 src/tbutc/Makefile \
 src/tests/Makefile \

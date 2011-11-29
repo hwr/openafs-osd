@@ -57,7 +57,6 @@
 #include "afs/audit.h"
 #include <afs/dir.h>
 #include <afs/afsutil.h>
-#include <afs/vol_prototypes.h>
 #include <afs/errors.h>
 
 #include "volser.h"
@@ -67,9 +66,20 @@
 #include "volser_internal.h"
 #include "physio.h"
 #include "dumpstuff.h"
-#ifdef AFS_RXOSD_SUPPORT
-#include "../vol/vol_osd_prototypes.h"
-#endif /* AFS_RXOSD_SUPPORT */
+#include <afs/afsosd.h>
+
+struct osd_volser_ops_v0 *osdvolser = NULL;
+struct osd_vol_ops_v0 *osdvol = NULL;
+
+extern struct timeval statisticStart;
+extern afs_uint64 total_bytes_rcvd;
+extern afs_uint64 total_bytes_sent;
+extern afs_uint64 total_bytes_rcvd_vpac;
+extern afs_uint64 total_bytes_sent_vpac;
+extern afs_int64 lastRcvd;
+extern afs_int64 lastSent;
+extern afs_uint32 KBpsRcvd[96];
+extern afs_uint32 KBpsSent[96];
 
 /*@+fcnmacros +macrofcndecl@*/
 #ifdef O_LARGEFILE
@@ -109,8 +119,6 @@ static int GetPartName(afs_int32 partid, char *pname);
 #define ENOTCONN 134
 #endif
 
-afs_int32 localTid = 1;
- 
 static afs_int32 VolPartitionInfo(struct rx_call *, char *pname,
 				  struct diskPartition64 *);
 static afs_int32 VolNukeVolume(struct rx_call *, afs_int32, afs_uint32);
@@ -177,44 +185,6 @@ VPFullUnlock(void)
     code = VPFullUnlock_r();
     VOL_UNLOCK;
     return code;
-}
-
-/* get partition id from a name */
-afs_int32
-PartitionID(char *aname)
-{
-    char tc;
-    int code = 0;
-    char ascii[3];
-
-    tc = *aname;
-    if (tc == 0)
-	return -1;		/* unknown */
-
-    /* otherwise check for vicepa or /vicepa, or just plain "a" */
-    ascii[2] = 0;
-    if (!strncmp(aname, "/vicep", 6)) {
-	strncpy(ascii, aname + 6, 2);
-    } else
-	return -1;		/* bad partition name */
-    /* now partitions are named /vicepa ... /vicepz, /vicepaa, /vicepab, .../vicepzz, and are numbered
-     * from 0.  Do the appropriate conversion */
-    if (ascii[1] == 0) {
-	/* one char name, 0..25 */
-	if (ascii[0] < 'a' || ascii[0] > 'z')
-	    return -1;		/* wrongo */
-	return ascii[0] - 'a';
-    } else {
-	/* two char name, 26 .. <whatever> */
-	if (ascii[0] < 'a' || ascii[0] > 'z')
-	    return -1;		/* wrongo */
-	if (ascii[1] < 'a' || ascii[1] > 'z')
-	    return -1;		/* just as bad */
-	code = (ascii[0] - 'a') * 26 + (ascii[1] - 'a') + 26;
-	if (code > VOLMAXPARTS)
-	    return -1;
-	return code;
-    }
 }
 
 static int
@@ -413,9 +383,8 @@ ViceCreateRoot(Volume *vp)
     vnode->author = 0;
     vnode->owner = 0;
     vnode->parent = 0;
-#ifndef AFS_RXOSD_SUPPORT
-    vnode->vnodeMagic = vcp->magic;
-#endif
+    if (!osdvol)
+        vnode->vnodeMagic = vcp->magic;
 
     IH_INIT(h, vp->device, V_parentId(vp),
 	    vp->vnodeIndex[vLarge].handle->ih_ino);
@@ -1284,9 +1253,7 @@ VolForward(struct rx_call *acid, afs_int32 fromTrans, afs_int32 fromDate,
     afs_int32 securityIndex;
     char caller[MAXKTCNAMELEN];
     int flag = 0;
-#ifdef AFS_RXOSD_SUPPORT
     afs_int32 targetHasOsdSupport = 0;
-#endif
 
     if (!afsconf_SuperUser(tdir, acid, caller))
 	return VOLSERBAD_ACCESS;	/*not a super user */
@@ -1323,12 +1290,12 @@ VolForward(struct rx_call *acid, afs_int32 fromTrans, afs_int32 fromDate,
 	TRELE(tt);
 	return ENOTCONN;
     }
-#ifdef AFS_RXOSD_SUPPORT
     /* Ccheck wether target server supports osd files */
-    code = AFSVolOsdSupport(tcon, &targetHasOsdSupport);
-    if (targetHasOsdSupport)
-        flag |= TARGETHASOSDSUPPORT;
-#endif /* AFS_RXOSD_SUPPORT */
+    if (osdvol) {
+        code = AFSVolOsdSupport(tcon, &targetHasOsdSupport);
+        if (targetHasOsdSupport)
+            flag |= TARGETHASOSDSUPPORT;
+    }
 
     tcall = rx_NewCall(tcon);
     TSetRxCall(tt, tcall, "Forward");
@@ -1390,15 +1357,16 @@ SAFSVolForwardMultiple(struct rx_call *acid, afs_int32 fromTrans, afs_int32
     struct rx_call **tcalls;
     struct Volume *vp;
     int i, is_incremental, flag = INITIAL;
-#ifdef AFS_RXOSD_SUPPORT
 #define SECONDLOOP 111111111
 #define GOODCODE   222222222
     int j, secondloop = 0;
-    int *osdsupport = malloc(destinations->manyDests_len * sizeof(int));
+    int *osdsupport = NULL;
 
-    if (!osdsupport)
-        return ENOMEM;
-#endif
+    if (osdvol) {
+        osdsupport = malloc(destinations->manyDests_len * sizeof(int));
+        if (!osdsupport)
+            return ENOMEM;
+    }
 
     if (results) {
 	memset(results, 0, sizeof(manyResults));
@@ -1448,36 +1416,34 @@ SecondLoop:
     /* make connections to all the other servers */
     for (i = 0; i < destinations->manyDests_len; i++) {
 	struct replica *dest = &(destinations->manyDests_val[i]);
-#ifdef AFS_RXOSD_SUPPORT
-        if (!secondloop)
-#endif
-	tcons[i] =
-	    rx_NewConnection(htonl(dest->server.destHost),
+        if (!osdvol || !secondloop)
+	    tcons[i] =
+	        rx_NewConnection(htonl(dest->server.destHost),
 			     htons(dest->server.destPort), VOLSERVICE_ID,
 			     securityObject, securityIndex);
 	if (!tcons[i]) {
 	    codes[i] = ENOTCONN;
 	} else {
-#ifdef AFS_RXOSD_SUPPORT
-            if (secondloop) {
-                if (codes[i] != SECONDLOOP) {
-                    if (!codes[i])
-                        codes[i] = GOODCODE; /* to prevent second forward */
-                    continue;
+	    if (osdvol) {
+                if (secondloop) {
+                    if (codes[i] != SECONDLOOP) {
+                        if (!codes[i])
+                            codes[i] = GOODCODE; /* to prevent second forward */
+                        continue;
+                    }
+                    codes[i] = 0;
+                } else {
+                    /* Ccheck wether target server supports osd files */
+                    osdsupport[i] = 0;
+                    code = AFSVolOsdSupport(tcons[i], &osdsupport[i]);
+                    if (flag == INITIAL)
+                        flag = osdsupport[i];
+                    else if (flag != osdsupport[i]) {
+                        codes[i] = SECONDLOOP;
+                        continue;
+                    }
                 }
-                codes[i] = 0;
-            } else {
-                /* Ccheck wether target server supports osd files */
-                osdsupport[i] = 0;
-                code = AFSVolOsdSupport(tcons[i], &osdsupport[i]);
-                if (flag == INITIAL)
-                    flag = osdsupport[i];
-                else if (flag != osdsupport[i]) {
-                    codes[i] = SECONDLOOP;
-                    continue;
-                }
-            }
-#endif /* AFS_RXOSD_SUPPORT */
+	    }
 	    if (!(tcalls[i] = rx_NewCall(tcons[i])))
 		codes[i] = ENOTCONN;
 	    else {
@@ -1496,23 +1462,23 @@ SecondLoop:
 
     /* these next calls implictly call rx_Write when writing out data */
     code = DumpVolMulti(tcalls, i, vp, fromDate, flag, codes);
-#ifdef AFS_RXOSD_SUPPORT
-    if (secondloop) {
-        for (j = 0; j<i; j++)
-            if (codes[i] == GOODCODE)
-                codes[i] = 0;
-    } else if (!code) {
-        for (j = 0; j<i; j++)
-            if (codes[j] == SECONDLOOP) {
-                if (flag == TARGETHASOSDSUPPORT)
-                    flag = 0;
-                else
-                    flag = TARGETHASOSDSUPPORT;
-                secondloop = 1;
-                goto SecondLoop;
-            }
+    if (osdvol) {
+        if (secondloop) {
+            for (j = 0; j<i; j++)
+                if (codes[i] == GOODCODE)
+                    codes[i] = 0;
+        } else if (!code) {
+            for (j = 0; j<i; j++)
+                if (codes[j] == SECONDLOOP) {
+                    if (flag == TARGETHASOSDSUPPORT)
+                        flag = 0;
+                    else
+                        flag = TARGETHASOSDSUPPORT;
+                    secondloop = 1;
+                    goto SecondLoop;
+                }
+        }
     }
-#endif
 
   fail:
     for (i--; i >= 0; i--) {
@@ -1838,10 +1804,8 @@ VolSetInfo(struct rx_call *acid, afs_int32 atrans,
 	td->volUpdateCounter = (unsigned int)astatus->spare2;
     if (astatus->filequota > 0)
         td->maxfiles = astatus->filequota;
-#ifdef AFS_RXOSD_SUPPORT
     if (astatus->osdPolicy != -1)
         td->osdPolicy = astatus->osdPolicy;
-#endif
     VUpdateVolume(&error, tv);
     TClearRxCall(tt);
     if (TRELE(tt))
@@ -3273,11 +3237,45 @@ SAFSVolSplitVolume(struct rx_call *acall, afs_uint32 vid, afs_uint32 new,
 
 extern afs_int32 MBperSecSleep;
 
+char ExportedVariables[] =
+    "LogLevel"
+    EXP_VAR_SEPARATOR
+    "MBperSecSleep"
+    EXP_VAR_SEPARATOR
+    "convertToOsd"
+    EXP_VAR_SEPARATOR
+    ""
+    ;
+
+char **osdExportedVariablesPtr = NULL;
+
 afs_int32
 SAFSVolVariable(struct rx_call *acall, afs_int32 cmd, char *name,
                         afs_int64 value, afs_int64 *result)
 {
+    afs_int32 code = ENOSYS;
     char caller[MAXKTCNAMELEN];
+    char *start_ptr=NULL,*end_ptr = NULL;
+    char test[MAXCMDCHARS];
+    int isproperName = 0;
+
+    start_ptr=ExportedVariables;
+    end_ptr=NULL;
+
+    while (1) {
+      end_ptr=strstr(start_ptr,EXP_VAR_SEPARATOR);
+      if (! end_ptr) {
+        strncpy(test,start_ptr,strlen(start_ptr));
+        test[strlen(start_ptr)]='\0';
+        break;
+      }
+      strncpy(test,start_ptr,end_ptr-start_ptr);
+      test[end_ptr-start_ptr]='\0';
+      if (!strcmp(test,name)) {
+            isproperName = 1;
+      }
+      start_ptr=end_ptr+strlen(EXP_VAR_SEPARATOR);
+    }
 
     if (cmd == 1) {                             /* get */
         if (!strcmp(name, "MBperSecSleep")) {
@@ -3286,11 +3284,9 @@ SAFSVolVariable(struct rx_call *acall, afs_int32 cmd, char *name,
         } else if (!strcmp(name, "LogLevel")) {
             *result = LogLevel;
             return 0;
-#ifdef AFS_RXOSD_SUPPORT
         } else if (!strcmp(name, "convertToOsd")) {
             *result = convertToOsd;
             return 0;
-#endif
         } else
             return ENOENT;
     } else if (cmd == 2) {                      /* set */
@@ -3308,337 +3304,28 @@ SAFSVolVariable(struct rx_call *acall, afs_int32 cmd, char *name,
             LogLevel = value;
             *result = LogLevel;
             return 0;
-#ifdef AFS_RXOSD_SUPPORT
         } else if (!strcmp(name, "convertToOsd")) {
             if (value < 0)
                 return EINVAL;
-            convertToOsd = value;
+	    convertToOsd = value;
             *result = convertToOsd;
             return 0;
-#endif
         } else
             return ENOENT;
     }
-    return ENOSYS;
-}
-
-extern afs_uint64 total_bytes_rcvd;
-extern afs_uint64 total_bytes_sent;
-extern afs_int64 lastRcvd;
-extern afs_int64 lastSent;
-extern afs_uint32 KBpsRcvd[96];
-extern afs_uint32 KBpsSent[96];
-extern struct timeval statisticStart;
-
-afs_int32
-SAFSVolStatistic(struct rx_call *acall, afs_int32 reset, afs_uint32 *since,
-                        afs_uint64 *rcvd, afs_uint64 *sent,
-                        struct volser_kbps *kbpsrcvd,
-                        struct volser_kbps *kbpssent)
-{
-    char caller[MAXKTCNAMELEN];
-    afs_int32 i;
-
-    *since = statisticStart.tv_sec;
-    *rcvd = total_bytes_rcvd;
-    *sent = total_bytes_sent;
-    if (reset) {
-        if (!afsconf_SuperUser(tdir, acall, caller))
-            return EPERM;
-        lastRcvd = lastRcvd - total_bytes_rcvd;
-        total_bytes_rcvd = 0;
-        lastSent = lastSent - total_bytes_sent;
-        total_bytes_sent = 0;
-        TM_GetTimeOfDay(&statisticStart, 0);
-    }
-    for (i=0; i<96; i++) {
-        kbpsrcvd->val[i] = KBpsRcvd[i];
-        kbpssent->val[i] = KBpsSent[i];
-    }
-    return 0;
-}
-
-afs_int32
-SAFSVolOsdSupport(struct rx_call *acall, afs_int32 *have_it)
-{
-#ifdef AFS_RXOSD_SUPPORT
-    *have_it = TARGETHASOSDSUPPORT;
-#else
-    *have_it = 0;
-#endif
-    return 0;
-}
-
-afs_int32
-SAFSVolTraverse(struct rx_call *acall, afs_uint32 vid, afs_uint32 delay,
-                                afs_int32 flag, struct sizerangeList *srl,
-                                struct osd_infoList *list)
-{
-    afs_int32 code, code2;
-    Volume *vol, *vol2;
-    char namehead[9];
-    struct DiskPartition64 *dp;
-    DIR *dirp = 0;
-    struct dirent *d;
-    struct VolumeDiskHeader h;
-    struct volser_trans *tt = 0;
-    int i, j, k;
-    char caller[MAXKTCNAMELEN];
-    int policy_statistics = (srl == NULL);
-
-    if ( !policy_statistics )
-        init_sizerangeList(srl);
-    if (!afsconf_SuperUser(tdir, acall, caller))
-        return VOLSERBAD_ACCESS;        /*not a super user */
-#ifdef AFS_RXOSD_SUPPORT
-    if ( policy_statistics )
-        code = init_pol_statList(list);
-    else
-        code = init_osd_infoList(list);
-    if (code)
-        return code;
-    if (LogLevel) {
-        for (i = 0 ; i < list->osd_infoList_len ; i++ ) {
-            Log("list[%d]: id = %u\n", i, list->osd_infoList_val[i].osdid);
-        }
-    }
-#endif
-    if (vid) { /* single volume */
-        vol = VAttachVolume(&code, vid, V_PEEK);
-        if (!vol)
-            return code;
-        code = traverse(vol, srl, list, flag, delay);
-        VDetachVolume(&code2, vol);
-    } else { /* loop over all RW-volumes on this server */
-        strcpy(namehead, "/vicep");
-        for (i = 0; i < VOLMAXPARTS; i++) {
-            if (i < 26) {
-                namehead[6] = i + 'a';
-                namehead[7] = '\0';
-            } else {
-                k = i - 26;
-                namehead[6] = 'a' + (k / 26);
-                namehead[7] = 'a' + (k % 26);
-                namehead[8] = '\0';
-            }
-            tt = NewTrans(0, i);
-            if (tt) {
-		VTRANS_OBJ_LOCK(tt);
-                tt->iflags = ITReadOnly;
-                tt->vflags = 0;
-		TSetRxCall_r(tt, NULL, "Traverse");
-		VTRANS_OBJ_UNLOCK(tt);
-            }
-            dp = VGetPartition(namehead, 0);
-            if (dp)
-                dirp = opendir(VPartitionPath(dp));
-            else
-                dirp = 0;
-            if (dirp) {
-                while (d = readdir(dirp)) {
-                    if (d->d_name[0] == 'V'
-                      && !strcmp(&(d->d_name[11]), VHDREXT)) {
-                        afs_int32 bytes;
-                        int fd;
-                        char path[32];
-                        strcpy(&path, &namehead);
-                        strcat(&path, "/");
-                        strcat(&path, d->d_name);
-                        vol = 0;
-                        fd = afs_open(path, O_RDONLY);
-                        if (fd < 0)
-                            Log("1 Traverse: couldn't open %s\n", path);
-                        else {                  /* skip all except RW volumes */
-                            h.id = 0;
-                            afs_lseek(fd, 0, SEEK_SET);
-                            if (bytes = read(fd, &h, sizeof(h)) != sizeof(h))
-                                Log("1 Traverse: couldn't read %s (%d, %d, %d)\n",
-                                                path, bytes, errno, fd);
-                            close(fd);
-                            if (h.id && h.id == h.parent) /* only RW volumes */
-                                vol = VAttachVolume(&code, h.id, V_PEEK);
-                        }
-                        if (vol) {
-                            code = traverse(vol, srl, list, flag, delay);               VDetachVolume(&code2, vol);
-#ifndef AFS_PTHREAD_ENV
-                            IOMGR_Poll();
-#endif
-                        } else if (LogLevel)
-                            Log("1 Traverse: skipping volume %u\n", h.id);
-                    }
-                }
-                closedir(dirp);
-            }
-            if (tt)
-                DeleteTrans(tt, 1);
-        }
-    }
+finis:
     return code;
-}
-
-afs_int32
-SAFSVolPolicyUsage(struct rx_call *acall, afs_uint32 vid, struct sizerangeList *srl,
-                                struct osd_infoList *list)
-{
-    return SAFSVolTraverse(acall, vid, 0, 2, NULL, list);
 }
 
 afs_int32
 SAFSVolListObjects(struct rx_call *acall, afs_uint32 vid, afs_int32 flag,
                 afs_int32 osd, afs_uint32 minage)
 {
-#ifdef AFS_RXOSD_SUPPORT
-    afs_int32 code = 0, code2;
-    Volume *vol, *vol2;
-    char namehead[9];
-    struct DiskPartition64 *dp;
-    DIR *dirp = 0;
-    struct dirent *d;
-    struct VolumeDiskHeader h;
-    struct volser_trans *tt = 0;
-    int i, j, k;
-    int null = 0;
-    char caller[MAXKTCNAMELEN];
+    afs_int32 code = RXGEN_OPCODE;
 
-    if (!afsconf_SuperUser(tdir, acall, caller)) {
-        char msg[] = "eNo permission!\n";
-        rx_Write(acall, msg, strlen(msg) +1);
-        return VOLSERBAD_ACCESS;        /*not a super user */
-    }
-    if (vid) { /* single volume */
-        vol = VAttachVolume(&code, vid, V_PEEK);
-        if (!vol)
-            return code;
-        code = list_objects_on_osd(acall, vol, flag, osd, minage);
-        VDetachVolume(&code2, vol);
-    } else { /* loop over all RW-volumes on this server */
-        strcpy(namehead, "/vicep");
-        for (i = 0; i < VOLMAXPARTS; i++) {
-            if (i < 26) {
-                namehead[6] = i + 'a';
-                namehead[7] = '\0';
-            } else {
-                k = i - 26;
-                namehead[6] = 'a' + (k / 26);
-                namehead[7] = 'a' + (k % 26);
-                namehead[8] = '\0';
-            }
-            tt = NewTrans(0, i);
-            if (tt) {
-		VTRANS_OBJ_LOCK(tt);
-                tt->iflags = ITReadOnly;
-                tt->vflags = 0;
-                TSetRxCall_r(tt, NULL, "ListObjects");
-		VTRANS_OBJ_UNLOCK(tt);
-            }
-            dp = VGetPartition(namehead, 0);
-            if (dp)
-                dirp = opendir(VPartitionPath(dp));
-            else
-                dirp = 0;
-            if (dirp) {
-                while (d = readdir(dirp)) {
-                    if (d->d_name[0] == 'V'
-                      && !strcmp(&(d->d_name[11]), VHDREXT)) {
-                        afs_int32 bytes;
-                        int fd;
-                        char path[32];
-                        strcpy(&path, &namehead);
-                        strcat(&path, "/");
-                        strcat(&path, d->d_name);
-                        vol = 0;
-                        fd = afs_open(path, O_RDONLY);
-                        if (fd < 0)
-                            Log("1 ListObjects: couldn't open %s\n", path);
-                        else {                  /* skip all except RW volumes */
-                            h.id = 0;
-                            afs_lseek(fd, 0, SEEK_SET);
-                            if (bytes = read(fd, &h, sizeof(h)) != sizeof(h))
-                                Log("1 ListObjects: couldn't read %s (%d, %d, %d)\n",
-                                                path, bytes, errno, fd);
-                            close(fd);
-                            if (h.id && h.id == h.parent) /* only RW volumes */
-                                vol = VAttachVolume(&code, h.id, V_PEEK);
-                        }
-                        if (vol) {
-                            code = list_objects_on_osd(acall, vol, flag, osd, minage);
-                            VDetachVolume(&code2, vol);
-#ifndef AFS_PTHREAD_ENV
-                            IOMGR_Poll();
-#endif
-                        } else if (LogLevel)
-                            Log("1 ListObjects:: skipping volume %u\n", h.id);
-                    }
-                }
-                closedir(dirp);
-            }
-            if (tt)
-                DeleteTrans(tt, 1);
-        }
-    }
-    rx_Write(acall, &null, 1);
+    if (osdvolser)
+        code = (osdvolser->op_SAFSVOLOSD_ListObjects)(acall, vid, flag, osd, minage);
     return code;
-#else /* AFS_RXOSD_SUPPORT */
-    return ENOSYS;
-#endif /* AFS_RXOSD_SUPPORT */
-}
-
-afs_int32
-SAFSVolSalvage(struct rx_call *acall, afs_uint32 vid, afs_int32 flag,
-                afs_int32 instances, afs_int32 localinst)
-{
-    afs_int32 code = ENOSYS, code2;
-#ifdef AFS_RXOSD_SUPPORT
-    Volume *vol;
-    char namehead[9];
-    struct DiskPartition64 *dp;
-    struct volser_trans *tt;
-    DIR *dirp = 0;
-    struct dirent *d;
-    int i, j, k;
-    afs_int32 locktype = V_VOLUPD;
-    char caller[MAXKTCNAMELEN];
-
-    if (!afsconf_SuperUser(tdir, acall, caller)) {
-        char msg[] = "eNo permission!\n";
-        rx_Write(acall, msg, strlen(msg) +1);
-        return VOLSERBAD_ACCESS;        /*not a super user */
-    }
-    if ((flag & 1)                      /* obsolete: was -nowrite */
-      || ((flag & 8))                   /* indicates new syntax */
-      && !(flag & (SALVAGE_UPDATE | SALVAGE_DECREM)))
-        locktype = V_PEEK;
-    vol = VAttachVolume(&code, vid, locktype);
-    if (vol) {
-        tt = NewTrans(vid, V_device(vol));
-        if (!tt) {
-            VDetachVolume(&code2, vol);
-            return VOLSERVOLBUSY;
-        }
-	VTRANS_OBJ_LOCK(tt);
-        tt->iflags = locktype == V_READONLY ? ITReadOnly : ITBusy;
-        tt->vflags = 0;
-        TSetRxCall_r(tt, NULL, "Salvage");
-	VTRANS_OBJ_UNLOCK(tt);
-        code = salvage(acall, vol, flag, instances, localinst);
-        VDetachVolume(&code2, vol);
-        DeleteTrans(tt, 1);
-    }
-#endif
-    return code;
-}
-
-void
-fillcandidate(struct hsmcand *c, AFSFid *fid, afs_uint32 w, afs_uint32 b)
-{
-    if (fid) {
-        c->volume = fid->Volume;
-        c->vnode = fid->Vnode;
-        c->unique = fid->Unique;
-        c->weight = w;
-        c->blocks = b;
-    } else
-        memset(c, 0, sizeof(struct hsmcand));
 }
 
 afs_int32
@@ -3647,120 +3334,72 @@ SAFSVolGetArchCandidates(struct rx_call *acall, afs_uint64 minsize,
                         afs_int32 maxcandidates, afs_int32 osd, afs_int32 flag,
                         afs_uint32 delay, hsmcandList *list)
 {
-    afs_int32 code = 0, code2;
-    Volume *vol;
-    char namehead[9];
-    struct DiskPartition64 *dp;
-    DIR *dirp = 0;
-    struct dirent *d;
-    int i, j, k, nosds;
-    afs_int32 minweight = 0;
-    struct VolumeDiskHeader h;
-    struct volser_trans *tt = 0;
-    namei_t name;
-    struct afs_stat st;
-    IHandle_t ih;
+    afs_int32 code = RXGEN_OPCODE;
 
-    list->hsmcandList_len = 0;
-    list->hsmcandList_val = (struct hsmcand *) malloc(maxcandidates *
-                                sizeof(struct hsmcand));
-#ifdef AFS_RXOSD_SUPPORT
-    if (!list->hsmcandList_val)
-        return ENOMEM;
-    memset(list->hsmcandList_val, 0, maxcandidates * sizeof(struct hsmcand));
-    memset(&ih, 0, sizeof(ih));
-    strcpy(namehead, "/vicep");
-    for (i = 0; i < VOLMAXPARTS; i++) {
-        if (i < 26) {
-            namehead[6] = i + 'a';
-            namehead[7] = '\0';
-        } else {
-            k = i - 26;
-            namehead[6] = 'a' + (k / 26);
-            namehead[7] = 'a' + (k % 26);
-            namehead[8] = '\0';
-        }
-        ih.ih_dev = i;
-        dp = VGetPartition(namehead, 0);
-        if (dp)
-            dirp = opendir(VPartitionPath(dp));
-        else
-            dirp = 0;
-        if (dirp) {
-            int loopcnt = 0;
-            tt = NewTrans(0, i);
-            if (tt) {
-		VTRANS_OBJ_LOCK(tt);
-                tt->iflags = ITReadOnly;
-                tt->vflags = 0;
-                TSetRxCall_r(tt, NULL, "GetArchCandidates");
-		VTRANS_OBJ_UNLOCK(tt);
-            }
-            while (d = readdir(dirp)) {
-                if (d->d_name[0] == 'V' && !strcmp(&(d->d_name[11]), VHDREXT)) {
-                    afs_uint32 tvid;
-                    int fd;
-                    afs_int32 bytes;
-                    char path[32];
-                    strcpy(&path, &namehead);
-                    strcat(&path, "/");
-                    strcat(&path, d->d_name);
-                    vol = 0;
-                    fd = afs_open(path, O_RDONLY);
-                    if (fd < 0)
-                        Log("1 GetArchCandidates: couldn't open %s\n", path);
-                    else {                      /* skip all except RW volumes */
-                        h.id = 0;
-                        afs_lseek(fd, 0, SEEK_SET);
-                        if (bytes = read(fd, &h, sizeof(h)) != sizeof(h))
-                            Log("1 GetArchCandidates: couldn't read %s (%d, %d, %d)\n",
-                                                path, bytes, errno, fd);
-                        close(fd);
-                        if (h.id && h.id == h.parent) {/* only RW volumes */
-                            ih.ih_vid = h.id;
-                            ih.ih_ino = h.OsdMetadata_hi;
-                            ih.ih_ino = ih.ih_ino << 32;
-                            ih.ih_ino |= h.OsdMetadata_lo;
-                            namei_HandleToName(&name, &ih);
-                            if (afs_stat(name.n_path, &st) == 0
-                              && st.st_size > 8)
-                                vol = VAttachVolume(&code, h.id, V_PEEK);
-                        }
-                    }
-                    if (vol) {
-                        code = get_arch_cand(vol, list->hsmcandList_val,
-                                        minsize, maxsize, copies, maxcandidates,
-                                        &list->hsmcandList_len, &minweight, osd,
-                                        flag, delay);
-                        VDetachVolume(&code2, vol);
-#ifndef AFS_PTHREAD_ENV
-                        IOMGR_Poll();
-                        loopcnt = 0;
-#endif
-                    } else {
-                        if (LogLevel)
-                            Log("1 GetArchCandidates: skipping %s (%u)\n",
-                                                path, h.id);
-#ifndef AFS_PTHREAD_ENV
-                        if (loopcnt > 100) {
-                            IOMGR_Poll();
-                            loopcnt = 0;
-                        } else
-                            loopcnt++;
-#endif
-                    }
-                }
-            }
-            closedir(dirp);
-            if (tt)
-                DeleteTrans(tt, 1);
-        }
-    }
-bad:
+    if (osdvolser)
+        code = (osdvolser->op_SAFSVOLOSD_GetArchCandidates)(acall, minsize,
+			 maxsize, copies, maxcandidates, osd, flag, delay, list);
     return code;
-#else /* AFS_RXOSD_SUPPORT */
-    return 0;
-#endif /* AFS_RXOSD_SUPPORT */
+}
+
+afs_int32
+SAFSVolTraverse(struct rx_call *acall, afs_uint32 vid, afs_uint32 delay,
+                                afs_int32 flag, struct sizerangeList *srl,
+                                struct osd_infoList *list)
+{
+    afs_int32 code = RXGEN_OPCODE;
+
+    if (osdvolser)
+        code = (osdvolser->op_SAFSVOLOSD_Traverse)(acall, vid, delay, flag,
+						   srl, list);
+    return code;
+}
+
+afs_int32
+SAFSVolPolicyUsage(struct rx_call *acall, afs_uint32 vid, struct sizerangeList *srl,
+                                struct osd_infoList *list)
+{
+    afs_int32 code = RXGEN_OPCODE;
+
+    if (osdvolser)
+        code = (osdvolser->op_SAFSVOLOSD_Traverse)(acall, vid, 0, 2, srl, list);
+    return code;
+}
+
+afs_int32
+SAFSVolStatistic(struct rx_call *acall, afs_int32 reset, afs_uint32 *since,
+                        afs_uint64 *rcvd, afs_uint64 *sent,
+                        struct volser_kbps *kbpsrcvd,
+                        struct volser_kbps *kbpssent)
+{
+    afs_int32 code = RXGEN_OPCODE;
+
+    if (osdvolser)
+        code = (osdvolser->op_SAFSVOLOSD_Statistic)(acall, reset, since, rcvd,
+						    sent, kbpsrcvd, kbpssent);
+    return code;
+}
+
+afs_int32
+SAFSVolSalvage(struct rx_call *acall, afs_uint32 vid, afs_int32 flag,
+                afs_int32 instances, afs_int32 localinst)
+{
+    afs_int32 code = RXGEN_OPCODE;
+
+    if (osdvolser)
+        code = (osdvolser->op_SAFSVOLOSD_Salvage) (acall, vid, flag, instances,
+					        localinst);
+    return code;
+}
+
+afs_int32
+SAFSVolOsdSupport(struct rx_call *acall, afs_int32 *have_it)
+{
+    afs_int32 code = RXGEN_OPCODE;
+
+    if (osdvolser)
+        code = (osdvolser->op_SAFSVOLOSD_OsdSupport)(acall, have_it);
+    return code;
 }
 
 /* GetPartName - map partid (a decimal number) into pname (a string)
@@ -3786,4 +3425,37 @@ GetPartName(afs_int32 partid, char *pname)
 	return 0;
     } else
 	return -1;
+}
+
+extern int ubik_Call();
+
+extern int VInit;
+extern afsUUID FS_HostUUID;
+
+struct vol_data_v0 vol_data_v0 = {
+    &tdir,
+    &LogLevel,
+    &VInit,
+    &VnodeClassInfo,
+    &total_bytes_rcvd,
+    &total_bytes_sent,
+    &total_bytes_rcvd_vpac,
+    &total_bytes_sent_vpac,
+    &KBpsRcvd,
+    &KBpsSent,
+    &lastRcvd,
+    &lastSent,
+    &statisticStart,
+    &FS_HostUUID,
+    &rx_enable_stats
+};
+
+struct volser_data_v0 volser_data_v0 = {
+    &convertToOsd
+};
+
+void fill_ops_volser(struct volser_ops_v0 *volser)
+{
+    volser->DeleteTrans = DeleteTrans;
+    volser->NewTrans = NewTrans;
 }

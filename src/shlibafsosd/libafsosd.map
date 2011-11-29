@@ -1,0 +1,16 @@
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+
+{
+    global:
+	init_viced_afsosd;		# for fileserver, dafileserver
+	init_volser_afsosd;		# for volserver, davolserver
+	init_salv_afsosd;		# for salvager, dasalvager, salvageserver
+	RXAFSOSD_ApplyOsdPolicy;	# for afsio
+    local:
+	*;
+};

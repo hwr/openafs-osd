@@ -95,9 +95,11 @@ struct VnodeInfo {
 	int author;		/* File author */
 	int owner;		/* File owner */
 	int group;		/* File group */
-#ifdef AFS_RXOSD_SUPPORT
-        int osdMetadataIndex;   /* number of entry in osdMetadata special file */
-#endif
+        union {
+            struct OsdMetadata o;
+            bit32 vnodemagic;       /* Magic number--mainly for file server
+                                     * paranoia checks */
+        } u;
     } *vnodes;
 };
 

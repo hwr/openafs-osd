@@ -40,6 +40,7 @@
 #include "viceinode.h"
 #include "afs/afs_assert.h"
 #include <limits.h>
+#include <afs/afsosd.h>
 #if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
 #include "afs/afsutil.h"
 #endif
@@ -343,14 +344,14 @@ streamHandleAllocateChunk(void)
 /*
  * Get a file descriptor handle given an Inode handle
  */
-#ifdef AFS_RXOSD_SUPPORT
+#if defined(BUILDING_RXOSD)
 static
 FdHandle_t *
 common_open(IHandle_t * ihP, int dontOpen, int open_fd)
-#else /* AFS_RXOSD_SUPPORT */
+#else
 FdHandle_t *
 ih_open(IHandle_t * ihP)
-#endif /* AFS_RXOSD_SUPPORT */
+#endif
 {
     FdHandle_t *fdP;
     FD_t fd;
@@ -387,12 +388,12 @@ ih_open(IHandle_t * ihP)
 	}
     }
 
-#ifdef AFS_RXOSD_SUPPORT
+#if defined(BUILDING_RXOSD)
     if (dontOpen) {
         IH_UNLOCK;
         return NULL;
     }
-#endif /* AFS_RXOSD_SUPPORT */
+#endif
 
     /*
      * Try to open the Inode, return NULL on error.
@@ -400,10 +401,10 @@ ih_open(IHandle_t * ihP)
     fdInUseCount += 1;
     IH_UNLOCK;
 ih_open_retry:
-#ifdef AFS_RXOSD_SUPPORT
+#if defined(BUILDING_RXOSD)
     if (open_fd >= 0) {
 #if defined(AFS_NAMEI_ENV)
-#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+#if defined(AFS_RXOSD_SPECIAL)
 	/* make sure ihp->ih_ops get filled correctly */
         namei_t name;
         namei_HandleToName(&name, ihP);
@@ -484,7 +485,7 @@ ih_open_retry:
     return fdP;
 }
 
-#ifdef AFS_RXOSD_SUPPORT
+#if defined(BUILDING_RXOSD)
 /*
  * Get a file descriptor handle given an Inode handle
  */
@@ -517,7 +518,7 @@ FdHandle_t *ih_fakeopen(IHandle_t *ihP, int open_fd)
         f = common_open(ihP, 0, open_fd);
         return f;
 }
-#endif /* AFS_RXOSD_SUPPORT */
+#endif /* BUILDING_RXOSD */
 
 /*
  * Return a file descriptor handle to the cache

@@ -60,6 +60,7 @@
 #include "../util/afsutil_prototypes.h"
 #include "../tviced/serialize_state.h"
 #endif /* AFS_DEMAND_ATTACH_FS */
+#include <afs/afsosd.h>
 
 #ifdef AFS_PTHREAD_ENV
 pthread_mutex_t host_glock_mutex;
@@ -2299,16 +2300,14 @@ MapName_r(char *aname, char *acell, afs_int32 * aval)
 	if (lids.idlist_val) {
 	    *aval = lids.idlist_val[0];
 	    if (*aval == AnonymousID) {
-#ifdef AFS_RXOSD_SUPPORT                                                                
                 /*                                                                      
                  * To allow -localauth for 'fs' commands it's necessary to map          
                  * "afs" to someone with privileges! (assuming 1 == admin).             
                  */                                                                     
-                if (!strcmp(aname, "afs"))                                              
+		if (osdvol && !strcmp(aname, "afs"))                                              
                     *aval = 1;                                                          
                 else                                                                    
-#endif
-		ViceLog(2,
+		    ViceLog(2,
 			("MapName: NameToId on %s returns anonymousID\n",
 			 lnames.namelist_val[0]));
 	    }
@@ -4193,7 +4192,6 @@ printInterfaceAddr(struct host *host, int level)
     ViceLog(level, ("\n"));
 }
 
-#ifdef AFS_RXOSD_SUPPORT
 /*
  * This routine finally will be called in eval_policy in osddbuser.c.
  * But to avoid a dependency of osddbuser.c on viced header files
@@ -4209,4 +4207,3 @@ afs_int32 evalclient(void *rock, afs_int32 user)
     }
     return 0;
 }
-#endif

@@ -18,9 +18,10 @@
 #define RXOSD_STRIPESIZEMASK    0x7
 #define RXOSD_STRIPEINFOSHIFT   56
 
-char *shortbuffer = "***buffer too short***";
-char *notspecified = "no object spefified";
+private char *shortbuffer = "***buffer too short***";
+private char *notspecified = "no object spefified";
 
+#define SNPRINTF afs_snprintf
 static char *
 sprint_oparmT10(struct oparmT10 *o, char *buf, afs_int32 len)
 {
@@ -29,7 +30,7 @@ sprint_oparmT10(struct oparmT10 *o, char *buf, afs_int32 len)
     if (!o)
 	return notspecified;
 
-    l = afs_snprintf(buf, len, "%u.%u.%u.%u",
+    l = SNPRINTF(buf, len, "%u.%u.%u.%u",
 		(afs_uint32)(o->part_id & RXOSD_VOLIDMASK),
 		(afs_uint32)(o->obj_id & RXOSD_VNODEMASK),
 		(afs_uint32)((o->obj_id >> RXOSD_UNIQUESHIFT) & RXOSD_UNIQUEMASK),
@@ -47,7 +48,7 @@ sprint_oparmFree(struct oparmFree *o, char *buf, afs_int32 len)
     if (!o)
 	return notspecified;
 
-    l = afs_snprintf(buf, len, "%llu.%llu.%llu.%u",
+    l = SNPRINTF(buf, len, "%llu.%llu.%llu.%u",
 		o->rwvol, o->vN, o->unique, o->tag);
     if (l >= len)
 	return shortbuffer;
@@ -152,7 +153,7 @@ convert_ometa_2_1(struct oparmFree *in, struct oparmT10 *out)
     return 0;
 }
 
-afs_int32
+static afs_int32
 oparmFree_equal(struct oparmFree *a, struct oparmFree *b)
 {
     if (a->rwvol != b->rwvol)

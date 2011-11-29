@@ -24,6 +24,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <dlfcn.h>
 #include <errno.h>
 #include <string.h>
 #include <sys/types.h>
@@ -91,6 +92,7 @@
 #include "sys/lock.h"
 #endif
 #include <rx/rx_globals.h>
+#include <afs/afsosd.h>
 
 #ifdef O_LARGEFILE
 #define afs_stat	stat64
@@ -118,10 +120,6 @@ static void *CheckSignal(void *);
 static afs_int32 Do_VLRegisterRPC(void);
 extern void checkOSDconnections();
 extern void TimeoutAsyncTransactions();
-extern void FillOsdTable();
-extern afs_uint64 max_move_osd_size;
-extern afs_uint64 get_max_move_osd_size();
-extern afs_int32 max_move_osd_size_set_by_hand;
 extern int registerthread();
 extern int swapthreadname();
 extern char *threadname();
@@ -212,6 +210,9 @@ int abort_threshold = 10;
 int udpBufSize = 0;		/* UDP buffer size for receive */
 int sendBufSize = 16384;	/* send buffer size */
 int saneacls = 0;		/* Sane ACLs Flag */
+#ifdef AFS_PTHREAD_ENV
+int libafsosd = 0;		/* load shared library libafsosd.so */
+#endif
 static int unsafe_attach = 0;   /* avoid inUse check on vol attach? */
 
 struct timeval tp;
@@ -482,16 +483,10 @@ FiveMinuteCheckLWP(void *unused)
 #else
     while (1) {
 #endif
-#ifdef AFS_RXOSD_SUPPORT
-        /* make sure connection to rxosd won't be reaped */
-        FillOsdTable();
-        checkOSDconnections();
-	if (!max_move_osd_size_set_by_hand)
-            max_move_osd_size = get_max_move_osd_size();
-#endif
+	if (osdvol)
+            (osdvol->op_osd_5min_check)();
 	now = FT_ApproxTime();
 	sleepseconds = 300 - (now % 300); /* synchronize with wall clock */
-#if defined(AFS_ENABLE_VICEP_ACCESS) || defined(AFS_RXOSD_SUPPORT)
 	wakeup = now + sleepseconds;
 	seconds = sleepseconds;
 	while (seconds > 0) {
@@ -500,18 +495,15 @@ FiveMinuteCheckLWP(void *unused)
 	    else
 		sleepseconds = 60;
 	    seconds -= sleepseconds;
-#endif
 #ifdef AFS_PTHREAD_ENV
 	    sleep(sleepseconds);
 #else /* AFS_PTHREAD_ENV */
 	    IOMGR_Sleep(sleepseconds);
 #endif /* AFS_PTHREAD_ENV */
-#if defined(AFS_ENABLE_VICEP_ACCESS) || defined(AFS_RXOSD_SUPPORT)
 	    TimeoutAsyncTransactions();
 	    now = FT_ApproxTime();
 	    seconds = wakeup - now;
 	}
-#endif
 	TransferRate();
 #ifdef AFS_DEMAND_ATTACH_FS
 	FS_STATE_WRLOCK;
@@ -1479,6 +1471,11 @@ ParseArgs(int argc, char *argv[])
 	else if (strcmp(argv[i], "-saneacls") == 0) {
 	    saneacls = 1;
 	}
+#ifdef AFS_PTHREAD_ENV
+	else if (strcmp(argv[i], "-libafsosd") == 0) {
+	    libafsosd = 1;
+	}
+#endif
 	else {
 	    return (-1);
 	}
@@ -2212,6 +2209,41 @@ main(int argc, char *argv[])
     }
     rx_SetMinProcs(tservice, 2);
     rx_SetMaxProcs(tservice, 4);
+
+#ifdef AFS_PTHREAD_ENV
+    if (libafsosd) {
+	extern struct vol_data_v0 vol_data_v0;
+	extern struct viced_data_v0 viced_data_v0;
+	extern struct osd_viced_data_v0 *osddata;
+	struct init_viced_inputs input = {
+	    &vol_data_v0,
+	    &viced_data_v0
+	};
+	struct init_viced_outputs output = {
+	    &osdvol,
+	    &osdviced,
+	    &osddata
+	};
+	code = load_libafsosd("init_viced_afsosd", &input, &output);
+	if (code) {
+	    ViceLog(0, ("Loading libafsosd.so failed with code %d, aborting\n",
+			code));
+	    return -1;
+	}
+        tservice =
+	    rx_NewService(0, 2, "afsosd", securityClasses,
+		      numClasses, (osdviced->op_RXAFSOSD_ExecuteRequest));
+        if (!tservice) {
+	    ViceLog(0, ("Failed to initialize afsosd rpc service.\n"));
+	    exit(-1);
+        }
+    }
+#endif
+
+    rx_SetMinProcs(tservice, 2);
+    rx_SetMaxProcs(tservice, lwps - 5);
+    rx_SetCheckReach(tservice, 1);
+    rx_SetServerIdleDeadErr(tservice, VNOSERVICE);
 
     /*
      * Enable RX hot threads, which allows the listener thread to trade

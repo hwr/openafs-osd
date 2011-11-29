@@ -66,9 +66,10 @@
 /*@printflike@*/ extern void Log(const char *format, ...);
 /*@printflike@*/ extern void Abort(const char *format, ...);
 
-#ifdef AFS_RXOSD_SUPPORT
-#include "../vol/vol_osd_prototypes.h"
+#include <afs/afsosd.h>
 int convertToOsd = 0;
+#ifdef AFS_PTHREAD_ENV
+int libafsosd = 0;
 #endif
 
 #define VolserVersion "2.0"
@@ -179,9 +180,8 @@ BKGLoop(void *unused)
 	if (loop == 10) {	/* reopen log every 5 minutes */
 	    loop = 0;
 	    ReOpenLog(AFSDIR_SERVER_VOLSERLOG_FILEPATH);
-#ifdef AFS_RXOSD_SUPPORT
-            FillOsdTable();
-#endif
+	    if (osdvol)
+                (osdvol->op_osd_5min_check)();
 #ifdef AFS_DEMAND_ATTACH_FS
 	    if (VInit >= 2) { /* look for newly mounted partitions */
 		VAttachPartitions();
@@ -413,9 +413,11 @@ main(int argc, char **argv)
 	    serverLogSyslogFacility = atoi(argv[code] + 8);
 	}
 #endif
-#ifdef AFS_RXOSD_SUPPORT
+#ifdef AFS_PTHREAD_ENV
         else if (strcmp(argv[code], "-convert") == 0)
             convertToOsd = 1;
+        else if (strcmp(argv[code], "-libafsosd") == 0)
+            libafsosd = 1;
 #endif
 	else {
 	    printf("volserver: unrecognized flag '%s'\n", argv[code]);
@@ -426,11 +428,10 @@ main(int argc, char **argv)
 		   "[-nojumbo] [-jumbo] [-rxmaxmtu <bytes>] [-rxbind] [-allow-dotted-principals] "
 		   "[-udpsize <size of socket buffer in bytes>] "
 		   "[-syslog[=FACILITY]] -mbpersleep <MB / 1 sec sleep>"
-#ifdef AFS_RXOSD_SUPPORT
-                   "[-convert] "
-#endif
+		   "%s"
 		   "[-enable_peer_stats] [-enable_process_stats] "
-		   "[-help]\n");
+		   "[-help]\n",
+		   libafsosd ?  "[-convert] ":"");
 #else
 	    printf("Usage: volserver [-log] [-p <number of processes>] "
 		   "[-auditlog <log path>] [-d <debug level>] "
@@ -472,6 +473,28 @@ main(int argc, char **argv)
     OpenLog(AFSDIR_SERVER_VOLSERLOG_FILEPATH);
 
     VOptDefaults(volumeServer, &opts);
+#ifdef AFS_PTHREAD_ENV
+    if (libafsosd) {
+        extern char *AFSVersion;
+        extern struct vol_data_v0 vol_data_v0;
+        extern struct volser_data_v0 volser_data_v0;
+        struct init_volser_inputs input = {
+            &vol_data_v0,
+            &volser_data_v0
+        };
+        struct init_volser_outputs output = {
+            &osdvol,
+            &osdvolser
+        };
+
+        code = load_libafsosd("init_volser_afsosd", &input, &output);
+        if (code) {
+            ViceLog(0, ("Loading libafsosd.so failed with code %d, aborting\n",
+                        code));
+            return -1;
+        }
+    }
+#endif
     if (VInitVolumePackage2(volumeServer, &opts)) {
 	Log("Shutting down: errors encountered initializing volume package\n");
 	exit(1);
@@ -582,6 +605,18 @@ main(int argc, char **argv)
 	Abort("rx_NewService");
     rx_SetMinProcs(service, 2);
     rx_SetMaxProcs(service, 4);
+
+#ifdef AFS_PTHREAD_ENV
+    if (libafsosd) {
+        service =
+            rx_NewService(0, 7, "afsosd", securityClasses,
+                      numClasses, (osdvolser->op_AFSVOLOSD_ExecuteRequest));
+        if (!service) {
+            ViceLog(0, ("Failed to initialize afsosd rpc service.\n"));
+            exit(-1);
+        }
+    }
+#endif
 
     LogCommandLine(argc, argv, "Volserver", VolserVersion, "Starting AFS",
 		   Log);

@@ -82,7 +82,7 @@ void TransferRate()
     afs_int32 basetime, i;
     afs_int32 inited = 0;
     
-    if (inited) {
+    if (!inited) {
 	for (i=0; i<96; i++) {
             KBpsRcvd[i] = 0;
             KBpsSent[i] = 0;

@@ -49,18 +49,14 @@ DIROBJS=buffer.o dir.o salvage.o
 VOLOBJS= vnode.o volume.o vutil.o partition.o fssync-client.o purge.o \
 	 clone.o devname.o common.o ihandle.o listinodes.o \
 	 namei_ops.o nuke.o salvsync-client.o daemon_com.o \
-	 vol_osd.o vol_osd.xdr.o
+	 libafsosd.o
 
 FSINTOBJS=# afsaux.o afscbint.cs.o afsint.ss.o afsint.xdr.o
 
 RXOBJS=rx_pthread.o
 
-RXOSDOBJS=rxosd.cs.o rxosd.xdr.o osddb.cs.o osddb.xdr.o osddbuser.o
-
 objects= ${VOLSEROBJS} ${LWPOBJS} ${LIBACLOBJS} \
 	 ${UTILOBJS} ${DIROBJS} ${VOLOBJS} ${FSINTOBJS} ${RXOBJS}
-
-osdobjects= ${RXOSDOBJS}
 
 vosobjects= ${VOSOBJS} ${VLSERVEROBJS} ${LIBACLOBJS} ${UTILOBJS} ${DIROBJS} \
 	${VOLOBJS} ${FSINTOBJS} ${RXOBJS}
@@ -76,6 +72,7 @@ all: volserver
 all_vos: vos
 
 COMPILE=${CC} ${CFLAGS} -c $?
+COMPILE2=${CC} ${CFLAGS} -c $<
 
 rx_pthread.o: ${RX}/rx_pthread.c
 	${COMPILE} -DDPF_FSLOG
@@ -96,8 +93,7 @@ volint.h: ${VOLSER}/volint.xg
 volint.cs.c: ${VOLSER}/volint.xg
 	${RXGEN} -x -C -o $@ ${VOLSER}/volint.xg
 volint.cs.o: volint.cs.c volint.h
-volint.cs.o: volint.cs.c
-	${COMPILE}
+	${COMPILE2}
 dumpstuff.o: ${VOLSER}/dumpstuff.c
 	${COMPILE} -I../volser
 volint.ss.o: ../volser/volint.ss.c
@@ -110,6 +106,8 @@ vsutils.o: ${VOLSER}/vsutils.c
 	${COMPILE}
 lockprocs.o: ${VOLSER}/lockprocs.c
 	${COMPILE}
+volosdprocs.o: ${VOLSER}/volosdprocs.c
+	${COMPILE} -I../volser
 
 assert.o: ${UTIL}/assert.c
 	${COMPILE}
@@ -219,26 +217,8 @@ ihandle.o: ${VOL}/ihandle.c
 namei_ops.o: ${VOL}/namei_ops.c
 	${COMPILE}
 
-vol_osd.xdr.o: ../vol/vol_osd.xdr.c
-	${COMPILE}
-
-vol_osd.o: ${VOL}/vol_osd.c
-	${COMPILE} -I../vol
-
-rxosd.cs.o: ../rxosd/rxosd.cs.c
-	${COMPILE}
-
-rxosd.xdr.o: ../rxosd/rxosd.xdr.c
-	${COMPILE}
-
-osddbuser.o: ${OSDDBSRC}/osddbuser.c
-	${COMPILE} -I../osddb
-
-osddb.cs.o: ../osddb/osddb.cs.c
-	${COMPILE}
-
-osddb.xdr.o: ../osddb/osddb.xdr.c
-	${COMPILE}
+libafsosd.o: ${VOL}/libafsosd.c
+	${COMPILE} 
 
 vos.o: ${VOLSER}/vos.c
 	${COMPILE}
@@ -247,14 +227,7 @@ vos: vos.o  ${VOSOBJS} ${VLSERVEROBJS} ${LIBS} ${TOP_LIBDIR}/libubik_pthread.a
 	${CC} ${LDFLAGS} -o vos vos.o ${VOSOBJS} ${VLSERVEROBJS} ${LIBS} ${TOP_LIBDIR}/libubik_pthread.a ${MT_LIBS} ${XLIBS}
 
 volserver: ${objects} ${LIBS}
-	case ${WITH_OBJECT_STORAGE} in \
-	YES) \
-	${MAKE} ${osdobjects} ; \
-	${CC} ${LDFLAGS} -o volserver ${objects} \
-		${osdobjects} ${LIBS} ${MT_LIBS} ${XLIBS} ;; \
-	*) \
-	${CC} ${LDFLAGS} -o volserver ${objects} ${LIBS} ${MT_LIBS} ${XLIBS};; \
-	esac
+	${CC} ${LDFLAGS} -o volserver ${objects} -ldl ${LIBS} ${MT_LIBS} ${XLIBS}
 
 install: volserver
 	${INSTALL} -d ${DESTDIR}${afssrvlibexecdir}

@@ -67,6 +67,8 @@
 #ifdef AFS_NT40_ENV
 #include <pthread.h>
 #endif
+#include <afs/afsosd.h>
+struct osd_vol_ops_v0 *osdvol = NULL;
 
 int VolumeChanged; /* hack to make dir package happy */
 
@@ -1088,11 +1090,10 @@ VnQuery(struct cmd_syndesc * as, void * rock)
 	printf("\t\tauthor            = %u\n", v.disk.author);
 	printf("\t\towner             = %u\n", v.disk.owner);
 	printf("\t\tparent            = %u\n", v.disk.parent);
-#ifdef AFS_RXOSD_SUPPORT
-        printf("\t\tosdMetadataIndex  = %u\n", v.disk.osdMetadataIndex);
-#else
-	printf("\t\tvnodeMagic        = %u\n", v.disk.vnodeMagic);
-#endif
+	if (osdvol)
+            printf("\t\tosdMetadataIndex  = %u\n", v.disk.osdMetadataIndex);
+	else
+	    printf("\t\tvnodeMagic        = %u\n", v.disk.vnodeMagic);
 
 	printf("\t\tlock = {\n");
 	printf("\t\t\tlockCount   = %d\n", v.disk.lock.lockCount);
@@ -1101,9 +1102,7 @@ VnQuery(struct cmd_syndesc * as, void * rock)
 
 	printf("\t\tserverModifyTime  = %u\n", v.disk.serverModifyTime);
 	printf("\t\tgroup             = %d\n", v.disk.group);
-#ifndef AFS_RXOSD_SUPPORT
 	printf("\t\tvn_ino_hi         = %d\n", v.disk.vn_ino_hi);
-#endif
 	printf("\t\tvn_length_hi      = %u\n", v.disk.vn_length_hi);
 	printf("\t}\n");
 

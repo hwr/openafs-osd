@@ -49,10 +49,9 @@
 #include "daemon_com.h"
 #include "fssync.h"
 #include "common.h"
-#ifdef AFS_RXOSD_SUPPORT
-#include "vol_osd.h"
-#include "vol_osd_prototypes.h"
-#endif
+#include <afs/afsosd.h>
+
+extern struct osd_vol_ops_v0 *osdvol;
 
 /* forward declarations */
 static int ObliterateRegion(Volume * avp, VnodeClass aclass, StreamHandle_t * afile,
@@ -121,10 +120,8 @@ ObliterateRegion(Volume * avp, VnodeClass aclass, StreamHandle_t * afile,
     int i;
     afs_int32 code;
     struct VnodeDiskObject *vnode = (struct VnodeDiskObject *)buf;
-#ifdef AFS_RXOSD_SUPPORT
-    struct osd_osd *decOsd = 0;
+    void *afsosdrock = NULL;
     afs_uint32 vN;
-#endif
 
     hitEOF = 0;
     vcp = &VnodeClassInfo[aclass];
@@ -142,35 +139,19 @@ ObliterateRegion(Volume * avp, VnodeClass aclass, StreamHandle_t * afile,
 	}
 	code = STREAM_READ(vnode, vcp->diskSize, 1, afile);
 	nscanned++;
-#ifdef AFS_RXOSD_SUPPORT
 	vN = (offset >> (vcp->logSize -1)) + 1 - aclass;
-#endif
 	offset += vcp->diskSize;
 	if (code != 1) {
 	    hitEOF = 1;
 	    break;
 	}
 	if (vnode->type != vNull) {
-#ifndef AFS_RXOSD_SUPPORT
-	    if (vnode->vnodeMagic != vcp->magic)
+	    if (!osdvol && vnode->vnodeMagic != vcp->magic)
 		goto fail;	/* something really wrong; let salvager take care of it */
-#endif /* AFS_RXOSD_SUPPORT */
 	    if (VNDISK_GET_INO(vnode))
 		inodes[iindex++] = VNDISK_GET_INO(vnode);
-#ifdef AFS_RXOSD_SUPPORT
-	    if (vnode->osdMetadataIndex) {
-		struct osdobjectList list;
-		afs_int32 code, i;
-
-		code = extract_objects(avp, vnode, vN, &list);
-		if (!code) {
-		    for (i=0; i<list.osdobjectList_len; i++) 
-			osd_AddIncDecItem(&decOsd, &list.osdobjectList_val[i], -1);
-		}
-		if (list.osdobjectList_len)
-		    free(list.osdobjectList_val);
-	    }
-#endif /* AFS_RXOSD_SUPPORT */
+	    if (vnode->type == vFile && osdvol)
+		(osdvol->op_purge_add_to_list)(avp, vnode, vN, &afsosdrock);
 	}
     }
 
@@ -190,10 +171,9 @@ ObliterateRegion(Volume * avp, VnodeClass aclass, StreamHandle_t * afile,
 	DOPOLL;
     }
     IH_CONDSYNC(V_linkHandle(avp));
-#ifdef AFS_RXOSD_SUPPORT
-    DoOsdIncDec(decOsd);
-    osd_DestroyIncDec(decOsd);
-#endif
+
+    if (osdvol)
+	(osdvol->op_purge_clean_up)(&afsosdrock);
 
     /* return the new offset */
     *aoffset = offset;
@@ -260,10 +240,8 @@ PurgeHeader_r(Volume * vp)
     IH_DEC(V_linkHandle(vp), vp->vnodeIndex[vLarge].handle->ih_ino, V_id(vp));
     IH_DEC(V_linkHandle(vp), vp->vnodeIndex[vSmall].handle->ih_ino, V_id(vp));
     IH_DEC(V_linkHandle(vp), vp->diskDataHandle->ih_ino, V_id(vp));
-#ifdef AFS_RXOSD_SUPPORT
     if (vp->osdMetadataHandle)
 	IH_DEC(V_linkHandle(vp), vp->osdMetadataHandle->ih_ino, V_id(vp));
-#endif /* AFS_RXOSD_SUPPORT */
 #ifdef AFS_NAMEI_ENV
     /* And last, but not least, the link count table itself. */
     IH_REALLYCLOSE(V_linkHandle(vp));

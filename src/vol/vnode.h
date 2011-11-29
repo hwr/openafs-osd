@@ -78,6 +78,11 @@ extern struct VnodeClassInfo VnodeClassInfo[nVNODECLASSES];
 #define bitNumberToVnodeNumber(b,class) ((VnodeId)(((b)<<VNODECLASSWIDTH)+(class)+1))
 #define vnodeIsDirectory(vnodeNumber) (vnodeIdToClass(vnodeNumber) == vLarge)
 
+struct OsdMetadata {
+    unsigned int    osdOnline:1;
+    unsigned int    osdIndex:31;
+};
+
 typedef struct VnodeDiskObject {
     unsigned int type:3;	/* Vnode is file, directory, symbolic link
 				 * or not allocated */
@@ -98,17 +103,17 @@ typedef struct VnodeDiskObject {
     UserId author;		/* Userid of the last user storing the file */
     UserId owner;		/* Userid of the user who created the file */
     VnodeId parent;		/* Parent directory vnode */
-#ifdef AFS_RXOSD_SUPPORT
-    unsigned int    osdFileOnline:1;
-    unsigned int    osdMetadataIndex:31;
-    /* establish an alias to be used for directory vnodes */
-#define osdPolicyIndex osdMetadataIndex
-#else
-    bit32 vnodeMagic;		/* Magic number--mainly for file server
+    union {
+	struct OsdMetadata o;
+	bit32 vnodemagic;	/* Magic number--mainly for file server
 				 * paranoia checks */
+    } u;
+#define osdMetadataIndex u.o.osdIndex
+#define osdFileOnline u.o.osdOnline
+#define vnodeMagic u.vnodemagic
+#define osdPolicyIndex osdMetadataIndex
 #   define	  SMALLVNODEMAGIC	0xda8c041F
 #   define	  LARGEVNODEMAGIC	0xad8765fe
-#endif
     /* Vnode magic can be removed, someday, if we run need the room.  Simply
      * have to be sure that the thing we replace can be VNODEMAGIC, rather
      * than 0 (in an old file system).  Or go through and zero the fields,
@@ -117,7 +122,7 @@ typedef struct VnodeDiskObject {
     Date serverModifyTime;	/* Used only by the server; for incremental
 				 * backup purposes */
     afs_int32 group;		/* unix group */
-#if defined(AFS_RXOSD_SUPPORT) && defined(AFS_NAMEI_ENV)
+#if 0
     afs_uint32 lastUsageTime;   /* used for HSM */
 #else
     afs_int32 vn_ino_hi;	/* high part of 64 bit inode. */
@@ -128,6 +133,7 @@ typedef struct VnodeDiskObject {
      * encryption key
      */
 } VnodeDiskObject;
+
 
 #define SIZEOF_SMALLDISKVNODE	64
 #define CHECKSIZE_SMALLVNODE\
@@ -242,14 +248,14 @@ typedef struct Vnode {
 #define VNDISK_SET_LEN(V, N) SplitInt64(N, (V)->vn_length_hi, (V)->length)
 
 #ifdef AFS_64BIT_IOPS_ENV
-#ifdef AFS_RXOSD_SUPPORT
+#ifdef AFS_NAMEI_ENV
 #define VN_GET_INO(V) ((Inode)(V)->disk.vn_ino_lo ? ((V)->disk.vn_ino_lo | \
 				(((Inode)(V)->disk.uniquifier)<<32)) : 0)
 #define VN_SET_INO(V, I) ((V)->disk.vn_ino_lo = (int)((I)&0xffffffff))
 #define VNDISK_GET_INO(V) ((Inode)(V)->vn_ino_lo ? ((V)->vn_ino_lo | \
 				(((Inode)(V)->uniquifier)<<32)) : 0)
 #define VNDISK_SET_INO(V, I) ((V)->vn_ino_lo = (int)((I)&0xffffffff))
-#else /* AFS_RXOSD_SUPPORT */
+#else /* AFS_NAMEI_ENV */
 #define VN_GET_INO(V) ((Inode)((V)->disk.vn_ino_lo | \
 			       ((V)->disk.vn_ino_hi ? \
 				(((Inode)(V)->disk.vn_ino_hi)<<32) : 0)))
@@ -265,7 +271,7 @@ typedef struct Vnode {
 #define VNDISK_SET_INO(V, I) ((V)->vn_ino_lo = (int)(I&0xffffffff), \
 			      ((V)->vn_ino_hi = (I) ? \
 			       (int)(((I)>>32)&0xffffffff) : 0))
-#endif /* AFS_RXOSD_SUPPORT */
+#endif /* AFS_NAMEI_ENV */
 #else /* AFS_64BIT_IOPS_ENV */
 #define VN_GET_INO(V) ((V)->disk.vn_ino_lo)
 #define VN_SET_INO(V, I) ((V)->disk.vn_ino_lo = (I))
@@ -300,6 +306,8 @@ extern Vnode *VAllocVnode_r(Error * ec, struct Volume *vp, VnodeType type);
 /*extern VFreeVnode();*/
 extern Vnode *VGetFreeVnode_r(struct VnodeClassInfo *vcp);
 extern Vnode *VLookupVnode(struct Volume * vp, VnodeId vnodeId);
+extern int VSyncVnode(struct Volume *vp, VnodeDiskObject *vd, afs_uint32 vN,
+		      int newtime);
 
 extern void AddToVVnList(struct Volume * vp, Vnode * vnp);
 extern void DeleteFromVVnList(Vnode * vnp);
@@ -309,5 +317,6 @@ extern void AddToVnHash(Vnode * vnp);
 extern void DeleteFromVnHash(Vnode * vnp);
 extern afs_int32 ListDiskVnode(struct Volume *vp, afs_uint32 vnodeNumber,
 			afs_uint32 **ptr, afs_uint32 length, char *aclbuf);
+extern int ListLockedVnodes(afs_uint32 *count, afs_uint32 maxcount, afs_uint32 **ptr);
 
 #endif /* _AFS_VOL_VNODE_H */

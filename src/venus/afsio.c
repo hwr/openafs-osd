@@ -190,6 +190,7 @@ struct wbuf {
 struct connectionLookup {
     afs_uint32 host;
     u_short port;
+    u_short service;
     struct rx_connection *conn;
 };
 
@@ -1196,16 +1197,42 @@ osd_io(struct osd_file *file, afs_uint64 offset, afs_int64 length,
 			p.type = 1;
 			p.RWparm_u.p1.offset = stripeoffset[l];
 			p.RWparm_u.p1.length = striperesid[l];
+			/* find out whether this is a 1.6 or 1.4 rxosd */
+			code = RXOSD_ProbeServer(conn);
                         if (storing) {
                             call[ll] = rx_NewCall(conn);
-                            code = StartRXOSD_write(call[ll], &obj->rock, &p, &o);
+			    if (code != RXGEN_OPCODE)
+                                code = StartRXOSD_write(call[ll], &obj->rock, &p, &o);
+			    else 
+                                code = StartRXOSD_write121(call[ll], obj->rock, 
+#ifdef NEW_OSD_FILE
+						obj->m.ometa_u.t.part_id,
+						obj->m.ometa_u.t.obj_id,
+#else
+						obj->part_id,
+						obj->obj_id,
+#endif
+						stripeoffset[l],
+						striperesid[l]);
 			    osd[ll] = obj->osd_id;
 			    ll += segm->nstripes;
                         } else {
                             afs_uint64 tlength;
                             XDR xdr;
                             call[l] = rx_NewCall(conn);
-                            code = StartRXOSD_read(call[l], &obj->rock, &p, &o);
+			    if (code != RXGEN_OPCODE)
+                                code = StartRXOSD_read(call[l], &obj->rock, &p, &o);
+			    else 
+                                code = StartRXOSD_read131(call[ll], obj->rock, 
+#ifdef NEW_OSD_FILE
+						obj->m.ometa_u.t.part_id,
+						obj->m.ometa_u.t.obj_id,
+#else
+						obj->part_id,
+						obj->obj_id,
+#endif
+						stripeoffset[l],
+						striperesid[l]);
                             xdrrx_create(&xdr, call[l], XDR_DECODE);
                             if (code || !xdr_uint64(&xdr, &tlength)) {
                                 fprintf(stderr, "DataXchange: couldn't read length of stripe %u in segment %u\n",
@@ -1496,6 +1523,7 @@ readAFSFile(AFSFid *Fid, afs_int32 *hosts, afs_int32 fd,
 	Len += OutStatus.Length;
 	ZeroInt64(Pos);
         if (OutStatus.FetchStatusProtocol & RX_OSD) {
+	    XDR xdr;
 	    memset(&a, 0, sizeof(struct async));
 	    struct osd_file *file;
 #ifdef NEW_OSD_FILE
@@ -1512,8 +1540,42 @@ readAFSFile(AFSFid *Fid, afs_int32 *hosts, afs_int32 fd,
 	    p.RWparm_u.p1.length = Len;
 	    transid = 0;
 	    while (1) {
-		code = RXAFS_StartAsyncFetch(RXConn, Fid, &p, &a, &transid,
+		struct AsyncParams Inputs, Outputs;
+		afs_int32 flag = 0;
+		afs_int32 len;
+		xdrlen_create(&xdr);
+		if (!xdr_afs_int32(&xdr, &flag)) 
+        	    return RXGEN_CC_MARSHAL;
+		if (!xdr_async(&xdr, &a))
+        	    return RXGEN_CC_MARSHAL;
+		len = xdr_getpos(&xdr);
+		if (len>MAXASYNCPARAMLEN) 
+		    return RXGEN_CC_MARSHAL;
+		xdr_destroy(&xdr);
+		buf = malloc(len);
+		xdrmem_create(&xdr, buf, len, XDR_ENCODE);
+		if (!xdr_afs_int32(&xdr, &flag)) 
+        	    return RXGEN_CC_MARSHAL;
+		if (!xdr_async(&xdr, &a))
+        	    return RXGEN_CC_MARSHAL;
+		Inputs.AsyncParams_val = buf;
+		Inputs.AsyncParams_len = len;
+    		Outputs.AsyncParams_val = NULL;
+		Outputs.AsyncParams_len = 0;
+		code = RXAFS_StartAsyncFetch(RXConn, Fid, Pos, Len,
+					     AFSOSD_BACKEND, &Inputs, &Outputs,
+					     &transid, &expires, &OutStatus,
+					     &CallBack);
+		free(buf);
+		if (!code) {
+		    xdrmem_create(&xdr, Outputs.AsyncParams_val,
+				  Outputs.AsyncParams_len, XDR_DECODE);
+		    if (!xdr_async(&xdr, &a))
+                        return RXGEN_CC_UNMARSHAL;
+		} else if (code == RXGEN_OPCODE) {
+		    code = RXAFS_StartAsyncFetch2(RXConn, Fid, &p, &a, &transid,
 					     &expires, &OutStatus, &CallBack);
+		}
 	        if (code != OSD_WAIT_FOR_TAPE)
 		    break;
 #ifdef AFS_PTHREAD_ENV
@@ -1538,7 +1600,7 @@ readAFSFile(AFSFid *Fid, afs_int32 *hosts, afs_int32 fd,
 	    code = osd_io(file, Pos, Len, 0, cl, RXConn, Fid);
 	    if (transid) {
 		afs_int32 code2;
-		code2 = RXAFS_EndAsyncFetch(RXConn, Fid, transid, 0, 0);
+		code2 = RXAFS_EndAsyncFetch1(RXConn, Fid, transid, 0, 0);
 		transid = 0;
 	    }
 	} else {
@@ -1756,7 +1818,7 @@ writeFile(struct cmd_syndesc *as, void *unused)
     afs_uint32 useHost;
     AFSFid Fid;
     int i = 0;
-    struct rx_connection *RXConn;
+    struct rx_connection *RXConn, *RXConn2;
     struct cellLookup *cl;
     struct rx_call *tcall;
     struct AFSVolSync tsync;
@@ -1901,8 +1963,18 @@ writeFile(struct cmd_syndesc *as, void *unused)
 	Len += tbuf->used;
     }
     protocol = OutStatus.FetchStatusProtocol;
-    if (protocol & POSSIBLY_OSD)
-        code = RXAFS_ApplyOsdPolicy(RXConn, &Fid, Pos + Len, &protocol);
+    if (protocol & POSSIBLY_OSD) {
+        RXConn2 = FindRXConnection(useHost, htons(AFSCONF_FILEPORT), 2, 
+					cl->sc[cl->scIndex], cl->scIndex);
+        if (!RXConn2) {
+            fprintf(stderr,"rx_NewConnection failed to server 0x%X service 2\n",
+                hosts[0]);
+            return -1;
+	}
+        code = RXAFSOSD_ApplyOsdPolicy(RXConn2, &Fid, Pos + Len, &protocol);
+	if (code == RXGEN_OPCODE)
+            code = RXAFS_ApplyOsdPolicy(RXConn, &Fid, Pos + Len, &protocol);
+    }
     gettimeofday(&opentime, &Timezone);
     if (verbose) {
         seconds = (float) (opentime.tv_sec + opentime.tv_usec *.000001
@@ -1932,8 +2004,54 @@ writeFile(struct cmd_syndesc *as, void *unused)
 	    p.RWparm_u.p4.offset = Pos;
 	    p.RWparm_u.p4.length = Len;
 	    p.RWparm_u.p4.filelength = Pos + Len;
-	    code = RXAFS_StartAsyncStore(RXConn, &Fid, &p, &a, &maxlength,
+	    while (1) {
+		XDR xdr;
+		struct AsyncParams Inputs, Outputs;
+		afs_int32 flag = 0;
+		afs_int32 len;
+	  	char *buf = NULL;
+		afs_uint64 maxlen;
+
+		xdrlen_create(&xdr);
+		if (!xdr_afs_int32(&xdr, &flag)) 
+        	    return RXGEN_CC_MARSHAL;
+		if (!xdr_async(&xdr, &a))
+        	    return RXGEN_CC_MARSHAL;
+		len = xdr_getpos(&xdr);
+		if (len>MAXASYNCPARAMLEN) 
+		    return RXGEN_CC_MARSHAL;
+		xdr_destroy(&xdr);
+		buf = malloc(len);
+		xdrmem_create(&xdr, buf, len, XDR_ENCODE);
+		if (!xdr_afs_int32(&xdr, &flag)) 
+        	    return RXGEN_CC_MARSHAL;
+		if (!xdr_async(&xdr, &a))
+        	    return RXGEN_CC_MARSHAL;
+		Inputs.AsyncParams_val = buf;
+		Inputs.AsyncParams_len = len;
+    		Outputs.AsyncParams_val = NULL;
+		Outputs.AsyncParams_len = 0;
+	        code = RXAFS_StartAsyncStore(RXConn, &Fid, Pos, Len, Pos + Len,
+					     AFSOSD_BACKEND, &Inputs, &Outputs,
+					     &maxlen, &transid, &expires, &OutStatus);
+		free(buf);
+		if (!code) {
+		    xdrmem_create(&xdr, Outputs.AsyncParams_val,
+				  Outputs.AsyncParams_len, XDR_DECODE);
+		    if (!xdr_async(&xdr, &a))
+                        return RXGEN_CC_UNMARSHAL;
+		} else if (code == RXGEN_OPCODE) {
+	            code = RXAFS_StartAsyncStore2(RXConn, &Fid, &p, &a, &maxlength,
 					 &transid, &expires, &OutStatus);
+		}
+	        if (code != OSD_WAIT_FOR_TAPE)
+		    break;
+#ifdef AFS_PTHREAD_ENV
+	        sleep(5);
+#else
+		IOMGR_Sleep(5);
+#endif
+	    }
 	    if (code) {
 	        fprintf(stderr, "RXAFS_StartAsyncStore returned %d\n", code);
 	        return code;
@@ -1952,13 +2070,18 @@ writeFile(struct cmd_syndesc *as, void *unused)
 #endif
 	    code = osd_io(file, Pos, Len, bufchain, cl, RXConn, &Fid);
 	    if (code) {
+	        aE.error = code;
 		worstCode = code;
-		break;
 	    }
 	    Pos += bytes;
 	    Len = 0;
 	    if (transid) {
-		if (aE.error) {
+		XDR xdr;
+		struct AsyncParams Inputs;
+		afs_int32 len;
+		char *buf = NULL;
+
+		if (aE.error) { /* Can presently not happen: no multiple copies */
 		    aE.asyncError_u.recovList.store_recoveryList_len = nreplace;
 		    aE.asyncError_u.recovList.store_recoveryList_val = 
 			(struct store_recovery *) malloc(
@@ -1971,8 +2094,24 @@ writeFile(struct cmd_syndesc *as, void *unused)
 			r->osd = replaceOSD[i];
 		    }
 		}
-		RXAFS_EndAsyncStore(RXConn, &Fid, transid, Pos + Len, 0, 0, 0,
-				code, &aE, &InStatus, &OutStatus);
+		xdrlen_create(&xdr);
+		if (!xdr_asyncError(&xdr, &aE))
+        	    return RXGEN_CC_MARSHAL;
+		len = xdr_getpos(&xdr);
+		if (len>MAXASYNCPARAMLEN) 
+		    return RXGEN_CC_MARSHAL;
+		xdr_destroy(&xdr);
+		buf = malloc(len);
+		xdrmem_create(&xdr, buf, len, XDR_ENCODE);
+		if (!xdr_asyncError(&xdr, &aE))
+        	    return RXGEN_CC_MARSHAL;
+		Inputs.AsyncParams_val = buf;
+		Inputs.AsyncParams_len = len;
+		code = RXAFS_EndAsyncStore(RXConn, &Fid, transid, Pos + Len,
+				AFSOSD_BACKEND, &Inputs, &InStatus, &OutStatus);
+		if (code == RXGEN_OPCODE)
+		    code = RXAFS_EndAsyncStore1(RXConn, &Fid, transid, Pos + Len,
+				 0, 0, 0, code, &aE, &InStatus, &OutStatus);
 		transid = 0;
 	        goto more;
 	    }
@@ -2265,7 +2404,9 @@ FindRXConnection(afs_uint32 host, u_short port, u_short service,
     } 
 
     for (i = 0; i < MAX_HOSTS; i++) {
-        if ((ConnLookup[i].host == host) && (ConnLookup[i].port == port)) 
+        if ((ConnLookup[i].host == host) 
+	&& (ConnLookup[i].port == port) 
+	&& (ConnLookup[i].service == service)) 
 		return ConnLookup[i].conn;
 	if (!ConnLookup[i].conn)
 	    break;
@@ -2278,6 +2419,7 @@ FindRXConnection(afs_uint32 host, u_short port, u_short service,
     if (ConnLookup[i].conn) {
 	ConnLookup[i].host = host;
 	ConnLookup[i].port = port;
+	ConnLookup[i].service = service;
     }
    
     return ConnLookup[i].conn;

@@ -72,7 +72,7 @@
 #include <rx/xdr.h>
 #include <afs/afsint.h>
 #include <afs/auth.h>
-#include "vol_osd.h"
+#include <afs/vol_osd.h>
 #include "nfs.h"
 #include <afs/errors.h>
 #include "lock.h"
@@ -101,10 +101,6 @@
 #include <strings.h>
 #endif
 
-#define USE_OSDDB	1
-#ifdef USE_OSDDB
-#endif
-
 #ifdef O_LARGEFILE
 #define afs_stat        stat64
 #define afs_fstat       fstat64
@@ -123,9 +119,20 @@
 #define NAMEI_UNIQSHIFT    32
 
 
-#ifdef AFS_RXOSD_SUPPORT
 #include <afs/rxosd.h>
+#include <afs/afsosd.h>
 #include <afs/vol_osd_inline.h>
+#include <afs/osddbuser.h>
+
+private char *libraryVersion = "OpenAFS 1.6.0-osd";
+private char *openafsVersion = NULL;
+#ifndef BUILD_SALVAGER
+#define MAX_MOVE_OSD_SIZE               1024*1024
+afs_uint64 max_move_osd_size = MAX_MOVE_OSD_SIZE;
+afs_int32 max_move_osd_size_set_by_hand = 0;
+
+struct vol_data_v0 *voldata = NULL;
+#endif
 
 #define WRITING		1	/* same as in afsint.xg */
 
@@ -152,10 +159,9 @@ static afs_int32 add_simple_osdFile(Volume *vol, struct VnodeDiskObject *vd,
 				afs_uint32 flag);
 static afs_int32 read_local_file(void *rock, char *buf, afs_int32 len);
 
-afs_int64 minOsdFileSize = -1;
-t10rock dummyrock = {0, 0};
-int believe = 1;
-int fastRestore = 0;
+private afs_int64 minOsdFileSize = -1;
+private t10rock dummyrock = {0, 0};
+private int believe = 1;
 
 struct osdMetadaEntry {
     afs_uint32 magic;  /* contains magic number for entry 0 */
@@ -171,6 +177,7 @@ struct osdMetadaEntry {
 };
 
 #ifndef BUILD_SALVAGER
+int fastRestore = 0;
 /*
  * Wrapper for RPCs to rxosd to handle restarts correctly
  */
@@ -199,8 +206,8 @@ rxosd_create(afs_uint32 osd, afs_uint64 p_id, afs_uint64 o_id,
 	    PutOsdConn(&conn);
 	    if (!code) {	/* Little paranoia ... */
 		if ((*new_id & TAGBITSMASK) != (o_id & TAGBITSMASK)) {
-		    Log("rxosd_create: osd %u returned wrong new_id 0x%llx for object 0x%llx\n",
-				osd, *new_id, o_id);
+		    ViceLog(0, ("rxosd_create: osd %u returned wrong new_id 0x%llx for object 0x%llx\n",
+				osd, *new_id, o_id));
 		    code = EIO;
 		}
 	    }
@@ -208,7 +215,7 @@ rxosd_create(afs_uint32 osd, afs_uint64 p_id, afs_uint64 o_id,
             code = EIO;
 	if (code == RXOSD_RESTARTING) {
 	    if (!informed) {
-	    	Log("rxosd_create waiting for restarting osd %u\n", osd);
+	    	ViceLog(0,("rxosd_create waiting for restarting osd %u\n", osd));
 		informed = 1;
 	    }
 #ifdef AFS_PTHREAD_ENV
@@ -237,8 +244,8 @@ rxosd_online(struct ometa *om, afs_int32 flag, struct exam *e)
             code = EIO;
 	if (code == RXOSD_RESTARTING) {
 	    if (!informed) {
-	    	Log("rxosd_online waiting for restarting osd %u\n",
-		    om->ometa_u.t.osd_id);
+	    	ViceLog(0,("rxosd_online waiting for restarting osd %u\n",
+		    om->ometa_u.t.osd_id));
 		informed = 1;
 	    }
 #ifdef AFS_PTHREAD_ENV
@@ -315,9 +322,9 @@ rxosd_create_archive(struct ometa *om, struct osd_segm_descList *list, afs_int32
 	    if (!code) {	/* Little paranoia ... */
 		if ((md5->o.ometa_u.t.obj_id & TAGBITSMASK) 
 		  != (om->ometa_u.t.obj_id & TAGBITSMASK)) {
-		    Log("rxosd_create_archive: osd %u returned wrong new_id 0x%llx for object 0x%llx\n",
+		    ViceLog(0, ("rxosd_create_archive: osd %u returned wrong new_id 0x%llx for object 0x%llx\n",
 				om->ometa_u.t.osd_id, md5->o.ometa_u.t.obj_id,
-			        om->ometa_u.t.obj_id);
+			        om->ometa_u.t.obj_id));
 		    code = EIO;
 		}
 	    }
@@ -325,8 +332,8 @@ rxosd_create_archive(struct ometa *om, struct osd_segm_descList *list, afs_int32
             code = EIO;
 	if (code == RXOSD_RESTARTING) {
 	    if (!informed) {
-	    	Log("rxosd_create_archive waiting for restarting osd %u\n",
-		    om->ometa_u.t.osd_id);
+	    	ViceLog(0, ("rxosd_create_archive waiting for restarting osd %u\n",
+		    om->ometa_u.t.osd_id));
 		informed = 1;
 	    }
 #ifdef AFS_PTHREAD_ENV
@@ -404,8 +411,8 @@ rxosd_restore_archive(struct ometa *om, afs_uint32 user, struct osd_segm_descLis
             code = EIO;
 	if (code == RXOSD_RESTARTING) {
 	    if (!informed) {
-	    	Log("rxosd_restore_archive waiting for restarting osd %u\n",
-		    om->ometa_u.t.osd_id);
+	    	ViceLog(0, ("rxosd_restore_archive waiting for restarting osd %u\n",
+		    om->ometa_u.t.osd_id));
 		informed = 1;
 	    }
 #ifdef AFS_PTHREAD_ENV
@@ -446,7 +453,7 @@ rxosd_CopyOnWrite(afs_uint32 osd, afs_uint64 p_id, afs_uint64 o_id,
             code = EIO;
 	if (code == RXOSD_RESTARTING) {
 	    if (!informed) {
-	    	Log("rxosd_CopyOnWrite waiting for restarting osd %u\n", osd);
+	    	ViceLog(0, ("rxosd_CopyOnWrite waiting for restarting osd %u\n", osd));
 		informed = 1;
 	    }
 #ifdef AFS_PTHREAD_ENV
@@ -483,7 +490,7 @@ rxosd_incdec(afs_uint32 osd, afs_uint64 p_id, afs_uint64 o_id, afs_int32 what)
             code = EIO;
 	if (code == RXOSD_RESTARTING) {
 	    if (!informed) {
-	    	Log("rxosd_incdec waiting for restarting osd %u\n", osd);
+	    	ViceLog(0, ("rxosd_incdec waiting for restarting osd %u\n", osd));
 		informed = 1;
 	    }
 #ifdef AFS_PTHREAD_ENV
@@ -545,7 +552,7 @@ rxosd_examine(afs_uint32 osd, afs_uint64 p_id, afs_uint64 o_id,
             code = EIO;
         if (code == RXOSD_RESTARTING) {
             if (!informed) {
-                Log("rxosd_examine waiting for restarting osd %u\n", osd);
+                ViceLog(0, ("rxosd_examine waiting for restarting osd %u\n", osd));
                 informed = 1;
             }
 #ifdef AFS_PTHREAD_ENV
@@ -584,7 +591,7 @@ rxosd_copy(afs_uint32 osd, afs_uint64 from_p, afs_uint64 to_p,
             code = EIO;
 	if (code == RXOSD_RESTARTING) {
 	    if (!informed) {
-	    	Log("rxosd_copy waiting for restarting osd %u\n", osd);
+	    	ViceLog(0, ("rxosd_copy waiting for restarting osd %u\n", osd));
 		informed = 1;
 	    }
 #ifdef AFS_PTHREAD_ENV
@@ -625,7 +632,7 @@ rxosd_hardlink(afs_uint32 osd, afs_uint64 p_id,  afs_uint64 o_id,
             code = EIO;
 	if (code == RXOSD_RESTARTING) {
 	    if (!informed) {
-	    	Log("rxosd_hardlink waiting for restarting osd %u\n", osd);
+	    	ViceLog(0, ("rxosd_hardlink waiting for restarting osd %u\n", osd));
 		informed = 1;
 	    }
 #ifdef AFS_PTHREAD_ENV
@@ -671,8 +678,8 @@ AllocMetadataEntry(FdHandle_t *callerfd, Volume *vol, afs_int32 *number,
     struct osdMetadaEntry *entry = 0;
 
     if (!vol->osdMetadataHandle) {
-	Log("AllocMetadataEntry: volOsdMetadataHandle not set for volume %u\n",
-		V_id(vol));
+	ViceLog(0, ("AllocMetadataEntry: volOsdMetadataHandle not set for volume %u\n",
+		V_id(vol)));
 	code = EIO; 
 	goto bad;
     }
@@ -683,15 +690,15 @@ AllocMetadataEntry(FdHandle_t *callerfd, Volume *vol, afs_int32 *number,
 	fd = myfd;
     }
     if (!fd) {
-	Log("AllocMetadataEntry: couldn't open metadata file for volume %u\n",
-		V_id(vol));
+	ViceLog(0, ("AllocMetadataEntry: couldn't open metadata file for volume %u\n",
+		V_id(vol)));
 	code = EIO; 
 	goto bad;
     }
     ObtainWriteLock(&vol->lock);
     entry = (struct osdMetadaEntry *)malloc(MAXOSDMETADATAENTRYLEN);
     if (!entry) {
-	Log("AllocMetadataEntry: couldn't alloc entry\n");
+	ViceLog(0, ("AllocMetadataEntry: couldn't alloc entry\n"));
 	code = ENOMEM;
 	goto bad;
     }
@@ -705,8 +712,8 @@ AllocMetadataEntry(FdHandle_t *callerfd, Volume *vol, afs_int32 *number,
 	entry->data[0] = 1; /* allocation of the alloc table itself */
     } else {
 	if (bytes < MINOSDMETADATAENTRYLEN || bytes < entry->length) {
-	    Log("AllocMetadataEntry: read failed at offset %llu for volume %u\n",
-			offset, V_id(vol));
+	    ViceLog(0, ("AllocMetadataEntry: read failed at offset %llu for volume %u\n",
+			offset, V_id(vol)));
 	    code = EIO;
 	    goto bad;
 	}
@@ -735,8 +742,8 @@ AllocMetadataEntry(FdHandle_t *callerfd, Volume *vol, afs_int32 *number,
 		offset = entry->next * (*entrylength);
 	        if ((FDH_SEEK(fd, offset, SEEK_SET) != offset)
                  || (FDH_READ(fd, entry, *entrylength) != *entrylength)) {
-	    	    Log("AllocMetadataEntry: read failed at offset %llu for volume %u\n",
-				offset, V_id(vol));
+	    	    ViceLog(0, ("AllocMetadataEntry: read failed at offset %llu for volume %u\n",
+				offset, V_id(vol)));
 	    	    code = EIO;
 	    	    goto bad;
 	        }
@@ -744,8 +751,8 @@ AllocMetadataEntry(FdHandle_t *callerfd, Volume *vol, afs_int32 *number,
 		entry->next = base;
 	        if ((FDH_SEEK(fd, offset, SEEK_SET) != offset)
                  || (FDH_WRITE(fd, entry, *entrylength) != *entrylength)) {
-	    	    Log("AllocMetadataEntry: write failed at offset %llu for volume %u\n",
-				offset, V_id(vol));
+	    	    ViceLog(0, ("AllocMetadataEntry: write failed at offset %llu for volume %u\n",
+				offset, V_id(vol)));
 	    	    code = EIO;
 	    	    goto bad;
 		}
@@ -760,8 +767,8 @@ AllocMetadataEntry(FdHandle_t *callerfd, Volume *vol, afs_int32 *number,
     entry->timestamp = FT_ApproxTime();
     if ((FDH_SEEK(fd, offset, SEEK_SET) != offset)
      || (FDH_WRITE(fd, entry, *entrylength) != *entrylength)) {
-    	Log("AllocMetadataEntry: write failed at offset %llu for volume %u\n",
-				offset, V_id(vol));
+    	ViceLog(0, ("AllocMetadataEntry: write failed at offset %llu for volume %u\n",
+				offset, V_id(vol)));
     	code = EIO;
 	goto bad;
     }
@@ -791,14 +798,14 @@ FreeMetadataEntry( FdHandle_t *callerfd, Volume *vol, afs_uint32 n)
     struct osdMetadaEntry *entry = 0;
    
     if (!vol->osdMetadataHandle) {
-	Log("FreeMetadataEntry: volOsdMetadataHandle not set for volume %u\n",
-		V_id(vol));
+	ViceLog(0, ("FreeMetadataEntry: volOsdMetadataHandle not set for volume %u\n",
+		V_id(vol)));
 	code = EIO; 
 	goto bad;
     }
     if (n == 0) {
-	Log("FreeMetadataEntry: trying to free entry 0 in volume %u\n",
-		V_id(vol));
+	ViceLog(0, ("FreeMetadataEntry: trying to free entry 0 in volume %u\n",
+		V_id(vol)));
 	code = EIO; 
 	goto bad;
     }
@@ -808,8 +815,8 @@ FreeMetadataEntry( FdHandle_t *callerfd, Volume *vol, afs_uint32 n)
     else {
         myfd = IH_OPEN(vol->osdMetadataHandle);
         if (!myfd) {
-	    Log("FreeMetadataEntry: couldn't open metadata file for volume %u\n",
-		V_id(vol));
+	    ViceLog(0, ("FreeMetadataEntry: couldn't open metadata file for volume %u\n",
+		V_id(vol)));
 	    code = EIO; 
 	    goto bad;
         }
@@ -817,7 +824,7 @@ FreeMetadataEntry( FdHandle_t *callerfd, Volume *vol, afs_uint32 n)
     }
     entry = (struct osdMetadaEntry *)malloc(MAXOSDMETADATAENTRYLEN);
     if (!entry) {
-	Log("FreeMetadataEntry: couldn't alloc entry\n");
+	ViceLog(0, ("FreeMetadataEntry: couldn't alloc entry\n"));
 	code = ENOMEM;
 	goto bad;
     }
@@ -826,8 +833,8 @@ FreeMetadataEntry( FdHandle_t *callerfd, Volume *vol, afs_uint32 n)
     bytes = FDH_READ(fd, entry, MAXOSDMETADATAENTRYLEN);
     entrylength = entry->length;
     if (bytes < MINOSDMETADATAENTRYLEN || bytes < entrylength) {
-	Log("AllocMetadataEntry: read failed at offset %llu for volume %u\n",
-			offset, V_id(vol));
+	ViceLog(0, ("AllocMetadataEntry: read failed at offset %llu for volume %u\n",
+			offset, V_id(vol)));
 	code = EIO;
 	goto bad;
     }
@@ -836,16 +843,16 @@ FreeMetadataEntry( FdHandle_t *callerfd, Volume *vol, afs_uint32 n)
     bitsPerEntry = (ep - bp) << 3; 
     while (n > bitsPerEntry) {
 	if (!entry->next) {
-	    Log("FreeMetadataEntry: alloc table too short for %d in volume %u\n",
-				n, V_id(vol));
+	    ViceLog(0, ("FreeMetadataEntry: alloc table too short for %d in volume %u\n",
+				n, V_id(vol)));
 	    code = EIO;
 	    goto bad;
 	}
 	offset = entry->next * entrylength;
 	if ((FDH_SEEK(fd, offset, SEEK_SET) != offset)
           || (FDH_READ(fd, entry, entrylength) != entrylength)) {
-	    Log("FreeMetadataEntry: read failed at offset %llu for volume %u\n",
-				offset, V_id(vol));
+	    ViceLog(0, ("FreeMetadataEntry: read failed at offset %llu for volume %u\n",
+				offset, V_id(vol)));
 	    code = EIO;
 	    goto bad;
 	}
@@ -859,14 +866,14 @@ FreeMetadataEntry( FdHandle_t *callerfd, Volume *vol, afs_uint32 n)
         entry->timestamp = FT_ApproxTime();
 	if ((FDH_SEEK(fd, offset, SEEK_SET) != offset)
           || (FDH_WRITE(fd, entry, entrylength) != entrylength)) {
-	    Log("FreeMetadataEntry: write failed at offset %llu for volume %u\n",
-				offset, V_id(vol));
+	    ViceLog(0, ("FreeMetadataEntry: write failed at offset %llu for volume %u\n",
+				offset, V_id(vol)));
 	    code = EIO;
 	    goto bad;
 	}
     } else 
-	Log("FreeMetadataEntry: trying to free in volume %u entry %d which was not allocated\n",
-		V_id(vol), n);
+	ViceLog(0, ("FreeMetadataEntry: trying to free in volume %u entry %d which was not allocated\n",
+		V_id(vol), n));
 bad:
     ReleaseWriteLock(&vol->lock);
     if (myfd)
@@ -890,7 +897,7 @@ FreeMetadataEntryChain(Volume *vol, afs_uint32 n, afs_uint32 vN, afs_uint32 vU)
 	return EIO;
     entry = (struct osdMetadaEntry *)malloc(MAXOSDMETADATAENTRYLEN);
     if (!entry) {
-	Log("FreeMetadataEntryChain: couldn't alloc entry\n");
+	ViceLog(0, ("FreeMetadataEntryChain: couldn't alloc entry\n"));
 	code = ENOMEM;
 	goto bad;
     }
@@ -906,14 +913,14 @@ FreeMetadataEntryChain(Volume *vol, afs_uint32 n, afs_uint32 vN, afs_uint32 vU)
         offset = n * entrylength;
         if ((FDH_SEEK(fd, offset, SEEK_SET) != offset)
           ||  (FDH_READ(fd, entry, entrylength) != entrylength)) {
-	    Log("FreeMetadataEntryChain: FDH_READ failed in volume %u at offset %llu\n",
-			V_id(vol), offset);
+	    ViceLog(0, ("FreeMetadataEntryChain: FDH_READ failed in volume %u at offset %llu\n",
+			V_id(vol), offset));
 	    code = EIO;
 	    goto bad;
         }
 	if (entry->vnode != vN || entry->unique != vU) {
-	    Log("FreeMetadataEntryChain: wrong entry %u in chain of volume %u was allocated for %u.%u freed as from vnode %u.%u\n",
-			n, V_id(vol), entry->vnode, entry->unique, vN, vU);
+	    ViceLog(0, ("FreeMetadataEntryChain: wrong entry %u in chain of volume %u was allocated for %u.%u freed as from vnode %u.%u\n",
+			n, V_id(vol), entry->vnode, entry->unique, vN, vU));
 	    code = EIO;
 	    goto bad;
 	}
@@ -921,8 +928,8 @@ FreeMetadataEntryChain(Volume *vol, afs_uint32 n, afs_uint32 vN, afs_uint32 vU)
 	next = entry->next;
         if ((FDH_SEEK(fd, offset, SEEK_SET) != offset)
           ||  (FDH_WRITE(fd, entry, entrylength) != entrylength)) {
-	    Log("FreeMetadataEntryChain: FDH_WRITE failed in volume %u at offset %llu\n",
-			V_id(vol), offset);
+	    ViceLog(0, ("FreeMetadataEntryChain: FDH_WRITE failed in volume %u at offset %llu\n",
+			V_id(vol), offset));
 	    code = EIO;
 	    goto bad;
         }
@@ -937,14 +944,15 @@ bad:
 }
 #endif /* BUILD_SALVAGER */
 
-afs_int32
-GetOsdEntryLength(FdHandle_t *fd, struct osdMetadaEntry **entry)
+static afs_int32
+GetOsdEntryLength(FdHandle_t *fd, void **rock)
 {
     afs_uint32 buf[3];
     struct osdMetadaEntry *tentry = (struct osdMetadaEntry *)&buf;
+    struct osdMetadaEntry *entry = NULL;
     afs_int32 bytes;
 
-    *entry = 0;
+    *rock = NULL;
     if (!fd)
 	return 0;
     FDH_SEEK(fd, 0, SEEK_SET);
@@ -953,34 +961,36 @@ GetOsdEntryLength(FdHandle_t *fd, struct osdMetadaEntry **entry)
 	return 0;
     if (tentry->magic != OSDMETAMAGIC)
 	return 0;
-    *entry = (struct osdMetadaEntry *)malloc(MAXOSDMETADATAENTRYLEN);
+    entry = (struct osdMetadaEntry *)malloc(MAXOSDMETADATAENTRYLEN);
+    *rock = entry;
     return tentry->length;
 }
    
-afs_int32
+static afs_int32
 SalvageOsdMetadata(FdHandle_t *fd, struct VnodeDiskObject *vd, afs_uint32 vn,
-			afs_uint32 entrylength, struct osdMetadaEntry *entry,
+			afs_uint32 entrylength, void *rock,
 			afs_int32 Testing)
 {
     afs_uint64 offset;
     afs_int32 bytes;
+    struct osdMetadaEntry *entry = (struct osdMetadaEntry *) rock;
 
-    if (vd->type !=vFile || !vd->osdMetadataIndex)
+    if (vd->type != vFile || !vd->osdMetadataIndex)
 	return 0;
     if (!fd) {
-	Log("SalvageOsdMetadata: no fd\n");
+	ViceLog(0, ("SalvageOsdMetadata: no fd\n"));
 	return EIO;
     }
     offset = vd->osdMetadataIndex * entrylength;
     if ((FDH_SEEK(fd, offset, SEEK_SET) != offset)
       || (FDH_READ(fd, entry, entrylength) != entrylength)) {
- 	Log("SalvageOsdMetadata: entry %u not found for %u.%u\n",
-		vd->osdMetadataIndex, vn, vd->uniquifier);
+ 	ViceLog(0, ("SalvageOsdMetadata: entry %u not found for %u.%u\n",
+		vd->osdMetadataIndex, vn, vd->uniquifier));
 	goto bad;
     } 
     if (!entry->used || entry->vnode != vn || entry->unique != vd->uniquifier) {
- 	Log("SalvageOsdMetadata: wrong entry %u for %u.%u\n",
-		vd->osdMetadataIndex, vn, vd->uniquifier);
+ 	ViceLog(0, ("SalvageOsdMetadata: wrong entry %u for %u.%u\n",
+		vd->osdMetadataIndex, vn, vd->uniquifier));
 	goto bad;
     } 
     return 0;
@@ -991,7 +1001,7 @@ bad:
     return EIO;
 }
 
-afs_uint32
+static afs_uint32
 osd_metadata_time(Volume *vol, struct VnodeDiskObject *vd)
 {
     struct osdMetadaEntry entry;
@@ -1004,22 +1014,22 @@ osd_metadata_time(Volume *vol, struct VnodeDiskObject *vd)
 	return 0;
     fd = IH_OPEN(vol->osdMetadataHandle);
     if (!fd) {
- 	Log("osd_metadata_time: couldn't open metadata file of volume %u\n",
-		V_id(vol));
+ 	ViceLog(0, ("osd_metadata_time: couldn't open metadata file of volume %u\n",
+		V_id(vol)));
 	return 0;
     }
     if ((FDH_SEEK(fd, offset, SEEK_SET) != offset)
       || (FDH_READ(fd, &entry, sizeof(entry)) != sizeof(entry))) {
- 	Log("osd_metadata_time: entry not found for %u.%u\n",
-		V_id(vol), 0);
+ 	ViceLog(0, ("osd_metadata_time: entry not found for %u.%u\n",
+		V_id(vol), 0));
 	goto bad;
     } 
     entrylength = entry.length;
     offset = vd->osdMetadataIndex * entrylength;
     if ((FDH_SEEK(fd, offset, SEEK_SET) != offset)
       || (FDH_READ(fd, &entry, sizeof(entry)) != sizeof(entry))) {
- 	Log("osd_metadata_time: entry not found for %u.%u\n",
-		V_id(vol), vd->osdMetadataIndex);
+ 	ViceLog(0, ("osd_metadata_time: entry not found for %u.%u\n",
+		V_id(vol), vd->osdMetadataIndex));
 	goto bad;
     } 
     if (entry.used && entry.unique == vd->uniquifier) 
@@ -1064,14 +1074,14 @@ FillMetadataBuffer(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN,
 	return;
     entry = (struct osdMetadaEntry *)malloc(MAXOSDMETADATAENTRYLEN);
     if (!entry) {
-	Log("FillMetadataBuffer: couldn't alloc entry\n");
+	ViceLog(0, ("FillMetadataBuffer: couldn't alloc entry\n"));
 	goto bad;
     }
     FDH_SEEK(fd, offset, SEEK_SET);
     bytes = FDH_READ(fd, entry, MAXOSDMETADATAENTRYLEN); 
     if (bytes < MINOSDMETADATAENTRYLEN || bytes < entry->length) {
-	Log("FillMetadataBuffer: read failed at offset %llu for volume %u\n",
-			offset, V_id(vol));
+	ViceLog(0, ("FillMetadataBuffer: read failed at offset %llu for volume %u\n",
+			offset, V_id(vol)));
 	goto bad;
     }
     entrylength = entry->length;
@@ -1081,23 +1091,24 @@ FillMetadataBuffer(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN,
         offset = index * entrylength;
         if ((FDH_SEEK(fd, offset, SEEK_SET) != offset)
           || (FDH_READ(fd, entry, entrylength) != entrylength)) {
-	    Log("FillMetadataBuffer: read failed at offset %llu for %u.%u.%u\n",
-			offset, V_id(vol), vN, vd->uniquifier);
+	    ViceLog(0, ("FillMetadataBuffer: read failed at offset %llu for %u.%u.%u\n",
+			offset, V_id(vol), vN, vd->uniquifier));
 	    goto bad;
         }
 	if (entry->vnode != vN || entry->unique != vd->uniquifier) {
-	    Log("FillMetadataBuffer: metadata entry %u doesn't belong to %u.%u.%u\n",
-			index, V_id(vol), vN, vd->uniquifier);
+	    ViceLog(0, ("FillMetadataBuffer: metadata entry %u doesn't belong to %u.%u.%u\n",
+			index, V_id(vol), vN, vd->uniquifier));
 	    mh->length = 0;
 	    goto bad;
 	}
 	if (!entry->used)
-	    Log("FillMetadataBuffer: metadata entry %u of to %u.%u.%u not in use\n",
-			index, V_id(vol), vN, vd->uniquifier);
+	    ViceLog(0, ("FillMetadataBuffer: metadata entry %u of to %u.%u.%u not in use\n",
+			index, V_id(vol), vN, vd->uniquifier));
         maxlength =  &mh->data[MAX_OSD_METADATA_LENGTH] - bp;
 	tlen = entry->length;
         if (tlen > maxlength) {
-	    Log("FillMetadataBuffer: metadata too long in volume %u\n", V_id(vol));
+	    ViceLog(0, ("FillMetadataBuffer: metadata too long in volume %u\n",
+			 V_id(vol)));
 	    goto bad;
         }
         memcpy(bp, &entry->data, tlen);
@@ -1137,7 +1148,7 @@ GetMetadataByteString(Volume *vol, VnodeDiskObject *vd, char **rock, char **data
 }
 
 afs_int32
-AllocMetadataByteString(char **rock, char **data, afs_int32 **length)
+AllocMetadataByteString(void **rock, byte **data, afs_int32 **length)
 {
     struct metadataBuffer *mh;
     mh = (struct metadataBuffer *) malloc(sizeof(struct metadataBuffer));
@@ -1153,8 +1164,9 @@ AllocMetadataByteString(char **rock, char **data, afs_int32 **length)
  
 afs_int32
 FlushMetadataHandle(Volume *vol, struct VnodeDiskObject *vd, 
-			afs_uint32 vN, struct metadataBuffer *mh, int locked)
+			afs_uint32 vN, void *mrock, int locked)
 {
+    struct metadataBuffer *mh = (struct metadataBuffer *) mrock;
     FdHandle_t *fd = 0;
     char *bp;
     afs_uint32 entrylength, rescount;
@@ -1173,10 +1185,10 @@ FlushMetadataHandle(Volume *vol, struct VnodeDiskObject *vd,
     oldindex = vd->osdMetadataIndex;
     if (oldindex) {	/* try first to update in place */
 	afs_int32 length;
-	entrylength = GetOsdEntryLength(fd, &entry);
+	entrylength = GetOsdEntryLength(fd, (void **)&entry);
 	if (!entrylength) {
-	    Log("FlushMetadataHandle: GetOsdEntryLength failed in vol. %u\n",
-		V_id(vol));
+	    ViceLog(0, ("FlushMetadataHandle: GetOsdEntryLength failed in vol. %u\n",
+		V_id(vol)));
 	    code = EIO;
 	    goto bad;
 	}
@@ -1185,8 +1197,8 @@ FlushMetadataHandle(Volume *vol, struct VnodeDiskObject *vd,
 	    offset = oldindex * entrylength;
 	    if ((FDH_SEEK(fd, offset, SEEK_SET) != offset) 
 	      || (FDH_READ(fd, entry, entrylength) != entrylength)) {
-	        Log("FlushMetadataHandle: write failed at offset %llu in volume %u\n",
-			offset, V_id(vol));
+	        ViceLog(0, ("FlushMetadataHandle: write failed at offset %llu in volume %u\n",
+			offset, V_id(vol)));
 		code = EIO;
 		goto bad;
 	    }
@@ -1199,8 +1211,8 @@ FlushMetadataHandle(Volume *vol, struct VnodeDiskObject *vd,
 		entry->timestamp = FT_ApproxTime();
 	        if ((FDH_SEEK(fd, offset, SEEK_SET) != offset) 
 	          || (FDH_WRITE(fd, entry, entrylength) != entrylength)) {
-	            Log("FlushMetadataHandle: write failed at offset %llu in volume %u\n",
-				offset, V_id(vol));
+	            ViceLog(0, ("FlushMetadataHandle: write failed at offset %llu in volume %u\n",
+				offset, V_id(vol)));
 		    code = EIO;
 		    goto bad;
 	        }
@@ -1212,7 +1224,7 @@ FlushMetadataHandle(Volume *vol, struct VnodeDiskObject *vd,
     if (!entry)
         entry = (struct osdMetadaEntry *)malloc(MAXOSDMETADATAENTRYLEN);
     if (!entry) {
-	Log("FlushMetadataHandle: couldn't alloc entry\n");
+	ViceLog(0, ("FlushMetadataHandle: couldn't alloc entry\n"));
 	goto bad;
     }
     memset(entry, 0, MAXOSDMETADATAENTRYLEN);
@@ -1224,15 +1236,15 @@ FlushMetadataHandle(Volume *vol, struct VnodeDiskObject *vd,
 	tindex = index;
         code = AllocMetadataEntry(fd, vol, &index, &entrylength);
 	if (code) {
-	    Log("FlushMetadataHandle: AllocMetadataEntry failed with %d in volume %u\n", code, V_id(vol));
+	    ViceLog(0, ("FlushMetadataHandle: AllocMetadataEntry failed with %d in volume %u\n", code, V_id(vol)));
 	    goto bad;
 	}
 	if (offset) {
 	    entry->next = index;
 	    if ((FDH_SEEK(fd, offset, SEEK_SET) != offset)
 	      || (FDH_WRITE(fd, entry, entrylength) != entrylength)) {
-	        Log("FlushMetadataHandle: write failed at offset %llu in volume %u\n",
-				offset, V_id(vol));
+	        ViceLog(0, ("FlushMetadataHandle: write failed at offset %llu in volume %u\n",
+				offset, V_id(vol)));
 		code = EIO;
 		goto bad;
 	    }
@@ -1257,8 +1269,8 @@ FlushMetadataHandle(Volume *vol, struct VnodeDiskObject *vd,
     }
     if ((FDH_SEEK(fd, offset, SEEK_SET) != offset)
       || (FDH_WRITE(fd, entry, entrylength) != entrylength)) {
-	Log("FlushMetadataHandle: write failed at offset %llu in volume %u\n",
-				offset, V_id(vol));
+	ViceLog(0, ("FlushMetadataHandle: write failed at offset %llu in volume %u\n",
+				offset, V_id(vol)));
 	code = EIO;
 	goto bad;
     }
@@ -1272,8 +1284,8 @@ FlushMetadataHandle(Volume *vol, struct VnodeDiskObject *vd,
     if (!locked) { 		/* Only if called inside the fileserver */
         code = VSyncVnode(vol, vd, vN, 0);
         if (code) {
-	    Log("FlushMetadataHandle: VSyncVnode returned %d for %u.%u.%u. Undoing the update.\n",
-		V_id(vol), vN, vd->uniquifier);
+	    ViceLog(0, ("FlushMetadataHandle: VSyncVnode returned %d for %u.%u.%u. Undoing the update.\n",
+		V_id(vol), vN, vd->uniquifier));
 	    vd->osdMetadataIndex = oldindex;
 	    oldindex = mainIndex;
 	}
@@ -1283,15 +1295,15 @@ FlushMetadataHandle(Volume *vol, struct VnodeDiskObject *vd,
         offset = oldindex * entrylength;
         if ((FDH_SEEK(fd, offset, SEEK_SET) != offset)
           || (FDH_READ(fd, entry, entrylength) != entrylength)) { 
-	    Log("FlushMetadataHandle: read failed at offset %llu for volume %u\n",
-			offset, V_id(vol));
+	    ViceLog(0, ("FlushMetadataHandle: read failed at offset %llu for volume %u\n",
+			offset, V_id(vol)));
 	    goto bad;
 	}
 	entry->used = 0;
         if ((FDH_SEEK(fd, offset, SEEK_SET) != offset)
           || (FDH_WRITE(fd, entry, entrylength) != entrylength)) { 
-	    Log("FlushMetadataHandle: write failed at offset %llu for volume %u\n",
-			offset, V_id(vol));
+	    ViceLog(0, ("FlushMetadataHandle: write failed at offset %llu for volume %u\n",
+			offset, V_id(vol)));
 	    goto bad;
 	}
 	tindex = entry->next;
@@ -1356,22 +1368,22 @@ read_osd_p_fileList(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN,
 	return EINVAL;
     mh = (struct metadataBuffer *) malloc(sizeof(struct metadataBuffer));
     if (!mh) {
-	Log("read_osd_p_fileList: couldn't allocate metadata handle\n");
+	ViceLog(0, ("read_osd_p_fileList: couldn't allocate metadata handle\n"));
 	return ENOMEM;
     }
     FillMetadataBuffer(vol, vd, vN, mh);
     if (mh->length <= 0) {
-	Log("read_osd_p_fileList: couldn't read metadata for %u.%u.%u\n",
-		V_id(vol), vN, vd->uniquifier);
+	ViceLog(0, ("read_osd_p_fileList: couldn't read metadata for %u.%u.%u\n",
+		V_id(vol), vN, vd->uniquifier));
  	goto bad_no_xdr;
     }
     if (mh->length == MAX_OSD_METADATA_LENGTH) {
-	Log("read_osd_p_fileList:  metadata too long for %u.%u.%u\n",
-		V_id(vol), vN, vd->uniquifier);
+	ViceLog(0, ("read_osd_p_fileList:  metadata too long for %u.%u.%u\n",
+		V_id(vol), vN, vd->uniquifier));
  	goto bad;
     }
     mh->offset = 0;
-    xdrmem_create(&xdr, &mh->data, mh->length, XDR_DECODE);
+    xdrmem_create(&xdr, (void *)&mh->data, mh->length, XDR_DECODE);
     if (xdr_afs_uint32(&xdr, &version)) {
         switch (version) {
 	case 1:
@@ -1508,21 +1520,21 @@ read_osd_p_fileList(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN,
 			    if (o->magic != OSD_P_OBJ_MAGIC)
 				goto bad;  
 			    if ((o->obj_id & NAMEI_VNODEMASK) != vN) {
-				Log("read_osd_p_fileList: file %u.%u.%u has object belonging to vnode %u\n",
+				ViceLog(0, ("read_osd_p_fileList: file %u.%u.%u has object belonging to vnode %u\n",
 					V_id(vol), vN, vd->uniquifier,
-					o->obj_id & NAMEI_VNODEMASK);
+					o->obj_id & NAMEI_VNODEMASK));
 #ifdef REPAIR_BAD_OBJIDS
 				if ((o->obj_id & NAMEI_VNODEMASK) == vd->uniquifier) {
 				    if ((o->obj_id >> 32) == 0) {
 				        o->obj_id &= ~NAMEI_VNODEMASK;
 				        o->obj_id |= vN;
 				        o->obj_id |= ((afs_uint64)vd->uniquifier << 32);
-				        Log("read_osd_p_fileList: file %u.%u.%u repaired to %u.%u.%u.%u\n",
+				        ViceLog(0, ("read_osd_p_fileList: file %u.%u.%u repaired to %u.%u.%u.%u\n",
 					    V_id(vol), vN, vd->uniquifier,
 					    V_id(vol),
 					    (afs_uint32)o->obj_id & NAMEI_VNODEMASK,
 					    (afs_uint32)(o->obj_id >> 32),
-					    (afs_uint32)((o->obj_id >> NAMEI_TAGSHIFT) & NAMEI_TAGMASK));
+					    (afs_uint32)((o->obj_id >> NAMEI_TAGSHIFT) & NAMEI_TAGMASK)));
 					repaired = 1;
 				    } else
 					goto bad; 	
@@ -1546,8 +1558,8 @@ read_osd_p_fileList(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN,
 	    }
 	    break;
 	default:
-	    Log("Unknown osd_file version for %u.%u.%u\n",
-			version, V_id(vol), vN, vd->uniquifier);
+	    ViceLog(0, ("Unknown osd_file version for %u.%u.%u\n",
+			version, V_id(vol), vN, vd->uniquifier));
 	    code = EINVAL;
         }
     }
@@ -1646,7 +1658,7 @@ write_osd_p_fileList(Volume *vol, struct VnodeDiskObject *vd,
     *changed = 0;
     mh = (struct metadataBuffer *) malloc(sizeof(struct metadataBuffer));
     if (!mh) {
-	Log("write_osd_p_fileList: couldn't allocate metadata handle\n");
+	ViceLog(0, ("write_osd_p_fileList: couldn't allocate metadata handle\n"));
 	return ENOMEM;
     }
     memset(mh, 0, sizeof(struct metadataBuffer));
@@ -1690,7 +1702,7 @@ write_osd_p_fileList(Volume *vol, struct VnodeDiskObject *vd,
 	ViceLog(0,("maxOsdMetadataLength = %u\n", maxOsdMetadataLength));
     }
     /* Write metadata to disk */ 
-    xdrmem_create(&xdr, &mh->data, mh->length, XDR_ENCODE);
+    xdrmem_create(&xdr, (void *)&mh->data, mh->length, XDR_ENCODE);
     if (xdr_afs_uint32(&xdr, &version)) {
         if (xdr_osd_p_fileList(&xdr, list)) {
 	    afs_uint32 oldindex = vd->osdMetadataIndex;
@@ -1973,7 +1985,6 @@ retry:
 		struct osd_p_segm *ps = &pf->segmList.osd_p_segmList_val[0];
 		struct osd_p_obj *po = &ps->objList.osd_p_objList_val[0];
 		if (po->osd_id == osd) {
-		    struct timeval now;
 		    afs_int32 changed = 0;
 		    afs_uint32 lun, ip;
 		    afs_uint64 p_id;
@@ -2029,8 +2040,7 @@ retry:
 		    }		
 		    /* successfully restored to random access osd */
 		    pf->nFetches++;
-		    TM_GetTimeOfDay(&now, 0);
-		    pf->fetchTime = now.tv_sec;
+		    pf->fetchTime = FT_ApproxTime();
 		    list.osd_p_fileList_val[*fileno].flags &= ~RESTORE_IN_PROGRESS;
     		    code = write_osd_p_fileList(vn->volumePtr, &vn->disk, 
 					vn->vnodeNumber, &list, &changed, 0);
@@ -2166,16 +2176,18 @@ retry:
             vn->changed_newTime = 1;
 	}
     } 
+#if 0
 #ifdef AFS_NAMEI_ENV
     if (!code && !(flag & FS_OSD_COMMAND) && writeLocked(vn)) { 
-        struct timeval now;
-        TM_GetTimeOfDay(&now, 0);
-	if (now.tv_sec - vn->disk.lastUsageTime > 600) {
-            vn->disk.lastUsageTime = now.tv_sec;
+        afs_uint32 now;
+        now = FT_ApproxTime();
+	if (now - vn->disk.lastUsageTime > 600) {
+            vn->disk.lastUsageTime = now;
             vn->disk.osdFileOnline = 1; /* corrective action */
             vn->changed_newTime = 1;
 	}
     }
+#endif
 #endif
 bad:
     free_osd_segm_descList(&rlist);
@@ -2222,11 +2234,11 @@ set_osd_file_ready(struct rx_call *call, Vnode *vn, struct cksum *checksum)
     afs_int32 code, i, j, k;
     struct osd_p_fileList list;
     afs_int32 changed = 0;
-    struct timeval now;
+    afs_uint32 now;
     afs_uint32 osd = 0, osd2 = 0;
     afs_uint64 size;
 
-    TM_GetTimeOfDay(&now, 0);
+    now = FT_ApproxTime();
     code = read_osd_p_fileList(vn->volumePtr, &vn->disk, vn->vnodeNumber, &list);
     if (code) 
 	return code;
@@ -2259,7 +2271,7 @@ set_osd_file_ready(struct rx_call *call, Vnode *vn, struct cksum *checksum)
                     }
                 }
 	        f->nFetches++;
-	        f->fetchTime = now.tv_sec;
+	        f->fetchTime = now;
 	        break;
 	    }
 	}
@@ -2496,7 +2508,7 @@ update_osd_file_v(Vnode *vn, Volume *vol, struct async *a,
 				pfile->segmList.osd_p_segmList_len) {
 		    struct osd_p_segm *tsegm = realloc(pfile->segmList.osd_p_segmList_val, file->segmList.osd_segm1List_len * sizeof(struct osd_p_segm));
 	            if (!tsegm) {
-		        Log("update_osd_file: realloc failed\n");
+		        ViceLog(0, ("update_osd_file: realloc failed\n"));
 		        return ENOMEM;
 		    }
 		    pfile->segmList.osd_p_segmList_val = tsegm;
@@ -2519,7 +2531,7 @@ update_osd_file_v(Vnode *vn, Volume *vol, struct async *a,
 				    psegm->objList.osd_p_objList_len) {
 		        struct osd_p_obj *tobj = realloc(psegm->objList.osd_p_objList_val, segm->objList.osd_obj1List_len * sizeof(struct osd_p_obj));
 	                if (!tobj) {
-		            Log("update_osd_file: realloc failed\n");
+		            ViceLog(0, ("update_osd_file: realloc failed\n"));
 		            return ENOMEM;
 		        }
 		        psegm->objList.osd_p_objList_val = tobj;
@@ -2544,7 +2556,7 @@ update_osd_file_v(Vnode *vn, Volume *vol, struct async *a,
 				pfile->segmList.osd_p_segmList_len) {
 		    struct osd_p_segm *tsegm = realloc(pfile->segmList.osd_p_segmList_val, file->segmList.osd_segm2List_len * sizeof(struct osd_p_segm));
 	            if (!tsegm) {
-		        Log("update_osd_file: realloc failed\n");
+		        ViceLog(0, ("update_osd_file: realloc failed\n"));
 		        return ENOMEM;
 		    }
 		    pfile->segmList.osd_p_segmList_val = tsegm;
@@ -2567,7 +2579,7 @@ update_osd_file_v(Vnode *vn, Volume *vol, struct async *a,
 				    psegm->objList.osd_p_objList_len) {
 		        struct osd_p_obj *tobj = realloc(psegm->objList.osd_p_objList_val, segm->objList.osd_obj2List_len * sizeof(struct osd_p_obj));
 	                if (!tobj) {
-		            Log("update_osd_file: realloc failed\n");
+		            ViceLog(0, ("update_osd_file: realloc failed\n"));
 		            return ENOMEM;
 		        }
 		        psegm->objList.osd_p_objList_val = tobj;
@@ -2687,8 +2699,6 @@ struct rxosd_addr {
 
 struct rxosd_host *rxosd_hosts = NULL;
 afs_uint32 rxosd_addresses = 0;
-extern afs_uint32 FS_HostAddr_HBO;
-extern int VInit;
 static afs_uint32  local_host = 0;
  
 #define MAX_OSD_TABLE_LINE 80
@@ -2703,7 +2713,6 @@ struct rxosd_conn * FindOsdConnection(afs_uint32 id)
     struct rxosd_conn *c;
     static struct rx_securityClass *sc;
     static afs_int32 scIndex = 2;
-    static struct afsconf_dir *tdir = 0;
 
     code = FindOsdPort(id, &ip, &lun, 0, &service, &port);
     if (code) 
@@ -2741,23 +2750,10 @@ struct rxosd_conn * FindOsdConnection(afs_uint32 id)
 	h->service = service;
         h->connections = NULL;
         if (!rxosd_hosts) {
-            if (!tdir)
-                tdir = afsconf_Open(AFSDIR_SERVER_ETC_DIRPATH);
-            if (!tdir) {
-                Log("FindOSDconnetcion: could not open configuration directory %s\n", AFSDIR_SERVER_ETC_DIRPATH);
-                return NULL;
-            }
             scIndex = 2;
-            code = afsconf_GetLatestKey(tdir, 0,0);
+            code = afsconf_ClientAuth(*(voldata->aConfDir), &sc, &scIndex);
             if (code) {
-                Log("FindOSDconnetcion: unable to get latest key code = %d\n", 
-			code);
-                return NULL;
-            }
-
-            code = afsconf_ClientAuth(tdir, &sc, &scIndex);
-            if (code) {
-                Log("FindOSDconnetcion: unable to get securityObject, code = %d\n", code);
+                ViceLog(0, ("FindOSDconnetcion: unable to get securityObject, code = %d\n", code));
                 return NULL;
             }
         }
@@ -2768,16 +2764,17 @@ struct rxosd_conn * FindOsdConnection(afs_uint32 id)
     }
     c = (struct rxosd_conn *) malloc(sizeof(struct rxosd_conn));
     c->usecount = 1;
-    c->conn = rx_NewConnection(htonl(h->ip), htons(h->port), h->service, sc, scIndex);
+    c->conn = rx_NewConnection(htonl(h->ip), htons(h->port),
+					   h->service, sc, scIndex);
     code = RXOSD_ProbeServer(c->conn);
     if (code == RXGEN_OPCODE)
 	code = RXOSD_ProbeServer270(c->conn);
     if (code)
-        Log("RXOSD_ProbeServer failed to %u.%u.%u.%u with %d\n",
+        ViceLog(0, ("RXOSD_ProbeServer failed to %u.%u.%u.%u with %d\n",
 			(h->ip >> 24) & 0xff,
 			(h->ip >> 16) & 0xff,
 			(h->ip >> 8) & 0xff,
-			h->ip & 0xff, code);
+			h->ip & 0xff, code));
     OSD_LOCK;
     c->next = h->connections;
     h->connections = c;
@@ -2790,7 +2787,7 @@ void PutOsdConn(struct rxosd_conn **conn)
     if (*conn) {
         OSD_LOCK;
         if ((*conn)->usecount-- < 0) {
-	    Log("PutOsdConn: negative usecount\n");
+	    ViceLog(0, ("PutOsdConn: negative usecount\n"));
 	    (*conn)->usecount = 0;
         }
         OSD_UNLOCK;
@@ -2842,6 +2839,18 @@ restart:
         }
     }
     OSD_UNLOCK;
+}
+
+extern afs_uint64 max_move_osd_size;
+extern afs_int32 max_move_osd_size_set_by_hand;
+
+static void
+osd_5min_check()
+{
+    FillOsdTable();
+    checkOSDconnections();
+    if (!max_move_osd_size_set_by_hand)
+        max_move_osd_size = get_max_move_osd_size();
 }
 
 /*
@@ -2930,8 +2939,8 @@ osd_create_spec_file(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN,
 	newseg = 1;
     }
     if (!vol->osdMetadataHandle) {
-	Log("osd_create_file: volume %u has no metadataHandle\n",
-		V_id(vol));
+	ViceLog(0, ("osd_create_file: volume %u has no metadataHandle\n",
+		V_id(vol)));
 	return EIO;
     }
 
@@ -3039,8 +3048,8 @@ osd_create_spec_file(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN,
 	    code = rxosd_create(osds[ind], o->part_id, obj_id, &o->obj_id);
             if (code) {
 		int ind2;
-	        Log("osd_create_file failed to osd %u with code %d\n", osds[i],
-			 code);
+	        ViceLog(0, ("osd_create_file failed to osd %u with code %d\n", osds[i],
+			 code));
 	        for (ind2 = 0; ind2<ind; ind2++) {
 	            o = &tl->segm.objList.osd_p_objList_val[ind2];
 		    code = rxosd_incdec(osds[ind2], o->part_id, o->obj_id, -1);
@@ -3056,7 +3065,7 @@ osd_create_spec_file(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN,
     else
         code = write_osd_p_fileList(vol, vd, vN, &tl->fl, &changed, 0);
     if (code) {
-	Log("osd_create_file: write of metadata failed\n");
+	ViceLog(0, ("osd_create_file: write of metadata failed\n"));
 	for (j=0; j<stripes; j++) {
 	    o = &tl->segm.objList.osd_p_objList_val[j];
 	    o->part_id |= (afs_uint64)luns[j] << 32;
@@ -3262,7 +3271,7 @@ ForceCreateStripedOsdFile(Vnode *vn, afs_uint32 stripes, afs_uint32 stripe_size,
 	IH_RELEASE(vn->handle);
 	ino = VN_GET_INO(vn);
 	code = IH_DEC(V_linkHandle(vn->volumePtr), ino, 
-					V_parentId(vn->volumePtr)); 
+				   V_parentId(vn->volumePtr)); 
 	ino = 0;
 	VN_SET_INO(vn, ino);
 	vn->disk.osdFileOnline = 1;
@@ -3347,10 +3356,6 @@ add_simple_osdFile(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN,
     return code;
 }
 
-/*
- * Called from RemoveOsdFile() and in the case that creating an archive
- * for a local file failed from osd_archive() to remove the archive.
- */
 afs_int32
 osdRemove(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN)
 {
@@ -3358,6 +3363,8 @@ osdRemove(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN)
     afs_int32 code, i, j, k;
 
     if (vd->type != vFile)
+	return EINVAL;
+    if (!vd->osdMetadataIndex)
 	return EINVAL;
     code = read_osd_p_fileList(vol, vd, vN, &list);
     if (code)
@@ -3370,28 +3377,14 @@ osdRemove(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN)
 		struct osd_p_obj *obj = &segm->objList.osd_p_objList_val[k];
 		code = rxosd_incdec(obj->osd_id, obj->part_id, obj->obj_id, -1);
 		if (code)
-		    Log("osdRemove: RXOSD_incdec failed for %u.%u.%u with %d\n",
-				V_id(vol), vN, vd->uniquifier, code);
+		    ViceLog(0, ("osdRemove: RXOSD_incdec failed for %u.%u.%u with %d\n",
+				V_id(vol), vN, vd->uniquifier, code));
 	    }
 	}
     }
     FreeMetadataEntryChain(vol, vd->osdMetadataIndex, vN, vd->uniquifier);
     destroy_osd_p_fileList(&list);
-    return code;
-}
-
-/*
- *  Called either from SRXAFS_RemoveFile() or SRXAFS_Rename()
- */
-afs_int32
-RemoveOsdFile(Vnode *vn)
-{
-    afs_int32 code;
-    
-    code = osdRemove(vn->volumePtr, &vn->disk, vn->vnodeNumber);
-    if (code)
-        Log("RemoveOsdFile: %u.%u.%u code %d\n",
-		V_id(vn->volumePtr), vn->vnodeNumber, vn->disk.uniquifier, code);
+    vd->osdMetadataIndex = 0;
     return code;
 }
 
@@ -3425,9 +3418,9 @@ truncate_osd_file(Vnode *vn, afs_uint64 length)
 		    code = rxosd_incdec(obj->osd_id, obj->part_id,
 						obj->obj_id, -1);
 		    if (code)
-			Log("truncate_osd_file: RXOSD_incdec failed for %u.%u.%u with %d\n",
+			ViceLog(0, ("truncate_osd_file: RXOSD_incdec failed for %u.%u.%u with %d\n",
 				V_id(vn->volumePtr), vn->vnodeNumber, 
-				vn->disk.uniquifier, code);
+				vn->disk.uniquifier, code));
 		    changed = 1;
 	        }
 		segm->objList.osd_p_objList_len = 0;
@@ -3473,9 +3466,9 @@ truncate_osd_file(Vnode *vn, afs_uint64 length)
 			    RXOSD_truncate(conn->conn, &o, tlength, &out);
 		        PutOsdConn(&conn);
 			if (code == EINVAL) { /* link count was not 1 */
-			    Log("truncate_osd_file: link count != 1 for %u.%u.%u\n",
+			    ViceLog(0, ("truncate_osd_file: link count != 1 for %u.%u.%u\n",
 				V_id(vn->volumePtr), vn->vnodeNumber, 
-				vn->disk.uniquifier);
+				vn->disk.uniquifier));
 			    goto bad;
 			}
 			if (out.ometa_u.t.obj_id != o.ometa_u.t.obj_id
@@ -3484,10 +3477,10 @@ truncate_osd_file(Vnode *vn, afs_uint64 length)
 			    changed = 1;
 			}
 		    } else {
-			Log("truncate_osd_file: couldn't reach osd %u for %u.%u.%u\n",
+			ViceLog(0, ("truncate_osd_file: couldn't reach osd %u for %u.%u.%u\n",
 				obj->osd_id, 
 				V_id(vn->volumePtr), vn->vnodeNumber, 
-				vn->disk.uniquifier);
+				vn->disk.uniquifier));
 			code = EIO;
 			goto bad;
 		    }
@@ -3613,8 +3606,8 @@ osd_archive(struct Vnode *vn, afs_uint32 Osd, afs_int32 flags)
     if (code)
 	goto bad;   
     if (!osd) { 	/* no appropriate osd found */
-	Log("osd_archive: couldn't find osd for %u.%u.%u\n",
-		V_id(vn->volumePtr), vn->vnodeNumber, vn->disk.uniquifier);
+	ViceLog(0, ("osd_archive: couldn't find osd for %u.%u.%u\n",
+		V_id(vn->volumePtr), vn->vnodeNumber, vn->disk.uniquifier));
         code = EINVAL;
 	goto bad;
     }
@@ -3644,9 +3637,9 @@ osd_archive(struct Vnode *vn, afs_uint32 Osd, afs_int32 flags)
 			    md5time = tm->time;
 		    }
 		    if (!md5time) { 
-		    	Log("osd_archive: %u.%u.%u dv(%u) no md5time on %u\n",
+		    	ViceLog(0, ("osd_archive: %u.%u.%u dv(%u) no md5time on %u\n",
 						V_id(vol), vN, vd->uniquifier, 
-						vd->dataVersion, osd);
+						vd->dataVersion, osd));
 			continue;
 		    }
 		    for (j=0; j<list.osd_p_fileList_len; j++) {
@@ -3663,9 +3656,9 @@ osd_archive(struct Vnode *vn, afs_uint32 Osd, afs_int32 flags)
 		                code = rxosd_examine(to->osd_id, to->part_id, 
 					    to->obj_id, mask, &e); 
 				if (code) {
-		    		    Log("osd_archive: %u.%u.%u dv(%u) examine of on-line object failed on %u\n",
+		    		    ViceLog(0, ("osd_archive: %u.%u.%u dv(%u) examine of on-line object failed on %u\n",
 						V_id(vol), vN, vd->uniquifier, 
-						vd->dataVersion, to->osd_id);
+						vd->dataVersion, to->osd_id));
 				    continue;
 				}
 			        if (e.exam_u.e3.size == size 
@@ -3675,9 +3668,9 @@ osd_archive(struct Vnode *vn, afs_uint32 Osd, afs_int32 flags)
 							&list, &changed, 0);
 				    if (!code) {
         			        vn->changed_newTime = 1;
-		    		        Log("osd_archive: %u.%u.%u dv(%u) seems to be identical with archive on osd %u. archiveVersion updated\n",
+		    		        ViceLog(0, ("osd_archive: %u.%u.%u dv(%u) seems to be identical with archive on osd %u. archiveVersion updated\n",
 						V_id(vol), vN, vd->uniquifier, 
-						vd->dataVersion, osd);
+						vd->dataVersion, osd));
 					goto bad; /* we are done */
 				    }
 				}
@@ -3748,7 +3741,7 @@ osd_archive(struct Vnode *vn, afs_uint32 Osd, afs_int32 flags)
 			malloc(sl.osd_segm_descList_len * 
 				sizeof(struct osd_segm_desc));
 	    if (!sl.osd_segm_descList_val) {
-		Log("osd_archive: couldn't malloc\n");
+		ViceLog(0, ("osd_archive: couldn't malloc\n"));
 		code = ENOMEM;
 		goto bad;
 	    }
@@ -3786,16 +3779,16 @@ osd_archive(struct Vnode *vn, afs_uint32 Osd, afs_int32 flags)
 				    size = e.exam_u.e1.size;
 				    VNDISK_SET_LEN(vd, size);
         			    vn->changed_newTime = 1;
-		    		    Log("osd_archive: Length of %u.%u.%u dv(%u) on osd %u is %llu instead of %llu. Vnode updated\n",
+		    		    ViceLog(0, ("osd_archive: Length of %u.%u.%u dv(%u) on osd %u is %llu instead of %llu. Vnode updated\n",
 						V_id(vol), vN, vd->uniquifier, 
 						vd->dataVersion, po->osd_id,
-						size, s->length);
+						size, s->length));
 				    s->length = size;
 				} else {
-		    		    Log("osd_archive: %u.%u.%u dv(%u) has wrong length on osd %u (%llu instead of %llu). Aborting\n",
+		    		    ViceLog(0, ("osd_archive: %u.%u.%u dv(%u) has wrong length on osd %u (%llu instead of %llu). Aborting\n",
 						V_id(vol), vN, vd->uniquifier, 
 						vd->dataVersion, po->osd_id,
-						e.exam_u.e1.size, s->length);
+						e.exam_u.e1.size, s->length));
 				    free_osd_segm_descList(&sl);
 				    code = EIO;
 				    goto bad;
@@ -3803,15 +3796,15 @@ osd_archive(struct Vnode *vn, afs_uint32 Osd, afs_int32 flags)
 			    }
 			} else {
 			    if (code) {
-		    	        Log("osd_archive: examine for %u.%u.%u on osd %u returns %d\n",
+		    	        ViceLog(0, ("osd_archive: examine for %u.%u.%u on osd %u returns %d\n",
 					V_id(vol), vN, vd->uniquifier, 
-					po->osd_id, code);
+					po->osd_id, code));
 				free_osd_segm_descList(&sl);
 				code = EIO;
 				goto bad;
 			    } else 
-		    	        Log("osd_archive: got unexpected exam.type %d from osd %u\n",
-					e.type, po->osd_id);
+		    	        ViceLog(0, ("osd_archive: got unexpected exam.type %d from osd %u\n",
+					e.type, po->osd_id));
 			}
 		    }
 		}
@@ -3823,7 +3816,7 @@ osd_archive(struct Vnode *vn, afs_uint32 Osd, afs_int32 flags)
 	    code = rxosd_create_archive(&om, &sl, 0, &md5);
 	    free_osd_segm_descList(&sl);
 	    if (!code && md5.size != size) {
-		Log("osd_archive: length returned is %llu instead of %llu for %u.%u.%u\n", md5.size, size, V_id(vol), vN, vd->uniquifier);
+		ViceLog(0, ("osd_archive: length returned is %llu instead of %llu for %u.%u.%u\n", md5.size, size, V_id(vol), vN, vd->uniquifier));
 		rxosd_incdec(osd, md5.o.ometa_u.t.part_id, md5.o.ometa_u.t.obj_id, -1);
 		code = EIO;  
 	    }
@@ -3874,9 +3867,9 @@ osd_archive(struct Vnode *vn, afs_uint32 Osd, afs_int32 flags)
         	vn->changed_newTime = 1;
 		if (!code) {
 		    struct osd_p_file tf;
-		    Log("osd_archive: %u.%u.%u dv(%u) %llu bytes copied to osd %u\n",
+		    ViceLog(0, ("osd_archive: %u.%u.%u dv(%u) %llu bytes copied to osd %u\n",
 				V_id(vol), vN, vd->uniquifier, 
-				vd->dataVersion, size, osd);
+				vd->dataVersion, size, osd));
 remove:
 		    /* Look for old archive copies of the file to remove them */
 		    for (i=0; i<list.osd_p_fileList_len; i++) {
@@ -3900,10 +3893,10 @@ remove:
 				    ps = &pf->segmList.osd_p_segmList_val[j];
 				    for (k=0; k<ps->objList.osd_p_objList_len; k++) {
 				        po = &ps->objList.osd_p_objList_val[k];
-		    	    		Log("osd_archive: old archive %u.%u.%u dv(%u) %llu on osd %u deleted\n",
+		    	    		ViceLog(0, ("osd_archive: old archive %u.%u.%u dv(%u) %llu on osd %u deleted\n",
 						V_id(vol), vN, vd->uniquifier, 
 						pf->archiveVersion, ps->length, 
-						po->osd_id);
+						po->osd_id));
 					rxosd_incdec(po->osd_id, po->part_id, 
 							po->obj_id, -1);
 				    }
@@ -3917,12 +3910,12 @@ remove:
 		}
 	    }
 	} else {
-    	    Log("osd_archive: %u.%u.%u has no non-archival copy to create archive from\n",
-	   		V_id(vol), vN, vd->uniquifier);
+    	    ViceLog(0, ("osd_archive: %u.%u.%u has no non-archival copy to create archive from\n",
+	   		V_id(vol), vN, vd->uniquifier));
 	}
     } else { /* empty file list */
-    	Log("osd_archive: %u.%u.%u has an empty file list\n",
-	   		V_id(vol), vN, vd->uniquifier);
+    	ViceLog(0, ("osd_archive: %u.%u.%u has an empty file list\n",
+	   		V_id(vol), vN, vd->uniquifier));
 	code = EINVAL;
     }
 bad:
@@ -3993,7 +3986,7 @@ replace_osd(struct Vnode *vn, afs_uint32 old, afs_int32 new, afs_int32 *result)
 	if (old == 1)
 	    return EINVAL;
 
-	ino = IH_CREATE(V_linkHandle(vol), V_device(vol),
+        ino = IH_CREATE(V_linkHandle(vol), V_device(vol),
               VPartitionPath(V_partition(vol)), nearInode,
               V_id(vol), vN, vd->uniquifier, (int)vd->dataVersion);
     	if (!VALID_INO(ino)) {
@@ -4020,12 +4013,16 @@ replace_osd(struct Vnode *vn, afs_uint32 old, afs_int32 new, afs_int32 *result)
 	if (code) {
 	    FDH_REALLYCLOSE(fdP);
 	    IH_RELEASE(vn->handle);
-	    IH_DEC(V_linkHandle(vol), ino, V_parentId(vol));
+	    IH_DEC(V_linkHandle(vol), ino, V_parentId(vol)); 
 	    return code;
 	}
 	FDH_CLOSE(fdP);
 	VNDISK_SET_INO(vd, ino);
+#if 0
 	vd->lastUsageTime = 0; 		/* clear vn_ino_hi */
+#else
+	vd->vn_ino_hi = 0; 		/* clear vn_ino_hi */
+#endif
     	code = osdRemove(vol, vd, vN);
 	vn->changed_newTime = 1;
 	vd->osdMetadataIndex = 0;
@@ -4408,11 +4405,11 @@ fill_cap1(struct t10cap *cap, struct osd_obj1 *obj, afsUUID *uuid, afs_uint32 fl
 			struct rx_peer *peer, afs_uint32 user)
 {
     afs_int32 code;
-    struct timeval now;
+    afs_uint32 now;
     struct rxosd_conn *osdconn = 0;
     struct rx_securityClass *so;
 
-    TM_GetTimeOfDay(&now, 0);
+    now = FT_ApproxTime();
 #ifdef AFS_OSD_T10
 #else
     if (obj->m.vsn == 1) {
@@ -4438,7 +4435,7 @@ fill_cap1(struct t10cap *cap, struct osd_obj1 *obj, afsUUID *uuid, afs_uint32 fl
     cap->uuid.time_low = htonl(uuid->time_low);
     cap->uuid.time_mid = htons(uuid->time_mid);
     cap->uuid.time_hi_and_version = htons(uuid->time_hi_and_version);
-    cap->expires = htonl(now.tv_sec + 300);
+    cap->expires = htonl(now + 300);
     cap->user = htonl(user);
     osdconn = FindOsdConnection(obj->osd_id);
     if (!osdconn)
@@ -4465,11 +4462,11 @@ static afs_int32
 fill_cap2(struct t10cap *cap, struct osd_obj2 *obj, afsUUID *uuid, afs_uint32 flag,
 			struct rx_peer *peer, afs_uint32 user)
 {
-    struct timeval now;
+    afs_uint32 now;
     struct rxosd_conn *osdconn = 0;
     struct rx_securityClass *so;
 
-    TM_GetTimeOfDay(&now, 0);
+    now = FT_ApproxTime();
 #ifdef AFS_OSD_T10
 #else
     cap->oid_hi = htonl((afs_uint32)(obj->obj_id >> 32));
@@ -4483,7 +4480,7 @@ fill_cap2(struct t10cap *cap, struct osd_obj2 *obj, afsUUID *uuid, afs_uint32 fl
     cap->uuid.time_low = htonl(uuid->time_low);
     cap->uuid.time_mid = htons(uuid->time_mid);
     cap->uuid.time_hi_and_version = htons(uuid->time_hi_and_version);
-    cap->expires = htonl(now.tv_sec + 300);
+    cap->expires = htonl(now + 300);
     cap->user = htonl(user);
     osdconn = FindOsdConnection(obj->osd_id);
     if (!osdconn)
@@ -4754,8 +4751,8 @@ DataXchange(afs_int32 (*ioroutine)(void *rock, char* buf, afs_uint32 lng),
     }
     if (!file || file->archiveTime) {
 	if (!file || !useArchive) {
-	    Log("DataXchange: Couldn't find non-archival version of %u.%u.%u\n",
-		V_id(vol), vN, vd->uniquifier);
+	    ViceLog(0, ("DataXchange: Couldn't find non-archival version of %u.%u.%u\n",
+		V_id(vol), vN, vd->uniquifier));
 	    code = OSD_WAIT_FOR_TAPE;
 	    goto bad_xchange;
 	}
@@ -4837,7 +4834,7 @@ DataXchange(afs_int32 (*ioroutine)(void *rock, char* buf, afs_uint32 lng),
 	    bsize = OSD_XFER_BSIZE;
 	buffer = (char *) malloc(bsize);
 	if (!buffer) {
-	    Log("DataXchange: couldn't allocate buffer\n");
+	    ViceLog(0, ("DataXchange: couldn't allocate buffer\n"));
 	    code = EIO;
 	    goto bad_xchange;
 	}
@@ -4857,7 +4854,7 @@ DataXchange(afs_int32 (*ioroutine)(void *rock, char* buf, afs_uint32 lng),
 						stripeoffset[l], striperesid[l],
 						filelength, &new_id);
 			if (code) {
-			    Log("DataXchange: CopyOnWrite failed\n");
+			    ViceLog(0, ("DataXchange: CopyOnWrite failed\n"));
 			    currentcopies--;
 			    if (!currentcopies) {
 				goto bad_xchange;
@@ -4905,8 +4902,8 @@ retry:
 			    code = StartRXOSD_read(call[l], &dummyrock, &p, &ometa);
 			    xdrrx_create(&xdr, call[l], XDR_DECODE);
 			    if (code || !xdr_uint64(&xdr, &tlength)) {
-		    		Log("DataXchange: couldn't read length of stripe %u in segment %u of %u.%u.%u\n",
-					l, j, V_id(vol), vN, vd->uniquifier);
+		    		ViceLog(0, ("DataXchange: couldn't read length of stripe %u in segment %u of %u.%u.%u\n",
+					l, j, V_id(vol), vN, vd->uniquifier));
 				code = rx_Error(call[l]);
 				if (code == RXOSD_RESTARTING) {
 				    rx_EndCall(call[i], code);
@@ -4921,9 +4918,9 @@ retry:
 				goto bad_xchange;
 			    }
 			    if (tlength != striperesid[l]) {
-		    		Log("DataXchange: stripe %u in segment %u of %u.%u.%u too short %llu instead of %llu at offset %llu\n",
+		    		ViceLog(0, ("DataXchange: stripe %u in segment %u of %u.%u.%u too short %llu instead of %llu at offset %llu\n",
 				    l, j, V_id(vol), vN, vd->uniquifier, 
-				    tlength, striperesid[l], stripeoffset[l]);
+				    tlength, striperesid[l], stripeoffset[l]));
 				code = EIO;
 				goto bad_xchange;
 			    }
@@ -4934,8 +4931,8 @@ retry:
 		}
 	    }
 	    if (!call[l]) {
-		 Log("DataXchange: couldn't get call to stripe %u in segment %u of %u.%u.%u\n",
-				l, j, V_id(vol), vN, vd->uniquifier);
+		 ViceLog(0, ("DataXchange: couldn't get call to stripe %u in segment %u of %u.%u.%u\n",
+				l, j, V_id(vol), vN, vd->uniquifier));
 		goto bad_xchange;
 	    }
 	}
@@ -4962,14 +4959,14 @@ retry:
 		else
 		    tmpcount = rx_Read(call[m], b, ll);
 		if (tmpcount <= 0) {
-		    Log("DataXchange: error reading data for %u.%u.%u\n",
-				V_id(vol), vN, vd->uniquifier);
+		    ViceLog(0, ("DataXchange: error reading data for %u.%u.%u\n",
+				V_id(vol), vN, vd->uniquifier));
 		    code = EIO;
 		    goto bad_xchange;
 		}
 		if (tmpcount != ll)
-		    Log("DataXchange: read only %d instead of %d for %u.%u.%u\n", 
-				tmpcount, ll, V_id(vol), vN, vd->uniquifier);
+		    ViceLog(0, ("DataXchange: read only %d instead of %d for %u.%u.%u\n", 
+				tmpcount, ll, V_id(vol), vN, vd->uniquifier));
 		count += tmpcount;
 		b += tmpcount;
 	    }
@@ -4984,9 +4981,9 @@ retry:
 		    	    code2 = EndRXOSD_write(call[m+ll], &out);
 			    code = rx_EndCall(call[m+ll], code);
 			    call[m+ll] = 0;
-			    Log("DataXchange: rx_Write to osd %u failed for stripe %u of %u.%u.%u with %d\n",
+			    ViceLog(0, ("DataXchange: rx_Write to osd %u failed for stripe %u of %u.%u.%u with %d\n",
 				osd[m*segm->copies + ll], m,
-				V_id(vol), vN, vd->uniquifier, code); 
+				V_id(vol), vN, vd->uniquifier, code)); 
 			    currentcopies--;
 			    if (!currentcopies) {
 				code = EIO;
@@ -4999,9 +4996,9 @@ retry:
 	    } else {
 	        count = (*ioroutine)(rock, buffer, tlen);
 	        if (count != tlen) {
-		    Log("DataXchange: %s failed for %u.%u.%u\n",
+		    ViceLog(0, ("DataXchange: %s failed for %u.%u.%u\n",
 			storing ? "rx_Write to osd" : "write to client",
-			V_id(vol), vN, vd->uniquifier);
+			V_id(vol), vN, vd->uniquifier));
 		    code = EIO;
 		    goto bad_xchange;
 		}
@@ -5024,9 +5021,9 @@ retry:
 		    worstcode = code;
 		code = rx_EndCall(call[i], 0);
 		if (code) {
-		    Log("DataXchange: EndRXOSD_%s to osd %u for %u.%u.%u returned %d\n",
+		    ViceLog(0, ("DataXchange: EndRXOSD_%s to osd %u for %u.%u.%u returned %d\n",
 			storing? "write":"read", osd[i],
-			V_id(vol), vN, vd->uniquifier, code);
+			V_id(vol), vN, vd->uniquifier, code));
 		    if (!worstcode)
 		        worstcode = code;
 		}
@@ -5165,7 +5162,7 @@ xchange_data_with_osd(struct rx_call *acall, Vnode **vnP, afs_uint64 offset,
 	    }
  	    if (code != OSD_WAIT_FOR_TAPE) 	/* On error or success */ 
 	        break;
-	    if (VInit == 1) {	/* shutting down */
+	    if (*(voldata->aVInit) == 1) {	/* shutting down */
 	        code = VRESTARTING;
 	        break;
 	    }
@@ -5190,15 +5187,17 @@ xchange_data_with_osd(struct rx_call *acall, Vnode **vnP, afs_uint64 offset,
     }
     if (!code && storing && ae.error == 1)
 	code = recover_store((*vnP), &ae);
+#if 0
 #ifdef AFS_NAMEI_ENV
     if (!code && writeLocked(*vnP)) {
-        struct timeval now;
-        TM_GetTimeOfDay(&now, 0);
-	if (now.tv_sec - (*vnP)->disk.lastUsageTime > 600) {
-            (*vnP)->disk.lastUsageTime = now.tv_sec;
+        afs_uint32 now;
+        now = FT_ApproxTime();
+	if (now - (*vnP)->disk.lastUsageTime > 600) {
+            (*vnP)->disk.lastUsageTime = now;
             (*vnP)->changed_newTime = 1;
 	}
     }
+#endif
 #endif
     return code;
 }
@@ -5215,7 +5214,7 @@ afs_int32 createFileWithPolicy(AFSFid *Fid,
 				Vnode *targetptr,
 				Volume *volptr,
 				afs_int32 (*evalclient) (void *rock, afs_int32 user),
-				struct client *client)
+				void *client)
 {
     afs_uint32 osd_id = 0, lun;
     afs_int32 tcode = 0;
@@ -5227,7 +5226,7 @@ afs_int32 createFileWithPolicy(AFSFid *Fid,
 
     if ( V_osdPolicy(volptr) != USE_OSD_BYSIZE )
 	if ( tcode = eval_policy(V_osdPolicy(volptr), size, fileName, 
-				evalclient, (void *)client,
+				evalclient, client,
                                 &use_osd, &dyn_location, &stripes,
                                 &stripe_size, &copies, &force) )
 	    return tcode;
@@ -5270,6 +5269,462 @@ afs_int32 createFileWithPolicy(AFSFid *Fid,
     return tcode;
 }
 
+/* 
+ * Some routines used by the volserver when cloning a volume.
+ */
+
+#define OSD_INCDEC_ALLOCSTEP 1000
+struct osd_incdec_piece {
+    struct osd_incdec_piece *next;
+    afs_int32 len;
+    struct osd_incdecList list;
+    osd_incdec array[OSD_INCDEC_ALLOCSTEP];
+};
+
+struct osd_osd {
+    struct osd_osd *next;
+    afs_uint32 id;
+    struct osd_incdec_piece *piece;
+};
+
+static afs_int32
+DoOsdIncDec(struct osd_osd *s)
+{
+    afs_int32 code;
+    struct osd_incdec_piece *p;
+    struct rxosd_conn *tcon;
+
+    for (; s; s=s->next) {
+        /* for the moment assume s->osd contains the ip-address */
+        tcon = FindOsdConnection(s->id);
+        if (!tcon) {
+            ViceLog(0, ("DoOsdIncDec: FindOsdConnection failed for %u\n", s->id));
+            return EIO;
+        }
+        for (p=s->piece; p; p=p->next) {
+#ifdef RXOSD_DEBUG
+            int j;
+            for (j=0; j<p->len; j++) {
+                if (!p->list.incdecl_u.l1.osd_incdecList_val[j].pid)
+                        break;
+                ViceLog(0, ("DoOsdIncDec: %s %u.%u.%u.%u on %u\n",
+                        p->list.osd_incdecList_val[j].todo > 0 ? "inc": "dec",
+                        (afs_uint32)(p->list.incdecl_u.l1.osd_incdecList_val[j].pid & 0xffffffff),
+                        (afs_uint32)(p->list.incdecl_u.l1.osd_incdecList_val[j].oid & 0x03ffffff),
+                        (afs_uint32)(p->list.incdecl_u.l1.osd_incdecList_val[j].oid >> 32),
+                        (afs_uint32)((p->list.incdecl_u.l1.osd_incdecList_val[j].oid >> 26) & 7),
+                        s->id));
+            }
+
+#endif
+            code = RXOSD_bulkincdec(tcon->conn, &p->list);
+            if (code == RXGEN_OPCODE) {
+                int i;
+                struct osd_incdec0List l0;
+                l0.osd_incdec0List_len = p->list.osd_incdecList_len;
+                l0.osd_incdec0List_val = (struct osd_incdec0 *)
+                                 malloc(l0.osd_incdec0List_len *
+                                        sizeof(struct osd_incdec0));
+                for (i=0; i<l0.osd_incdec0List_len; i++) {
+                    struct osd_incdec *in = &p->list.osd_incdecList_val[i];
+                    struct osd_incdec0 *in0 = &l0.osd_incdec0List_val[i];
+                    in0->oid = in->m.ometa_u.t.obj_id;
+                    in0->pid = in->m.ometa_u.t.part_id;
+                    in0->todo = in->todo;
+                    in0->done = in->done;
+                }
+                code = RXOSD_bulkincdec152(tcon->conn, &l0);
+                for (i=0; i<l0.osd_incdec0List_len; i++) {
+                    struct osd_incdec *in = &p->list.osd_incdecList_val[i];
+                    struct osd_incdec0 *in0 = &l0.osd_incdec0List_val[i];
+                    in->done = in0->done;
+                }
+                free(l0.osd_incdec0List_val);
+            }
+            if (code) {
+                ViceLog(0, ("DoOsdIncDec: RXOSD_bulkincdec failed for osd %u\n",
+			 s->id));
+                PutOsdConn(&tcon);
+                PutOsdConn(&tcon);
+                return code;
+            }
+        }
+        PutOsdConn(&tcon);
+    }
+    return 0;
+}
+
+static afs_int32
+UndoOsdInc(struct osd_osd *s, afs_uint32 vn)
+{
+    afs_int32 code;
+    struct osd_incdec_piece *p;
+    afs_int32 todo, i;
+
+    for (; s; s=s->next) {
+        /* for the moment assume s->id contains the ip-address */
+        struct rxosd_conn *tcon = FindOsdConnection(s->id);
+        if (!tcon) {
+            ViceLog(0,("UndoOsdInc: FindOsdConnection failed for %u\n", s->id));
+            continue;
+        }
+        todo = 0;
+        for (p=s->piece; p; p=p->next) {
+            for (i=0; i<p->list.osd_incdecList_len; i++) {
+                if (p->list.osd_incdecList_val[i].done) {
+                    if ((p->list.osd_incdecList_val[i].m.ometa_u.t.obj_id 
+		    & NAMEI_VNODEMASK) >= vn) {
+                        p->list.osd_incdecList_val[i].done = 0;
+                        p->list.osd_incdecList_val[i].todo = -1;
+                        todo = 1;
+                    } else
+                        p->list.osd_incdecList_val[i].todo = 0;
+                } else
+                    p->list.osd_incdecList_val[i].todo = 0;
+            }
+            if (todo) {
+                RXOSD_bulkincdec(tcon->conn, &p->list);
+                if (code == RXGEN_OPCODE) {
+                    int i;
+                    struct osd_incdec0List l0;
+                    l0.osd_incdec0List_len = p->list.osd_incdecList_len;
+                    l0.osd_incdec0List_val = (struct osd_incdec0 *)
+                                     malloc(l0.osd_incdec0List_len *
+                                            sizeof(struct osd_incdec0));
+                    for (i=0; i<l0.osd_incdec0List_len; i++) {
+                        struct osd_incdec *in = &p->list.osd_incdecList_val[i];
+                        struct osd_incdec0 *in0 = &l0.osd_incdec0List_val[i];
+                        in0->oid = in->m.ometa_u.t.obj_id;
+                        in0->pid = in->m.ometa_u.t.part_id;
+                        in0->todo = in->todo;
+                        in0->done = in->done;
+                    }
+                    code = RXOSD_bulkincdec152(tcon->conn, &l0);
+                    for (i=0; i<l0.osd_incdec0List_len; i++) {
+                        struct osd_incdec *in = &p->list.osd_incdecList_val[i];
+                        struct osd_incdec0 *in0 = &l0.osd_incdec0List_val[i];
+                        in->done = in0->done;
+                    }
+                    free(l0.osd_incdec0List_val);
+                }
+            }
+        }
+        PutOsdConn(&tcon);
+    }
+    return 0;
+}
+
+static void
+osd_DestroyIncDec(struct osd_osd *osds)
+{
+    struct osd_osd *next, *s;
+    struct osd_incdec_piece *nextp, *p;
+
+    for (s=osds; s; s=next) {
+        for (p=s->piece; p; p=nextp) {
+            nextp = p->next;
+            free(p);
+        }
+        next = s->next;
+        free(s);
+    }
+}
+
+static afs_int32
+osd_AddIncDecItem(struct osd_osd **osds, struct osdobject *o, afs_int32 what)
+{
+    struct osd_osd * s;
+    struct osd_incdec *ptr;
+    struct osd_incdec_piece *p;
+
+#ifdef RXOSD_DEBUG
+    ViceLog(1, ("osd_AddIncDecItm: %s %u.%u.%u.%u on %u\n",
+                        what > 0 ? "inc": "dec",
+                        (afs_uint32)(o->pid & 0xffffffff),
+                        (afs_uint32)(o->oid & 0x03ffffff),
+                        (afs_uint32)(o->oid >> 32),
+                        (afs_uint32)((o->oid >> 26) & 7),
+                        o->osd));
+#endif
+    for (s = *osds; s; s = s->next)
+        if (s->id == o->osd)
+            break;
+    if (!s) {
+        s = (struct osd_osd *) malloc(sizeof(struct osd_osd));
+        if (!s)
+            return ENOMEM;
+        memset(s, 0, sizeof(struct osd_osd));
+        s->id = o->osd;
+        s->next = *osds;
+        *osds = s;
+    }
+    for (p = s->piece; p; p=p->next)
+        if (p->list.osd_incdecList_len < p->len)
+            break;
+    if (!p) {
+        p = (struct osd_incdec_piece *) malloc(sizeof(struct osd_incdec_piece));
+        if (!p) {
+            ViceLog(0, ("osd_AddIncDecItem: malloc failed\n"));
+            return ENOMEM;
+        }
+        memset(p, 0, sizeof(struct osd_incdec_piece));
+        p->list.osd_incdecList_val = (struct osd_incdec *)&p->array;
+        p->len = OSD_INCDEC_ALLOCSTEP;
+        p->next = s->piece;
+        s->piece = p;
+    }
+    ptr = &p->list.osd_incdecList_val[p->list.osd_incdecList_len];
+    ptr->m.vsn = 1;
+    ptr->m.ometa_u.t.obj_id = o->oid;
+    ptr->m.ometa_u.t.part_id = o->pid;
+    ptr->todo = what;
+    ++(p->list.osd_incdecList_len);
+    return 0;
+}
+
+struct cloneRock {
+    struct osd_osd *osd_incHead;
+    struct osd_osd *osd_decHead;
+};
+
+static void
+purge_add_to_list(Volume *vp, struct VnodeDiskObject *vnode, afs_int32 vN,
+		   void **rock)
+{
+    afs_int32 i, j, code;
+    struct osdobjectList list;
+    struct cloneRock *cloneRock = (struct cloneRock *) *rock;
+    afs_foff_t offset = 0;
+
+    if (!cloneRock) {
+	cloneRock = (struct cloneRock *) malloc(sizeof(struct cloneRock));
+	memset(cloneRock, 0, sizeof(struct cloneRock));
+	*rock = cloneRock;
+    } 
+    if (vnode->type == vFile && vnode->osdMetadataIndex) {
+	code = extract_objects(vp, vnode, vN, &list);
+	if (!code) {
+	    for (i=0; i<list.osdobjectList_len; i++)
+		osd_AddIncDecItem(&cloneRock->osd_decHead,
+				  &list.osdobjectList_val[i], -1);
+	}
+	if (list.osdobjectList_len)
+	    free(list.osdobjectList_val);
+    }
+}
+
+static void
+purge_clean_up(void **rock)
+{
+    struct cloneRock *cloneRock = (struct cloneRock *) *rock;
+
+    if (cloneRock) {
+        DoOsdIncDec(cloneRock->osd_decHead);
+	osd_DestroyIncDec(cloneRock->osd_decHead);
+        free(cloneRock);
+	*rock = NULL;
+    }
+}
+
+static void
+clone_undo_increments(void **rock, afs_uint32 vN)
+{
+    struct cloneRock *cloneRock = (struct cloneRock *) *rock;
+
+    if (cloneRock) {
+        UndoOsdInc(cloneRock->osd_incHead, vN);
+	osd_DestroyIncDec(cloneRock->osd_incHead);
+	osd_DestroyIncDec(cloneRock->osd_decHead);
+        free(cloneRock);
+	*rock = NULL;
+    }
+}
+
+/*
+ *  Only called for vSmall vnodes
+ */
+static afs_int32
+clone_pre_loop(Volume *rwvp, Volume *clvp, struct VnodeDiskObject *rwvnode,
+	       struct VnodeDiskObject *clvnode, StreamHandle_t *rwfile,
+	       StreamHandle_t *clfilein, struct VnodeClassInfo *vcp,
+	       int reclone, void **rock)
+{
+    afs_int32 i, j, code;
+    struct osdobjectList rwlist, cllist;
+    struct cloneRock *cloneRock = (struct cloneRock *) *rock;
+    afs_foff_t offset = 0;
+
+    if (!cloneRock) {
+	cloneRock = (struct cloneRock *) malloc(sizeof(struct cloneRock));
+	memset(cloneRock, 0, sizeof(struct cloneRock));
+	*rock = cloneRock;
+    } 
+
+    offset = vcp->diskSize;
+    while (!STREAM_EOF(rwfile) || (reclone && !STREAM_EOF(clfilein))){
+	afs_uint32 vN = (offset >> (vcp->logSize -1));
+	rwlist.osdobjectList_len = 0;
+	cllist.osdobjectList_len = 0;
+	if (!STREAM_EOF(rwfile)
+	&& STREAM_READ(rwvnode, vcp->diskSize, 1, rwfile) == 1) {
+	    if (rwvnode->type == vFile) {
+		code = extract_objects(rwvp, rwvnode, vN, &rwlist);
+		if (code) {
+		    ViceLog(0, ("HandleOsdFile: couldn't open metadata file for Fid %u.%u.%u\n",
+                            V_id(rwvp), vN, rwvnode->uniquifier));
+		    return EIO;
+		}
+	    }
+	}
+	if (clfilein && !STREAM_EOF(clfilein)
+	&& STREAM_READ(clvnode, vcp->diskSize, 1, clfilein) == 1) {
+	    if (clvnode->type == vFile) {
+		code = extract_objects(clvp, clvnode, vN, &cllist);
+		if (code) {
+		    ViceLog(0, ("HandleOsdFile: couldn't open metadata file for Fid %u.%u.%u\n",
+                            V_id(clvp), vN, rwvnode->uniquifier));
+		    return EIO;
+		}
+	    }
+	}
+	/*
+	 * objects existing in both volumes don't require any action and
+	 * are are flagged by osd=0
+	 */
+	for (i=0; i<rwlist.osdobjectList_len; i++) {
+	    for (j=0; j<cllist.osdobjectList_len; j++) {
+		if (rwlist.osdobjectList_val[i].oid == cllist.osdobjectList_val[j].oid
+		&& rwlist.osdobjectList_val[i].pid == cllist.osdobjectList_val[j].pid
+		&& rwlist.osdobjectList_val[i].osd == cllist.osdobjectList_val[j].osd) {
+		    rwlist.osdobjectList_val[i].osd = 0;
+		    cllist.osdobjectList_val[j].osd = 0;
+		}
+	    }
+	}
+
+	for (i=0; i<rwlist.osdobjectList_len; i++) {
+	    if (rwlist.osdobjectList_val[i].osd != 0) {
+		code = osd_AddIncDecItem(&cloneRock->osd_incHead, &rwlist.osdobjectList_val[i], 1);
+		if (code)
+		    return ENOMEM;
+	    }
+	}
+	for (i=0; i<cllist.osdobjectList_len; i++) {
+	    if (cllist.osdobjectList_val[i].osd != 0) {
+		code = osd_AddIncDecItem(&cloneRock->osd_decHead, &cllist.osdobjectList_val[i], 1);
+		if (code)
+		    return ENOMEM;
+	    }
+	}
+	if (rwlist.osdobjectList_len)
+	    free(rwlist.osdobjectList_val);
+	if (cllist.osdobjectList_len)
+	    free(cllist.osdobjectList_val);
+	offset += vcp->diskSize;
+    }
+    STREAM_ASEEK(rwfile, vcp->diskSize);    /* Will fail if no vnodes */
+    if (reclone)
+	STREAM_ASEEK(clfilein, vcp->diskSize); /* may fail with no vnodes */
+
+    /* First add references for files on OSDs.
+       Here it´s more likely to get problems than with the local files.
+     */
+    code = DoOsdIncDec(cloneRock->osd_incHead);
+    if (code) {
+        clone_undo_increments(rock, 0);
+        code = EIO;
+    }
+    return code;
+}
+
+static afs_int32
+clone_metadata(Volume *rwvp, Volume *clvp, afs_foff_t offset, void *rock,
+	       struct VnodeClassInfo *vcp,
+	       struct VnodeDiskObject *rwvnode, struct VnodeDiskObject *clvnode) 
+{
+    /*
+     *  After we have incremented the link counts of the objects
+     *  by "OsdIncDec(osd_incHead);" before
+     *  we now need to copy the metadata themselves.
+     *  rwvnode points on the vnode of the RW-volume which (if modified) has
+     *  already been written out to the RW-volume and now will be used for the
+     *  cloned volume. Therefore it's necessary to copy information from the clvnode
+     *  such as osdMetaDataIndex over to the rwvnode.
+     */
+    if (rwvnode->type == vFile && rwvnode->osdMetadataIndex) {
+	char *rwtrock, *cltrock, *rwtdata, *cltdata;
+	afs_uint32 rwtlength, cltlength;
+	afs_uint32 vnodeNumber = offset >> (vcp->logSize -1);
+	afs_int32 code;
+
+	code = GetMetadataByteString(rwvp, rwvnode, &rwtrock, &rwtdata, &rwtlength,
+				     vnodeNumber);
+	if (code) {
+	    ViceLog(0, ("GetMetadataByteString for %u.%u.%u failed with %d\n",
+			V_id(rwvp), vnodeNumber, rwvnode->uniquifier, code));
+	    return EIO;
+	}
+	if (clvnode) {
+	    code = GetMetadataByteString(clvp, clvnode, &cltrock, &cltdata,
+					 &cltlength, vnodeNumber);
+	    if (code) {
+		ViceLog(0, ("GetMetadataByteString for %u.%u.%u failed with %d\n",
+			V_id(clvp), vnodeNumber, clvnode->uniquifier, code));
+		return EIO;
+	    }
+	    if (cltlength == rwtlength) {
+		if (!memcmp(rwtdata, cltdata, rwtlength)) { /* no change */
+		    free(cltrock);
+		    free(rwtrock);
+		    rwvnode->osdMetadataIndex = clvnode->osdMetadataIndex;
+		    rwvnode->osdFileOnline = clvnode->osdFileOnline;
+		    clvnode->osdMetadataIndex = 0;
+		    goto skipped;
+		}
+	    }
+	    if (cltrock)
+		free(cltrock);
+	    rwvnode->osdMetadataIndex = clvnode->osdMetadataIndex;
+	} else
+	    rwvnode->osdMetadataIndex = 0;
+	code = FlushMetadataHandle(clvp, rwvnode, vnodeNumber,
+		 (struct metadataBuffer *)rwtrock, 1);
+	free(rwtrock);
+	if (code) {
+	    ViceLog(0, ("FlushMetadataHandle for %u.%u.%u failed with %d\n",
+		V_id(clvp), vnodeNumber, rwvnode->uniquifier, code));
+            clone_undo_increments(rock, (offset >> vcp->logSize) + vSmall);
+	    return EIO;
+	} 		
+	/* update in place? if so we shouldn't free later the old metadata */
+	if (clvnode && clvnode->osdMetadataIndex == rwvnode->osdMetadataIndex)
+	    clvnode->osdMetadataIndex = 0;
+skipped:
+	;
+    }	
+    return 0;
+}
+
+static void 
+clone_free_metadata(Volume *clvp, struct VnodeDiskObject *clvnode, afs_uint32 vN)
+{
+    if (clvnode->type == vFile && clvnode->osdMetadataIndex)
+	FreeMetadataEntryChain(clvp, clvnode->osdMetadataIndex,
+            		       vN, clvnode->uniquifier);
+}
+
+static void
+clone_clean_up(void **rock)
+{
+    struct cloneRock *cloneRock = (struct cloneRock *) *rock;
+
+    if (cloneRock) {
+	osd_DestroyIncDec(cloneRock->osd_incHead);
+	osd_DestroyIncDec(cloneRock->osd_decHead);
+        free(cloneRock);
+	*rock = NULL;
+    }
+}
 /*
  * Called from the volserver when dumping a volume to an non-osd volserver.
  */
@@ -5320,20 +5775,20 @@ IncDecObjectList(struct osdobjectList *list, afs_int32 what)
                                 list->osdobjectList_val[i].oid, what);
 #ifdef RXOSD_DEBUG
 	    if (!code) 
-                Log("incdec_objectLinkCounts %s on %u %u.%u.%u.%u\n",
+                ViceLog(0, ("incdec_objectLinkCounts %s on %u %u.%u.%u.%u\n",
                             what>0?"incr":"decr", 
                             list->osdobjectList_val[i].osd,
                             (afs_uint32)(list->osdobjectList_val[i].pid & 0xffffffff),
                             (afs_uint32)(list->osdobjectList_val[i].oid & NAMEI_VNODEMASK),
                             (afs_uint32)((list->osdobjectList_val[i].oid >> 32) & 0xffffffff),
-                            (afs_uint32)((list->osdobjectList_val[i].oid >> NAMEI_TAGSHIFT) & NAMEI_TAGMASK));
+                            (afs_uint32)((list->osdobjectList_val[i].oid >> NAMEI_TAGSHIFT) & NAMEI_TAGMASK)));
 #endif	    
             if (code) {
-                Log("incdec_objectLinkCounts %s failed with %d for osd 0x%x, part 0x%lx, obj 0x%lx\n",
+                ViceLog(0, ("incdec_objectLinkCounts %s failed with %d for osd 0x%x, part 0x%lx, obj 0x%lx\n",
                             what>0?"incr":"decr", code,
                             list->osdobjectList_val[i].osd,
                             list->osdobjectList_val[i].pid,
-                            list->osdobjectList_val[i].oid);
+                            list->osdobjectList_val[i].oid));
                 if (what > 0)
                     return code;
             }
@@ -5345,16 +5800,19 @@ IncDecObjectList(struct osdobjectList *list, afs_int32 what)
  * Called in the volserver when restoring a volume for vnodes when both
  * the new and the old vnode pointed to OSD files.
  */
-afs_int32
-CorrectOsdLinkCounts(Volume *vol, struct VnodeDiskObject *old, afs_uint32 vN,
-        struct VnodeDiskObject *new, struct osdobjectList *oldlist, 
+static afs_int32
+restore_correct_linkcounts(Volume *vol, struct VnodeDiskObject *old, afs_uint32 vN,
+        struct VnodeDiskObject *new, void **rock, 
 	afs_int32 noNeedToIncrement)
 {
+    struct osdobjectList *oldlist = NULL;
     struct osdobjectList newlist;
     afs_int32 code = 0, i, j;
 
-    oldlist->osdobjectList_len = 0;
     if (old->type == vFile && old->osdMetadataIndex) {
+	oldlist = (struct osdobjectList *) malloc(sizeof(struct osdobjectList));
+	memset(oldlist, 0, sizeof(struct osdobjectList));
+	*rock = oldlist;
         code = extract_objects(vol, old, vN, oldlist);
         if (code)
 	    return code;
@@ -5369,16 +5827,18 @@ CorrectOsdLinkCounts(Volume *vol, struct VnodeDiskObject *old, afs_uint32 vN,
      * objects existing in both vnodes don't require any action and
      * are are flagged by osd=0
      */
-    for (i=0; i<newlist.osdobjectList_len; i++) {
-        for (j=0; j<oldlist->osdobjectList_len; j++) {
-            if (newlist.osdobjectList_val[i].oid ==
-                                        oldlist->osdobjectList_val[j].oid
-            && newlist.osdobjectList_val[i].pid ==
-                                        oldlist->osdobjectList_val[j].pid
-            && newlist.osdobjectList_val[i].osd ==
-                                        oldlist->osdobjectList_val[j].osd) {
-                newlist.osdobjectList_val[i].osd = 0;
-                oldlist->osdobjectList_val[j].osd = 0;
+    if (oldlist) {
+        for (i=0; i<newlist.osdobjectList_len; i++) {
+            for (j=0; j<oldlist->osdobjectList_len; j++) {
+                if (newlist.osdobjectList_val[i].oid ==
+                                            oldlist->osdobjectList_val[j].oid
+                && newlist.osdobjectList_val[i].pid ==
+                                            oldlist->osdobjectList_val[j].pid
+                && newlist.osdobjectList_val[i].osd ==
+                                            oldlist->osdobjectList_val[j].osd) {
+                    newlist.osdobjectList_val[i].osd = 0;
+                    oldlist->osdobjectList_val[j].osd = 0;
+                }
             }
         }
     }
@@ -5389,9 +5849,20 @@ CorrectOsdLinkCounts(Volume *vol, struct VnodeDiskObject *old, afs_uint32 vN,
     return code;
 }
 
-#endif /* BUILD_SALVAGER */
-#endif /* AFS_RXOSD_SUPPORT */
-#ifndef BUILD_SALVAGER
+static void
+restore_dec(Volume *vp, struct VnodeDiskObject *old, struct VnodeDiskObject *new,
+	    afs_int32 vN, void **rock)
+{
+    if (*rock) {
+	struct osdobjectList *oldlist = (struct osdobjectList *)*rock;
+	IncDecObjectList(oldlist, -1);
+	free(oldlist->osdobjectList_val);
+	free(*rock);
+	*rock = NULL;
+    }
+    if (old->osdMetadataIndex && old->osdMetadataIndex != new->osdMetadataIndex) 
+	FreeMetadataEntryChain(vp, old->osdMetadataIndex, vN, old->uniquifier);
+}
 
 /* this struct must be the same as in volint.xg !!! */
 
@@ -5442,7 +5913,7 @@ struct osd_info *findInfo(struct osd_infoList *list, afs_uint32 osd)
 	if (info->osdid == osd)
 	    return info;
     }
-    Log("FindInfo: unknwon osd id %d\n", osd);
+    ViceLog(0, ("FindInfo: unknwon osd id %d\n", osd));
     return (struct osd_info *)0;
 }
 
@@ -5468,10 +5939,8 @@ traverse(Volume *vol, struct sizerangeList *srl, struct osd_infoList *list,
     afs_int32 only_osd_volumes = operation & 4;
     afs_int32 only_non_osd_volumes = operation & 8;
     afs_int32 only_old_singles = operation & 0x10000;
-    struct timeval now;
-    TM_GetTimeOfDay(&now, 0);
+    afs_uint32 now = FT_ApproxTime();
 
-#ifdef AFS_RXOSD_SUPPORT
     if (only_osd_volumes && V_osdPolicy(vol) == 0)
         return 0;
     if (only_non_osd_volumes && V_osdPolicy(vol) != 0)
@@ -5482,14 +5951,13 @@ traverse(Volume *vol, struct sizerangeList *srl, struct osd_infoList *list,
             info = &list->osd_infoList_val[0];
         info->fids1++;
     }
-#endif
 
     for (i=0; i<nVNODECLASSES; i++) {
-        step = VnodeClassInfo[i].diskSize;
+        step = voldata->aVnodeClassInfo[i].diskSize;
         offset = step;
         fdP = IH_OPEN(vol->vnodeIndex[i].handle);
         if (!fdP) {
-            Log("Couldn't open metadata file of volume %u\n", V_id(vol));
+            ViceLog(0, ("Couldn't open metadata file of volume %u\n", V_id(vol)));
             goto bad;
         }
         FDH_SEEK(fdP, offset, SEEK_SET);
@@ -5497,7 +5965,6 @@ traverse(Volume *vol, struct sizerangeList *srl, struct osd_infoList *list,
             VNDISK_GET_LEN(size, vd);
             switch (vd->type) {
             case vDirectory:
-#ifdef AFS_RXOSD_SUPPORT
                 if ( policy_statistics ) {
                     if ( vd->osdPolicyIndex && ( vd->osdPolicyIndex != 1 ) ) {
                         info = findInfo(list, vd->osdPolicyIndex );
@@ -5507,7 +5974,6 @@ traverse(Volume *vol, struct sizerangeList *srl, struct osd_infoList *list,
                     }
                     break;
                 }
-#endif
             case vSymlink:
                 if ( policy_statistics )
                     break;
@@ -5542,28 +6008,23 @@ traverse(Volume *vol, struct sizerangeList *srl, struct osd_infoList *list,
                     if (info) {
                         info->fids++;
                         info->bytes += size;
-#ifdef AFS_RXOSD_SUPPORT
                         if (!vd->osdMetadataIndex) {
-#endif
                             info->fids1++;
                             info->bytes1 += size;
-#ifdef AFS_RXOSD_SUPPORT
                         }
-#endif
                     }
                 }
-#ifdef AFS_RXOSD_SUPPORT
                 if (vd->osdMetadataIndex) {
                     struct  osd_p_fileList fl;
-                    vN = (offset >> (VnodeClassInfo[i].logSize - 1)) - 1 + i;
+                    vN = (offset >> (voldata->aVnodeClassInfo[i].logSize - 1)) - 1 + i;
 		    if (V_osdPolicy(vol) == 0) {
-                        Log("traverse: %u.%u.%u is an OSD file in a volume without osdPolicy\n",
-                                V_id(vol), vN, vd->uniquifier);
+                        ViceLog(0, ("traverse: %u.%u.%u is an OSD file in a volume without osdPolicy\n",
+                                V_id(vol), vN, vd->uniquifier));
 		    }
                     code = read_osd_p_fileList(vol, vd, vN, &fl);
                     if (code) {
-                        Log("traverse: read_osd_p_filelist failed for %u.%u.%u\n",
-                                V_id(vol), vN, vd->uniquifier);
+                        ViceLog(0, ("traverse: read_osd_p_filelist failed for %u.%u.%u\n",
+                                V_id(vol), vN, vd->uniquifier));
                     } else {
                         int single = 1;
                         int copies = 0;
@@ -5606,7 +6067,7 @@ traverse(Volume *vol, struct sizerangeList *srl, struct osd_infoList *list,
                                             /* Outdated archival copy */
                                             single = 0;
                                         if (single
-                                          && now.tv_sec - vd->serverModifyTime
+                                          && now - vd->serverModifyTime
                                           < delay)
                                             single = 0;
                                         if (single) {
@@ -5651,16 +6112,16 @@ traverse(Volume *vol, struct sizerangeList *srl, struct osd_infoList *list,
                                             code = rxosd_examine(o->osd_id,
                                                         p_id, o->obj_id, mask, &e);
                                             if (code)
-                                                Log("traverse:  get_size for %u.%u.%ufailed with %d on osd %u\n",
+                                                ViceLog(0, ("traverse:  get_size for %u.%u.%ufailed with %d on osd %u\n",
                                                         V_id(vol), vN,
                                                         vd->uniquifier, code,
-                                                        o->osd_id);
+                                                        o->osd_id));
                                             else if (e.exam_u.e1.size != tlen)
-                                                Log("traverse:  %u.%u.%u has wrong length on %u (%llu instead of %llu)\n",
+                                                ViceLog(0, ("traverse:  %u.%u.%u has wrong length on %u (%llu instead of %llu)\n",
                                                         V_id(vol), vN,
                                                         vd->uniquifier,
                                                         o->osd_id,
-							e.exam_u.e1.size, tlen);
+							e.exam_u.e1.size, tlen));
                                         }
                                     }
                                 }
@@ -5669,7 +6130,6 @@ traverse(Volume *vol, struct sizerangeList *srl, struct osd_infoList *list,
                         destroy_osd_p_fileList(&fl);
                     }
                 }
-#endif /* AFS_RXOSD_SUPPORT */
                 break;
             }
             offset += step;
@@ -5685,7 +6145,6 @@ bad:
     return code;
 }
 
-#ifdef AFS_RXOSD_SUPPORT
 
 #define SALVAGE_NOWRITE 1
 #define SALVAGE_UPDATE 2
@@ -5724,14 +6183,14 @@ actual_length(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN,
 
     *size = 0;		/* we will later only add what we find */
     if (vd->type != vFile || !vd->osdMetadataIndex) {
-        Log("actual_length: %u.%u.%u is not an OSD file\n",
-				V_id(vol), vN, vd->uniquifier);
+        ViceLog(0, ("actual_length: %u.%u.%u is not an OSD file\n",
+				V_id(vol), vN, vd->uniquifier));
 	return EINVAL;
     }
     code = read_osd_p_fileList(vol, vd, vN, &fl);
     if (code) {
-        Log("actual_length: read_osd_p_filelist failed for %u.%u.%u\n",
-				V_id(vol), vN, vd->uniquifier);
+        ViceLog(0, ("actual_length: read_osd_p_filelist failed for %u.%u.%u\n",
+				V_id(vol), vN, vd->uniquifier));
 	return EIO;
     }
     if (fl.osd_p_fileList_len > 1) {
@@ -5756,14 +6215,14 @@ actual_length(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN,
 		    }
 		    if (e.exam_u.e1.size < stripelen[o->stripe]) {
 			if (stripelen[o->stripe] != MAX_UINT64) 
-			    Log("actual_size: %u.%u.%u segm %u stripe on %u shorter than other copy, reducing size by %llu\n",
+			    ViceLog(0, ("actual_size: %u.%u.%u segm %u stripe on %u shorter than other copy, reducing size by %llu\n",
 				V_id(vol), vN, vd->uniquifier, j, o->stripe, 
-				stripelen[o->stripe] - tlen);
+				stripelen[o->stripe] - tlen));
 			stripelen[o->stripe] == tlen;
 		    } else if (e.exam_u.e1.size != stripelen[o->stripe]) 
-			Log("actual_size: %u.%u.%u segm %u stripe on %u longer than other copy, reducing size by %llu\n",
+			ViceLog(0, ("actual_size: %u.%u.%u segm %u stripe on %u longer than other copy, reducing size by %llu\n",
 				V_id(vol), vN, vd->uniquifier, j, o->stripe, 
-				tlen - stripelen[o->stripe]);
+				tlen - stripelen[o->stripe]));
 		}
 		for (m=0; m<s->nstripes; m++) {
 		    *size += stripelen[m];
@@ -5816,7 +6275,7 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
     sprintf(line, "Salvaging volume %u\n", V_id(vol));
     rx_Write(call, line, strlen(line));
     for (i=0; i<nVNODECLASSES; i++) {
-	step = VnodeClassInfo[i].diskSize;
+	step = voldata->aVnodeClassInfo[i].diskSize;
 	offset = step;
 	fdP = IH_OPEN(vol->vnodeIndex[i].handle);
 	if (!fdP) {
@@ -5829,7 +6288,7 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 	while (FDH_READ(fdP, vd, sizeof(vnode)) == sizeof(vnode)) {
 	    if (vd->type != vNull) {
 		struct afs_stat st;
-		vN = (offset >> (VnodeClassInfo[i].logSize - 1)) - 1 + i;
+		vN = (offset >> (voldata->aVnodeClassInfo[i].logSize - 1)) - 1 + i;
 	        VNDISK_GET_LEN(size, vd);
 	        ino = VNDISK_GET_INO(vd);
 		if (vd->type == vFile && ino && vd->osdMetadataIndex) {
@@ -5852,10 +6311,8 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 				V_id(vol), vN, vd->uniquifier);
 			    if (flag & SALVAGE_UPDATE && vd->type == vFile
 			      && vd->osdMetadataIndex) {
-        			struct timeval now;
-        			TM_GetTimeOfDay(&now, 0);
 				VNDISK_SET_INO(vd, 0);
-				vd->serverModifyTime = now.tv_sec;
+				vd->serverModifyTime = FT_ApproxTime();
 	    			if (FDH_SEEK(fdP, offset, SEEK_SET) == offset) {
 	    			    if (FDH_WRITE(fdP, vd, sizeof(vnode)) == 
 							sizeof(vnode)) {
@@ -5880,11 +6337,10 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 				    V_id(vol), vN, vd->uniquifier,
 				    st.st_size, size);
 			        if (flag & SALVAGE_UPDATE) {
-        			    struct timeval now;
-        			    TM_GetTimeOfDay(&now, 0);
+        			    afs_uint32 now = FT_ApproxTime();
 				    size = st.st_size;
 				    VNDISK_SET_LEN(vd, size);
-				    vd->serverModifyTime = now.tv_sec;
+				    vd->serverModifyTime = now;
 	    			    if (FDH_SEEK(fdP, offset, SEEK_SET) == offset) {
 	    			        if (FDH_WRITE(fdP, vd, sizeof(vnode)) == 
 							sizeof(vnode)) {
@@ -5911,12 +6367,15 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 	        	ino = VNDISK_GET_INO(vd);
 			if (ino && (flag & SALVAGE_UPDATE)) {
 			    /* forget non-existing copy on object storage */
-        		    struct timeval now;
-        		    TM_GetTimeOfDay(&now, 0);
+        		    afs_uint32 now = FT_ApproxTime();
 			    vd->osdMetadataIndex = 0;
 			    vd->osdFileOnline = 0;
+#if 0
 			    vd->lastUsageTime = 0;
-			    vd->serverModifyTime = now.tv_sec;
+#else
+			    vd->vn_ino_hi = 0;
+#endif
+			    vd->serverModifyTime = now;
 	    		    if (FDH_SEEK(fdP, offset, SEEK_SET) == offset) {
 	    		        if (FDH_WRITE(fdP, vd, sizeof(vnode)) == 
 						sizeof(vnode)) {
@@ -6080,8 +6539,7 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 						  && s->offset == 0	   
 						  && (k+1 == f->segmList.osd_p_segmList_len)) {
 						    afs_int32 meta_changed = 0;
-        					    struct timeval now;
-        					    TM_GetTimeOfDay(&now, 0);
+        					    afs_uint32 now = FT_ApproxTime();
 						    if (s->length 
 						      && s->length != objsize) {
 						        s->length = objsize;
@@ -6121,7 +6579,7 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 							changed = 1;
 						    }
 						    if (changed || meta_changed) {
-						        vd->serverModifyTime = now.tv_sec;
+						        vd->serverModifyTime = now;
 	    					        if (FDH_SEEK(fdP, offset, SEEK_SET) == offset) {
 	    			    		            if (FDH_WRITE(fdP, vd, sizeof(vnode)) == 
 							    sizeof(vnode)) 
@@ -6233,8 +6691,7 @@ list_objects_on_osd(struct rx_call *call, Volume *vol,  afs_int32 flag,
     afs_uint32 errors = 0;
     FdHandle_t *lhp = 0;
     struct osd_infoList list = {0, NULL};
-    struct timeval now;
-    TM_GetTimeOfDay(&now, 0);
+    afs_uint32 now = FT_ApproxTime();
 
     if ( (flag & POL_INDICES) && !osd )
 	if ( code = init_pol_statList(&list) ) {
@@ -6256,7 +6713,7 @@ list_objects_on_osd(struct rx_call *call, Volume *vol,  afs_int32 flag,
 	else
 	    if (i != vSmall)	/* Can't expect anything in object storage */
 		continue;
-	step = VnodeClassInfo[i].diskSize;
+	step = voldata->aVnodeClassInfo[i].diskSize;
 	offset = step;
 	fdP = IH_OPEN(vol->vnodeIndex[i].handle);
 	if (!fdP) {
@@ -6278,7 +6735,7 @@ list_objects_on_osd(struct rx_call *call, Volume *vol,  afs_int32 flag,
 		VNDISK_GET_LEN(size, vd); 
 		sprintf(sizestr, " %llu", size);
 	    }
-	    vN = (offset >> (VnodeClassInfo[i].logSize - 1)) - 1 + i;
+	    vN = (offset >> (voldata->aVnodeClassInfo[i].logSize - 1)) - 1 + i;
 	    if ( flag & POL_INDICES ) {
 		if (vd->osdPolicyIndex && vd->osdPolicyIndex != USE_OSD_BYSIZE)
 		    if ( osd && (osd && vd->osdPolicyIndex == osd)
@@ -6319,7 +6776,7 @@ list_objects_on_osd(struct rx_call *call, Volume *vol,  afs_int32 flag,
 	    }
 	    if (flag & ONLY_HERE) {
 		afs_int32 copies = 0;
-		if (now.tv_sec - vd->unixModifyTime < minage)
+		if (now - vd->unixModifyTime < minage)
 		    goto done;
 		for (j=0; j<fl.osd_p_fileList_len; j++) {
 		    struct osd_p_file *f = &fl.osd_p_fileList_val[j];
@@ -6450,193 +6907,6 @@ destroy_candlist(char *rock)
     free(l);
 }
     
-afs_int32
-get_nwipeosds(char *rock)
-{
-    struct allcands *l = (struct allcands *)rock;
-
-    return l->nosds;
-}
-
-afs_uint32
-getwipeosd(char *rock, afs_int32 i)
-{
-    struct allcands *l = (struct allcands *)rock;
-
-    return l->osd[i]->osdid;
-}
-
-afs_int32
-fill_sorted(char *r, afs_int32 i, char *rock, void prog(char *rock,
-			AFSFid *fid, afs_uint32 w, afs_uint32 b))
-{
-    struct allcands *l = (struct allcands *)r;
-    struct wipecand *wc = l->osd[i];
-    struct cand *c;
-    afs_uint32 max = 0;
-    afs_int32 j, jbest = -1;
-
-    for (j=0; j<wc->candidates; j++) {
-	c = &wc->cand[j];
-	if (c->weight == 0xffffffff)
-	    continue;
-	if (c->weight > max) {
-	    jbest = j;
-	    max = c->weight;
-	}
-    }
-    if (jbest >= 0) {
-	c = &wc->cand[jbest];
-	(prog)(rock, &c->fid, c->weight, c->blocks);
-	c->weight = 0xffffffff;
-	return 0;
-    } 
-    return EOF;
-}
-
-/*
- * Called in the volserver processing "vos wipecandidates ..."
- */
-afs_int32
-get_wipe_cand(Volume *vol, char *rock)
-{
-    afs_int32 code;
-    struct allcands *list = (struct allcands *)rock;
-    FdHandle_t *fdP = 0;
-    afs_uint64 offset;
-    afs_uint64 size, length;
-    Inode ino;
-    struct VnodeDiskObject vnode, *vd = &vnode;
-    int i, j, k, l, m;
-    afs_uint32 step, vN;
-    afs_uint32 weight;
-    struct  osd_p_fileList fl;
-    struct wipecand *wc;
-    struct cand *c;
-    struct timeval now;
-
-    if (!list)
-	return EINVAL;
-    if (!V_osdPolicy(vol))
-	return 0;
-    TM_GetTimeOfDay(&now, 0);
-    step = VnodeClassInfo[vSmall].diskSize;
-    offset = step;
-    fdP = IH_OPEN(vol->vnodeIndex[vSmall].handle);
-    if (!fdP) {
-	Log("Couldn't open metadata file of volume %u\n", V_id(vol));
-	goto bad;
-    }
-    FDH_SEEK(fdP, offset, SEEK_SET);
-    while (FDH_READ(fdP, vd, sizeof(vnode)) == sizeof(vnode)) {
-	if (vd->type == vFile && vd->osdMetadataIndex) {
-	    int check = 0;
-	    VNDISK_GET_LEN(size, vd);
-	    vN = (afs_uint32)(offset >> (VnodeClassInfo[vSmall].logSize -1));
-	    weight = now.tv_sec - vd->lastUsageTime;
-#if 0
-	    if (!list->nosds)
-		check = 1;
-	    for (i=0; i<list->nosds; i++) {
-		wc = list->osd[i];
-		if (weight > wc->minweight) {
-		    check = 1;
-		    break;
-		}
-	    }
-	    if (!check)
-		goto skip;
-#endif
-	    code = read_osd_p_fileList(vol, vd, vN, &fl);
-	    if (code) {
-		Log("get_wipe_cand: read_osd_p_filelist failed for %u.%u.%u\n",
-				V_id(vol), vN, vd->uniquifier);
-		goto skip;
-	    }
-	    /* Look for archival copies of the file */
-	    check = 0;
-	    if (fl.osd_p_fileList_len > 1) {
-		for (j=0; j<fl.osd_p_fileList_len; j++) {
-		    if (fl.osd_p_fileList_val[j].archiveVersion == vd->dataVersion)
-			check = 1;
-		}
-	    }
-	    if (!check) {
-	        destroy_osd_p_fileList(&fl);
-		goto skip;
-	    }
-	    for (j=0; j<fl.osd_p_fileList_len; j++) {
-		struct osd_p_file *f = &fl.osd_p_fileList_val[j];
-		afs_uint64 oldlength = 0;
-		if (f->archiveVersion)
-		    continue;
-		for (k=0; k<f->segmList.osd_p_segmList_len; k++) {
-		    afs_uint32 blocks;
-		    struct osd_p_segm *s = &f->segmList.osd_p_segmList_val[k];
-		    if (s->length)
-			blocks = (afs_uint32) (s->length >> 10);
-		    else
-			blocks = (afs_uint32) ((size - s->offset) >> 10);
-		    blocks = blocks * s->copies;
-		    m = s->nstripes;
-		    while (m > 1) {
-			blocks = blocks >> 1;
-			m = m >> 1;
-		    }
-		    for (l=0; l<s->objList.osd_p_objList_len; l++) {
-			afs_uint32 oldmin, mbest;
-			struct osd_p_obj *o = &s->objList.osd_p_objList_val[l];
-			for (m=0; m<list->nosds; m++) {
-			    wc = list->osd[m];
-			    if (o->osd_id == wc->osdid)
-				break;
-			}
-			if (m >= list->nosds) {			/* new osd */
-			    wc = (struct wipecand *)
-						malloc(sizeof(struct wipecand));
-			    memset(wc, 0, sizeof(struct wipecand));
-			    wc->osdid = o->osd_id;
-			    list->osd[list->nosds] = wc;
-			    list->nosds++;
-			}
-			if (weight < wc->minweight)
-			    continue;
-			if (wc->candidates < MAXWIPECAND) { 
-			    c = &wc->cand[wc->candidates];
-			    wc->candidates++;
-			} else {
-			    afs_uint32 min = oldmin = weight;
-			    for (m=0; m<MAXWIPECAND; m++) {
-				if (wc->cand[m].weight < min) {
-				    mbest = m;
-				    oldmin = min;
-				    min = wc->cand[m].weight;
-				}
-			    }
-			    c = &wc->cand[mbest];
-			}
-			c->fid.Volume = V_id(vol),
-			c->fid.Vnode = vN;
-			c->fid.Unique = vd->uniquifier;
-			c->weight = weight;
-			c->blocks = blocks;
-			wc->minweight = oldmin; 
-		    }
-		}
-	    }
-	    destroy_osd_p_fileList(&fl);
-	}
-skip:
-	offset += step;
-	FDH_SEEK(fdP, offset, SEEK_SET);
-    }
-    code = 0;
-bad:
-    if (fdP)
-	FDH_CLOSE(fdP);
-    return code;
-}
-
 static afs_int32
 is_wipeable(struct osd_p_fileList *l, afs_uint64 size)
 {
@@ -6680,9 +6950,9 @@ get_arch_cand(Volume *vol, struct cand *cand, afs_uint64 minsize,
     afs_uint32 weight;
     struct  osd_p_fileList fl;
     struct cand *c;
-    struct timeval now;
     struct afs_stat st;
     namei_t name;
+    afs_uint32 now = FT_ApproxTime();
     
 
     if (V_id(vol) != V_parentId(vol)) 		/* Process only RW-volumes */
@@ -6692,12 +6962,11 @@ get_arch_cand(Volume *vol, struct cand *cand, afs_uint64 minsize,
     namei_HandleToName(&name, vol->osdMetadataHandle);
     if (afs_stat(name.n_path, &st) < 0 || st.st_size <= 8) /* no osd metadata */
 	return 0;
-    TM_GetTimeOfDay(&now, 0);
-    step = VnodeClassInfo[vSmall].diskSize;
+    step = voldata->aVnodeClassInfo[vSmall].diskSize;
     offset = step;
     fdP = IH_OPEN(vol->vnodeIndex[vSmall].handle);
     if (!fdP) {
-	Log("Couldn't open small vnode file of volume %u\n", V_id(vol));
+	ViceLog(0, ("Couldn't open small vnode file of volume %u\n", V_id(vol)));
 	code = EIO;
 	goto bad;
     }
@@ -6707,8 +6976,8 @@ get_arch_cand(Volume *vol, struct cand *cand, afs_uint64 minsize,
 	    afs_int32 check;
 	    afs_uint32 blocks;
 	    VNDISK_GET_LEN(size, vd);
-	    vN = (afs_uint32)(offset >> (VnodeClassInfo[vSmall].logSize -1));
-	    weight = now.tv_sec - vd->serverModifyTime;
+	    vN = (afs_uint32)(offset >> (voldata->aVnodeClassInfo[vSmall].logSize -1));
+	    weight = now - vd->serverModifyTime;
 	    if (weight < delay)		/* younger than one perhaps hour */
 		goto skip;
 	    if (size < minsize || size > maxsize)
@@ -6717,8 +6986,8 @@ get_arch_cand(Volume *vol, struct cand *cand, afs_uint64 minsize,
 		goto skip;		/* others are more urgent */
 	    code = read_osd_p_fileList(vol, vd, vN, &fl);
 	    if (code) {
-		Log("get_arch_cand: read_osd_p_filelist failed for %u.%u.%u\n",
-				V_id(vol), vN, vd->uniquifier);
+		ViceLog(0, ("get_arch_cand: read_osd_p_filelist failed for %u.%u.%u\n",
+				V_id(vol), vN, vd->uniquifier));
 		goto skip;
 	    }
 	    /* Look for archival copies of the file */
@@ -6864,5 +7133,87 @@ bad:
     destroy_osd_p_fileList(&l);
     return code;
 }
-#endif /* AFS_RXOSD_SUPPORT */
+
+int init_osdvol (char *version, char **afsosdVersion, struct osd_vol_ops_v0 **osdvol)
+{
+    static struct osd_vol_ops_v0 osd_vol_ops_v0 = {
+        NULL,
+        GetOsdEntryLength,
+        truncate_osd_file,
+        clone_pre_loop,
+        clone_metadata,
+        clone_undo_increments,
+        clone_free_metadata,
+        clone_clean_up,
+        purge_add_to_list,
+        purge_clean_up,
+	osd_5min_check,
+	actual_length,
+	osdRemove,
+	FindOsdBySize,
+	osd_create_simple,
+	GetMetadataByteString,
+	dump_osd_file,
+	osd_metadata_time,
+	AllocMetadataByteString,
+	FlushMetadataHandle,
+	restore_osd_file,
+	restore_correct_linkcounts,
+	restore_dec,
+	osd_split_objects
+    };
+
+    *osdvol = &osd_vol_ops_v0;
+    openafsVersion = version;
+    *afsosdVersion = libraryVersion;
+    rx_enable_stats = *(voldata->aRx_enable_stats);
+    return 0;
+}
+#else /* BUILD_SALVAGER */
+private struct vol_data_v0 *voldata;
+extern afs_int32 libafsosd_init(void *libafsosdrock, afs_int32 version);
+
+int init_salv_afsosd (char *afsversion, char **afsosdVersion, void *inrock, void *outrock,
+	       void *libafsosdrock, afs_int32 version)
+{
+    afs_int32 code = 0;
+    struct init_salv_inputs *input = (struct init_salv_inputs *)inrock;
+    struct init_salv_outputs *output = (struct init_salv_outputs *)outrock;
+    extern struct osd_vol_ops_v0 *osdvol;
+    static struct osd_vol_ops_v0 osd_vol_ops_v0 = {
+        SalvageOsdMetadata,
+        GetOsdEntryLength,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL
+    };
+
+    voldata = input->voldata;
+
+    *(output->osdvol) = &osd_vol_ops_v0;
+
+    openafsVersion = afsversion;
+    *afsosdVersion = libraryVersion;
+    code = libafsosd_init(libafsosdrock, version);
+    return code;
+}
 #endif /* BUILD_SALVAGER */

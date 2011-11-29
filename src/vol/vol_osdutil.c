@@ -8,8 +8,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-#ifdef AFS_RXOSD_SUPPORT
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/types.h>
@@ -387,6 +385,3 @@ print_osd_metadata(struct osdMetadataHandle *mh)
     code = print_osd_metadata_verb(mh, 0, 0);
     return code;
 }
-
-#endif /* AFS_RXOSD_SUPPORT */
-

@@ -8,7 +8,7 @@ srcdir=@srcdir@
 include @TOP_OBJDIR@/src/config/Makefile.config
 HSM_LIB=@HSM_LIB@
 HSM_INC=@HSM_INC@
-INSTALL=/usr/bin/install -c
+INSTALL = @INSTALL@ 
 
 VICED=../viced
 VLSERVER=../vlserver
@@ -222,7 +222,8 @@ librxosd.a: rxosd.xdr.o rxosd.cs.o
 ${TOP_LIBDIR}/librxosd.a: librxosd.a
 	${INSTALL} $? $@
 
-install: ${DESTDIR}${afssrvlibexecdir}/rxosd ${DESTDIR}${bindir}/osd
+install: ${DESTDIR}${afssrvlibexecdir}/rxosd ${DESTDIR}${bindir}/osd \
+	${DESTDIR}${afssrvlibexecdir}/readabyte
 
 clean:
 	$(RM) -f *.o rxosd.*.* rxosd.[oh] Krxo* osd core AFS_component_version_number.c osddb* policy_parser.c
@@ -230,6 +231,9 @@ clean:
 include ../config/Makefile.version
 
 ${DESTDIR}${afssrvlibexecdir}/rxosd: rxosd
+	${INSTALL} $? $@
+
+${DESTDIR}${afssrvlibexecdir}/readabyte: readabyte
 	${INSTALL} $? $@
 
 ${DESTDIR}${bindir}/osd: osd

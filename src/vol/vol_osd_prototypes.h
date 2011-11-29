@@ -9,8 +9,7 @@ extern afs_int32 GetMetadataByteString(Volume *vol, VnodeDiskObject *vd,
 extern afs_int32 AllocMetadataByteString(char **rock, char **data, 
 				afs_int32 **length);
 extern afs_int32 FlushMetadataHandle(Volume *vol, struct VnodeDiskObject *vd,
-                        	afs_uint32 vN, struct metadataBuffer *mh, 
-				int locked);
+                        	afs_uint32 vN, void *mrock, int locked);
 extern afs_int32 FreeMetadataEntryChain(Volume *vol, afs_uint32 n, afs_uint32 vN, 
 				afs_uint32 vU);
 extern afs_int32 extract_objects(Volume *vol, VnodeDiskObject *vd, afs_uint32 vN, 
@@ -21,7 +20,7 @@ extern afs_int32 replace_osd(struct Vnode *vn, afs_uint32 old, afs_int32 new,
 				afs_int32 *result);
 extern void destroy_async_list(struct async *a);
 extern afs_int32 set_osd_file_ready(struct rx_call *call, Vnode *vn,
-				struct viced_md5 *md5);
+				struct cksum *checksum);
 extern afs_int32 wipe_osd_file(Vnode *vn);
 extern afs_int32 remove_osd_online_version(Vnode *vn, afs_uint32 version);
 extern void FillOsdTable();

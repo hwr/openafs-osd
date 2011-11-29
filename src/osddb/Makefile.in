@@ -28,8 +28,9 @@ dest: all ${DEST}/root.server/usr/afs/bin/osddbserver \
 	${DEST}/root.server/usr/afs/bin/archive1 \
 	${DEST}/root.server/usr/afs/bin/wiper
 
-all: osddbserver osddbuser.o ${TOP_INCDIR}/afs/osddb.h osddb.cs.o osddb.xdr.o \
-		${TOP_LIBDIR}/libosddb.a test
+all: osddbserver osddbuser.o ${TOP_INCDIR}/afs/osddbuser.h \
+	${TOP_INCDIR}/afs/osddb.h osddb.cs.o osddb.xdr.o \
+	${TOP_LIBDIR}/libosddb.a test
 
 osddb.h: ${srcdir}/osddb.xg
 	${RXGEN} -x -h -o $@ ${srcdir}/osddb.xg
@@ -54,7 +55,7 @@ osddbserver: osddbserver.o osddb.ss.o osddb.xdr.o ${LIBS} Makefile
 	${CC} ${CFLAGS} -o osddbserver osddbserver.o osddb.ss.o osddb.xdr.o  ${LIBS} ${XLIBS}
 
 
-osddbuser.o: ${srcdir}/osddbuser.c osddb.h volint.h
+osddbuser.o: ${srcdir}/osddbuser.c osddb.h volint.h ${TOP_INCDIR}/afs/afsosd.h
 	${CC} ${CFLAGS} -I${srcdir}/../ -o osddbuser.o -c ${srcdir}/osddbuser.c
 
 libosddb.a: osddb.cs.o osddb.xdr.o osddbuser.o
@@ -93,6 +94,12 @@ ${DESTDIR}${afssrvlibexecdir}/wiper: ${srcdir}/wiper
 	${CP} ${srcdir}/wiper ${DESTDIR}${afssrvlibexecdir}/wiper
 
 ${TOP_INCDIR}/afs/osddb.h: osddb.h
+	${INSTALL} $? $@
+
+${TOP_INCDIR}/afs/afsosd.h: ${srcdir}/../vol/afsosd.h
+	${INSTALL} $? $@
+
+${TOP_INCDIR}/afs/osddbuser.h: osddbuser.h
 	${INSTALL} $? $@
 
 ${DESTDIR}${includedir}/afs/osddb.h: osddb.h

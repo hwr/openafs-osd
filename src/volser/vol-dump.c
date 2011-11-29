@@ -75,6 +75,8 @@
 #include "volser.h"
 #include "volint.h"
 #include "dump.h"
+#include <afs/afsosd.h>
+struct osd_vol_ops_v0 *osdvol = NULL;
 
 #define putint32(p, v)  *p++ = v>>24, *p++ = v>>16, *p++ = v>>8, *p++ = v
 #define putshort(p, v) *p++ = v>>8, *p++ = v

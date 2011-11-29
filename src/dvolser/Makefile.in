@@ -31,7 +31,7 @@ VOLSER=${srcdir}/../volser
 RX=${srcdir}/../rx
 OSDDB=${srcdir}/../osddb
 
-VOLSEROBJS=volmain.o volprocs.o physio.o voltrans.o volerr.o volint.cs.o dumpstuff.o  volint.ss.o volint.xdr.o vscommon.o vol_split.o
+VOLSEROBJS=volmain.o volprocs.o physio.o voltrans.o volerr.o volint.cs.o dumpstuff.o  volint.ss.o volint.xdr.o vscommon.o vol_split.o 
 
 VLSERVEROBJS=vldbint.cs.o vldbint.xdr.o vl_errors.o
 
@@ -45,14 +45,11 @@ DIROBJS=buffer.o dir.o salvage.o
 
 VOLOBJS= vnode.o volume.o vutil.o partition.o fssync-client.o purge.o \
 	 clone.o devname.o common.o ihandle.o listinodes.o \
-	 namei_ops.o nuke.o salvsync-client.o daemon_com.o vol_osd.o
+	 namei_ops.o nuke.o salvsync-client.o daemon_com.o libafsosd.o
 
 FSINTOBJS=# afsaux.o afscbint.cs.o afsint.ss.o afsint.xdr.o
 
 RXOBJS=rx_pthread.o
-
-OSDOBJECTS= rxosd.cs.o rxosd.xdr.o osddbuser.o osddb.cs.o osddb.xdr.o \
-	 vol_osd.xdr.o
 
 objects= ${VOLSEROBJS} ${LWPOBJS} ${LIBACLOBJS} \
 	 ${UTILOBJS} ${DIROBJS} ${VOLOBJS} ${FSINTOBJS} ${RXOBJS}
@@ -225,34 +222,11 @@ afsint.xdr.o: ${FSINT}/afsint.xdr.c
 vol_osd.xdr.o: ../vol/vol_osd.xdr.c
 	${COMPILE}
 
-vol_osd.o: ${VOL}/vol_osd.c
-	${COMPILE} -I../vol
-
-rxosd.cs.o: ../rxosd/rxosd.cs.c
-	${COMPILE}
-
-rxosd.xdr.o: ../rxosd/rxosd.xdr.c
-	${COMPILE}
-
-osddb.cs.o: ../osddb/osddb.cs.c
-	${COMPILE}
-
-osddb.xdr.o: ../osddb/osddb.xdr.c
-	${COMPILE}
-
-osddbuser.o: ${OSDDB}/osddbuser.c
-	${COMPILE} -I../osddb
+libafsosd.o: ${VOL}/libafsosd.c
+	${COMPILE} -DBUILDING_VOLSERVER
 
 davolserver: ${objects} ${LIBS}
-	set -x; \
-	case ${WITH_OBJECT_STORAGE} in \
-	YES) \
-	make ${OSDOBJECTS} ; \
-	${CC} ${LDFLAGS} -o davolserver ${objects} ${OSDOBJECTS} \
-		${LIBS} ${MT_LIBS} ${XLIBS} ;; \
-	*) \
-	${CC} ${LDFLAGS} -o davolserver ${objects} ${LIBS} ${MT_LIBS} ${XLIBS} ;; \
-	esac
+	${CC} ${LDFLAGS} -o davolserver ${objects} -ldl ${LIBS} ${MT_LIBS} ${XLIBS}
 
 install: davolserver
 	${INSTALL} -d ${DESTDIR}${afssrvlibexecdir}

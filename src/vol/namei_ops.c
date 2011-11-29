@@ -75,6 +75,10 @@
 #endif
 #endif
 
+#if !defined(BUILDING_RXOSD)
+#include <afs/afsosd.h>
+#endif
+
 afs_int32 defaultLinkCount = 5;
 extern int log_open_close;
 
@@ -214,15 +218,15 @@ emul_flock(int fd, int cmd)
 #endif
 
 #ifdef BUILDING_RXOSD
-extern void lock_file(FdHandle_t *fdP, afs_int32 type);
-extern void unlock_file(FdHandle_t *fdP);
+extern void lock_file(FdHandle_t *fdP, afs_int32 type, afs_int32 mystripe);
+extern void unlock_file(FdHandle_t *fdP, afs_int32 mystripe);
 
 int rxosdlock(FdHandle_t *fdP,int cmd)
 {
     if (cmd & LOCK_UN) {
-        unlock_file(fdP);
+        unlock_file(fdP, 0);
     } else {
-        lock_file(fdP, cmd);
+        lock_file(fdP, cmd, 0);
     }
     return 0;
 }
@@ -1746,7 +1750,7 @@ GetLinkTableVersion(FdHandle_t *fh)
 			TimeFields->tm_hour, TimeFields->tm_min, TimeFields->tm_sec);
 	    if (afs_stat(name.n_path, &tstat) >= 0) {
 		GetOGMFromStat(&tstat, &ogm_parm, &tag);
-                code = rename(name.n_path, &badlinktable);
+                code = rename(name.n_path, badlinktable);
 	        if (code == 0) {
 	            fd = afs_open(name.n_path, O_CREAT | O_EXCL | O_TRUNC | O_RDWR, 0);
 	            close(fh->fd_fd);
@@ -1817,7 +1821,7 @@ namei_GetLCOffsetAndIndexFromIno(Inode ino, FdHandle_t *fd, afs_foff_t * offset,
     }
     return shared;
 }
-#else /* AFS_RXOSD_SUPPORT */
+#else /* BUILDING_RXOSD */
 /**
  * compute namei link table file and bit offset from inode number.
  *
@@ -1836,7 +1840,7 @@ namei_GetLCOffsetAndIndexFromIno(Inode ino, afs_foff_t * offset, int *index)
     *offset = (afs_foff_t) ((toff << LINKTABLE_SHIFT) + 8);	/* * 2 + sizeof stamp */
     *index = (tindex << 1) + tindex;
 }
-#endif /* AFS_RXOSD_SUPPORT */
+#endif /* BUILDING_RXOSD */
 
 #ifdef AFS_PTHREAD_ENV
 /* XXX do static initializers work for WINNT/pthread? */
@@ -3436,6 +3440,7 @@ convertVolumeInfo(FD_t fdr, FD_t fdw, afs_uint32 vid)
 }
 #endif
 
+#ifndef BUILDING_RXOSD
 /*
  * Convert a RO-volume into a RW-volume
  *
@@ -3569,11 +3574,9 @@ namei_ConvertROtoRWvolume(char *pname, afs_uint32 volumeId, afs_uint32 *newId)
 	} else if (info.u.param[2] == VI_LARGEINDEX) {	/* large vnodes file */
 	    strlcpy(largeName, dp->d_name, sizeof(largeName));
 	    largeSeen = 1;
-#ifdef AFS_RXOSD_SUPPORT
         } else if (info.u.param[2] == VI_OSDMETADATA) { /* OSD metadata file */
             strcpy(osdName, dp->d_name);
             osdSeen = 1;
-#endif /* AFS_RXOSD_SUPPORT */
 	} else {
 	    closedir(dirp);
 	    Log("1 namei_ConvertROtoRWvolume: unknown type %d of special file found : %s" OS_DIRSEP "%s\n", info.u.param[2], dir_name, dp->d_name);
@@ -3583,12 +3586,13 @@ namei_ConvertROtoRWvolume(char *pname, afs_uint32 volumeId, afs_uint32 *newId)
     }
     closedir(dirp);
 
-#ifdef AFS_RXOSD_SUPPORT
-    if (!infoSeen || !smallSeen || !largeSeen || !linkSeen || !osdSeen) {
-#else
-    if (!infoSeen || !smallSeen || !largeSeen || !linkSeen) {
-#endif
+    if (!infoSeen || !smallSeen || !largeSeen || !linkSeen || (osdvol && !osdSeen)) {
 	Log("1 namei_ConvertROtoRWvolume: not all special files found in %s\n", dir_name);
+	code = -1;
+	goto done;
+    }
+    if (!osdvol && osdSeen) {
+	Log("1 namei_ConvertROtoRWvolume: osdMetadata file in %s, but volserver is started without -libafsosd\n", dir_name);
 	code = -1;
 	goto done;
     }
@@ -3670,24 +3674,24 @@ namei_ConvertROtoRWvolume(char *pname, afs_uint32 volumeId, afs_uint32 *newId)
     OS_UNLINK(newpath);
 #endif
 
-#ifdef AFS_RXOSD_SUPPORT
-    t_ih.ih_ino = namei_MakeSpecIno(ih->ih_vid, VI_OSDMETADATA);
-    namei_HandleToName(&n, &t_ih);
-    (void)afs_snprintf(newpath, sizeof newpath, "%s" OS_DIRSEP "%s", dir_name, osdName);
-    fd = afs_open(newpath, O_RDWR, 0);
-    if (fd == INVALID_FD) {
-        Log("1 namei_ConvertROtoRWvolume: could not open osd metadata file: %s\n",newpath);
-        return -1;
-    }
-    SetOGM(fd, ih->ih_vid, 5, 1);
-    OS_CLOSE(fd);
+    if (osdvol) {
+        t_ih.ih_ino = namei_MakeSpecIno(ih->ih_vid, VI_OSDMETADATA);
+        namei_HandleToName(&n, &t_ih);
+        (void)afs_snprintf(newpath, sizeof newpath, "%s" OS_DIRSEP "%s", dir_name, osdName);
+        fd = afs_open(newpath, O_RDWR, 0);
+        if (fd == INVALID_FD) {
+            Log("1 namei_ConvertROtoRWvolume: could not open osd metadata file: %s\n",newpath);
+            return -1;
+        }
+        SetOGM(fd, ih->ih_vid, 5, 1);
+        OS_CLOSE(fd);
 #ifdef AFS_NT40_ENV
-    MoveFileEx(n.n_path, newpath, MOVEFILE_WRITE_THROUGH);
+        MoveFileEx(n.n_path, newpath, MOVEFILE_WRITE_THROUGH);
 #else
-    link(newpath, n.n_path);
-    OS_UNLINK(newpath);
+        link(newpath, n.n_path);
+        OS_UNLINK(newpath);
 #endif
-#endif /* AFS_RXOSD_SUPPORT */
+    }
 
     OS_UNLINK(oldpath);
 
@@ -3696,9 +3700,8 @@ namei_ConvertROtoRWvolume(char *pname, afs_uint32 volumeId, afs_uint32 *newId)
     h.smallVnodeIndex_hi = h.id;
     h.largeVnodeIndex_hi = h.id;
     h.linkTable_hi = h.id;
-#ifdef AFS_RXOSD_SUPPORT
-    h.OsdMetadata_hi = h.id;
-#endif
+    if (osdvol)
+        h.OsdMetadata_hi = h.id;
 
     if (VCreateVolumeDiskHeader(&h, partP)) {
         Log("1 namei_ConvertROtoRWvolume: Couldn't write header for RW-volume %lu\n",
@@ -3725,6 +3728,7 @@ namei_ConvertROtoRWvolume(char *pname, afs_uint32 volumeId, afs_uint32 *newId)
 
     return code;
 }
+#endif /* BUILDING_RXOSD */
 
 /* PrintInode
  *

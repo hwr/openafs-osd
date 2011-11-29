@@ -215,7 +215,6 @@ afs_ConnBySAsrv(struct srvAddr *sap, unsigned short aport, afs_int32 service,
     /* Get conn by port and user. */
     for (tc = sap->conns; tc; tc = tc->next) {
 	if (tc->user == tu && tc->port == aport) {
-#if defined(AFS_RXOSD_SUPPORT)
 	    afs_int32 i, free = 0;
 	    if (aport != AFS_RXOSDPORT)
 		break;
@@ -229,8 +228,6 @@ afs_ConnBySAsrv(struct srvAddr *sap, unsigned short aport, afs_int32 service,
 	    }
 	    if (free)
 	        break;
-#endif
-	    break;
 	}
     }
 
@@ -340,10 +337,8 @@ afs_ConnBySA(struct srvAddr *sap, unsigned short aport, afs_int32 acell,
      */
     if (aport == sap->server->cell->vlport)
 	service = 52;
-#if defined(AFS_RXOSD_SUPPORT)
     else if (aport == AFS_RXOSDPORT)
 	service = 900;
-#endif
     else
 	service = 1;
     return afs_ConnBySAsrv(sap, aport, service, acell, tu, force_if_down,

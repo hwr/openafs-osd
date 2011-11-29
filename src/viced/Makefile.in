@@ -40,10 +40,6 @@ LIBS=${TOP_LIBDIR}/libacl.a	\
 	${TOP_LIBDIR}/liblwp.a \
 	${TOP_LIBDIR}/libafsutil.a
 
-OSDLIBS= \
-	${TOP_LIBDIR}/librxosd.a \
-	${TOP_LIBDIR}/libosddb.a
-
 headers=${TOP_INCDIR}/lwp.h		\
 	${TOP_INCDIR}/afs/acl.h	\
 	${TOP_INCDIR}/afs/errors.h	\
@@ -64,7 +60,7 @@ objects=viced.o		\
 	afsfileprocs.o	\
 	host.o		\
 	physio.o	\
-	callback.o	
+	callback.o
 
 all: cbd fsprobe check_sysid fileserver ${TOP_INCDIR}/afs/fs_stats.h
 
@@ -80,27 +76,13 @@ check_sysid: check_sysid.c
 
 fileserver: ${objects} ${headers} ${LIBS}
 	set -x; \
-	case ${WITH_OBJECT_STORAGE} in \
-	YES) \
-		case ${SYS_NAME} in \
-		rs_aix*) \
-			${CC} -K ${LDFLAGS} -o fileserver ${objects} \
-			${TOP_LIBDIR}/libaudit.a ${TOP_LIBDIR}/vlib.a \
-			${OSDLIBS} ${LIBS} ${XLIBS} ;; \
-		*) \
-			${CC} ${LDFLAGS} -o fileserver ${objects} \
-			${TOP_LIBDIR}/libaudit.a ${TOP_LIBDIR}/vlib.a \
-			${OSDLIBS} ${LIBS} ${XLIBS} ;; \
-		esac ;; \
-	*) \
 	case ${SYS_NAME} in \
 	rs_aix*) \
-	    ${CC} -K ${LDFLAGS} -o fileserver ${objects} \
+	    ${CC} -K ${LDFLAGS} -o fileserver ${objects} -ldl \
 	    ${TOP_LIBDIR}/libaudit.a ${TOP_LIBDIR}/vlib.a ${LIBS} ${XLIBS} ;; \
 	*) \
-	    ${CC} ${LDFLAGS} -o fileserver ${objects} \
+	    ${CC} ${LDFLAGS} -o fileserver ${objects} -ldl \
 	    ${TOP_LIBDIR}/libaudit.a ${TOP_LIBDIR}/vlib.a ${LIBS} ${XLIBS} ;; \
-	esac ;; \
 	esac
 
 fsprobe.o: fsprobe.c AFS_component_version_number.c

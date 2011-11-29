@@ -1097,6 +1097,10 @@ InstallUVolumeEntry(struct volume *av, struct uvldbentry *ve, int acell,
 
 	if (!(ve->serverFlags[i] & VLSERVER_FLAG_UUID)) {
 	    /* The server has no uuid */
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
+		if (afs_compare_serveruuid((char *)&ve->serverNumber))
+		    av->states |= VPartVisible;
+#endif
 	    serverid = htonl(ve->serverNumber[i].time_low);
 	    ts = afs_GetServer(&serverid, 1, acell, cellp->fsport, WRITE_LOCK,
 			       (afsUUID *) 0, 0);
@@ -1105,10 +1109,6 @@ InstallUVolumeEntry(struct volume *av, struct uvldbentry *ve, int acell,
 	    if (ts && (ts->sr_addr_uniquifier == ve->serverUnique[i])
 		&& ts->addr) {
 		/* uuid, uniquifier, and portal are the same */
-#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
-		if (afs_compare_serveruuid((char *)&ve->serverNumber))
-		    av->states |= VPartVisible;
-#endif
 	    } else {
 		afs_uint32 *addrp, code;
 		afs_int32 nentries, unique;

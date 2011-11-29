@@ -109,6 +109,10 @@
 #include <afs/audit.h>
 #include <afs/afsutil.h>
 #include <afs/dir.h>
+#include <afs/afsosd.h>
+
+struct osd_viced_ops_v0 *osdviced = NULL;
+struct osd_vol_ops_v0 *osdvol = NULL;
 
 extern void SetDirHandle(DirHandle * dir, Vnode * vnode);
 extern void FidZap(DirHandle * file);
@@ -124,13 +128,11 @@ pthread_mutex_t active_glock_mutex;
     osi_Assert(pthread_mutex_lock(&active_glock_mutex) == 0)
 #define ACTIVE_UNLOCK \
     osi_Assert(pthread_mutex_unlock(&active_glock_mutex) == 0)
-#if defined(AFS_ENABLE_VICEP_ACCESS) || defined(AFS_RXOSD_SUPPORT)
 pthread_mutex_t async_glock_mutex;
 #define ASYNC_LOCK \
     osi_Assert(pthread_mutex_lock(&async_glock_mutex) == 0)
 #define ASYNC_UNLOCK \
     osi_Assert(pthread_mutex_unlock(&async_glock_mutex) == 0)
-#endif
 #else /* AFS_PTHREAD_ENV */
 #define ACTIVE_LOCK
 #define ACTIVE_UNLOCK
@@ -189,21 +191,6 @@ pthread_mutex_t async_glock_mutex;
 
 #define CREATE_SGUID_ADMIN_ONLY 1
 
-#ifdef AFS_RXOSD_SUPPORT
-#include <afs/vol_osd.h>
-#include "../vol/vol_osd_prototypes.h"
-#include <afs/rxosd.h>
-
-extern afs_uint32 local_host;
-
-#define RX_OSD                                  2
-#define POSSIBLY_OSD          	          0x10000
-#define RX_OSD_NOT_ONLINE   		0x1000000
-#define MAX_MOVE_OSD_SIZE   		1024*1024
-
-extern afs_int64 minOsdFileSize;
-#endif /* AFS_RXOSD_SUPPORT */
-
 extern struct afsconf_dir *confDir;
 extern afs_int32 dataVersionHigh;
 
@@ -234,50 +221,24 @@ extern afs_int32 FindOsdWipeableDivisor;
 extern afs_int32 FindOsdNonWipeableDivisor;
 extern afs_int32 FindOsdUsePrior;
 
-#ifdef AFS_RXOSD_SUPPORT
-afs_uint64 max_move_osd_size = MAX_MOVE_OSD_SIZE;
-afs_int32 max_move_osd_size_set_by_hand = 0;
-extern afs_int32 fastRestore;
-#endif
 struct afsconf_dir *tdir = 0;
 
-#define MEASURE_TIMES 	1
-#ifdef MEASURE_TIMES
-afs_int64	inverseLookupTime = 0;
-afs_int64	policyTime = 0;
-#endif
 #define LEGACY 1
 #define MAX_LEGATHY_REQUESTS_PER_CLIENT 3
 
 afs_uint32 maxLegacyThreadsPerClient = MAX_LEGATHY_REQUESTS_PER_CLIENT;
 
-
-struct activecall {
-        afs_uint32 num;
-        afs_uint32 volume;
-        afs_uint32 vnode;
-        afs_uint32 ip;
-	afs_uint32 timeStamp;
-	afs_uint32 flag;
-};
-
 struct activecall IsActive[MAX_FILESERVER_THREAD];
 
-#define NVICEDRPCS 100
+#define NVICEDRPCS 200
 viced_stat stats[NVICEDRPCS];
 
-#define STAT_INDICES 400
+#define STAT_INDICES 800
 afs_int32 stat_index[STAT_INDICES];
 
 char ExportedVariables[] =
     "LogLevel"
     EXP_VAR_SEPARATOR
-    #ifdef MEASURE_TIMES
-    "inverseLookupTime"
-    EXP_VAR_SEPARATOR
-    "policyTime"
-    EXP_VAR_SEPARATOR
-    #endif
     "activeFiles"
     EXP_VAR_SEPARATOR
     "activeTransactions"
@@ -286,7 +247,6 @@ char ExportedVariables[] =
     EXP_VAR_SEPARATOR
     "maxActiveTransactions"
     EXP_VAR_SEPARATOR
-#ifdef AFS_RXOSD_SUPPORT
     "md5flag"
     EXP_VAR_SEPARATOR
     "max_move_osd_size"
@@ -311,27 +271,24 @@ char ExportedVariables[] =
     EXP_VAR_SEPARATOR
     "maxLexLegacyThreadsPerClient"
     EXP_VAR_SEPARATOR
-    "fastRestore"
-    EXP_VAR_SEPARATOR
-#endif
     ""
     ;
 
+char **osdExportedVariablesPtr = NULL;
+
 static
-afs_int32 setActive(struct rx_call *call, afs_uint32 num, AFSFid * fid)
+afs_int32 setActive(struct rx_call *call, afs_uint32 num, AFSFid * fid, int source)
 {
     afs_int32 i;
+    afs_int32 offset = 0;
     static int inited = 0;
-    afs_uint32 now = FT_ApproxTime();
     
     if (!inited) {
 #ifdef AFS_PTHREAD_ENV
 	osi_Assert(pthread_mutex_init(&active_glock_mutex, NULL) == 0);
 	ACTIVE_LOCK;
 	if (!inited) {
-#if defined(AFS_RXOSD_SUPPORT) || defined(AFS_ENABLE_VICEP_ACCESS)
 	    osi_Assert(pthread_mutex_init(&async_glock_mutex, NULL) == 0);
-#endif
 #endif
 	    inited = 1;
 	    for (i=0; i<STAT_INDICES; i++)
@@ -343,18 +300,22 @@ afs_int32 setActive(struct rx_call *call, afs_uint32 num, AFSFid * fid)
 #endif
     }
     ACTIVE_LOCK;
+    if (source)
+	offset = STAT_INDICES >> 1;
     if (num < 65536)
-        i = stat_index[num];
-    else
-	i = stat_index[300 + (num - 65536)];
+        i = stat_index[num + offset];
+    else 
+	i = stat_index[300 + (num - 65536) + offset];
     if (i < 0) {
         for (i=0; i<NVICEDRPCS; i++) {
             if (!stats[i].rpc) {
                 stats[i].rpc = num;
+	 	if (source)
+		    stats[i].rpc |= 0x80000000; 
 		if (num < 65536)
-                    stat_index[num] = i;
+                    stat_index[num + offset] = i;
 		else
-		    stat_index[300 + (num - 65536)] = i;
+		    stat_index[300 + (num - 65536) + offset] = i;
                 break;
             }
         }
@@ -368,24 +329,28 @@ afs_int32 setActive(struct rx_call *call, afs_uint32 num, AFSFid * fid)
     for (i=0; i<MAX_FILESERVER_THREAD; i++) {
         if (!IsActive[i].num) {
             IsActive[i].num = num;
+	    if (source)
+		IsActive[i].num |= 0x80000000;
             IsActive[i].flag = 0;
-            IsActive[i].timeStamp = now;
+            IsActive[i].timeStamp = FT_ApproxTime();
             ACTIVE_UNLOCK;
 	    memset(&IsActive[i].volume, 0, 3 * sizeof(afs_uint32));
 	    if (fid) {
 		IsActive[i].volume = fid->Volume;
 		IsActive[i].vnode = fid->Vnode;
+		IsActive[i].unique= fid->Unique;
 	    }
             if (call)
                 IsActive[i].ip = ntohl(call->conn->peer->host);
-            ViceLog(1,("SetActive(%u, %u.%u.%u.%u  Fid %u.%u returns %d\n",
-                IsActive[i].num,
+            ViceLog(1,("SetActive(%u%s, %u.%u.%u.%u  Fid %u.%u.%u returns %d\n",
+                num, source ? "(osd)":"",
                 (IsActive[i].ip >> 24) & 0xff,
                 (IsActive[i].ip >> 16) & 0xff,
                 (IsActive[i].ip >> 8) & 0xff,
                 IsActive[i].ip & 0xff,
                 IsActive[i].volume,
                 IsActive[i].vnode,
+                IsActive[i].unique,
                 i));
             return i;
         }
@@ -421,7 +386,7 @@ setLegacyFetch(afs_int32 i)
 }
 
 #define SETTHREADACTIVE(c,n,f) \
-afs_int32 MyThreadEntry = setActive(c, n, f)
+afs_int32 MyThreadEntry = setActive(c, n, f, 0)
 
 #define SETTHREADINACTIVE() setInActive(MyThreadEntry)
 
@@ -441,7 +406,6 @@ afs_int32 BlocksSpare = 1024;	/* allow 1 MB overruns */
 afs_int32 PctSpare;
 extern afs_int32 implicitAdminRights;
 extern afs_int32 readonlyServer;
-int ClientsWithAccessToFileserverPartitions = 0;
 
 /*
  * Externals used by the xstat code.
@@ -471,17 +435,6 @@ afs_int32 StoreData_RXStyle(Volume * volptr, Vnode * targetptr,
 #endif				/* FS_STATS_DETAILED */
     );
 
-afs_int32 MaybeStore_OSD(Volume * volptr, Vnode * targetptr,
-		struct AFSFid * Fid,
-		struct client * client, struct rx_call * Call,
-		afs_fsize_t Pos, afs_fsize_t Length, afs_fsize_t FileLength,
-		Vnode *parentwhentargetnotdir, char *fileName);
-
-afs_int32 FetchData_OSD(Volume * volptr, Vnode **targetptr,
-		struct rx_call * Call, afs_sfsize_t Pos,
-		afs_sfsize_t Len, afs_int32 Int64Mode,
-		int client_vice_id, afs_int32 MyThreadEntry);
-
 #ifdef AFS_SGI_XFS_IOPS_ENV
 #include <afs/xfsattrs.h>
 static int
@@ -497,14 +450,10 @@ GetLinkCount(Volume * avp, struct stat *astat)
 #endif
 
 #define AFS_ASYNC_IO_TIMEOUT 60
-#define CALLED_FROM_START_ASYNC 0x40000000
-#define CALLED_FROM_STOREDATA   0x20000000
-#define CALLED_FROM_FETCHDATA   0x10000000
 
 static afs_int32 CheckVnode(AFSFid * fid, Volume ** volptr, Vnode ** vptr, 
 			int lock);
 
-#if defined(AFS_RXOSD_SUPPORT) || defined(AFS_ENABLE_VICEP_ACCESS)
 struct asyncTrans {
     struct asyncTrans *next;
     afs_uint64 transid;
@@ -939,9 +888,8 @@ FakeEndAsyncStore(AFSFid *fid, afs_uint64 transid)
 	    FDH_CLOSE(fdP);
 	}
     }
-#ifdef AFS_RXOSD_SUPPORT
-    else {			/* OSD file */
-	errorCode = actual_length(volptr, &targetptr->disk, 
+    else if (osdvol) {
+	errorCode = (osdvol->op_actual_length)(volptr, &targetptr->disk, 
 				targetptr->vnodeNumber, &DataLength);
 	if (!errorCode) {
 	    VN_SET_LEN(targetptr, DataLength);
@@ -949,7 +897,6 @@ FakeEndAsyncStore(AFSFid *fid, afs_uint64 transid)
 	    V_diskused(volptr) += blocks;
 	}
     }
-#endif
     targetptr->disk.unixModifyTime = FT_ApproxTime();
     targetptr->disk.serverModifyTime = FT_ApproxTime();
     targetptr->changed_newTime = 1;
@@ -1041,7 +988,6 @@ asyncActive(AFSFid *fid)
     ASYNC_UNLOCK;
     return 0;
 }
-#endif /* AFS_RXOSD_SUPPORT || AFS_ENABLE_VICEP_ACCESS */
 
 afs_int32
 SpareComp(Volume * avolp)
@@ -2178,10 +2124,8 @@ DeleteTarget(Vnode * parentptr, Volume * volptr, Vnode ** targetptr,
 	return (ENOENT);
     fileFid->Volume = V_id(volptr);
 
-#if defined(AFS_ENABLE_VICEP_ACCESS) || defined(AFS_RXOSD_SUPPORT)
     if (asyncActive(fileFid))
 	return EBUSY;
-#endif
 
     /* just-in-case check for something causing deadlock */
     if (fileFid->Vnode == parentptr->vnodeNumber)
@@ -2223,11 +2167,8 @@ DeleteTarget(Vnode * parentptr, Volume * volptr, Vnode ** targetptr,
     } else if ((--(*targetptr)->disk.linkCount) == 0)
 	(*targetptr)->delete = 1;
     if ((*targetptr)->delete) {
-#ifdef AFS_RXOSD_SUPPORT
-	if ((*targetptr)->disk.type == vFile 
-	    		&& (*targetptr)->disk.osdMetadataIndex)
-	    RemoveOsdFile(*targetptr);
-#endif
+   	if (osdviced)
+	    (osdviced->op_remove_if_osd_file) (targetptr);
 	if (VN_GET_INO(*targetptr)) {
 	    DT0++;
 	    IH_REALLYCLOSE((*targetptr)->handle);
@@ -2622,10 +2563,8 @@ Alloc_NewVnode(Vnode * parentptr, DirHandle * dir, Volume * volptr,
 
     /* copy group from parent dir */
     (*targetptr)->disk.group = parentptr->disk.group;
-#if defined(AFS_RXOSD_SUPPORT)
-    if (FileType == vDirectory)
+    if (V_osdPolicy(volptr) && FileType == vDirectory)
         (*targetptr)->disk.osdPolicyIndex = parentptr->disk.osdPolicyIndex;
-#endif
 
     if (parentptr->disk.cloned) {
 	ViceLog(25, ("Alloc_NewVnode : CopyOnWrite called\n"));
@@ -2752,11 +2691,7 @@ RXUpdate_VolumeStatus(Volume * volptr, AFSStoreVolumeStatus * StoreVolStatus,
     Error errorCode = 0;
 
     if (StoreVolStatus->Mask & AFS_SETMINQUOTA)
-#ifdef AFS_RXOSD_SUPPORT
 	V_maxfiles(volptr) = StoreVolStatus->MinQuota;
-#else
-	V_minquota(volptr) = StoreVolStatus->MinQuota;
-#endif
     if (StoreVolStatus->Mask & AFS_SETMAXQUOTA)
 	V_maxquota(volptr) = StoreVolStatus->MaxQuota;
     if (strlen(OfflineMsg) > 0) {
@@ -2797,14 +2732,10 @@ RXGetVolumeStatus(AFSFetchVolumeStatus * status, char **name, char **offMsg,
 	status->Type = ReadWrite;
     else
 	status->Type = ReadOnly;
-#ifdef AFS_RXOSD_SUPPORT
     if (V_maxfiles(volptr) == 0)
         status->MinQuota = 0;
     else
         status->MinQuota = (V_maxfiles(volptr) << 16) + V_filecount(volptr);
-#else
-    status->MinQuota = V_minquota(volptr);
-#endif
     status->MaxQuota = V_maxquota(volptr);
     status->BlocksInUse = V_diskused(volptr);
     status->PartBlocksAvail = RoundInt64ToInt32(volptr->partition->free);
@@ -2884,9 +2815,7 @@ SRXAFS_FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 		    struct FsCmdInputs * Inputs,
 		    struct FsCmdOutputs * Outputs)
 {
-    afs_int32 code = 0;
-    struct AFSCallBack callback;
-    struct AFSVolSync sync;
+    Error errorCode = RXGEN_SS_UNMARSHAL;
 
     SETTHREADACTIVE(acall, 220, Fid);
     switch (Inputs->command) {
@@ -2897,7 +2826,7 @@ SRXAFS_FsCmd(struct rx_call * acall, struct AFSFid * Fid,
             Outputs->int32s[1] = 49;
             code = ListLockedVnodes(&Outputs->int32s, Outputs->int32s[1], &p);
             Outputs->code = code;
-            code  = 0;
+            errorCode = 0;
             break;
         }
     case CMD_LISTDISKVNODE:
@@ -2918,448 +2847,17 @@ SRXAFS_FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 	    if (vp)
                 VPutVolume(vp);
             Outputs->code = code;
-            code  = 0;
+            errorCode = 0;
             break;
         }
-    case CMD_SHOWTHREADS:
-        {
-#define MAXTHREADENTRIES MAXCMDINT32S >> 2
-            afs_int32 i, j = 0;
-            AFSFid *fid = (AFSFid *)&Outputs->int32s[MAXTHREADENTRIES];
-            for (i = 0; i < MAX_FILESERVER_THREAD && j<MAXTHREADENTRIES; i++) {
-                if (IsActive[i].num) {
-                    Outputs->int32s[j++] = IsActive[i].num;
-		    fid->Volume = IsActive[i].volume;
-		    fid->Vnode = IsActive[i].vnode;
-		    fid->Unique= IsActive[i].ip;
-                    fid++;
-                }
-            }
-            Outputs->int64s[0] = j;
-            if (i == MAX_FILESERVER_THREAD)
-                Outputs->code = 0;
-            else
-                Outputs->code = 1;
-            code = 0;
-            break;
-        }
-    case CMD_INVERSELOOKUP:
-        {
-            struct AFSFid tmpFid;
-            tmpFid.Volume = Fid->Volume;
-            tmpFid.Vnode = Inputs->int32s[1];
-            tmpFid.Unique = 0;
-	    struct afs_filename file;
-	    file.afs_filename_val = &Outputs->chars[0];
-	    file.afs_filename_len = MAXCMDCHARS;
-            code = SRXAFS_InverseLookup(acall, &tmpFid, Inputs->int32s[0],
-                                        &file, &Outputs->int32s[0]);
-	    Outputs->code = code;
-	    code = 0;
-            break;
-        }
-#ifdef AFS_RXOSD_SUPPORT
-    case CMD_OSD_ARCHIVE:
-	{
-	    struct rx_connection *tcon = 0;
-	    struct host *thost = 0;
-	    Volume *volptr = 0;
-	    Vnode *targetptr = 0, *parentwhentargetnotdir = 0;
-	    afs_uint32 rights, anyrights;
-	    struct client *client = 0;
-  	    afs_uint64 transid = 0;
-
-	    code = createAsyncTransaction(acall, Fid, CALLED_FROM_FETCHDATA,
-					0, MAXFSIZE, &transid, NULL);
-	    if (code) {
-	        Outputs->code = code;
-	        code = 0;
-	        break;
-	    }
-
-    	    if ((code = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
-		goto Bad_OSD_Archive;
-
-    	    if ((code =
-	 	GetVolumePackage(tcon, Fid, &volptr, &targetptr, MustNOTBeDIR,
-			  &parentwhentargetnotdir, &client, SHARED_LOCK,
-			  &rights, &anyrights))) {
-		goto Bad_OSD_Archive;
-    	    }
-	    if (VanillaUser(client)) {
-	        if (Inputs->int32s[1] || !(rights & PRSFS_ADMINISTER)) {
-	            code = EACCES;
-		    goto Bad_OSD_Archive;
-		}
-	    }
-    	    if (parentwhentargetnotdir != NULL) {
-		VPutVnode(&code, parentwhentargetnotdir);
-		parentwhentargetnotdir = NULL;
-    	    }
-	    code = osd_archive(targetptr, Inputs->int32s[0], Inputs->int32s[1]);
-
-    Bad_OSD_Archive:
-    	    PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *) 0, 
-			volptr, &client);
-    	    CallPostamble(tcon, code, thost);
-	    if (transid)
-        	EndAsyncTransaction(acall, Fid, transid);
-		
-	    Outputs->code = code;
-	    code = 0;
-	    break;
-	}
-    case CMD_WIPEFILE:
-	{
-	    struct rx_connection *tcon = 0;
-	    struct host *thost = 0;
-	    Volume *volptr = 0;
-	    Vnode *targetptr = 0, *parentwhentargetnotdir = 0;
-	    afs_uint32 rights, anyrights;
-	    struct client *client = 0;
-	    struct AFSStoreStatus InStatus;
-	    afs_uint32 version = Inputs->int32s[0];
-	    afs_uint64 transid = 0;
-
-	    code = createAsyncTransaction(acall, Fid, CALLED_FROM_STOREDATA,
-					0, MAXFSIZE, &transid, NULL);
-	    if (code) {
-	        Outputs->code = code;
-	        code = 0;
-	        break;
-	    }
-
-    	    if ((code = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
-		goto Bad_OSD_Wipe;
-
-    	    if ((code =
-	 	GetVolumePackage(tcon, Fid, &volptr, &targetptr, MustNOTBeDIR,
-			  &parentwhentargetnotdir, &client, WRITE_LOCK,
-			  &rights, &anyrights))) {
-		goto Bad_OSD_Wipe;
-    	    }
- 	    memset(&InStatus, 0, sizeof(InStatus));
-	    if (version && VanillaUser(client)) {
-	        code = EACCES;
-		goto Bad_OSD_Wipe;
-	    }
-    	    if ((code =
-	 	Check_PermissionRights(targetptr, client, rights, CHK_STOREDATA,
-				&InStatus))) {
-	        if (VanillaUser(client) && !(rights & PRSFS_ADMINISTER)) {
-	            code = EACCES;
-		    goto Bad_OSD_Wipe;
-		}
-            }
-    	    if (parentwhentargetnotdir != NULL) {
-		VPutVnode(&code, parentwhentargetnotdir);
-		parentwhentargetnotdir = NULL;
-    	    }
-	    code = remove_osd_online_file(targetptr, version);
-
-    Bad_OSD_Wipe:
-    	    PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *) 0, 
-			volptr, &client);
-	    if (transid)
-        	EndAsyncTransaction(acall, Fid, transid);
-		
-    	    CallPostamble(tcon, code, thost);
-	    Outputs->code = code;
-	    code = 0;
-	    break;
-	}
-    case CMD_STRIPED_OSD_FILE:
-	{
-	    struct rx_connection *tcon = 0;
-	    struct host *thost = 0;
-	    Volume *volptr = 0;
-	    Vnode *targetptr = 0, *parentwhentargetnotdir = 0;
-	    afs_uint32 rights, anyrights;
-	    struct client *client = 0;
-	    struct AFSStoreStatus InStatus;
-
-    	    if ((code = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
-		goto Bad_StripedOsdFile;
-
-    	    if ((code =
-	 	GetVolumePackage(tcon, Fid, &volptr, &targetptr, MustNOTBeDIR,
-			  &parentwhentargetnotdir, &client, WRITE_LOCK,
-			  &rights, &anyrights))) {
-		goto Bad_StripedOsdFile;
-    	    }
- 	    memset(&InStatus, 0, sizeof(InStatus));
-    	    if ((code =
-	 	Check_PermissionRights(targetptr, client, rights, CHK_STOREDATA,
-				&InStatus))) {
-		goto Bad_StripedOsdFile;
-            }
-	    code = CreateStripedOsdFile(targetptr, Inputs->int32s[0], 
-					Inputs->int32s[1], Inputs->int32s[2],
-					Inputs->int64s[0]);
-
-    Bad_StripedOsdFile:
-    	    PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *) 0, 
-			volptr, &client);
-    	    CallPostamble(tcon, code, thost);
-	    Outputs->code = code;
-	    code = 0;
-	    break;
-	}
-    case CMD_REPLACE_OSD:
-	{
-	    struct rx_connection *tcon = 0;
-	    struct host *thost = 0;
-	    Volume *volptr = 0;
-	    Vnode *targetptr = 0, *parentwhentargetnotdir = 0;
-	    afs_uint32 rights, anyrights;
-	    struct client *client = 0;
-	    struct AFSStoreStatus InStatus;
-	    afs_uint64 transid = 0;
-
-	    code = createAsyncTransaction(acall, Fid, CALLED_FROM_STOREDATA,
-					0, MAXFSIZE, &transid, NULL);
-	    if (code) {
-	        Outputs->code = code;
-	        code = 0;
-	        break;
-	    }
-
-    	    if ((code = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
-		goto Bad_ReplaceOSD;
-
-    	    if ((code =
-	 	GetVolumePackage(tcon, Fid, &volptr, &targetptr, MustNOTBeDIR,
-			  &parentwhentargetnotdir, &client, SHARED_LOCK,
-			  &rights, &anyrights))) {
-		goto Bad_ReplaceOSD;
-    	    }
- 	    memset(&InStatus, 0, sizeof(InStatus));
-    	    if (VanillaUser(client)) {
-		code = EPERM;
-		goto Bad_ReplaceOSD;
-    	    }
-    	    if (parentwhentargetnotdir != NULL) {
-		VPutVnode(&code, parentwhentargetnotdir);
-		parentwhentargetnotdir = NULL;
-    	    }
-	    code = replace_osd(targetptr, Inputs->int32s[0], Inputs->int32s[1],
-				&Outputs->int32s[0]);
-	    if (!code) 
-		BreakCallBack(client->host, Fid, 0);
-
-    Bad_ReplaceOSD:
-    	    PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *) 0, 
-			volptr, &client);
-	    if (transid)
-        	EndAsyncTransaction(acall, Fid, transid);
-		
-    	    CallPostamble(tcon, code, thost);
-	    Outputs->code = code;
-	    code = 0;
-	    break;
-	}
-    case CMD_GET_ARCH_OSDS:
-	{
-	    struct rx_connection *tcon = 0;
-	    struct host *thost = 0;
-	    Volume *volptr = 0;
-	    Vnode *targetptr = 0, *parentwhentargetnotdir = 0;
-	    afs_uint32 rights, anyrights;
-	    struct client *client = 0;
-
-    	    if ((code = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
-		goto Bad_Get_Arch_Osds;
-
-    	    if ((code =
-	 	GetVolumePackage(tcon, Fid, &volptr, &targetptr, MustNOTBeDIR,
-			  &parentwhentargetnotdir, &client, READ_LOCK,
-			  &rights, &anyrights))) {
-		goto Bad_Get_Arch_Osds;
-    	    }
-	    if (VanillaUser(client) && !(rights & PRSFS_ADMINISTER)) {
-	        code = EACCES;
-		goto Bad_Get_Arch_Osds;
-	    }
-	    code = get_arch_osds(targetptr, &Outputs->int64s[0], 
-				 &Outputs->int32s[0]);
-        Bad_Get_Arch_Osds:
-    	    PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *) 0, 
-			volptr, &client);
-    	    CallPostamble(tcon, code, thost);
-	    Outputs->code = code;
-	    code = 0;
-	    break;
-	}
-    case CMD_LIST_OSDS:
-	{
-	    struct rx_connection *tcon = 0;
-	    struct host *thost = 0;
-	    Volume *volptr = 0;
-	    Vnode *targetptr = 0, *parentwhentargetnotdir = 0;
-	    afs_uint32 rights, anyrights;
-	    struct client *client = 0;
-	    struct AFSStoreStatus InStatus;
-
-    	    if ((code = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
-		goto Bad_List_Osds;
-
-    	    if ((code =
-	 	GetVolumePackage(tcon, Fid, &volptr, &targetptr, MustNOTBeDIR,
-			  &parentwhentargetnotdir, &client, READ_LOCK,
-			  &rights, &anyrights))) {
-		goto Bad_List_Osds;
-    	    }
- 	    memset(&InStatus, 0, sizeof(InStatus));
-    	    if ((code =
-	 	Check_PermissionRights(targetptr, client, rights, CHK_FETCHDATA,
-				&InStatus))) {
-	        if (VanillaUser(client)) {
-	            code = EACCES;
-		    goto Bad_List_Osds;
-		}
-            }
-	    code = list_osds(targetptr, &Outputs->int32s[0]);
-
-        Bad_List_Osds:
-    	    PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *) 0, 
-			volptr, &client);
-    	    CallPostamble(tcon, code, thost);
-	    Outputs->code = code;
-	    code = 0;
-	    break;
-	}
-    case CMD_SET_POLICY:
-    	{
-	    struct rx_connection *tcon = 0;
-	    struct host *thost = 0;
-	    Volume *volptr = 0;
-	    Vnode *targetptr = 0, *parentwhentargetnotdir = 0;
-	    afs_uint32 rights, anyrights;
-	    struct client *client = 0;
-	    afs_uint64 transid = 0;
-	    afs_uint32 policy = Inputs->int32s[0];
-
-    	    if ((code = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
-		goto Bad_SetPolicy;
-
-	    if (!(Fid->Vnode & 1)) {	/* Must be a directory */
-		code = ENOTDIR;
-		goto Bad_SetPolicy;
-	    }
-
-    	    if ((code =
-	 	GetVolumePackage(tcon, Fid, &volptr, &targetptr, MustBeDIR,
-			  &parentwhentargetnotdir, &client, WRITE_LOCK,
-			  &rights, &anyrights))) {
-		goto Bad_SetPolicy;
-    	    }
-	    /* For the momoent we don't give this feature to normal users */
-	    if (VanillaUser(client)) {
-	        code = EPERM;
-		goto Bad_SetPolicy;
-	    }
-
-	    if (!V_osdPolicy(volptr)) {
-		code = EINVAL;
-		goto Bad_SetPolicy;
-	    }
-
-	    targetptr->disk.osdPolicyIndex = policy;
-	    targetptr->changed_newTime = 1;
- Bad_SetPolicy:
-    	    PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *) 0, 
-			volptr, &client);
-    	    CallPostamble(tcon, code, thost);
-            Outputs->code = code;
-	    code = 0;
-	    break;
-	}
-    case CMD_GET_POLICIES:
-        {
-            struct rx_connection *tcon = 0;
-            struct host *thost = 0;
-            Volume *volptr = 0;
-            Vnode *targetptr = 0, *parentwhentargetnotdir = 0;
-            afs_uint32 rights, anyrights;
-            struct client *client = 0;
-            struct AFSStoreStatus InStatus;
- 
-            if ((code = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
-                goto Bad_Get_Policies;
- 
-            if ((code =
-                GetVolumePackage(tcon, Fid, &volptr, &targetptr, 0,
-                          &parentwhentargetnotdir, &client, READ_LOCK,
-                          &rights, &anyrights)))
-                goto Bad_Get_Policies;
- 
-            Outputs->int32s[0] = (afs_int32)V_osdPolicy(volptr);
-            if ( Fid->Vnode&1 )
-                Outputs->int32s[1] = (afs_int32)targetptr->disk.osdPolicyIndex;
-            else
-                Outputs->int32s[1] =
-                        (afs_int32)parentwhentargetnotdir->disk.osdPolicyIndex;
- 
-          Bad_Get_Policies:
-            PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *) 0,
-                        volptr, &client);
-            CallPostamble(tcon, code, thost);
-            Outputs->code = code;
-            code = 0;
-            break;
-        }
-    case CMD_LIST_VARIABLES:
-        {
-            unsigned int offset = Inputs->int32s[0];
-            int more2come=1;
-            char *start_ptr=NULL,*end_ptr=NULL;
-            code = 0;
-            if (offset != 0 && strncmp(ExportedVariables+offset-strlen(EXP_VAR_SEPARATOR),EXP_VAR_SEPARATOR,strlen(EXP_VAR_SEPARATOR))) {
-                ViceLog(0,("CMD_LIST_VARIABLES: Invalid offset, must start at Separator. It starts at %s\n",ExportedVariables+offset));
-                Outputs->code=EINVAL;
-                break;
-            }
-
-            start_ptr=ExportedVariables+offset;
-            end_ptr=ExportedVariables+offset+strlen(EXP_VAR_SEPARATOR);
-            if (end_ptr > ExportedVariables+strlen(ExportedVariables)) {
-                ViceLog(0,("CMD_LIST_VARIABLES: offset %d too high.", offset));
-                Outputs->code=EINVAL;
-                break;
-            }
-
-            while(1) {
-                char *tmp_ptr;
-                tmp_ptr=strstr(end_ptr,EXP_VAR_SEPARATOR);
-                if ( !tmp_ptr) {
-                    end_ptr=ExportedVariables+strlen(ExportedVariables);
-                    more2come=0;
-                    break;
-                }
-                if (tmp_ptr + strlen(EXP_VAR_SEPARATOR) > ExportedVariables+strlen(ExportedVariables)) {
-                    more2come=0;
-                    break;
-                }
-                if (tmp_ptr-start_ptr > MAXCMDCHARS ) break;
-                end_ptr = tmp_ptr+strlen(EXP_VAR_SEPARATOR);
-            }
-            strncpy(Outputs->chars,start_ptr,end_ptr-start_ptr);
-            Outputs->chars[end_ptr-start_ptr]='\0';
-            if (more2come) {
-                Outputs->int32s[0]=end_ptr-ExportedVariables;
-            } else {
-                Outputs->int32s[0]=0; /* a return offset of 0 means that there are nomore variables to come*/
-            }
-            break;
-	}
-#endif /* AFS_RXOSD_SUPPORT */
     default:
-        code = EINVAL;
+    if (osdviced) 
+	errorCode = (osdviced->op_FsCmd)(acall, Fid, Inputs, Outputs);
     }
     ViceLog(1,("FsCmd: cmd = %d, code=%d\n", 
 			Inputs->command, Outputs->code));
     SETTHREADINACTIVE();
-    return code;
+    return errorCode;
 }
 
 #ifndef HAVE_PIOV
@@ -3424,19 +2922,6 @@ GetStatus(Vnode * targetptr, AFSFetchStatus * status, afs_int32 rights,
     status->SyncCounter = status->dataVersionHigh = status->lockCount =
 	status->errorCode = 0;
     status->FetchStatusProtocol = 1;	/* means file in /vicep-partition */
-#ifdef AFS_RXOSD_SUPPORT
-    if (targetptr->disk.type == vFile) {
-        if (targetptr->disk.osdMetadataIndex) {
-	    status->FetchStatusProtocol = RX_OSD;
-	    if (!targetptr->disk.osdFileOnline) {
-		status->FetchStatusProtocol |= RX_OSD_NOT_ONLINE;
-	    }
-	} else if (V_osdPolicy(targetptr->volumePtr) 
-		 && targetLen <= max_move_osd_size) {
-		status->FetchStatusProtocol |= POSSIBLY_OSD;
-        } 
-    }
-#endif
     if (targetptr->disk.type == vFile)
 	status->FileType = File;
     else if (targetptr->disk.type == vDirectory)
@@ -3448,43 +2933,8 @@ GetStatus(Vnode * targetptr, AFSFetchStatus * status, afs_int32 rights,
     status->LinkCount = targetptr->disk.linkCount;
     
     SplitOffsetOrSize(targetLen, status->Length_hi, status->Length);
-#ifdef AFS_ENABLE_VICEP_ACCESS
-#ifdef AFS_RXOSD_SUPPORT
-    if (ClientsWithAccessToFileserverPartitions && VN_GET_INO(targetptr)) { 
-#else 
-    if (ClientsWithAccessToFileserverPartitions) {
-#endif
-        namei_t name;
-        struct stat64 tstat;
-
-        namei_HandleToName(&name, targetptr->handle);
-        if (stat64(name.n_path, &tstat) == 0) {
-            SplitOffsetOrSize(tstat.st_size,
-                    status->Length_hi,
-                    status->Length);
-            if (tstat.st_size != targetLen) {
-                ViceLog(3,("GetStatus: new file length %llu instead of %llu for (%lu.%lu.%lu)\n",
-                            tstat.st_size,
-                            targetLen,
-                            targetptr->volumePtr->hashid,
-                            targetptr->vnodeNumber,
-                            targetptr->disk.uniquifier));
-#ifdef AFS_DEMAND_ATTACH_FS
-		if (Vn_state(targetptr) == VN_STATE_EXCLUSIVE) {
-#else
-                if (WriteLocked(&targetptr->lock)) {
-#endif
-                    afs_int64 adjustSize;
-                    adjustSize = nBlocks(tstat.st_size)
-                                            - nBlocks(targetLen);
-                    V_diskused(targetptr->volumePtr) += adjustSize;
-		    VN_SET_LEN(targetptr, tstat.st_size);
-                    targetptr->changed_newTime = 1;
-                }
-            } 
-        }
-    }
-#endif /* AFS_ENABLE_VICEP_ACCESS */
+    if (osdviced)
+	(osdviced->op_fill_status)(targetptr, targetLen, status);
     status->DataVersion = targetptr->disk.dataVersion;
     status->Author = targetptr->disk.author;
     status->Owner = targetptr->disk.owner;
@@ -3527,9 +2977,7 @@ common_FetchData64(struct rx_call *acall, struct AFSFid *Fid,
     afs_int32 rights, anyrights;	/* rights for this and any user */
     struct client *t_client = NULL;	/* tmp ptr to client data */
     struct in_addr logHostAddr;	/* host ip holder for inet_ntoa */
-#ifdef AFS_RXOSD_SUPPORT
     afs_uint64 transid = 0;
-#endif
 #if FS_STATS_DETAILED
     struct fs_stats_opTimingData *opP;	/* Ptr to this op's timing struct */
     struct fs_stats_xferData *xferP;	/* Ptr to this op's byte size struct */
@@ -3553,10 +3001,8 @@ common_FetchData64(struct rx_call *acall, struct AFSFid *Fid,
     FT_GetTimeOfDay(&opStartTime, 0);
 #endif /* FS_STATS_DETAILED */
 
-#if defined(AFS_ENABLE_VICEP_ACCESS) || defined(AFS_RXOSD_SUPPORT)
     createAsyncTransaction(acall, Fid, CALLED_FROM_FETCHDATA,
 					Pos, Len, &transid, NULL);
-#endif
     ViceLog(1,
 	    ("FetchData, Fid = %u.%u.%u Pos %llu Len %llu\n", 
 			Fid->Volume, Fid->Vnode, Fid->Unique, Pos, Len));
@@ -3636,34 +3082,37 @@ common_FetchData64(struct rx_call *acall, struct AFSFid *Fid,
     bytesXferred = 0;
 #endif
 
-#if defined(AFS_RXOSD_SUPPORT)
-    if (targetptr->disk.osdMetadataIndex && targetptr->disk.type == vFile) {
-	if (!Len) {			/* prefetch of archived object */
+    if (osdviced) {
+	if (Len == 0) { /* probably a request to bring the file on-line
+			   we need WRITE_LOCK to update the osdMetadata */
 	    (void)PutVolumePackage(parentwhentargetnotdir, targetptr,
-	    		(Vnode *) 0, volptr, &client);
-	    volptr = 0;
-	    targetptr = 0;
-	    parentwhentargetnotdir = 0;
+                        (Vnode *) 0, volptr, &client);
+            volptr = 0;
+	    targetptr = parentwhentargetnotdir = 0;
 	    client = 0;
-	    if ((errorCode =
-		GetVolumePackage(tcon, Fid, &volptr, &targetptr, DONTCHECK,
-			  &parentwhentargetnotdir, &client, WRITE_LOCK,
-			  &rights, &anyrights)))
-		goto Bad_FetchData;
-	}
-	else {
-	    ViceLog(1, ("Traditional FetchData on OsdFile %u.%u.%u, "
-	    		"Pos %llu Len %llu client %s\n",
-			    Fid->Volume, Fid->Vnode, Fid->Unique, Pos, Len,
-			    inet_ntoa(logHostAddr)));
-	}
-	errorCode = FetchData_OSD(volptr, &targetptr, acall, Pos, Len, 
-				  Int64Mode, client->ViceId, MyThreadEntry);
-	if ( errorCode )
+            if ((errorCode =
+                GetVolumePackage(tcon, Fid, &volptr, &targetptr, DONTCHECK,
+                          &parentwhentargetnotdir, &client, WRITE_LOCK,
+                          &rights, &anyrights)))
+                goto Bad_FetchData;
+        }
+	errorCode = (osdviced->op_legacyFetchData) (volptr, &targetptr, acall,
+					       Pos, Len, Int64Mode,
+					       client->ViceId, MyThreadEntry,
+					       &logHostAddr);
+	if (!errorCode)
+	    goto Good_FetchData;
+	if (errorCode != EINVAL)
 	    goto Bad_FetchData;
-	goto Good_FetchData;
-    } else
-#endif
+	errorCode = 0;
+    } else {
+	if (V_osdPolicy(volptr)) {
+	    ViceLog(0,("FetchData to OSD volume %u without OSD-interface loaded, aborting\n",
+			V_id(volptr)));
+	    errorCode = EIO;
+	    goto Bad_FetchData;
+	}
+    }
 
 #if FS_STATS_DETAILED
     errorCode =
@@ -3759,10 +3208,8 @@ common_FetchData64(struct rx_call *acall, struct AFSFid *Fid,
     }
 
   Bad_FetchData:
-#ifdef AFS_RXOSD_SUPPORT
     if (transid)
         EndAsyncTransaction(acall, Fid, transid);
-#endif
     /* Update and store volume/vnode and parent vnodes back */
     (void)PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *) 0,
 			   volptr, &client);
@@ -4466,11 +3913,9 @@ common_StoreData64(struct rx_call *acall, struct AFSFid *Fid,
     afs_fsize_t NewLength;	/* size after this store completes */
     afs_sfsize_t adjustSize;	/* bytes to call VAdjust... with */
     int linkCount;		/* link count on inode */
-#if defined(AFS_ENABLE_VICEP_ACCESS) || defined(AFS_RXOSD_SUPPORT)
     DirHandle dir;
     char fileName[256];
     afs_uint64 transid = 0;
-#endif
 #if FS_STATS_DETAILED
     struct fs_stats_opTimingData *opP;	/* Ptr to this op's timing struct */
     struct fs_stats_xferData *xferP;	/* Ptr to this op's byte size struct */
@@ -4485,11 +3930,14 @@ common_StoreData64(struct rx_call *acall, struct AFSFid *Fid,
     FT_GetTimeOfDay(&opStartTime, 0);
 #endif /* FS_STATS_DETAILED */
 
+    if (osdviced) {
+	afs_uint32 protocol = 1;
+	errorCode = (osdviced->op_SRXAFS_ApplyOsdPolicy)(acall, Fid, FileLength,
+		&protocol);
+    }
 
-#if defined(AFS_ENABLE_VICEP_ACCESS) || defined(AFS_RXOSD_SUPPORT)
     createAsyncTransaction(acall, Fid, OSD_WRITING | CALLED_FROM_STOREDATA,
 					Pos, Length, &transid, NULL);
-#endif
     /*
      * Set our stats pointers, remember when the RPC operation started, and
      * tally the operation.
@@ -4545,35 +3993,6 @@ common_StoreData64(struct rx_call *acall, struct AFSFid *Fid,
 	goto Bad_StoreData;
     }
 
-#if defined(AFS_RXOSD_SUPPORT)
-    /* determine file name in case we need it for policy evaluation */
-    fileName[0] = '\0';
-    if (!(thost->hostFlags & CLIENT_CALLED_OSDPOLICY)
-      && !targetptr->disk.osdMetadataIndex 
-      && V_osdPolicy(volptr)
-      && targetptr->disk.type == vFile 
-      && Length > 0			
-      && (policy_uses_file_name(parentwhentargetnotdir->disk.osdPolicyIndex))
-      || policy_uses_file_name(V_osdPolicy(volptr))) {
-#ifdef MEASURE_TIMES
-	struct timeval start, end;
-	afs_uint64 usecs;
-	gettimeofday(&start, 0);
-#endif
-	SetDirHandle(&dir, parentwhentargetnotdir);
-	if (errorCode = InverseLookup(&dir, Fid->Vnode,
-				    targetptr->disk.uniquifier, fileName, 255))
-	    fileName[0] = '\0';
-	FidZap(&dir);
-#ifdef MEASURE_TIMES
-	gettimeofday(&end, 0);
-	usecs = end.tv_sec * 1000000 + end.tv_usec
-		- start.tv_sec * 1000000 - start.tv_usec;
-	inverseLookupTime += usecs;
-#endif
-    }
-#endif
-
     /*
      * Drop the read lock on the parent directory after saving the parent
      * vnode information we need to pass to GetStatus
@@ -4593,29 +4012,21 @@ common_StoreData64(struct rx_call *acall, struct AFSFid *Fid,
 
     /* Do the actual storing of the data */
 
-#ifdef AFS_RXOSD_SUPPORT
-    if (!(thost->hostFlags & CLIENT_CALLED_OSDPOLICY)
-	    && !targetptr->disk.osdMetadataIndex 
-	    && V_osdPolicy(volptr)
-	    && targetptr->disk.type == vFile  /* shouldn't come here if not */
-	    && Length > 0)	  /* not a Storemini (old rxosd and vpac) */
-	MaybeStore_OSD(volptr, targetptr, Fid, client, acall, Pos, Length,
-		FileLength, &tparentwhentargetnotdir, fileName);
-
-    if (targetptr->disk.osdMetadataIndex && targetptr->disk.type == vFile
-      && Length > 0) {
-	BreakCallBack(client->host, Fid, 0);
+    if (V_osdPolicy(volptr) && targetptr->disk.osdMetadataIndex && osdviced) {
 	bytesToXfer = 0;
 	bytesXferred = 0;
-	errorCode = Store_OSD(volptr, &targetptr, Fid, client, acall,
-		Pos, Length, FileLength);
-	if (errorCode)		
+	errorCode = (osdviced->op_legacyStoreData) (volptr, targetptr, Fid, client,
+					       acall, Pos, Length, FileLength,
+					       &tparentwhentargetnotdir, thost);
+	if (!errorCode) {
+	    bytesToXfer = Length;
+	    bytesXferred = Length;
+	    goto Good_StoreData;
+	}
+	if (errorCode != EINVAL)
 	    goto Bad_StoreData;
-	bytesToXfer = Length;
-	bytesXferred = Length;
-	goto Good_StoreData;
-    } else
-#endif /* AFS_RXOSD_SUPPORT */
+    } 
+
 #if FS_STATS_DETAILED
     errorCode =
 	StoreData_RXStyle(volptr, targetptr, Fid, client, acall, Pos, Length,
@@ -4706,10 +4117,8 @@ Good_StoreData:
 	      &tparentwhentargetnotdir);
 
   Bad_StoreData:
-#if defined(AFS_ENABLE_VICEP_ACCESS) || defined(AFS_RXOSD_SUPPORT)
     if (transid)
         EndAsyncTransaction(acall, Fid, transid);
-#endif
     /* Update and store volume/vnode and parent vnodes back */
     (void)PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *) 0,
 			   volptr, &client);
@@ -5327,14 +4736,6 @@ SAFSS_CreateFile(struct rx_call *acall, struct AFSFid *DirFid, char *Name,
     Update_TargetVnodeStatus(targetptr, TVS_CFILE, client, InStatus,
 			     parentptr, volptr, 0);
 
-#if defined(AFS_RXOSD_SUPPORT) 
-    {
-	afs_uint32 osd, lun;
-        if (UseOSD(OutFid, Name, targetptr, volptr, &osd, &lun))
-	    CreateSimpleOsdFile(OutFid, targetptr, volptr, osd, lun);
-    }
-#endif
-
     /* set up the return status for the parent dir and the newly created file, and since the newly created file is owned by the creator, give it PRSFS_ADMINISTERto tell the client its the owner of the file */
     GetStatus(targetptr, OutFidStatus, rights | PRSFS_ADMINISTER, anyrights, parentptr);
     GetStatus(parentptr, OutDirStatus, rights, anyrights, 0);
@@ -5827,12 +5228,8 @@ SAFSS_Rename(struct rx_call *acall, struct AFSFid *OldDirFid, char *OldName,
 	    VN_GET_LEN(newSize, newfileptr);
 	    VAdjustDiskUsage((Error *) & errorCode, volptr,
 			     (afs_sfsize_t) - nBlocks(newSize), 0);
-#ifdef AFS_RXOSD_SUPPORT
-	    if (newfileptr->disk.osdMetadataIndex) {
-		RemoveOsdFile(newfileptr);
-		newfileptr->disk.osdMetadataIndex = 0;
-	    }
-#endif
+	    if (osdvol)
+		(osdvol->op_remove)(volptr, &newfileptr->disk, newfileptr->vnodeNumber);
 	    if (VN_GET_INO(newfileptr)) {
 		IH_REALLYCLOSE(newfileptr->handle);
 		errorCode =
@@ -8021,533 +7418,6 @@ SRXAFS_NGetVolumeInfo(struct rx_call * acall, char *avolid,
 }				/*SRXAFS_NGetVolumeInfo */
 
 
-afs_int32
-SRXAFS_CheckOSDconns(struct rx_call *acall)
-{
-    SETTHREADACTIVE(acall, 65559, (AFSFid *)0);
-#ifdef AFS_RXOSD_SUPPORT
-    ViceLog(1,("SRXAFS_CheckOSDconns called from %u.%u.%u.%u\n",
-			(ntohl(acall->conn->peer->host) >> 24) & 0xff,
-			(ntohl(acall->conn->peer->host) >> 16) & 0xff,
-			(ntohl(acall->conn->peer->host) >> 8) & 0xff,
-			ntohl(acall->conn->peer->host) & 0xff));
-    checkOSDconnections();
-#endif
-    SETTHREADINACTIVE();
-    return 0;
-}
-
-
-afs_int32
-GetOSDlocation(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
-                        afs_uint64 length, afs_uint64 filelength,
-			afs_int32 flag,
-                        AFSFetchStatus *OutStatus, AFSCallBack *CallBack,
-                        struct async *a)
-{
-#if defined(AFS_RXOSD_SUPPORT) && defined(AFS_NAMEI_ENV)
-    Vnode * targetptr = 0;              /* pointer to input fid */
-    Vnode * parentwhentargetnotdir = 0; /* parent of Fid to get ACL */
-    Vnode   tparentwhentargetnotdir;    /* parent vnode for GetStatus */
-    int storing = 0;
-    int     errorCode = 0;              /* return code for caller */
-    int     fileCode =  0;              /* return code from vol package */
-    Volume * volptr = 0;                /* pointer to the volume header */
-    struct client * client = 0;         /* pointer to client structure */
-    struct rx_connection *tcon;
-    struct host *thost;
-    afs_int32 rights, anyrights;        /* rights for this and any user */
-    struct client *t_client;            /* tmp ptr to client data */
-    struct in_addr logHostAddr;         /* host ip holder for inet_ntoa */
-    struct AFSStoreStatus InStatus;      /* Input status for new dir */
-    struct osd_segm * segm;
-    struct osd_obj * obj;
-    afs_uint32 copies;
-    afs_int64 InitialVnodeFileLength;
-    afs_int64 maxLength;
-    afs_int64 Delta, blocks;
-    afs_int32 i, j;
-    char allowWriting = 0;
-    char metadataChanged = 0;
-    afs_uint32 segments = 0;
-    afs_uint32 fileno;
-    afs_int32 writing = flag & OSD_WRITING;
-    struct timeval now;
-    afsUUID *tuuid;
-
-#define hundredMB 100 * 1024 * 1024
-
-    FT_GetTimeOfDay(&now, 0);
-    ViceLog(1,("GetOSDlocation: Fid = %u.%u.%u for %s offset %llu length %llu\n",
-            Fid->Volume, Fid->Vnode, Fid->Unique, writing ? "write" : "read",
-            offset, length));
-
-    if (a->type == 1) {
-        struct osd_file1 *file;
-        file = a->async_u.l1.osd_file1List_val;
-	if (!file) {
-	    file = (struct osd_file1 *) malloc(sizeof(struct osd_file1));
-	    memset(file, 0, sizeof(struct osd_file1));
-	    a->async_u.l1.osd_file1List_val = file;
-	    a->async_u.l1.osd_file1List_len = 1;
-	}
-        file->segmList.osd_segm1List_len = 0; /* just to have an initial value */
-        file->segmList.osd_segm1List_val = 0; 
-    } else if (a->type == 2) {
-        struct osd_file2 *file;
-        file = a->async_u.l2.osd_file2List_val;
-	if (!file) {
-	    file = (struct osd_file2 *) malloc(sizeof(struct osd_file2));
-	    memset(file, 0, sizeof(struct osd_file2));
-	    a->async_u.l2.osd_file2List_val = file;
-	    a->async_u.l2.osd_file2List_len = 1;
-	}
-        file->segmList.osd_segm2List_len = 0; /* just to have an initial value */
-        file->segmList.osd_segm2List_val = 0; 
-    } else
-	return EINVAL;
-    if (errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost))
-        goto Bad_GetOSDloc;
-    /* Get ptr to client data for user Id for logging */
-    t_client = (struct client *) rx_GetSpecific(tcon, rxcon_client_key);
-    logHostAddr.s_addr =  rxr_HostOf(tcon);
-
-    tuuid = &thost->interface->uuid;
-    if (!tuuid) {
-	ViceLog(0, (" No thost->interface-uuid\n"));
-	tuuid = NULL;
-    }
-
-    if (!(flag & FS_OSD_COMMAND) && !(flag & CALLED_FROM_START_ASYNC)) {
-        if (errorCode = createAsyncTransaction(acall, Fid, flag,
-					   offset, length, NULL, NULL))
-	    goto Bad_GetOSDloc; /* shouldn't happen, only ENOMEM possible */
-    }
-
-    /*
-     * Get associated volume/vnode for the stored file; caller's rights
-     * are also returned
-     */
-    if (errorCode = GetVolumePackage(tcon, Fid, &volptr, &targetptr,
-                                 MustNOTBeDIR, &parentwhentargetnotdir,
-                                 &client,
-                                 flag & FS_OSD_COMMAND ? READ_LOCK : WRITE_LOCK,
-                                 &rights, &anyrights)) {
-	if (writing || (flag & FS_OSD_COMMAND))  
-            goto Bad_GetOSDloc;
-	if (errorCode = GetVolumePackage(tcon, Fid, &volptr, &targetptr,
-                                 MustNOTBeDIR, &parentwhentargetnotdir,
-                                 &client, READ_LOCK,
-                                 &rights, &anyrights)) 
-            goto Bad_GetOSDloc;
-    }
-
-    memset(&InStatus, 0, sizeof(InStatus));
-    if (errorCode = Check_PermissionRights(targetptr, client, rights,
-                        writing ? CHK_STOREDATA : CHK_FETCHDATA, &InStatus))
-            goto Bad_GetOSDloc;
-
-    /* Get the updated File's status back to the caller */
-    if (OutStatus)
-        GetStatus(targetptr, OutStatus, rights, anyrights, 0);
-
-    VN_GET_LEN(InitialVnodeFileLength, targetptr);
-    maxLength = InitialVnodeFileLength;
-    if (writing) { /* only set for write request */
-        if (filelength)
-	    maxLength = filelength;
-        else if (offset + length > 0) 	/* corrective action for old clients */
-	    filelength = maxLength;
-        if (offset + length > maxLength)
-	    maxLength = offset + length;
-        Delta = maxLength - InitialVnodeFileLength;
-        if (Delta > 0) {
-            blocks = Delta >> 10;
-            if (V_maxquota(volptr)) { 
-	        if (blocks > (V_maxquota(volptr) - V_diskused(volptr))) {
-                    if ((blocks + V_diskused(volptr) - V_maxquota(volptr)) * 100 / V_maxquota(volptr) > 5 ) { /* allow 5 % over quota */
-                        errorCode = ENOSPC;
-                        goto Bad_GetOSDloc;
-		    }
-		} else
-		    Delta = ((afs_int64)(V_maxquota(volptr) 
-					- V_diskused(volptr))) << 10;
-            } else
-		Delta = 0x40000000;
-	    if (Delta > 0x40000000)
-		Delta = 0x40000000;
-            maxLength += Delta;
-        }
-    }
-    if (a->type == 1 || a->type == 2)
-        errorCode = get_osd_location(volptr, targetptr, flag, client->ViceId,
-				offset, length, filelength,
-				acall->conn->peer, tuuid, maxLength, a);
-    else
-	errorCode = EINVAL;
-
-    if (CallBack && !errorCode && !writing && !(flag & FS_OSD_COMMAND)) {
-        /* if a r/w volume, promise a callback to the caller */
-        if (VolumeWriteable(volptr))
-            SetCallBackStruct(AddCallBack(client->host, Fid), CallBack);
-        else {
-            struct AFSFid myFid;
-            bzero(&myFid, sizeof(struct AFSFid));
-            myFid.Volume = Fid->Volume;
-            SetCallBackStruct(AddVolCallBack(client->host, &myFid), CallBack);
-        }
-    }
-
-Bad_GetOSDloc:
-    if (errorCode && !(flag & (FS_OSD_COMMAND | CALLED_FROM_START_ASYNC))) {
-	EndAsyncTransaction(acall, Fid, 0);
-    }
-    PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *)0, volptr, &client);
-    if (errorCode && errorCode != 1096)
-        ViceLog(0,("GetOsdLoc for %u.%u.%u returns %d to %u.%u.%u.%u\n",
-			Fid->Volume, Fid->Vnode, Fid->Unique, errorCode,
-			(ntohl(acall->conn->peer->host) >> 24) & 0xff,
-			(ntohl(acall->conn->peer->host) >> 16) & 0xff,
-			(ntohl(acall->conn->peer->host) >> 8) & 0xff,
-			ntohl(acall->conn->peer->host) & 0xff));
-    else
-        ViceLog(1,("GetOsdLoc for %u.%u.%u returns %d\n",
-			Fid->Volume, Fid->Vnode, Fid->Unique, errorCode));
-    errorCode = CallPostamble(tcon, errorCode, thost);
-    if (errorCode < 0)
-        errorCode = EIO;
-    return errorCode;
-#else /* AFS_RXOSD_SUPPORT */
-    return ENOSYS;
-#endif /* AFS_RXOSD_SUPPORT */
-}
-
-afs_int32
-SRXAFS_ApplyOsdPolicy(struct rx_call *acall, AFSFid *Fid, afs_uint64 length, 
-	  afs_uint32 *protocol)
-{
-#ifdef AFS_RXOSD_SUPPORT
-    Vnode * targetptr = 0;              /* pointer to input fid */
-    Vnode * parentwhentargetnotdir = 0; /* parent of Fid to get ACL */
-    Vnode   tparentwhentargetnotdir;    /* parent vnode for GetStatus */
-    int storing = 0;
-    int     errorCode = 0;              /* return code for caller */
-    int     fileCode =  0;              /* return code from vol package */
-    Volume * volptr = 0;                /* pointer to the volume header */
-    struct client * client = 0;         /* pointer to client structure */
-    struct rx_connection *tcon;
-    struct host *thost;
-    afs_int32 rights, anyrights;        /* rights for this and any user */
-    struct client *t_client;            /* tmp ptr to client data */
-    struct in_addr logHostAddr;         /* host ip holder for inet_ntoa */
-    afs_int64 InitialVnodeFileLength;
-    afs_uint32 osd_id, lun;
-    struct AFSStoreStatus InStatus;
-    DirHandle dir;
-    char fileName[256];
-    int i;
-
-    SETTHREADACTIVE(acall, 65560, Fid);
-    ViceLog(1,("SRXAFS_ApplyOsdPolicy for %u.%u.%u, length %lu\n",
-			Fid->Volume, Fid->Vnode, Fid->Unique, length));
-    *protocol = 1; /* default: store in local partition */
-
-    if (errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost))
-        goto Bad_ApplyOsdPolicy;
-
-    thost->hostFlags |= CLIENT_CALLED_OSDPOLICY;
-    /* Get ptr to client data for user Id for logging */
-    t_client = (struct client *) rx_GetSpecific(tcon, rxcon_client_key);
-    logHostAddr.s_addr =  rxr_HostOf(tcon);
-
-    /*
-     * Get associated volume/vnode for the stored file; caller's rights
-     * are also returned
-     */
-    if (errorCode = GetVolumePackage(tcon, Fid, &volptr, &targetptr,
-                                     MustNOTBeDIR, &parentwhentargetnotdir,
-                                     &client, WRITE_LOCK,
-                                     &rights, &anyrights))
-        goto Bad_ApplyOsdPolicy;
-
-    memset(&InStatus, 0, sizeof(InStatus));
-    if (errorCode = Check_PermissionRights(targetptr, client, rights,
-                        CHK_STOREDATA, &InStatus))
-            goto Bad_ApplyOsdPolicy;
-
-    VN_GET_LEN(InitialVnodeFileLength, targetptr);
-
-    /* *protocol = 1; */  /* RX_FILESERVER as default makes old clients unhappy*/
-    if (!V_osdPolicy(volptr))
-	goto Bad_ApplyOsdPolicy;    
-    if (targetptr->disk.type == vFile 
-      && InitialVnodeFileLength <= max_move_osd_size) {
-	unsigned int policyIndex = parentwhentargetnotdir->disk.osdPolicyIndex;
-	int nameNeeded = policy_uses_file_name(policyIndex) ||
-			 policy_uses_file_name(V_osdPolicy(volptr)); 
-#ifdef MEASURE_TIMES
-	struct timeval start, end;
-	afs_uint64 usecs;
-	gettimeofday(&start, 0);
-#endif
-	/* determine file name in case we need it for policy evaluation */
-	if ( nameNeeded ) {
-	    SetDirHandle(&dir, parentwhentargetnotdir);
-	    if (errorCode = InverseLookup(&dir, Fid->Vnode,
-				targetptr->disk.uniquifier, fileName, 255))
-		fileName[0] = '\0';
-	    FidZap(&dir);
-#ifdef MEASURE_TIMES
-	    gettimeofday(&end, 0);
-	    usecs = end.tv_sec * 1000000 + end.tv_usec
-		    - start.tv_sec * 1000000 - start.tv_usec;
-	    inverseLookupTime += usecs;
-#endif
-	}
-#ifdef MEASURE_TIMES
-	gettimeofday(&start, 0);
-#endif
-
-	errorCode = createFileWithPolicy(Fid, length, policyIndex, fileName,
-				targetptr, volptr, evalclient, client);
-#ifdef MEASURE_TIMES
-	gettimeofday(&end, 0);
-	usecs = end.tv_sec * 1000000 + end.tv_usec
-		    - start.tv_sec * 1000000 - start.tv_usec;
-	policyTime += usecs;
-#endif
-	if (!errorCode)
-	    *protocol = 2; 	/* RX_OSD */
-	else {
-	    if (errorCode == ENOENT)
-		errorCode = 0;
-	    else
-	        ViceLog(0,("SRXAFS_ApplyOsdPolicy: createFileWithPolicy failed "
-			    "with %d for %u.%u.%u (policy %d)\n",
-			    errorCode, V_id(volptr), targetptr->vnodeNumber, 
-			    targetptr->disk.uniquifier,
-			    policyIndex));
-	}
-    }
-Bad_ApplyOsdPolicy:
-    ViceLog(1,("SRXAFS_ApplyOsdPolicy for %u.%u.%u returns %d, protocol %u\n",
-			Fid->Volume, Fid->Vnode, Fid->Unique, 
-			errorCode, *protocol));
-    PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *)0, volptr, &client);
-    errorCode = CallPostamble(tcon, errorCode, thost);
-    if (errorCode < 0)
-        errorCode = EIO;
-    SETTHREADINACTIVE();
-    return errorCode;
-#else
-    return RXGEN_OPCODE;
-#endif
-}
-
-#ifdef AFS_RXOSD_SUPPORT
-afs_int32
-SetOsdFileReady(struct rx_call *acall, AFSFid *Fid, struct cksum *checksum)
-{
-    Error  error2, errorCode = 0;      /* return code for caller */
-    Volume * volptr = 0;                /* pointer to the volume header */
-    Vnode * targetptr = 0;              /* pointer to input fid */
-
-    ViceLog(1,("SetOsdFileReady start for %u.%u.%u\n",
-                        Fid->Volume, Fid->Vnode, Fid->Unique));
-    if (!tdir) {
-        tdir = afsconf_Open(AFSDIR_SERVER_ETC_DIRPATH);
-        if (!tdir) {
-            ViceLog(0,("Could not open configuration directory\n"));
-            errorCode = EIO;
-        }
-    }
-    if (!afsconf_SuperUser(tdir, acall, (char *)0)) {
-        errorCode = EPERM;
-        goto Bad_SetOsdFileReady;
-    }
-    volptr = VGetVolume(&error2, &errorCode, Fid->Volume);
-    if (!volptr)
-        goto Bad_SetOsdFileReady;
-    ViceLog(1,("SetOsdFileReady got volume with code %d\n", errorCode));
-    targetptr = VGetVnode(&errorCode, volptr, Fid->Vnode, WRITE_LOCK);
-    if (!targetptr)
-        goto Bad_SetOsdFileReady;
-    ViceLog(1,("SetOsdFileReady got vnode with code %d\n", errorCode));
-    errorCode = set_osd_file_ready(acall, targetptr, checksum);
-    if (!errorCode)
-        targetptr->changed_newTime = 1;
-    ViceLog(1,("SetOsdFileReady called set_osd_file_ready with code %d\n", errorCode));
-
-Bad_SetOsdFileReady:
-    if (targetptr) {
-        VPutVnode(&error2, targetptr);
-        if (error2 && !errorCode)
-            errorCode = error2;
-    }
-    if (volptr)
-        VPutVolume(volptr);
-
-    ViceLog(1,("SetOsdFileReady returns %d\n", errorCode));
-
-    if (errorCode < 0)
-        errorCode = EIO;
-    return errorCode;
-}
-#endif /* AFS_RXOSD_SUPPORT */
-
-afs_int32
-SRXAFS_SetOsdFileReady(struct rx_call *acall, AFSFid *Fid, struct cksum *checksum)
-{
-    Error errorCode = RXGEN_OPCODE;
-    SETTHREADACTIVE(acall, 65588, Fid);
-#ifdef AFS_RXOSD_SUPPORT
-    errorCode = SetOsdFileReady(acall, Fid, checksum);
-#endif /* AFS_RXOSD_SUPPORT */
-    SETTHREADINACTIVE();
-    return errorCode;
-}
-
-afs_int32
-SRXAFS_GetOsdMetadata(struct rx_call *acall, AFSFid *Fid)
-{
-#ifdef AFS_RXOSD_SUPPORT
-    Vnode * targetptr = 0;              /* pointer to input fid */
-    Vnode * parentwhentargetnotdir = 0; /* parent of Fid to get ACL */
-    Vnode   tparentwhentargetnotdir;    /* parent vnode for GetStatus */
-    int     errorCode = 0;              /* return code for caller */
-    int     fileCode =  0;              /* return code from vol package */
-    Volume * volptr = 0;                /* pointer to the volume header */
-    struct client * client = 0;         /* pointer to client structure */
-    struct rx_connection *tcon;
-    struct host *thost;
-    afs_int32 rights, anyrights;        /* rights for this and any user */
-    struct client *t_client;            /* tmp ptr to client data */
-    struct in_addr logHostAddr;         /* host ip holder for inet_ntoa */
-    struct AFSStoreStatus InStatus;      /* Input status for new dir */
-    afs_int32 tlen = 0;
-    afs_int32 length;
-    char *rock = 0;
-    char *data = 0;
-
-    SETTHREADACTIVE(acall, 65562, Fid);
-    if (errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost))
-        goto Bad_GetOsdMetadata;
-
-    /* Get ptr to client data for user Id for logging */
-    t_client = (struct client *) rx_GetSpecific(tcon, rxcon_client_key);
-    logHostAddr.s_addr =  rxr_HostOf(tcon);
-
-    /*
-     * Get associated volume/vnode for the stored file; caller's rights
-     * are also returned
-     */
-    if (errorCode = GetVolumePackage(tcon, Fid, &volptr, &targetptr,
-                                     MustNOTBeDIR, &parentwhentargetnotdir,
-                                     &client, READ_LOCK,
-                                     &rights, &anyrights))
-        goto Bad_GetOsdMetadata;
-
-    memset(&InStatus, 0, sizeof(InStatus));
-    if (errorCode = Check_PermissionRights(targetptr, client, rights,
-                        CHK_FETCHDATA, &InStatus)) {
-	if (VanillaUser(client))
-            goto Bad_GetOsdMetadata;
-    }
-
-    if (targetptr->disk.osdMetadataIndex) {
-        errorCode = GetMetadataByteString(volptr, &targetptr->disk, &rock, 
-					&data, &length, targetptr->vnodeNumber);
-        if (!errorCode) 
-            tlen = htonl(length);
-        if (rx_Write(acall, (char *)&tlen, sizeof(tlen)) != sizeof(tlen))
-            goto Bad_GetOsdMetadata;
-        if (!errorCode)
-            if (rx_Write(acall, data, length) != length)
-	        goto Bad_GetOsdMetadata;
-	total_bytes_sent += (length + 4);
-	if (rock)
-	    free(rock);
-    } else
-	errorCode = EINVAL;
-
-Bad_GetOsdMetadata:
-    if (errorCode) 
-        rx_Write(acall, (char *)&tlen, 4);
-    PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *)0, volptr, 
-					&client);
-    errorCode = CallPostamble(tcon, errorCode, thost);
-    SETTHREADINACTIVE();
-    return errorCode;
-#else
-    return ENOSYS;
-#endif
-}
-
-afs_int32
-SRXAFS_UpdateOSDmetadata(struct rx_call *acall, struct ometa *old, struct ometa *new)
-{
-    Error errorCode = 0;
-#ifdef AFS_RXOSD_SUPPORT
-    AFSFid Fid = {0, 0, 0};
-
-    if (old->vsn == 1) {
-	Fid.Volume = old->ometa_u.t.part_id & 0xffffffff;
-	Fid.Vnode = old->ometa_u.t.obj_id & 0x2ffffff;
-	Fid.Unique = (old->ometa_u.t.obj_id >> 32) & 0xffffff;
-    } else if (old->vsn == 2) {
-	Fid.Volume = old->ometa_u.f.rwvol;
-	Fid.Vnode = old->ometa_u.f.vN;
-	Fid.Unique = old->ometa_u.f.unique; 
-    } else
-	errorCode = EINVAL;
-    {
-	Error error2;
-	Vnode *targetptr = 0;
-	Volume *volptr = 0;
-        SETTHREADACTIVE(acall, 65586, &Fid);
-
-	if (errorCode)
-	    goto bad;
-
-        ViceLog(1,("UpdateOSDmetadata start for %u.%u.%u\n",
-                        Fid.Volume, Fid.Vnode, Fid.Unique));
-        if (!tdir) {
-            tdir = afsconf_Open(AFSDIR_SERVER_ETC_DIRPATH);
-            if (!tdir) {
-                ViceLog(0,("Could not open configuration directory\n"));
-                errorCode = EIO;
-	        goto bad;
-            }
-        }
-        if (!afsconf_SuperUser(tdir, acall, (char *)0)) {
-            errorCode = EPERM;
-	    goto bad;
-        }
-        volptr = VGetVolume(&error2, &errorCode, Fid.Volume);
-        if (!volptr)
-	    goto bad;
-        targetptr = VGetVnode(&errorCode, volptr, Fid.Vnode, WRITE_LOCK);
-        if (!targetptr)
-	    goto bad;
-        errorCode = update_osd_metadata(volptr, targetptr, old, new);
-
-bad:
-        if (targetptr) {
-            VPutVnode(&error2, targetptr);
-            if (error2 && !errorCode)
-                errorCode = error2;
-        }
-        if (volptr)
-            VPutVolume(volptr);
-
-	SETTHREADINACTIVE();
-    }
-    return errorCode;
-#else
-    return RXGEN_OPCODE;
-#endif
-}
-
 /*
  * Dummy routine. Should never be called (the cache manager should only
  * invoke this interface when communicating with a AFS/DFS Protocol
@@ -9315,23 +8185,6 @@ SRXAFS_GetTime(struct rx_call * acall, afs_uint32 * Seconds,
 
 }				/*SRXAFS_GetTime */
 
-afs_int32
-SRXAFS_SetOsdFileReady0(struct rx_call *acall, AFSFid *Fid, struct viced_md5 *md5)
-{
-    int     errorCode = RXGEN_OPCODE, i;
-    struct cksum checksum;
-    SETTHREADACTIVE(acall, 65568, Fid);
-
-#ifdef AFS_RXOSD_SUPPORT
-    checksum.type = 1;
-    for (i=0; i<4; i++)
-       checksum.cksum_u.md5[i] = md5->md5[i];
-    errorCode = SetOsdFileReady(acall, Fid, &checksum); 
-#endif /* AFS_RXOSD_SUPPORT */
-    SETTHREADINACTIVE();
-    return errorCode;
-}
-
 /*
  * FetchData_RXStyle
  *
@@ -9522,182 +8375,13 @@ FetchData_RXStyle(Volume * volptr, Vnode * targetptr,
     return 0;
 }				/*FetchData_RXStyle */
 
-#ifdef AFS_RXOSD_SUPPORT
-afs_int32
-FetchData_OSD(Volume * volptr, Vnode **targetptr,
-		struct rx_call * Call, afs_sfsize_t Pos,
-		afs_sfsize_t Len, afs_int32 Int64Mode,
-		int client_vice_id, afs_int32 MyThreadEntry)
-{
-    afs_int64 targLen;
-    afs_uint32 hi, lo;
-    afs_int32 errorCode;
-
-    if (!Len) {			/* prefetch of archived object */
-        struct async a;
-	osd_file2 osd_file;
-	afs_uint32 fileno;
-
-	/* caller upgraded lock */
-	
-	a.type = 2;
-	a.async_u.l2.osd_file2List_len = 1;
-	a.async_u.l2.osd_file2List_val = &osd_file;
-	errorCode = fill_osd_file(*targetptr, &a, 0, &fileno, client_vice_id);
-	destroy_async_list(&a);
-	lo = 0;
-	if (errorCode == OSD_WAIT_FOR_TAPE) {
-	    errorCode = 0;
-	    lo = -1;
-	}
-	if (Int64Mode) {
-	    total_bytes_sent += 4;
-	    rx_Write(Call, (char *)&lo, sizeof(lo));
-	}
-	rx_Write(Call, (char *)&lo, sizeof(lo));
-	total_bytes_sent += 4;
-	return 0;
-    }
-    if (!((*targetptr)->disk.osdFileOnline)) {
-	errorCode = setLegacyFetch(MyThreadEntry);
-	if (errorCode) {
-            struct rx_peer *peer = Call->conn->peer;
-            ViceLog(0, ("FetchData_OSD denying tape fetch for %u.%u.%u requested from %u.%u.%u.%u:%u\n",
-                        V_id(volptr), (*targetptr)->vnodeNumber,
-                        (*targetptr)->disk.uniquifier,
-			(ntohl(peer->host) >> 24) & 0xff,
-                        (ntohl(peer->host) >> 16) & 0xff,
-                        (ntohl(peer->host) >> 8) & 0xff,
-                        ntohl(peer->host) & 0xff,
-                        ntohs(peer->port)));
-	    return errorCode;
-	}
-    }
-    VN_GET_LEN(targLen, *targetptr);
-    if (Pos + Len > targLen) 
-	Len = targLen - Pos;
-    if (Len < 0)
-	Len = 0;
-    SplitInt64(Len, hi, lo);
-    hi = htonl(hi);
-    lo = htonl(lo);
-    if (Int64Mode) {
-	rx_Write(Call, (char *)&hi, sizeof(hi));
-	total_bytes_sent += 4;
-    }
-    rx_Write(Call, (char *)&lo, sizeof(lo));
-    total_bytes_sent += 4;
-    errorCode = xchange_data_with_osd(Call, targetptr, Pos, Len, targLen, 0, 
-				    client_vice_id);
-    ViceLog(3,("FetchData: xchange_data_with_osd returned %d\n", errorCode));
-    if (errorCode)
-	return errorCode;
-    total_bytes_sent += Len;
-    return 0;
-}
-#endif /* AFS_RXOSD_SUPPRT */
-
-#if defined(AFS_ENABLE_VICEP_ACCESS) || defined(AFS_RXOSD_SUPPORT)
-afs_int32 
-common_GetPath(struct rx_call *acall, AFSFid *Fid, struct async *a)
-{
-    afs_int32 errorCode;
-    Vnode *targetptr = 0;       /* pointer to input fid */
-    Vnode *parentwhentargetnotdir = 0;  /* parent of Fid to get ACL */
-    Vnode tparentwhentargetnotdir;      /* parent vnode for GetStatus */
-    int fileCode = 0;           /* return code from vol package */
-    Volume *volptr = 0;         /* pointer to the volume header */
-    struct client *client = 0;  /* pointer to client structure */
-    afs_int32 rights, anyrights;        /* rights for this and any user */
-    struct rx_connection *tcon;
-    struct host *thost;
-    afs_uint64 maxlen;
-    afsUUID *tuuid;
-    afs_int32 lockType;
-
-    ViceLog(1,("SRXAFS_GetPath: %lu.%lu.%lu\n",
-	Fid->Volume, Fid->Vnode, Fid->Unique));
-
-    switch (a->type) {
-    case 1:
-	a->async_u.l1.osd_file1List_val = NULL;
-	a->async_u.l1.osd_file1List_len = 0;
-	lockType = WRITE_LOCK;
-	break;
-    case 2:
-	a->async_u.l2.osd_file2List_val = NULL;
-	a->async_u.l2.osd_file2List_len = 0;
-	lockType = WRITE_LOCK;
-	break;
-    case 3:
-	a->async_u.p3.path.path_info_val = NULL;
-	a->async_u.p3.path.path_info_len = 0;
-	lockType = READ_LOCK;
-	break;
-    default:
-	goto Bad_GetPath;
-    }
-
-    if ((errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
-        goto Bad_GetPath;
-
-    tuuid = &thost->interface->uuid;
-    if (!tuuid) {
-	ViceLog(0, (" No thost->interface-uuid\n"));
-	tuuid = NULL;
-    }
-
-    if ((errorCode =
-         GetVolumePackage(tcon, Fid, &volptr, &targetptr, DONTCHECK,
-                          &parentwhentargetnotdir, &client, lockType,
-                          &rights, &anyrights)))
-        goto Bad_GetPath;
- 
-    switch (a->type) {
-    case 1: 	/* Called from rxosd_bringOnline in the cache manager */
-    case 2: 	/* Called from rxosd_bringOnline in the cache manager */
-        errorCode = get_osd_location(volptr, targetptr, 0, client->ViceId,
-				0, 0, 0, acall->conn->peer, tuuid, maxlen, a);
-	break;
-    case 3: 
-        {
-            namei_t name;
-            char *c;
-            a->async_u.p3.ino = VN_GET_INO(targetptr);
-            a->async_u.p3.lun = V_device(volptr);
-            a->async_u.p3.uuid = FS_HostUUID;
-            namei_HandleToName(&name, targetptr->handle);
-            c = strstr(name.n_path, "AFSIDat");
-            if (c) {
-                a->async_u.p3.path.path_info_val = malloc(strlen(c)+1);
-	        if (a->async_u.p3.path.path_info_val) {
-                    sprintf(a->async_u.p3.path.path_info_val, "%s", c);
-                    a->async_u.p3.path.path_info_len = strlen(c)+1;
-	        }
-            }
-        }
- 	break;
-    }
-
-Bad_GetPath:
-    if (errorCode)
-	ViceLog(0,("SRXAFS_GetPath for %u.%u.%u returns %d\n",
-			Fid->Volume, Fid->Vnode, Fid->Unique, errorCode));
-    (void)PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *) 0,
-                           volptr, &client);
-    errorCode = CallPostamble(tcon, errorCode, thost);
-    return errorCode;
-}
-#endif
-
 afs_int32 
 SRXAFS_GetPath(struct rx_call *acall, AFSFid *Fid, struct async *a)
 {
-    afs_int32 errorCode = RXGEN_OPCODE;
+    Error errorCode = RXGEN_OPCODE;
     SETTHREADACTIVE(acall, 65589, Fid);
-#if defined(AFS_ENABLE_VICEP_ACCESS) || defined(AFS_RXOSD_SUPPORT)
-    errorCode = common_GetPath(acall, Fid, a);
-#endif
+    if (osdviced)
+	errorCode = (osdviced->op_SRXAFS_GetPath)(acall, Fid, a);
     SETTHREADINACTIVE();
     return errorCode;
 }
@@ -9705,50 +8389,35 @@ SRXAFS_GetPath(struct rx_call *acall, AFSFid *Fid, struct async *a)
 afs_int32 
 SRXAFS_GetPath1(struct rx_call *acall, AFSFid *Fid, struct async *a)
 {
-    afs_int32 errorCode = RXGEN_OPCODE;
+    Error errorCode = RXGEN_OPCODE;
     SETTHREADACTIVE(acall, 65561, Fid);
-#if defined(AFS_ENABLE_VICEP_ACCESS) || defined(AFS_RXOSD_SUPPORT)
-    errorCode = common_GetPath(acall, Fid, a);
-#endif
+    if (osdviced)
+	errorCode = (osdviced->op_SRXAFS_GetPath1)(acall, Fid, a);
     SETTHREADINACTIVE();
     return errorCode;
 }
 
 afs_int32
-SRXAFS_StartAsyncFetch(struct rx_call *acall, AFSFid *Fid, struct RWparm *p,
-			struct async *a, afs_uint64 *transid, afs_uint32 *expires, 
+SRXAFS_StartAsyncFetch(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
+			afs_uint64 length, afs_int32 backend,
+			AsyncParams *Inputs, AsyncParams *Outputs,
+			afs_uint64 *transid, afs_uint32 *expires, 
 			AFSFetchStatus *OutStatus, AFSCallBack *CallBack)
 {
     afs_int32 errorCode = RXGEN_OPCODE;
-    afs_uint64 offset, length;
-    afs_int32 flag = 0;
-    SETTHREADACTIVE(acall, 65584, Fid);
+    Vnode * targetptr = 0;              /* pointer to input fid */
+    Vnode * parentwhentargetnotdir = 0; /* parent of Fid to get ACL */
+    Volume * volptr = 0;                /* pointer to the volume header */
+    struct client * client = 0;         /* pointer to client structure */
+    struct rx_connection *tcon;
+    struct host *thost;
+    afs_int32 rights, anyrights;        /* rights for this and any user */
+
+    SETTHREADACTIVE(acall, 65590, Fid);
     ViceLog(1,("StartAsyncFetch for %u.%u.%u type %d\n", 
-			Fid->Volume, Fid->Vnode, Fid->Unique, a->type));
-    if (p->type == 1) {
-	offset = p->RWparm_u.p1.offset;
-	length = p->RWparm_u.p1.length;
-    } else if (p->type == 4) {
-	offset = p->RWparm_u.p4.offset;
-	length = p->RWparm_u.p4.length;
-    } else if (p->type == 5) {
-	offset = p->RWparm_u.p5.offset;
-	length = p->RWparm_u.p5.length;
-	flag = p->RWparm_u.p5.flag;
-    } else {
-	errorCode = RXGEN_SS_UNMARSHAL;
-	goto bad;
-    }
-#ifdef AFS_RXOSD_SUPPORT
-    if (a->type == 1) {
-	a->async_u.l1.osd_file1List_len = 0;
-	a->async_u.l1.osd_file1List_val = NULL;
-    } else if (a->type == 2) {
-	a->async_u.l2.osd_file2List_len = 0;
-	a->async_u.l2.osd_file2List_val = NULL;
-    }
-#endif
-#if defined(AFS_RXOSD_SUPPORT) || defined(AFS_ENABLE_VICEP_ACCESS)
+			Fid->Volume, Fid->Vnode, Fid->Unique, backend));
+    Outputs->AsyncParams_len = 0;
+    Outputs->AsyncParams_val = NULL;
     errorCode = createAsyncTransaction(acall, Fid, CALLED_FROM_START_ASYNC, 
 				  	offset, length, transid, expires);
     if (errorCode) {
@@ -9756,38 +8425,76 @@ SRXAFS_StartAsyncFetch(struct rx_call *acall, AFSFid *Fid, struct RWparm *p,
         return errorCode;
     }
 
-#ifdef AFS_RXOSD_SUPPORT
-    if (a->type == 1 || a->type == 2) {
-	errorCode = GetOSDlocation(acall, Fid, offset, length, 0, 
-				flag | CALLED_FROM_START_ASYNC,
-				OutStatus, CallBack, a);
-    } else
-#endif /* AFS_RXOSD_SUPPORT */
-#ifdef AFS_ENABLE_VICEP_ACCESS
-    if (a->type == 3 || a->type == 4) {
-	afs_uint64 maxsize;
+    if (errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost))
+	goto bad;
 
-	errorCode = ServerPath(acall, Fid, 0, offset, length, 0, a,
-			       &maxsize, OutStatus); 
-	ClientsWithAccessToFileserverPartitions = 1;
-    } else
-#endif /* AFS_ENABLE_VICEP_ACCESS */
-        errorCode = RXGEN_SS_UNMARSHAL;
+    if (errorCode = GetVolumePackage(tcon, Fid, &volptr, &targetptr,
+                                 MustNOTBeDIR, &parentwhentargetnotdir,
+                                 &client, READ_LOCK, &rights, &anyrights))
+	goto bad;
+
+    if (errorCode = Check_PermissionRights(targetptr, client, rights,
+                        CHK_FETCHDATA, NULL))
+	goto bad;
+
+    GetStatus(targetptr, OutStatus, rights, anyrights, 0);
+
+    errorCode = RXGEN_SS_UNMARSHAL;
+    switch (backend) {
+    case AFSOSD_BACKEND:
+	if (osdviced)
+	    errorCode = (osdviced->op_startosdfetch) (volptr, targetptr, client,
+						     tcon, thost, offset, length,
+						     Inputs, Outputs);
+	break;
+    case VICEPACCESS_BACKEND:
+	if (osdviced)
+	    errorCode = (osdviced->op_startvicepfetch) (volptr, targetptr, Inputs,
+						      Outputs);
+	break;
+    default:
+	break;
+    }
+
+    if (!errorCode) {
+        /* if a r/w volume, promise a callback to the caller */
+        if (VolumeWriteable(volptr))
+            SetCallBackStruct(AddCallBack(client->host, Fid), CallBack);
+        else {
+            struct AFSFid myFid;
+            bzero(&myFid, sizeof(struct AFSFid));
+            myFid.Volume = Fid->Volume;
+            SetCallBackStruct(AddVolCallBack(client->host, &myFid), CallBack);
+        }
+    }
+
+bad:
     if (errorCode) {
 	EndAsyncTransaction(acall, Fid, *transid);
-    }
-	
-#endif
-    
-bad:
-    if (errorCode)
-        ViceLog(0,("StartAsyncFetch for %u.%u.%u type %d returns %d\n",
-			Fid->Volume, Fid->Vnode, Fid->Unique, a->type, 
+        ViceLog(0,("StartAsyncFetch for %u.%u.%u backend %d returns %d\n",
+			Fid->Volume, Fid->Vnode, Fid->Unique, backend, 
 			errorCode));
-    else
-        ViceLog(3,("StartAsyncFetch for %u.%u.%u type %d returns %d\n",
-			Fid->Volume, Fid->Vnode, Fid->Unique, a->type, 
+    } else
+        ViceLog(3,("StartAsyncFetch for %u.%u.%u backend %d returns %d\n",
+			Fid->Volume, Fid->Vnode, Fid->Unique, backend, 
 			errorCode));
+
+    PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *)0, volptr, &client);
+    errorCode = CallPostamble(tcon, errorCode, thost);
+
+    SETTHREADINACTIVE();
+    return errorCode;
+}
+afs_int32
+SRXAFS_StartAsyncFetch2(struct rx_call *acall, AFSFid *Fid, struct RWparm *p,
+			struct async *a, afs_uint64 *transid, afs_uint32 *expires, 
+			AFSFetchStatus *OutStatus, AFSCallBack *CallBack)
+{
+    Error errorCode = RXGEN_OPCODE;
+    SETTHREADACTIVE(acall, 65584, Fid);
+    if (osdviced)
+	errorCode = (osdviced->op_SRXAFS_StartAsyncFetch2)(acall, Fid, p, a, transid,
+						   expires, OutStatus, CallBack);
     SETTHREADINACTIVE();
     return errorCode;
 }
@@ -9797,7 +8504,6 @@ SRXAFS_ExtendAsyncFetch(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
 			afs_uint32 *expires)
 {
     afs_int32 errorCode = RXGEN_OPCODE;
-#if defined(AFS_RXOSD_SUPPORT) || defined(AFS_ENABLE_VICEP_ACCESS)
     Vnode *targetptr = 0;       /* pointer to input fid */
     Vnode *parentwhentargetnotdir = 0;  /* parent of Fid to get ACL */
     Vnode tparentwhentargetnotdir;      /* parent vnode for GetStatus */
@@ -9834,69 +8540,60 @@ Bad_ExtendAsyncFetch:
                            volptr, &client);
     errorCode = CallPostamble(tcon, errorCode, thost);
     SETTHREADINACTIVE();
-#endif
     return errorCode;
 }
 
 afs_int32
 SRXAFS_EndAsyncFetch(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
-			afs_uint64 bytes_sent, afs_uint32 osd)
+		     afs_int32 backend, AsyncParams *Inputs)
 {
     afs_int32 errorCode = RXGEN_OPCODE;
-    SETTHREADACTIVE(acall, 65582, Fid);
+    SETTHREADACTIVE(acall, 65592, Fid);
     ViceLog(1,("EndAsyncFetch for %u.%u.%u\n", 
 			Fid->Volume, Fid->Vnode, Fid->Unique));
-#if defined(AFS_RXOSD_SUPPORT) || defined(AFS_ENABLE_VICEP_ACCESS)
+
     errorCode = EndAsyncTransaction(acall, Fid, transid);
-#endif
-#ifdef AFS_RXOSD_SUPPORT
-    if (osd) {
-	rxosd_updatecounters(osd, 0, bytes_sent);
-    } else 
-#endif
-    {
-	total_bytes_sent += bytes_sent;
-	total_bytes_sent_vpac += bytes_sent;
+
+    errorCode = RXGEN_SS_UNMARSHAL;
+    switch (backend) {
+    case AFSOSD_BACKEND:
+	if (osdviced)
+	    errorCode = (osdviced->op_endosdfetch) (Inputs);
+	break;
+    case VICEPACCESS_BACKEND:
+	if (osdviced)
+	    errorCode = (osdviced->op_endvicepfetch) (Inputs);
+	break;
+    default:
+	break;
     }
     SETTHREADINACTIVE();
     return errorCode;
 }
 
 afs_int32
-SRXAFS_StartAsyncStore(struct rx_call *acall, AFSFid *Fid, struct RWparm *p,
-			struct async *a, afs_uint64 *maxlength, afs_uint64 *transid, 
-			afs_uint32 *expires, AFSFetchStatus *OutStatus)
+SRXAFS_StartAsyncStore(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
+			afs_uint64 length, afs_uint64 FileLength, afs_int32 backend,
+			AsyncParams *Inputs, AsyncParams *Outputs,
+			afs_uint64 *maxLength, afs_uint64 *transid, afs_uint32 *expires, 
+			AFSFetchStatus *OutStatus)
 {
     afs_int32 errorCode = RXGEN_OPCODE;
-    afs_uint64 offset, length, filelength;
-    afs_int32 flag = 0;
-    SETTHREADACTIVE(acall, 65585, Fid);
+    Vnode * targetptr = 0;              /* pointer to input fid */
+    Vnode * parentwhentargetnotdir = 0; /* parent of Fid to get ACL */
+    Volume * volptr = 0;                /* pointer to the volume header */
+    struct client * client = 0;         /* pointer to client structure */
+    struct rx_connection *tcon;
+    struct host *thost;
+    afs_int32 rights, anyrights;        /* rights for this and any user */
+    struct AFSStoreStatus InStatus;      /* needed for Check_Permissions */
+    afs_size_t DataLength, diff;
 
-    if (p->type == 4) {
-	offset = p->RWparm_u.p4.offset;
-	length = p->RWparm_u.p4.length;
-	filelength = p->RWparm_u.p4.filelength;
-    } else if (p->type == 6) {
-	offset = p->RWparm_u.p6.offset;
-	length = p->RWparm_u.p6.length;
-	filelength = p->RWparm_u.p6.filelength;
-	flag = p->RWparm_u.p6.flag;
-    } else {
-	errorCode = RXGEN_SS_UNMARSHAL;
-	goto bad;
-    }
-    ViceLog(1,("StartAsyncStore for %u.%u.%u type %d filelength %llu\n", 
-			Fid->Volume, Fid->Vnode, Fid->Unique, a->type, filelength));
-#ifdef AFS_RXOSD_SUPPORT
-    if (a->type == 1) {
-	a->async_u.l1.osd_file1List_len = 0;
-	a->async_u.l1.osd_file1List_val = NULL;
-    } else if (a->type == 2) {
-	a->async_u.l2.osd_file2List_len = 0;
-	a->async_u.l2.osd_file2List_val = NULL;
-    }
-#endif
-#if defined(AFS_RXOSD_SUPPORT) || defined(AFS_ENABLE_VICEP_ACCESS)
+    SETTHREADACTIVE(acall, 65591, Fid);
+    ViceLog(1,("StartAsyncStore for %u.%u.%u type %d\n", 
+			Fid->Volume, Fid->Vnode, Fid->Unique, backend));
+    Outputs->AsyncParams_len = 0;
+    Outputs->AsyncParams_val = NULL;
     errorCode = createAsyncTransaction(acall, Fid,
 				       OSD_WRITING | CALLED_FROM_START_ASYNC, 
 				       offset, length, transid, expires);
@@ -9905,34 +8602,113 @@ SRXAFS_StartAsyncStore(struct rx_call *acall, AFSFid *Fid, struct RWparm *p,
         return errorCode;
     }
 
-#ifdef AFS_RXOSD_SUPPORT
-    if (a->type == 1 || a->type == 2) {
-	errorCode = GetOSDlocation(acall, Fid, offset, length, filelength, 
-		flag | CALLED_FROM_START_ASYNC | OSD_WRITING, OutStatus, NULL, a);
-    } else
-#endif /* AFS_RXOSD_SUPPORT */
-#ifdef AFS_ENABLE_VICEP_ACCESS
-    if (a->type == 3 || a->type == 4) {
-	errorCode = ServerPath(acall, Fid, 1, offset, length, filelength, a,
-			       maxlength, OutStatus); 
-	ClientsWithAccessToFileserverPartitions = 1;
-    } else
-#endif /* AFS_ENABLE_VICEP_ACCESS */
-        errorCode = RXGEN_SS_UNMARSHAL;
+    if (errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost))
+	goto bad;
+
+    if (errorCode = GetVolumePackage(tcon, Fid, &volptr, &targetptr,
+                                 MustNOTBeDIR, &parentwhentargetnotdir,
+                                 &client, WRITE_LOCK, &rights, &anyrights))
+	goto bad;
+
+    memset(&InStatus, 0, sizeof(InStatus));
+    if (errorCode = Check_PermissionRights(targetptr, client, rights,
+                        CHK_STOREDATA, &InStatus))
+	goto bad;
+
+    GetStatus(targetptr, OutStatus, rights, anyrights, 0);
+
+    if (!VolumeWriteable(volptr)) {
+        errorCode = EIO;
+        goto bad;
+    }
+    if (V_maxquota(volptr) && (V_diskused(volptr) > V_maxquota(volptr))) {
+        errorCode = VOVERQUOTA;
+        goto bad;
+    }
+
+    VN_GET_LEN(DataLength, targetptr);
+    if (V_maxquota(volptr))
+        diff = ((afs_int64)(V_maxquota(volptr) - V_diskused(volptr))) << 10;
+    else
+        diff = 0x40000000;  /* 1 gb */
+    if (diff > 0x40000000)
+        diff = 0x40000000;
+    *maxLength = DataLength + diff;
+
+    switch (backend) {
+    case AFSOSD_BACKEND:
+	if (osdviced)
+	    errorCode = (osdviced->op_startosdstore) (volptr, targetptr, client,
+						    tcon, thost, offset, length,
+						    FileLength, *maxLength,
+						    Inputs, Outputs);
+	break;
+    case VICEPACCESS_BACKEND:
+	if (!osdviced) {
+	    errorCode = RXGEN_OPCODE;
+	    goto bad;
+	}
+	if (VN_GET_INO(targetptr)) {
+	    afs_int32 linkCount;
+	    FdHandle_t *fdP;
+
+	    fdP = IH_OPEN(targetptr->handle);
+	    if (fdP == NULL) {
+		errorCode = ENOENT;
+		goto bad;
+	    }
+	    if (GetLinkCountAndSize(volptr, fdP, &linkCount, &DataLength) < 0) {
+		FDH_REALLYCLOSE(fdP);
+		VTakeOffline(volptr);
+		ViceLog(0, ("Volume of %u.%u.%u now offline, must be salvaged (StartAsyncStore)\n",
+			volptr->hashid,
+			targetptr->vnodeNumber,
+			targetptr->disk.uniquifier));
+		errorCode = EIO;
+		goto bad;
+	    }
+	    FDH_CLOSE(fdP);
+	    if (linkCount > 1) {
+		volptr->partition->flags &= ~PART_DONTUPDATE;
+		VSetPartitionDiskUsage(volptr->partition);
+		volptr->partition->flags |= PART_DONTUPDATE;
+		if ((errorCode = VDiskUsage(volptr, nBlocks(DataLength)))) {
+		    volptr->partition->flags &= ~PART_DONTUPDATE;
+		    goto bad;
+		}
+		if ((errorCode = PartialCopyOnWrite(targetptr, volptr, offset,
+						    length, FileLength))) {
+		    ViceLog(0,("StartAsyncStore: CopyOnWrite failed for %u.%u.%u\n",
+                    		V_id(volptr), targetptr->vnodeNumber,
+                    		targetptr->disk.uniquifier));
+		    volptr->partition->flags &= ~PART_DONTUPDATE;
+		    goto bad;	
+		}
+		volptr->partition->flags &= ~PART_DONTUPDATE;
+		VSetPartitionDiskUsage(volptr->partition);
+	    }
+	}
+	errorCode = (osdviced->op_startvicepstore) (volptr, targetptr, Inputs, 
+						  Outputs);
+	break;
+    default:
+	errorCode = RXGEN_SS_UNMARSHAL;
+    }
+
+bad:
     if (errorCode) {
 	EndAsyncTransaction(acall, Fid, *transid);
-    }
-	
-#endif
-bad:
-    if (errorCode)
-        ViceLog(0,("StartAsyncStore for %u.%u.%u type %d returns %d\n",
-			Fid->Volume, Fid->Vnode, Fid->Unique, a->type, 
+        ViceLog(0,("StartAsyncStore for %u.%u.%u backend %d returns %d\n",
+			Fid->Volume, Fid->Vnode, Fid->Unique, backend, 
 			errorCode));
-    else
-        ViceLog(3,("StartAsyncStore for %u.%u.%u type %d returns %d\n",
-			Fid->Volume, Fid->Vnode, Fid->Unique, a->type, 
+    } else
+        ViceLog(3,("StartAsyncStore for %u.%u.%u backend %d returns %d\n",
+			Fid->Volume, Fid->Vnode, Fid->Unique, backend, 
 			errorCode));
+
+    PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *)0, volptr, &client);
+    errorCode = CallPostamble(tcon, errorCode, thost);
+
     SETTHREADINACTIVE();
     return errorCode;
 }
@@ -9942,28 +8718,22 @@ SRXAFS_ExtendAsyncStore(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
 			afs_uint32 *expires)
 {
     afs_int32 code = RXGEN_OPCODE;
-#if defined(AFS_RXOSD_SUPPORT) || defined(AFS_ENABLE_VICEP_ACCESS)
     SETTHREADACTIVE(acall, 65575, Fid);
     ViceLog(1,("ExtendAsyncStore for %u.%u.%u\n", 
 			Fid->Volume, Fid->Vnode, Fid->Unique));
 
     code = extendAsyncTransaction(acall, Fid, transid, expires);
     SETTHREADINACTIVE();
-#endif
     return code;
 }
 
-static afs_int32
-EndAsyncStore(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
-			afs_uint64 filelength, 
-			afs_uint64 bytes_rcvd, afs_uint64 bytes_sent, 
-			afs_uint32 osd,
-			afs_int32 error, struct asyncError *ae,
-			struct AFSStoreStatus *InStatus,
-			struct AFSFetchStatus *OutStatus)
+afs_int32
+SRXAFS_EndAsyncStore(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
+		     afs_uint64 FileLength, afs_int32 backend, AsyncParams *Inputs,
+		     struct AFSStoreStatus *InStatus,
+		     struct AFSFetchStatus *OutStatus)
 {
-    Error errorCode = RXGEN_OPCODE;
-#if defined(AFS_RXOSD_SUPPORT) || defined(AFS_ENABLE_VICEP_ACCESS)
+    afs_int32 errorCode = RXGEN_OPCODE;
     Vnode *targetptr = 0;       /* pointer to input fid */
     Vnode *parentwhentargetnotdir = 0;  /* parent of Fid to get ACL */
     Vnode tparentwhentargetnotdir;      /* parent vnode for GetStatus */
@@ -9975,6 +8745,11 @@ EndAsyncStore(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
     struct rx_connection *tcon;
     struct host *thost;
     afs_uint64 oldlength;
+    int sameDataVersion = 0;
+
+    SETTHREADACTIVE(acall, 65593, Fid);
+    ViceLog(1,("EndAsyncStore for %u.%u.%u\n", 
+			Fid->Volume, Fid->Vnode, Fid->Unique));
 
     if ((errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
         goto Bad_EndAsyncStore;
@@ -9982,8 +8757,8 @@ EndAsyncStore(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
     /* Get ptr to client data for user Id for logging */
     t_client = (struct client *)rx_GetSpecific(tcon, rxcon_client_key);
     logHostAddr.s_addr = rxr_HostOf(tcon);
-    /* 
-     * Get volptr back from activeFile to finish old transaction before 
+    /*
+     * Get volptr back from activeFile to finish old transaction before
      * volserver may get the volume for cloning or moving it.
      */
     volptr = getAsyncVolptr(acall, Fid, transid);
@@ -10004,58 +8779,55 @@ EndAsyncStore(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
         goto Bad_EndAsyncStore;
     }
 
-    if (ae) {   
-        if (!ae->error) {
-	    if (ae->asyncError_u.no_new_version)
-	        goto NothingHappened;
-        } else if (ae->error == 1) {
-            ViceLog(0,("EndAsyncStore recoverable asyncError for %u.%u.%u from %u.%u.%u.%u:%u\n", 
-			Fid->Volume, Fid->Vnode, Fid->Unique,
-			(ntohl(tcon->peer->host) >> 24) & 0xff,
-			(ntohl(tcon->peer->host) >> 16) & 0xff,
-			(ntohl(tcon->peer->host) >> 8) & 0xff,
-			ntohl(tcon->peer->host) & 0xff,
-			ntohs(tcon->peer->port)));
-	    errorCode = recover_store(targetptr, ae);
-        } else {
-            ViceLog(0,("EndAsyncStore unknown asyncError type %d for %u.%u.%u from %u.%u.%u.%u:%u\n", 
-			ae->error,
-			Fid->Volume, Fid->Vnode, Fid->Unique,
-			(ntohl(tcon->peer->host) >> 24) & 0xff,
-			(ntohl(tcon->peer->host) >> 16) & 0xff,
-			(ntohl(tcon->peer->host) >> 8) & 0xff,
-			ntohl(tcon->peer->host) & 0xff,
-			ntohs(tcon->peer->port)));
-        }
+    errorCode = RXGEN_SS_UNMARSHAL;
+    switch (backend) {
+    case AFSOSD_BACKEND:
+	if (osdviced)
+	    errorCode = (osdviced->op_endosdstore) (volptr, targetptr, tcon,
+						  Inputs, &sameDataVersion);
+	    if (errorCode) {
+		ViceLog(0,("osdviced->op_endosdstore returns %d for %u.%u.%u, ignored\n",
+			errorCode, Fid->Volume, Fid->Vnode, Fid->Unique));
+		errorCode = 0;
+	    }
+	break;
+    case VICEPACCESS_BACKEND:
+	if (osdviced)
+	    errorCode = (osdviced->op_endvicepstore) (volptr, targetptr, tcon,
+						    Inputs, &sameDataVersion);
+	break;
+    default:
+	break;
     }
 
+    if (sameDataVersion)
+	goto NothingHappened;
+
     VN_GET_LEN(oldlength, targetptr);
-    if (filelength < oldlength) {
-	ino_t ino;
-	ino = VN_GET_INO(targetptr);
-	if (ino != 0) {
-	    FdHandle_t *fdP;
-	    fdP = IH_OPEN(targetptr->handle);
-	    FDH_TRUNC(fdP, filelength);
-	    FDH_CLOSE(fdP);
+
+    if (FileLength < oldlength) {
+        ino_t ino;
+        ino = VN_GET_INO(targetptr);
+        if (ino != 0) {
+            FdHandle_t *fdP;
+            fdP = IH_OPEN(targetptr->handle);
+            FDH_TRUNC(fdP, FileLength);
+            FDH_CLOSE(fdP);
+        }
+	if (osdvol)
+	    errorCode = (osdvol->op_truncate_osd_file) (targetptr, FileLength);
+	if (errorCode) {
+	    ViceLog(0, ("EndAsyncStore: truncate_osd_file %u.%u.%u failed with %d\n",
+		    Fid->Volume, Fid->Vnode, Fid->Unique, errorCode));
+	    errorCode = 0; 	/* don't bother client with this problem! */
 	}
-#ifdef AFS_RXOSD_SUPPORT
-	if (targetptr->disk.osdMetadataIndex && targetptr->disk.type == vFile) {
-	    errorCode = truncate_osd_file(targetptr, filelength);
-	    if (errorCode) {
-		ViceLog(0, ("EndAsyncStore: truncate_osd_file %u.%u.%u failed with %d\n",
-			Fid->Volume, Fid->Vnode, Fid->Unique, errorCode));
-			errorCode = 0;
-	    }
-	}
-#endif
     }
-    
-    if (filelength != oldlength) {
-	afs_int32 blocks = (afs_int32)((filelength - oldlength) >> 10);
-	V_diskused(volptr) += blocks;
-    }		
-    VN_SET_LEN(targetptr, filelength);
+
+    if (FileLength != oldlength) {
+        afs_int32 blocks = (afs_int32)((FileLength - oldlength) >> 10);
+        V_diskused(volptr) += blocks;
+    }
+    VN_SET_LEN(targetptr, FileLength);
     /* Update the status of the target's vnode */
     Update_TargetVnodeStatus(targetptr, TVS_SDATA, client, InStatus,
                              targetptr, volptr, 0);
@@ -10063,44 +8835,19 @@ EndAsyncStore(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
     GetStatus(targetptr, OutStatus, rights, anyrights,
               &tparentwhentargetnotdir);
     BreakCallBack(client->host, Fid, 0);
-  NothingHappened:
-    errorCode = EndAsyncTransaction(acall, Fid, transid);
-  Bad_EndAsyncStore:
-    if (osd) {
-	rxosd_updatecounters(osd, bytes_rcvd, bytes_sent);
-    } else {
-	total_bytes_sent += bytes_sent;
-	total_bytes_rcvd += bytes_rcvd;
-	total_bytes_sent_vpac += bytes_sent;
-	total_bytes_rcvd_vpac += bytes_rcvd;
-    }
+
+NothingHappened:
+Bad_EndAsyncStore:
+    EndAsyncTransaction(acall, Fid, transid);
+
     /* Update and store volume/vnode and parent vnodes back */
     (void)PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *) 0,
                            volptr, &client);
-    ViceLog(2, ("EndAsyncStore returns %d for %u.%u.%u\n", 
-			errorCode, Fid->Volume, Fid->Vnode, Fid->Unique));
+    ViceLog(2, ("EndAsyncStore returns %d for %u.%u.%u\n",
+                        errorCode, Fid->Volume, Fid->Vnode, Fid->Unique));
 
     errorCode = CallPostamble(tcon, errorCode, thost);
-#endif
-    return errorCode;
-}
 
-
-afs_int32
-SRXAFS_EndAsyncStore(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
-			afs_uint64 filelength,  afs_uint64 bytes_rcvd, 
-			afs_uint64 bytes_sent, afs_uint32 osd, afs_int32 error,
-			struct asyncError *ae,
-			struct AFSStoreStatus *InStatus,
-			struct AFSFetchStatus *OutStatus)
-{
-    Error errorCode = RXGEN_OPCODE;
-    SETTHREADACTIVE(acall, 65578, Fid);
-    ViceLog(1,("EndAsyncStore for %u.%u.%u filelength %llu\n", 
-			Fid->Volume, Fid->Vnode, Fid->Unique, filelength));
-    errorCode = EndAsyncStore(acall, Fid, transid, filelength, 
-				bytes_rcvd, bytes_sent, osd, error, ae,
-			  	InStatus, OutStatus);
     SETTHREADINACTIVE();
     return errorCode;
 }
@@ -10137,62 +8884,6 @@ GetLinkCountAndSize(Volume * vp, FdHandle_t * fdP, int *lc,
     return 0;
 #endif
 }
-
-#ifdef AFS_RXOSD_SUPPORT
-afs_int32
-Store_OSD(Volume * volptr, Vnode **targetptr, struct AFSFid * Fid,
-	  struct client * client, struct rx_call * Call,
-	  afs_fsize_t Pos, afs_fsize_t Length, afs_fsize_t FileLength)
-{
-    afs_int32 errorCode;
-    afs_uint64 vnodeLength;
-    afs_sfsize_t TruncatedLength;	/* local only here */
-    struct in_addr logHostAddr;
-
-    logHostAddr.s_addr = rx_HostOf(rx_PeerOf(rx_ConnectionOf(Call)));
-    VN_GET_LEN(vnodeLength, *targetptr);
-    TruncatedLength = vnodeLength;
-    if (FileLength < TruncatedLength)
-	TruncatedLength = FileLength;
-    if (Length && Pos + Length > TruncatedLength)
-	TruncatedLength = Pos + Length;
-    ViceLog(1, ("StoreData to osd file %u.%u.%u, pos %llu, length %llu, file length %llu client %s\n",
-		    Fid->Volume, Fid->Vnode, Fid->Unique,
-		    Pos, Length, FileLength,
-		    inet_ntoa(logHostAddr)));
-    if (TruncatedLength != vnodeLength) {
-	afs_int32 blocks = (afs_int32)((TruncatedLength - vnodeLength) >> 10);
-	if (V_maxquota(volptr)
-	  && (blocks > (V_maxquota(volptr) - V_diskused(volptr)))) {
-	    if ((blocks + V_diskused(volptr) - V_maxquota(volptr)) * 100 / V_maxquota(volptr) > 5 ) /* allow 5 % over quota */
-		return ENOSPC;
-	}
-	V_diskused(volptr) += blocks;
-    }		
-    rx_SetLocalStatus(Call, 1);
-    errorCode = xchange_data_with_osd(Call, targetptr, Pos, Length, 
-				    FileLength, 1, client->ViceId);
-    if (errorCode)
-	return errorCode;
-    total_bytes_rcvd += Length;
-    if (TruncatedLength) {
-	VN_GET_LEN(vnodeLength, *targetptr);
-	if (TruncatedLength < vnodeLength) { 
-	    errorCode = truncate_osd_file(*targetptr, TruncatedLength);
-	    if (errorCode)
-		return errorCode;
-	}
-	if (TruncatedLength != vnodeLength) {
-	    VN_SET_LEN(*targetptr, TruncatedLength);
-	    vnodeLength = TruncatedLength;
-	    (*targetptr)->changed_newTime = 1;
-	}
-    }
-    ViceLog(1, ("StoreData to osd file %u.%u.%u file length %llu returns 0\n",
-		    Fid->Volume, Fid->Vnode, Fid->Unique, vnodeLength));
-    return 0;
-}
-#endif 
 
 /*
  * StoreData_RXStyle
@@ -10263,17 +8954,14 @@ StoreData_RXStyle(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
 
     VN_GET_LEN(targSize, targetptr);
 
-#ifdef AFS_RXOSD_SUPPORT
-    if (targetptr->disk.osdMetadataIndex && !VN_GET_INO(targetptr)) {
-        errorCode = Store_OSD(volptr, &targetptr, Fid, client, Call,
+    if (osdviced && targetptr->disk.osdMetadataIndex && !VN_GET_INO(targetptr)) {
+        errorCode = (osdviced->op_Store_OSD)(volptr, &targetptr, Fid, client, Call,
                 Pos, Length, FileLength);
         if ( Length > 0 && !errorCode ) /* goto Good_StoreData */
             return 0;
         if ( errorCode )                /* goto Bad_StoreData */
             return errorCode;
-    } else
-#endif /* AFS_RXOSD_SUPPORT */
-    if (VN_GET_INO(targetptr) == 0) {
+    } else if (VN_GET_INO(targetptr) == 0) {
 	/* the inode should have been created in Alloc_NewVnode */
 	logHostAddr.s_addr = rx_HostOf(rx_PeerOf(rx_ConnectionOf(Call)));
 	ViceLog(0,
@@ -10393,8 +9081,7 @@ StoreData_RXStyle(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
     adjustSize = nBlocks(NewLength) - nBlocks(targSize);
     {
 	afs_int32 adjustPart = adjustSize - SpareComp(volptr);
-#ifdef AFS_RXOSD_SUPPORT
-        if (targetptr->disk.osdMetadataIndex) {
+	if (V_osdPolicy(volptr) && targetptr->disk.osdMetadataIndex) {
 	    if (V_maxquota(volptr) 
 	      && V_diskused(volptr) + adjustSize > V_maxquota(volptr)) {
 		errorCode = VOVERQUOTA;
@@ -10402,10 +9089,9 @@ StoreData_RXStyle(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
 	    }
 	    V_diskused(volptr) += adjustSize;
 	} else 
-#endif /* AFS_RXOSD_SUPPORT */
-        if ((errorCode = AdjustDiskUsage(volptr, adjustSize, adjustPart))) {
-	    FDH_CLOSE(fdP);
-	    return errorCode;
+            if ((errorCode = AdjustDiskUsage(volptr, adjustSize, adjustPart))) {
+	        FDH_CLOSE(fdP);
+	        return errorCode;
 	}
     }
 
@@ -10421,23 +9107,9 @@ StoreData_RXStyle(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
 	     (afs_uintmax_t) Pos, (afs_uintmax_t) DataLength,
 	     (afs_uintmax_t) FileLength, (afs_uintmax_t) Length));
 
-#if defined(AFS_RXOSD_SUPPORT)
-    if (targetptr->disk.osdMetadataIndex) { 
-	afs_uint64 vnodeLength;
-	VN_GET_LEN(vnodeLength, targetptr);
-	if (FileLength < vnodeLength) { 
-	    errorCode = truncate_osd_file(targetptr, FileLength);
-	    if (errorCode)
-		return errorCode;
-	}
-    } else {
-#endif
-        /* truncate the file if it needs it (ftruncate is slow even when its a noop) */
-        if (FileLength < DataLength)
-	    FDH_TRUNC(fdP, FileLength);
-#ifdef AFS_RXOSD_SUPPORT
-    }
-#endif
+    /* truncate the file if it needs it (ftruncate is slow even when its a noop) */
+    if (FileLength < DataLength)
+	FDH_TRUNC(fdP, FileLength);
     bytesTransfered = 0;
 #ifndef HAVE_PIOV
     tbuffer = AllocSendBuffer();
@@ -10453,18 +9125,14 @@ StoreData_RXStyle(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
 	/* Set the file's length; we've already done an lseek to the right
 	 * spot above.
 	 */
-#ifdef AFS_RXOSD_SUPPORT
-	if (!targetptr->disk.osdMetadataIndex) {
-#endif
+	if (!V_osdPolicy(volptr) || !targetptr->disk.osdMetadataIndex) {
 	    nBytes = FDH_PWRITE(fdP, &tlen, 1, Pos);
 	    if (nBytes != 1) {
 		errorCode = -1;
 	        goto done;
 	    }
 	    errorCode = FDH_TRUNC(fdP, Pos);
-#ifdef AFS_RXOSD_SUPPORT
         }
-#endif
     } else {
 	/* have some data to copy */
 #if FS_STATS_DETAILED
@@ -10516,10 +9184,7 @@ StoreData_RXStyle(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
 #ifndef HAVE_PIOV
     FreeSendBuffer((struct afs_buffer *)tbuffer);
 #endif /* HAVE_PIOV */
-    if (sync) {
-#ifdef AFS_RXOSD_SUPPORT
-      if (fdP)
-#endif
+    if (sync && fdP) {
 	FDH_SYNC(fdP);
     }
     if (errorCode) {
@@ -10568,48 +9233,33 @@ StoreData_RXStyle(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
 
 }				/*StoreData_RXStyle */
 
-#ifdef AFS_RXOSD_SUPPORT
-/* with RxOSD, prepare an OSD file if applicable */
 afs_int32
-MaybeStore_OSD(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
-		  struct client * client, struct rx_call * Call,
-		  afs_fsize_t Pos, afs_fsize_t Length, afs_fsize_t FileLength,
-		  Vnode *parentwhentargetnotdir, char *fileName)
+SRXAFS_Threads(struct rx_call *acall, struct activecallList *list)
 {
-    afs_uint64 InitialVnodeFileLength;
-    afs_uint64 RealisticFileLength;
-    unsigned int policyIndex = 0;
-    VN_GET_LEN(InitialVnodeFileLength, targetptr);
-    if (InitialVnodeFileLength <= max_move_osd_size) {
-	afs_uint32 osd_id, lun;
-	afs_uint32 tcode;
-	AFSFid tmpFid;
-#ifdef MEASURE_TIMES
-	struct timeval start, end;
-	afs_uint64 usecs;
-	gettimeofday(&start, 0);
-#endif
-	RealisticFileLength = Pos + Length;
-	if (FileLength > RealisticFileLength)
-	    RealisticFileLength = FileLength;
-	policyIndex = parentwhentargetnotdir->disk.osdPolicyIndex;
-	tcode = createFileWithPolicy(Fid, RealisticFileLength, policyIndex,
-				    fileName, targetptr, volptr, evalclient, client);
-	if (tcode && tcode != ENOENT)
-		ViceLog(0,("MaybeStore_OSD: createFileWithPolicy failed "
-			    "with %d for %u.%u.%u (policy %d)\n",
-			    tcode, V_id(volptr), targetptr->vnodeNumber, 
-			    targetptr->disk.uniquifier,
-			    policyIndex));
-#ifdef MEASURE_TIMES
-	gettimeofday(&end, 0);
-	usecs = end.tv_sec * 1000000 + end.tv_usec
-		- start.tv_sec * 1000000 - start.tv_usec;
-	policyTime += usecs;
-#endif
+    Error errorCode = 0, i, j;
+    SETTHREADACTIVE(acall, 65550, (AFSFid *)0);
+
+    list->activecallList_len = 0;
+    list->activecallList_val = 0;
+    ACTIVE_LOCK;
+    for (i=0; i<NVICEDRPCS; i++) {
+        if (IsActive[i].num)
+            list->activecallList_len++;
     }
+    if (list->activecallList_len) {
+        list->activecallList_val = (struct activecall *)
+                malloc(list->activecallList_len * sizeof(struct activecall));
+        for (i=0, j=0; i<NVICEDRPCS; i++) {
+            if (IsActive[i].num) {
+                list->activecallList_val[j] = IsActive[i];
+                j++;
+            }
+        }
+    }
+    ACTIVE_UNLOCK;
+    SETTHREADINACTIVE();
+    return 0;
 }
-#endif /* AFS_RXOSD_SUPPORT */
 
 afs_int32
 SRXAFS_Statistic(struct rx_call *acall, afs_int32 reset, afs_uint32* since,
@@ -10662,9 +9312,7 @@ SRXAFS_Statistic(struct rx_call *acall, afs_int32 reset, afs_uint32* since,
     return errorCode;
 }
 
-#ifdef AFS_RXOSD_SUPPORT
 extern afs_int32 md5flag;
-#endif
 
 afs_int32
 Variable(struct rx_call *acall, afs_int32 cmd, char *name,
@@ -10693,8 +9341,8 @@ Variable(struct rx_call *acall, afs_int32 cmd, char *name,
       start_ptr=end_ptr+strlen(EXP_VAR_SEPARATOR);
     }
 
-    if (! isproperName) {
-        code = ENOENT;
+    if (! isproperName && osdviced) {
+	code = (osdviced->op_osdVariable) (acall, cmd, name, value, result);
         goto finis;
     }
 
@@ -10702,50 +9350,6 @@ Variable(struct rx_call *acall, afs_int32 cmd, char *name,
         if (!strcmp(name, "LogLevel")) {
             *result = LogLevel;
             code = 0;
-#ifdef MEASURE_TIMES
-        } else if (!strcmp(name, "inverseLookupTime")) {
-            *result = inverseLookupTime;
-            code = 0;
-        } else if (!strcmp(name, "policyTime")) {
-            *result = policyTime;
-            code = 0;
-#endif
-#ifdef AFS_RXOSD_SUPPORT
-        } else if (!strcmp(name, "md5flag")) {
-            *result = md5flag;
-            code = 0;
-        } else if (!strcmp(name, "FindOsdPasses")) {
-            *result = FindOsdPasses;
-            code = 0;
-        } else if (!strcmp(name, "FindOsdIgnoreOwnerPass")) {
-            *result = FindOsdIgnoreOwnerPass;
-            code = 0;
-        } else if (!strcmp(name, "FindOsdIgnoreLocationPass")) {
-            *result = FindOsdIgnoreLocationPass;
-            code = 0;
-        } else if (!strcmp(name, "FindOsdIgnoreSizePass")) {
-            *result = FindOsdIgnoreSizePass;
-            code = 0;
-        } else if (!strcmp(name, "FindOsdWipeableDivisor")) {
-            *result = FindOsdWipeableDivisor;
-            code = 0;
-        } else if (!strcmp(name, "FindOsdNonWipeableDivisor")) {
-            *result = FindOsdNonWipeableDivisor;
-            code = 0;
-        } else if (!strcmp(name, "FindOsdUsePrior")) {
-            *result = FindOsdUsePrior;
-            code = 0;
-	} else if (!strcmp(name, "max_move_osd_size")) {
-	    *result = max_move_osd_size;
-	    code = 0;
-	} else if (!strcmp(name, "maxLegacyThreadsPerClient")) {
-	    *result = maxLegacyThreadsPerClient;
-	    code = 0;
-	} else if (!strcmp(name, "fastRestore")) {
-	    *result = fastRestore;
-	    code = 0;
-#endif
-#if defined(AFS_RXOSD_SUPPORT) || defined(AFS_ENABLE_VICEP_ACCESS)
 	} else if (!strcmp(name, "activeFiles")) {
 	    *result = activeFiles;
 	    code = 0;
@@ -10758,13 +9362,15 @@ Variable(struct rx_call *acall, afs_int32 cmd, char *name,
 	} else if (!strcmp(name, "maxActiveTransactions")) {
 	    *result = maxActiveTransactions;
 	    code = 0;
-	} else if (!strcmp(name, "total_bytes_rcvd_vpac")) {
-	    *result = total_bytes_rcvd_vpac;
-	    code = 0;
-	} else if (!strcmp(name, "total_bytes_sent_vpac")) {
-	    *result = total_bytes_sent_vpac;
-	    code = 0;
-#endif
+        } else if (!strcmp(name, "total_bytes_rcvd_vpac")) {
+            *result = total_bytes_rcvd_vpac;
+            code = 0;
+        } else if (!strcmp(name, "total_bytes_sent_vpac")) {
+            *result = total_bytes_sent_vpac;
+            code = 0;
+        } else if (!strcmp(name, "maxLegacyThreadsPerClient")) {
+            *result = maxLegacyThreadsPerClient;
+            code = 0;
         } else
             code = ENOENT;
     } else if (cmd == 2) {                                      /* set */
@@ -10780,88 +9386,14 @@ Variable(struct rx_call *acall, afs_int32 cmd, char *name,
             LogLevel = value;
             *result = LogLevel;
             code = 0;
-#ifdef AFS_RXOSD_SUPPORT
-        } else if (!strcmp(name, "md5flag")) {
-            if (value < 0) {
-                code = EINVAL;
-                goto finis;
-            }
-            md5flag = value;
-            *result = md5flag;
-            code = 0;
-        } else if (!strcmp(name, "max_move_osd_size")) {
-            if (value < 0 || value > 64*1024*1024) {
-                code = EINVAL;
-                goto finis;
-            }
-            max_move_osd_size = value;
-	    max_move_osd_size_set_by_hand = 1;
-            *result = max_move_osd_size;
-        } else if (!strcmp(name, "FindOsdPasses")) {
-	    if (value < 1 || value > 4) {
-                code = EINVAL;
-                goto finis;
-            }
-	    FindOsdPasses = value;
-            *result = FindOsdPasses;
-            code = 0;
-        } else if (!strcmp(name, "FindOsdIgnoreOwnerPass")) {
-	    if (value < 1 || value > 3) {
-                code = EINVAL;
-                goto finis;
-            }
-	    FindOsdIgnoreOwnerPass = value;
-            *result = FindOsdIgnoreOwnerPass;
-            code = 0;
-        } else if (!strcmp(name, "FindOsdIgnoreLocationPass")) {
-	    if (value < 1 || value > 3) {
-                code = EINVAL;
-                goto finis;
-            }
-	    FindOsdIgnoreLocationPass = value;
-            *result = FindOsdIgnoreLocationPass;
-            code = 0;
-        } else if (!strcmp(name, "FindOsdIgnoreSizePass")) {
-	    if (value < 1 || value > 3) {
-                code = EINVAL;
-                goto finis;
-            }
-	    FindOsdIgnoreSizePass = value;
-            *result = FindOsdIgnoreSizePass;
-            code = 0;
-        } else if (!strcmp(name, "FindOsdWipeableDivisor")) {
-	    if (value < 0) {
-                code = EINVAL;
-                goto finis;
-            }
-	    FindOsdWipeableDivisor = value;
-            *result = FindOsdWipeableDivisor;
-            code = 0;
-        } else if (!strcmp(name, "FindOsdNonWipeableDivisor")) {
-	    if (value < 0) {
-                code = EINVAL;
-                goto finis;
-            }
-	    FindOsdNonWipeableDivisor = value;
-            *result = FindOsdNonWipeableDivisor;
-            code = 0;
-        } else if (!strcmp(name, "FindOsdUsePrior")) {
-	    FindOsdUsePrior = value;
-            *result = FindOsdUsePrior;
-            code = 0;
         } else if (!strcmp(name, "maxLegacyThreadsPerClient")) {
-	    if (value < 0 || value > 32) {
-		code = EINVAL;
-		goto finis;
-	    }
-	    maxLegacyThreadsPerClient = value;
+            if (value < 0 || value > 32) {
+                code = EINVAL;
+                goto finis;
+            }
+            maxLegacyThreadsPerClient = value;
             *result = maxLegacyThreadsPerClient;
             code = 0;
-        } else if (!strcmp(name, "fastRestore")) {
-	    fastRestore = value;
-            *result = fastRestore;
-            code = 0;
-#endif
         } else
             code = ENOENT;
     }
@@ -10890,13 +9422,28 @@ SRXAFS_Variable(struct rx_call *acall, afs_int32 cmd, var_info *name,
     if (cmd < 3)
         code = Variable(acall, cmd, name->var_info_val, value, result);
     else if (cmd == 3) {
+	afs_int32 offset = 0;
+        char *varPtr = ExportedVariables;
         char *start_ptr = ExportedVariables;
         char *end_ptr;
 
         if (value != 0) {
-            if (value < 0 || value >= strlen(ExportedVariables))
+            if (value < 0)
                 goto finis;
-            start_ptr = ExportedVariables + value;
+            if (value >= strlen(ExportedVariables)) {
+		if (osdExportedVariablesPtr) {
+		    varPtr = *osdExportedVariablesPtr;
+		    offset = strlen(ExportedVariables);
+		    value -= offset;
+		    if (value >= strlen(*osdExportedVariablesPtr)) {
+			*result = -1;
+			goto finis;
+		    }
+		    start_ptr = *osdExportedVariablesPtr + value;
+
+	        }
+	    }
+            start_ptr = varPtr + value;
             if (strncmp(start_ptr,EXP_VAR_SEPARATOR,strlen(EXP_VAR_SEPARATOR)))
                 goto finis;
             start_ptr += strlen(EXP_VAR_SEPARATOR);
@@ -10904,15 +9451,16 @@ SRXAFS_Variable(struct rx_call *acall, afs_int32 cmd, var_info *name,
         end_ptr = strstr(start_ptr, EXP_VAR_SEPARATOR);
         if (!end_ptr || start_ptr == end_ptr)
             goto finis;
-        *result = end_ptr - ExportedVariables;
+        *result = end_ptr - varPtr + offset;
         if (end_ptr - start_ptr + 1 > MAXVARNAMELNG)
             goto finis;
         str->var_info_len = end_ptr - start_ptr + 1;
         str->var_info_val = malloc(str->var_info_len);
         strncpy(str->var_info_val, start_ptr, str->var_info_len -1);
         str->var_info_val[str->var_info_len -1] = 0;
-        if (*(end_ptr + strlen(EXP_VAR_SEPARATOR)) == 0)
+        if (*(end_ptr + strlen(EXP_VAR_SEPARATOR)) == 0) {
             *result = -1; /* End of list reached */
+	}
         code = 0;
     }
 finis:
@@ -10920,11 +9468,128 @@ finis:
     return code;
 }
 
+#ifndef NO_BACKWARD_COMPATIBILITY
 /*
  * Below this line all RPCs which are needed only for compatibility with older
  * clients at the cell ipp-garching.mpg.de. The RPCs which should go into
  * OpenAFS 1.9 (or whatever) are all upwards.
  */
+
+afs_int32
+SRXAFS_SetOsdFileReady0(struct rx_call *acall, AFSFid *Fid, struct viced_md5 *md5)
+{
+    Error errorCode = RXGEN_OPCODE;
+    SETTHREADACTIVE(acall, 65568, Fid);
+    if (osdviced)
+	errorCode = (osdviced->op_SRXAFS_SetOsdFileReady0) (acall, Fid, md5);
+    SETTHREADINACTIVE();
+    return errorCode;
+}
+
+afs_int32
+SRXAFS_CheckOSDconns(struct rx_call *acall)
+{
+    Error errorCode = RXGEN_OPCODE;
+    SETTHREADACTIVE(acall, 65559, (AFSFid *)0);
+    if (osdviced)
+	errorCode = (osdviced->op_SRXAFS_CheckOSDconns) (acall);
+    SETTHREADINACTIVE();
+    return errorCode;
+}
+
+afs_int32
+SRXAFS_ApplyOsdPolicy(struct rx_call *acall, AFSFid *Fid, afs_uint64 length, 
+	  afs_uint32 *protocol)
+{
+    Error errorCode = RXGEN_OPCODE;
+
+    SETTHREADACTIVE(acall, 65560, (AFSFid *)0);
+    if (osdviced)
+	errorCode = (osdviced->op_SRXAFS_ApplyOsdPolicy)(acall, Fid, length, protocol);
+    SETTHREADINACTIVE();
+    return errorCode;
+}
+
+afs_int32
+SRXAFS_SetOsdFileReady(struct rx_call *acall, AFSFid *Fid, struct cksum *checksum)
+{
+    Error errorCode = RXGEN_OPCODE;
+    SETTHREADACTIVE(acall, 65588, Fid);
+    if (osdviced)
+	errorCode = (osdviced->op_SRXAFS_SetOsdFileReady)(acall, Fid, checksum);
+    SETTHREADINACTIVE();
+    return errorCode;
+}
+
+afs_int32
+SRXAFS_GetOsdMetadata(struct rx_call *acall, AFSFid *Fid)
+{
+    Error errorCode = RXGEN_OPCODE;
+
+    SETTHREADACTIVE(acall, 65562, Fid);
+    if (osdviced)
+	errorCode = (osdviced->op_SRXAFS_GetOsdMetadata)(acall, Fid);
+    SETTHREADINACTIVE();
+    return errorCode;
+}
+
+afs_int32
+SRXAFS_UpdateOSDmetadata(struct rx_call *acall, struct ometa *old, struct ometa *new)
+{
+    Error errorCode = RXGEN_OPCODE;
+    AFSFid Fid = {0, 0, 0};
+
+    SETTHREADACTIVE(acall, 65586, &Fid);
+    if (osdviced)
+	errorCode = (osdviced->op_SRXAFS_UpdateOSDmetadata)(acall, old, new);
+    SETTHREADINACTIVE();
+    return errorCode;
+}
+
+afs_int32
+SRXAFS_EndAsyncFetch1(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
+			afs_uint64 bytes_sent, afs_uint32 osd)
+{
+    Error errorCode = RXGEN_OPCODE;
+    SETTHREADACTIVE(acall, 65582, Fid);
+    if (osdviced)
+	errorCode = (osdviced->op_SRXAFS_EndAsyncFetch1)(acall, Fid, transid,
+			bytes_sent, osd);
+    SETTHREADINACTIVE();
+    return errorCode;
+}
+
+afs_int32
+SRXAFS_StartAsyncStore2(struct rx_call *acall, AFSFid *Fid, struct RWparm *p,
+			struct async *a, afs_uint64 *maxlength, afs_uint64 *transid, 
+			afs_uint32 *expires, AFSFetchStatus *OutStatus)
+{
+    Error errorCode = RXGEN_OPCODE;
+    SETTHREADACTIVE(acall, 65585, Fid);
+    if (osdviced)
+	errorCode = (osdviced->op_SRXAFS_StartAsyncStore2)(acall, Fid, p, a,
+			maxlength, transid, expires, OutStatus);
+    SETTHREADINACTIVE();
+    return errorCode;
+}
+
+afs_int32
+SRXAFS_EndAsyncStore1(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
+			afs_uint64 filelength,  afs_uint64 bytes_rcvd, 
+			afs_uint64 bytes_sent, afs_uint32 osd, afs_int32 error,
+			struct asyncError *ae,
+			struct AFSStoreStatus *InStatus,
+			struct AFSFetchStatus *OutStatus)
+{
+    Error errorCode = RXGEN_OPCODE;
+    SETTHREADACTIVE(acall, 65578, Fid);
+    if (osdviced)
+	errorCode = (osdviced->op_SRXAFS_EndAsyncStore1)(acall, Fid, transid,
+				filelength, bytes_rcvd, bytes_sent, osd,
+				error, ae, InStatus, OutStatus);
+    SETTHREADINACTIVE();
+    return errorCode;
+}
 
 afs_int32
 SRXAFS_GetOSDlocation(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
@@ -10933,19 +9598,13 @@ SRXAFS_GetOSDlocation(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
                         AFSFetchStatus *OutStatus,
                         struct osd_file2List *list)
 {
-    afs_int32 code;
-    struct async a;
+    Error errorCode = RXGEN_OPCODE;
     SETTHREADACTIVE(acall, 65580, Fid);
-    
-    a.type = 2;
-    a.async_u.l2.osd_file2List_val = list->osd_file2List_val;
-    a.async_u.l2.osd_file2List_len = list->osd_file2List_len;
-    code = GetOSDlocation(acall, Fid, offset, length, filelength, flag,
-                        OutStatus, 0, &a);
-    list->osd_file2List_val = a.async_u.l2.osd_file2List_val;
-    list->osd_file2List_len = a.async_u.l2.osd_file2List_len;
+    if (osdviced)
+	errorCode = (osdviced->op_SRXAFS_GetOSDlocation)(acall, Fid, offset,
+				length, filelength, flag, OutStatus, list);
     SETTHREADINACTIVE();
-    return code;
+    return errorCode;
 }
 
 afs_int32
@@ -10955,20 +9614,13 @@ SRXAFS_GetOSDlocation3(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
                         AFSFetchStatus *OutStatus,
                         struct osd_file2List *list)
 {
-    afs_int32 code;
-    struct async a;
-
+    Error errorCode = RXGEN_OPCODE;
     SETTHREADACTIVE(acall, 65569, Fid);
-    a.type = 2;
-    a.async_u.l2.osd_file2List_val = list->osd_file2List_val;
-    a.async_u.l2.osd_file2List_len = list->osd_file2List_len;
-    code = GetOSDlocation(acall, Fid, offset, length, filelength, flag,
-                        OutStatus, 0, &a);
-    list->osd_file2List_val = a.async_u.l2.osd_file2List_val;
-    list->osd_file2List_len = a.async_u.l2.osd_file2List_len;
+    if (osdviced)
+	errorCode = (osdviced->op_SRXAFS_GetOSDlocation3)(acall, Fid, offset,
+				length, filelength, flag, uuid, OutStatus, list);
     SETTHREADINACTIVE();
-
-    return code;
+    return errorCode;
 }
 
 afs_int32
@@ -10977,20 +9629,14 @@ SRXAFS_GetOSDlocation2(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
                         AFSFetchStatus *OutStatus,
                         struct osd_file2List *list)
 {
-    afs_int32 code;
-    struct async a;
-
+    Error errorCode = RXGEN_OPCODE;
     SETTHREADACTIVE(acall, 65565, Fid);
-    a.type = 2;
-    a.async_u.l2.osd_file2List_val = list->osd_file2List_val;
-    a.async_u.l2.osd_file2List_len = list->osd_file2List_len;
-    code = GetOSDlocation(acall, Fid, offset, length, 0, flag,
-                        OutStatus, 0, &a);
-    list->osd_file2List_val = a.async_u.l2.osd_file2List_val;
-    list->osd_file2List_len = a.async_u.l2.osd_file2List_len;
-    SETTHREADINACTIVE();
 
-    return code;
+    if (osdviced)
+	errorCode = (osdviced->op_SRXAFS_GetOSDlocation2)(acall, Fid, offset,
+				length, flag, uuid, OutStatus, list);
+    SETTHREADINACTIVE();
+    return errorCode;
 }
 
 afs_int32
@@ -10999,48 +9645,14 @@ SRXAFS_GetOSDlocation1(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
                         AFSFetchStatus *OutStatus, AFSCallBack *CallBack,
                         struct osd_file0List *list)
 {
-    afs_int32 code, i, j;
-    struct osd_file2 *f;
-    struct osd_obj0 *o0;
-    struct async a;
+    Error errorCode = RXGEN_OPCODE;
 
     SETTHREADACTIVE(acall, 65563, Fid);
-    a.type = 2;
-    a.async_u.l2.osd_file2List_val = NULL;
-    a.async_u.l2.osd_file2List_len = 0;
-    code = GetOSDlocation(acall, Fid, offset, length, 0, flag,
-                        OutStatus, CallBack, &a);
-    if (!code) {
-	/* We know: struct osd_file0 and struct osd_file2 have the same length */
-        list->osd_file0List_len = a.async_u.l2.osd_file2List_len;
-        list->osd_file0List_val = (struct osd_file0 *)a.async_u.l2.osd_file2List_val;
-        f = &a.async_u.l2.osd_file2List_val[0];
-        for (i=0; i<f->segmList.osd_segm2List_len; i++) {
-            struct osd_segm2 *s = &f->segmList.osd_segm2List_val[i];
-            o0 = (struct osd_obj0 *) malloc(s->objList.osd_obj2List_len *
-                                        sizeof(struct osd_obj0));
-            for (j=0; j<s->objList.osd_obj2List_len; j++) {
-                struct osd_obj2 *o = &s->objList.osd_obj2List_val[j];
-                o0[j].obj_id = o->obj_id;
-                o0[j].part_id = o->part_id;
-                o0[j].osd_id = o->osd_id;
-                o0[j].part_id = o->part_id;
-                o0[j].osd_id = o->osd_id;
-                o0[j].osd_ip = o->osd_ip;
-                o0[j].osd_flag = o->osd_flag;
-                o0[j].stripe = o->stripe;
-                if (o->rock.t10rock_len == 200)
-                    memcpy(&o0[j].rock, o->rock.t10rock_val, 200);
-                else if (o->rock.t10rock_len == 80)
-                    memcpy(&o0[j].rock[80], o->rock.t10rock_val, 80);
-                free(o->rock.t10rock_val);
-            }
-            free(s->objList.osd_obj2List_val);
-            s->objList.osd_obj2List_val = (struct osd_obj2 *)o0;
-        }
-    }
+    if (osdviced)
+	errorCode = (osdviced->op_SRXAFS_GetOSDlocation1)(acall, Fid, offset,
+				length, flag, uuid, OutStatus, CallBack, list);
     SETTHREADINACTIVE();
-    return code;
+    return errorCode;
 }
 
 afs_int32
@@ -11049,187 +9661,13 @@ SRXAFS_GetOSDlocation0(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
                         AFSFetchStatus *OutStatus, AFSCallBack *CallBack,
                         struct osd_file0 *osd)
 {
-    afs_int32 code, i, j;
-    struct osd_file2 *f;
-    struct osd_obj0 *o0;
-    struct async a;
+    Error errorCode = RXGEN_OPCODE;
 
     SETTHREADACTIVE(acall, 65557, Fid);
-    a.type = 2;
-    /* We know: struct osd_file0 and struct osd_file2 have the same length */
-    a.async_u.l2.osd_file2List_val = (struct osd_file2 *)osd;
-    a.async_u.l2.osd_file2List_len = 1;
-    code = GetOSDlocation(acall, Fid, offset, length, 0, flag,
-                        OutStatus, CallBack, &a);
-    if (!code) {
-	/* We know: struct osd_file0 and struct osd_file2 have the same length */
-        f = &a.async_u.l2.osd_file2List_val[0];
-        for (i=0; i<f->segmList.osd_segm2List_len; i++) {
-            struct osd_segm2 *s = &f->segmList.osd_segm2List_val[i];
-            o0 = (struct osd_obj0 *) malloc(s->objList.osd_obj2List_len *
-                                        sizeof(struct osd_obj0));
-            for (j=0; j<s->objList.osd_obj2List_len; j++) {
-                struct osd_obj2 *o = &s->objList.osd_obj2List_val[j];
-                o0[j].obj_id = o->obj_id;
-                o0[j].part_id = o->part_id;
-                o0[j].osd_id = o->osd_id;
-                o0[j].part_id = o->part_id;
-                o0[j].osd_id = o->osd_id;
-                o0[j].osd_ip = o->osd_ip;
-                o0[j].osd_flag = o->osd_flag;
-                o0[j].stripe = o->stripe;
-                if (o->rock.t10rock_len == 200)
-                    memcpy(&o0[j].rock, o->rock.t10rock_val, 200);
-                else if (o->rock.t10rock_len == 80)
-                    memcpy(&o0[j].rock[80], o->rock.t10rock_val, 80);
-                free(o->rock.t10rock_val);
-            }
-            free(s->objList.osd_obj2List_val);
-            s->objList.osd_obj2List_val = (struct osd_obj2 *)o0;
-        }
-    }
+    if (osdviced)
+	errorCode = (osdviced->op_SRXAFS_GetOSDlocation0)(acall, Fid, offset,
+				length, flag, uuid, OutStatus, CallBack, osd);
     SETTHREADINACTIVE();
-    return code;
-}
-
-afs_int32
-ServerPath(struct rx_call * acall, AFSFid *Fid, afs_int32 writing, 
-	afs_uint64 offset, afs_uint64 length, afs_uint64 filelength,
-	struct async *a, afs_uint64 *maxSize, AFSFetchStatus *OutStatus)
-{
-    afs_int32 errorCode = ENOSYS;
-#ifdef AFS_ENABLE_VICEP_ACCESS
-    Vnode *targetptr = 0;       /* pointer to input fid */
-    Vnode *parentwhentargetnotdir = 0;  /* parent of Fid to get ACL */
-    Vnode tparentwhentargetnotdir;      /* parent vnode for GetStatus */
-    int fileCode = 0;           /* return code from vol package */
-    Volume *volptr = 0;         /* pointer to the volume header */
-    struct client *client = 0;  /* pointer to client structure */
-    afs_int32 rights, anyrights;        /* rights for this and any user */
-    struct rx_connection *tcon;
-    struct host *thost;
-
-    if (writing) {
-    	ViceLog(1,("ServerPath: writing (%lu.%lu.%lu) filelength %llu\n",
-		Fid->Volume, Fid->Vnode, Fid->Unique, filelength));
-    } else {
-    	ViceLog(1,("ServerPath: reading (%lu.%lu.%lu)\n",
-		Fid->Volume, Fid->Vnode, Fid->Unique));
-    }
-
-    *maxSize = 0;
-    if (a->type == 3) {
-	a->async_u.p3.path.path_info_val = NULL;
-	a->async_u.p3.path.path_info_len = 0;
-    }
-    if (a->type == 4)
-	a->async_u.p4.algorithm = 1; /* Only known type NAMEI */
-    if ((errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
-        goto Bad_ServerPath;
-
-    if ((errorCode =
-         GetVolumePackage(tcon, Fid, &volptr, &targetptr, DONTCHECK,
-                          &parentwhentargetnotdir, &client, 
-			  writing ? WRITE_LOCK : READ_LOCK,
-                          &rights, &anyrights)))
-        goto Bad_ServerPath;
-
-    if ((errorCode =
-         Check_PermissionRights(targetptr, client, rights, 
-			writing ? CHK_STOREDATA : CHK_FETCHDATA, 0)))
-        goto Bad_ServerPath;
-
-    if (!VN_GET_INO(targetptr)) {
-	errorCode = ENOENT;
-        goto Bad_ServerPath;
-    }
-
-    if (writing) {
-	FdHandle_t *fdP;
-	afs_size_t DataLength, diff;
-  	afs_int32 linkCount;
-
-        if (!VolumeWriteable(volptr)) {
-	    errorCode = EIO;
-            goto Bad_ServerPath;
-	}
-        if (V_maxquota(volptr) && (V_diskused(volptr) > V_maxquota(volptr))) {
-	    errorCode = VOVERQUOTA;
-            goto Bad_ServerPath;
-        }
-	fdP = IH_OPEN(targetptr->handle);
-	if (fdP == NULL) {
-	    errorCode = ENOENT;
-            goto Bad_ServerPath;
- 	}
-	if (GetLinkCountAndSize(volptr, fdP, &linkCount, &DataLength) < 0) {
-	    FDH_CLOSE(fdP);
-            VTakeOffline(volptr);
-            ViceLog(0, ("Volume of %u.%u.%u now offline, must be salvaged. ServerPath\n",
-                    		volptr->hashid,
-		    		targetptr->vnodeNumber,
-		    		targetptr->disk.uniquifier));
-	    errorCode = EIO;
-            goto Bad_ServerPath;
-	}
- 	FDH_CLOSE(fdP);
-	if (linkCount > 1) {
-            volptr->partition->flags &= ~PART_DONTUPDATE;
-            VSetPartitionDiskUsage(volptr->partition);
-            volptr->partition->flags |= PART_DONTUPDATE;
-            if ((errorCode = VDiskUsage(volptr, nBlocks(DataLength)))) {
-                volptr->partition->flags &= ~PART_DONTUPDATE;
-                goto Bad_ServerPath;
-            }
-	    if ((errorCode = PartialCopyOnWrite(targetptr, volptr, offset, length, 
-			filelength))) {
-                ViceLog(0,("ServerPath: CopyOnWrite failed for %u.%u.%u\n",
-			V_id(volptr), targetptr->vnodeNumber,
-			targetptr->disk.uniquifier));
-                volptr->partition->flags &= ~PART_DONTUPDATE;
-                goto Bad_ServerPath;
-            }
-            volptr->partition->flags &= ~PART_DONTUPDATE;
-            VSetPartitionDiskUsage(volptr->partition);
-	}
-	if (V_maxquota(volptr)) 
-	    diff = ((afs_int64)(V_maxquota(volptr) - V_diskused(volptr))) << 10;
-	else
-	    diff = 0x40000000;	/* 1 gb */
-	if (diff > 0x40000000)
-	    diff = 0x40000000;
-	*maxSize = DataLength + diff;
-    } else
-        VN_GET_LEN(*maxSize, targetptr);
-	
-    if (a->type == 3) {
-        namei_t name;
-        char *c;
-        a->async_u.p3.ino = VN_GET_INO(targetptr);
-        a->async_u.p3.lun = V_device(volptr);
-        a->async_u.p3.uuid = FS_HostUUID;
-        namei_HandleToName(&name, targetptr->handle);
-        c = strstr(name.n_path, "AFSIDat");
-        if (c) {
-            a->async_u.p3.path.path_info_val = malloc(strlen(c)+1);
-	    if (a->async_u.p3.path.path_info_val) {
-                sprintf(a->async_u.p3.path.path_info_val, "%s", c);
-                a->async_u.p3.path.path_info_len = strlen(c)+1;
-	    }
-        }
-    } else if (a->type == 4) {
-        a->async_u.p4.ino = VN_GET_INO(targetptr);
-        a->async_u.p4.lun = targetptr->handle->ih_dev;
-        a->async_u.p4.rwvol = V_parentId(volptr);
-    }
-    GetStatus(targetptr, OutStatus, rights, anyrights,
-              &tparentwhentargetnotdir);
-
-Bad_ServerPath:
-    (void)PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *) 0,
-                           volptr, &client);
-    errorCode = CallPostamble(tcon, errorCode, thost);
-#endif /* AFS_ENABLE_VICEP_ACCESS */
     return errorCode;
 }
 
@@ -11241,17 +9679,11 @@ SRXAFS_ServerPath(struct rx_call * acall, AFSFid *Fid, afs_int32 writing,
         AFSFetchStatus *OutStatus)
 {
     Error errorCode = RXGEN_OPCODE;
-    struct async a;
     SETTHREADACTIVE(acall, 65570, Fid);
-#ifdef AFS_ENABLE_VICEP_ACCESS
-    a.type = 4;
-    errorCode = ServerPath(acall, Fid, writing, offset, length, filelength,
-                                &a, maxSize, OutStatus);
-    *ino = a.async_u.p4.ino;
-    *lun = a.async_u.p4.lun;
-    *RWvol = a.async_u.p4.rwvol;
-    *algorithm = a.async_u.p4.algorithm;
-#endif
+    if (osdviced)
+	errorCode = (osdviced->op_SRXAFS_ServerPath)(acall, Fid, writing, offset,
+				length, filelength, ino, lun, RWvol, algorithm,
+				maxSize, fileSize, OutStatus);
     SETTHREADINACTIVE();
     return errorCode;
 }
@@ -11264,17 +9696,12 @@ SRXAFS_ServerPath1(struct rx_call * acall, AFSFid *Fid, afs_int32 writing,
         AFSFetchStatus *OutStatus)
 {
     Error errorCode = RXGEN_OPCODE;
-    struct async a;
+
     SETTHREADACTIVE(acall, 65564, Fid);
-#ifdef AFS_ENABLE_VICEP_ACCESS
-    a.type = 4;
-    errorCode = ServerPath(acall, Fid, writing, offset, length, filelength,
-                                &a, maxSize, OutStatus);
-    *ino = a.async_u.p4.ino;
-    *lun = a.async_u.p4.lun;
-    *RWvol = a.async_u.p4.rwvol;
-    *algorithm = a.async_u.p4.algorithm;
-#endif
+    if (osdviced)
+	errorCode = (osdviced->op_SRXAFS_ServerPath1)(acall, Fid, writing, offset,
+				length, filelength, ino, lun, RWvol, algorithm,
+				maxSize, OutStatus);
     SETTHREADINACTIVE();
     return errorCode;
 }
@@ -11286,16 +9713,9 @@ SRXAFS_ServerPath0(struct rx_call * acall, AFSFid *Fid, afs_int32 writing,
         AFSFetchStatus *OutStatus)
 {
     Error errorCode = RXGEN_OPCODE;
-    struct async a;
     SETTHREADACTIVE(acall, 65551, Fid);
-#ifdef AFS_ENABLE_VICEP_ACCESS
-    a.type = 4;
-    errorCode = ServerPath(acall, Fid, writing, 0, 0, 0, &a, maxSize, OutStatus);
-    *ino = a.async_u.p4.ino;
-    *lun = a.async_u.p4.lun;
-    *RWvol = a.async_u.p4.rwvol;
-    *algorithm = a.async_u.p4.algorithm;
-#endif
+    errorCode = (osdviced->op_SRXAFS_ServerPath0)(acall, Fid, writing, ino, lun, RWvol,
+		 algorithm, maxSize, OutStatus);
     SETTHREADINACTIVE();
     return errorCode;
 }
@@ -11304,43 +9724,13 @@ afs_int32
 SRXAFS_GetPath0(struct rx_call *acall, AFSFid *Fid, afs_uint64 *ino, afs_uint32 *lun,
 	afs_uint32 *RWvol, afs_int32 *algorithm, afsUUID *uuid)
 {
-    afs_int32 errorCode = RXGEN_OPCODE;
-#ifdef AFS_ENABLE_VICEP_ACCESS
-    Vnode *targetptr = 0;       /* pointer to input fid */
-    Vnode *parentwhentargetnotdir = 0;  /* parent of Fid to get ACL */
-    Vnode tparentwhentargetnotdir;      /* parent vnode for GetStatus */
-    int fileCode = 0;           /* return code from vol package */
-    Volume *volptr = 0;         /* pointer to the volume header */
-    struct client *client = 0;  /* pointer to client structure */
-    afs_int32 rights, anyrights;        /* rights for this and any user */
-    struct rx_connection *tcon;
-    struct host *thost;
+    Error errorCode = RXGEN_OPCODE;
+
     SETTHREADACTIVE(acall, 65577, Fid);
-
-    ViceLog(1,("SRXAFS_GetPath0: %lu.%lu.%lu\n",
-	Fid->Volume, Fid->Vnode, Fid->Unique));
-
-    *algorithm = 1; /* Only known algorithm for now */
-    if ((errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
-        goto Bad_GetPath0;
-
-    if ((errorCode =
-         GetVolumePackage(tcon, Fid, &volptr, &targetptr, DONTCHECK,
-                          &parentwhentargetnotdir, &client, 
-			  READ_LOCK,
-                          &rights, &anyrights)))
-        goto Bad_GetPath0;
-    *ino = VN_GET_INO(targetptr);
-    *RWvol = V_parentId(volptr);
-    *lun = V_device(volptr);
-    *uuid = FS_HostUUID;
-
-Bad_GetPath0:
-    (void)PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *) 0,
-                           volptr, &client);
-    errorCode = CallPostamble(tcon, errorCode, thost);
+    if (osdviced)
+	errorCode = (osdviced->op_SRXAFS_GetPath0)(acall, Fid, ino, lun, RWvol,
+				algorithm, uuid);
     SETTHREADINACTIVE();
-#endif
     return errorCode;
 }
 
@@ -11350,53 +9740,13 @@ SRXAFS_StartAsyncFetch1(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
 			struct async *a, afs_uint64 *transid, afs_uint32 *expires, 
 			AFSFetchStatus *OutStatus, AFSCallBack *CallBack)
 {
-    afs_int32 errorCode = RXGEN_OPCODE;
+    Error errorCode = RXGEN_OPCODE;
+
     SETTHREADACTIVE(acall, 65579, Fid);
-    ViceLog(1,("StartAsyncFetch for %u.%u.%u type %d\n", 
-			Fid->Volume, Fid->Vnode, Fid->Unique, a->type));
-#ifdef AFS_RXOSD_SUPPORT
-    if (a->type == 1) {
-	a->async_u.l1.osd_file1List_len = 0;
-	a->async_u.l1.osd_file1List_val = NULL;
-    } else if (a->type == 2) {
-	a->async_u.l2.osd_file2List_len = 0;
-	a->async_u.l2.osd_file2List_val = NULL;
-    }
-#endif
-#if defined(AFS_RXOSD_SUPPORT) || defined(AFS_ENABLE_VICEP_ACCESS)
-    errorCode = createAsyncTransaction(acall, Fid, CALLED_FROM_START_ASYNC, 
-				  	offset, length, transid, expires);
-    if (errorCode) {
-        SETTHREADINACTIVE();
-        return errorCode;
-    }
-
-#ifdef AFS_RXOSD_SUPPORT
-    if (a->type == 1 || a->type == 2) {
-	errorCode = GetOSDlocation(acall, Fid, offset, length, 0, 
-				(flag & FS_OSD_COMMAND) | CALLED_FROM_START_ASYNC,
-				OutStatus, CallBack, a);
-    } else
-#endif /* AFS_RXOSD_SUPPORT */
-#ifdef AFS_ENABLE_VICEP_ACCESS
-    if (a->type == 3 || a->type == 4) {
-	afs_uint64 maxsize;
-
-	errorCode = ServerPath(acall, Fid, 0, offset, length, 0, a,
-			       &maxsize, OutStatus); 
-	ClientsWithAccessToFileserverPartitions = 1;
-    } else
-#endif /* AFS_ENABLE_VICEP_ACCESS */
-        errorCode = RXGEN_SS_UNMARSHAL;
-    if (errorCode) {
-	EndAsyncTransaction(acall, Fid, *transid);
-    }
-	
-#endif
-    
-    ViceLog(3,("StartAsyncFetch for %u.%u.%u type %d returns %d\n",
-			Fid->Volume, Fid->Vnode, Fid->Unique, a->type, 
-			errorCode));
+    if (osdviced)
+	errorCode = (osdviced->op_SRXAFS_StartAsyncFetch1)(acall, Fid, offset,
+				length, flag, a, transid, expires, OutStatus,
+				CallBack);
     SETTHREADINACTIVE();
     return errorCode;
 }
@@ -11407,54 +9757,13 @@ SRXAFS_StartAsyncFetch0(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
                         struct async *a, afs_uint64 *transid, afs_uint32 *expires,
                         AFSFetchStatus *OutStatus, AFSCallBack *CallBack)
 {
-    afs_int32 errorCode = RXGEN_OPCODE;
+    Error errorCode = RXGEN_OPCODE;
+
     SETTHREADACTIVE(acall, 65571, Fid);
-    ViceLog(1,("StartAsyncFetch0 for %u.%u.%u type %d\n",
-                        Fid->Volume, Fid->Vnode, Fid->Unique, a->type));
-#ifdef AFS_RXOSD_SUPPORT
-    if (a->type == 2) {
-	a->async_u.l2.osd_file2List_len = 0;
-	a->async_u.l2.osd_file2List_val = NULL;
-    }
-#endif
-#if defined(AFS_RXOSD_SUPPORT) || defined(AFS_ENABLE_VICEP_ACCESS)
-    errorCode = createAsyncTransaction(acall, Fid, CALLED_FROM_START_ASYNC,
-                                        offset, length, transid, expires);
-    if (errorCode) {
-        SETTHREADINACTIVE();
-        return errorCode;
-    }
-
-#ifdef AFS_RXOSD_SUPPORT
-    if (a->type == 2) {
-        a->async_u.l2.osd_file2List_len = 0;
-        a->async_u.l2.osd_file2List_val = NULL;
-	errorCode = GetOSDlocation(acall, Fid, offset, length, 0,
-				   CALLED_FROM_START_ASYNC,
-				   OutStatus, CallBack, a);
-    } else
-#endif /* AFS_RXOSD_SUPPORT */
-#ifdef AFS_ENABLE_VICEP_ACCESS
-    if (a->type == 4) {
-        afs_uint64 maxsize;
-        afs_uint32 RWvol;
-        afs_int32 algorithm;
-
-        errorCode = ServerPath(acall, Fid, 0, offset, length, 0, a,
-			       &maxsize, OutStatus);
-    } else
-#endif /* AFS_ENABLE_VICEP_ACCESS */
-        errorCode = RXGEN_SS_UNMARSHAL;
-
-    if (errorCode) {
-        EndAsyncTransaction(acall, Fid, *transid);
-    }
-
-#endif
-
-    ViceLog(3,("StartAsyncFetch0 for %u.%u.%u type %d returns %d\n",
-                        Fid->Volume, Fid->Vnode, Fid->Unique, a->type,
-                        errorCode));
+    if (osdviced)
+	errorCode = (osdviced->op_SRXAFS_StartAsyncFetch0)(acall, Fid, offset,
+				length, uuid, flag, a, transid, expires,
+				OutStatus, CallBack);
     SETTHREADINACTIVE();
     return errorCode;
 }
@@ -11462,13 +9771,11 @@ SRXAFS_StartAsyncFetch0(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
 afs_int32
 SRXAFS_EndAsyncFetch0(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid)
 {
-    afs_int32 errorCode = RXGEN_OPCODE;
+    Error errorCode = RXGEN_OPCODE;
+
     SETTHREADACTIVE(acall, 65573, Fid);
-    ViceLog(1,("EndAsyncFetch0 for %u.%u.%u\n",
-                        Fid->Volume, Fid->Vnode, Fid->Unique));
-#if defined(AFS_RXOSD_SUPPORT) || defined(AFS_ENABLE_VICEP_ACCESS)
-    errorCode = EndAsyncTransaction(acall, Fid, transid);
-#endif
+    if (osdviced)
+	errorCode = (osdviced->op_SRXAFS_EndAsyncFetch0)(acall, Fid, transid);
     SETTHREADINACTIVE();
     return errorCode;
 }
@@ -11480,47 +9787,13 @@ SRXAFS_StartAsyncStore1(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
                         afs_uint64 *maxlength, afs_uint64 *transid,
                         afs_uint32 *expires, AFSFetchStatus *OutStatus)
 {
-    afs_int32 errorCode = RXGEN_OPCODE;
+    Error errorCode = RXGEN_OPCODE;
+
     SETTHREADACTIVE(acall, 65581, Fid);
-    ViceLog(1,("StartAsyncStore0 for %u.%u.%u type %d\n",
-                        Fid->Volume, Fid->Vnode, Fid->Unique, a->type));
-#ifdef AFS_RXOSD_SUPPORT
-    if (a->type == 2) {
-        a->async_u.l2.osd_file2List_len = 0;
-        a->async_u.l2.osd_file2List_val = NULL;
-    }
-#endif
-#if defined(AFS_RXOSD_SUPPORT) || defined(AFS_ENABLE_VICEP_ACCESS)
-    errorCode = createAsyncTransaction(acall, Fid,
-				       OSD_WRITING | CALLED_FROM_START_ASYNC,
-                                       offset, length, transid, expires);
-    if (errorCode) {
-        SETTHREADINACTIVE();
-        return errorCode;
-    }
-
-#ifdef AFS_RXOSD_SUPPORT
-    if (a->type == 2) {
-        errorCode = GetOSDlocation(acall, Fid, offset, length, filelength,
-                                   OSD_WRITING | CALLED_FROM_START_ASYNC,
-				   OutStatus, NULL, a);
-    } else
-#endif /* AFS_RXOSD_SUPPORT */
-#ifdef AFS_ENABLE_VICEP_ACCESS
-    if (a->type == 4) {
-	errorCode = ServerPath(acall, Fid, 1, offset, length, filelength, a,
-			       maxlength, OutStatus); 
-    } else
-#endif /* AFS_ENABLE_VICEP_ACCESS */
-        errorCode = RXGEN_SS_UNMARSHAL;
-    if (errorCode) {
-        EndAsyncTransaction(acall, Fid, *transid);
-    }
-#endif
-
-    ViceLog(3,("StartAsyncStore0 for %u.%u.%u type %d returns %d\n",
-                        Fid->Volume, Fid->Vnode, Fid->Unique, a->type,
-                        errorCode));
+    if (osdviced)
+	errorCode = (osdviced->op_SRXAFS_StartAsyncStore1)(acall, Fid, offset,
+			length, filelength, flag, a, maxlength, transid,
+			expires, OutStatus);
     SETTHREADINACTIVE();
     return errorCode;
 }
@@ -11532,47 +9805,13 @@ SRXAFS_StartAsyncStore0(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
                         afs_uint64 *maxlength, afs_uint64 *transid,
                         afs_uint32 *expires, AFSFetchStatus *OutStatus)
 {
-    afs_int32 errorCode = RXGEN_OPCODE;
+    Error errorCode = RXGEN_OPCODE;
+
     SETTHREADACTIVE(acall, 65574, Fid);
-    ViceLog(1,("StartAsyncStore0 for %u.%u.%u type %d\n",
-                        Fid->Volume, Fid->Vnode, Fid->Unique, a->type));
-#ifdef AFS_RXOSD_SUPPORT
-    if (a->type == 2) {
-        a->async_u.l2.osd_file2List_len = 0;
-        a->async_u.l2.osd_file2List_val = NULL;
-    }
-#endif
-#if defined(AFS_RXOSD_SUPPORT) || defined(AFS_ENABLE_VICEP_ACCESS)
-    errorCode = createAsyncTransaction(acall, Fid,
-				       OSD_WRITING | CALLED_FROM_START_ASYNC,
-                                       offset, length, transid, expires);
-    if (errorCode) {
-        SETTHREADINACTIVE();
-        return errorCode;
-    }
-
-#ifdef AFS_RXOSD_SUPPORT
-    if (a->type == 2) {
-        errorCode = GetOSDlocation(acall, Fid, offset, length, filelength,
-                                   OSD_WRITING | CALLED_FROM_START_ASYNC,
-				   OutStatus, NULL, a);
-    } else
-#endif /* AFS_RXOSD_SUPPORT */
-#ifdef AFS_ENABLE_VICEP_ACCESS
-    if (a->type == 4) {
-	errorCode = ServerPath(acall, Fid, 1, offset, length, filelength, a,
-			       maxlength, OutStatus); 
-    } else
-#endif /* AFS_ENABLE_VICEP_ACCESS */
-        errorCode = RXGEN_SS_UNMARSHAL;
-    if (errorCode) {
-        EndAsyncTransaction(acall, Fid, *transid);
-    }
-#endif
-
-    ViceLog(3,("StartAsyncStore0 for %u.%u.%u type %d returns %d\n",
-                        Fid->Volume, Fid->Vnode, Fid->Unique, a->type,
-                        errorCode));
+    if (osdviced)
+	errorCode = (osdviced->op_SRXAFS_StartAsyncStore0)(acall, Fid, offset,
+			length, filelength, uuid, flag, a, maxlength, transid,
+			expires, OutStatus);
     SETTHREADINACTIVE();
     return errorCode;
 }
@@ -11583,13 +9822,12 @@ SRXAFS_EndAsyncStore0(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
                         struct AFSStoreStatus *InStatus,
                         struct AFSFetchStatus *OutStatus)
 {
-    int errorCode = RXGEN_OPCODE;
+    Error errorCode = RXGEN_OPCODE;
+
     SETTHREADACTIVE(acall, 65576, Fid);
-    ViceLog(1,("EndAsyncStore0 for %u.%u.%u filelength %llu\n",
-                        Fid->Volume, Fid->Vnode, Fid->Unique, filelength));
-    errorCode = EndAsyncStore(acall, Fid, transid, filelength,
-                                0, 0, 0, error, 0,
-                                InStatus, OutStatus);
+    if (osdviced)
+	errorCode = (osdviced->op_SRXAFS_EndAsyncStore0)(acall, Fid, transid,
+			filelength, error, InStatus, OutStatus);
     SETTHREADINACTIVE();
     return errorCode;
 }
@@ -11598,14 +9836,16 @@ afs_int32
 SRXAFS_Variable0(struct rx_call *acall, afs_int32 cmd, char *name,
                         afs_int64 value, afs_int64 *result)
 {
-    Error code;
+    Error errorCode = RXGEN_OPCODE;
+
     SETTHREADACTIVE(acall, 65567, (AFSFid *)0);
-
-    code = Variable(acall, cmd, name, value, result);
-
+    if (osdviced)
+	errorCode = (osdviced->op_SRXAFS_Variable0)(acall, cmd, name, value, 
+						    result);
     SETTHREADINACTIVE();
-    return code;
+    return errorCode;
 }
+#endif
 
 static int sys2et[512];
 
@@ -11857,3 +10097,56 @@ sys_error_to_et(afs_int32 in)
 	return sys2et[in];
     return in;
 }
+
+void viced_fill_ops(struct viced_ops_v0 *viced)
+{
+    viced->AddCallBack1 = AddCallBack1;
+    viced->BreakCallBack = BreakCallBack;
+    viced->CallPostamble = CallPostamble;
+    viced->CallPreamble = CallPreamble;
+    viced->Check_PermissionRights = Check_PermissionRights;
+    viced->EndAsyncTransaction = EndAsyncTransaction;
+    viced->GetStatus = GetStatus;
+    viced->GetVolumePackage = GetVolumePackage;
+    viced->PartialCopyOnWrite = PartialCopyOnWrite;
+    viced->PutVolumePackage = PutVolumePackage;
+    viced->SetCallBackStruct = SetCallBackStruct;
+    viced->SRXAFS_InverseLookup = SRXAFS_InverseLookup;
+    viced->Update_TargetVnodeStatus = Update_TargetVnodeStatus;
+    viced->VanillaUser = VanillaUser;
+    viced->createAsyncTransaction = createAsyncTransaction;
+    viced->evalclient = evalclient;
+    viced->getAsyncVolptr = getAsyncVolptr;
+    viced->setActive = setActive;
+    viced->setInActive = setInActive;
+    viced->setLegacyFetch = setLegacyFetch;
+}
+
+extern int ubik_Call();
+
+extern int VInit;
+
+struct vol_data_v0 vol_data_v0 = {
+    &confDir,
+    &LogLevel,
+    &VInit,
+    &VnodeClassInfo,
+    &total_bytes_rcvd,
+    &total_bytes_sent,
+    &total_bytes_rcvd_vpac,
+    &total_bytes_sent_vpac,
+    &KBpsRcvd,
+    &KBpsSent,
+    &lastRcvd,
+    &lastSent,
+    &statisticStart,
+    &FS_HostUUID,
+    &rx_enable_stats
+};
+
+struct viced_data_v0 viced_data_v0 = {
+    &rxcon_client_key
+};
+
+struct osd_viced_data_v0 *osddata = NULL;
+

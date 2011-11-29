@@ -98,15 +98,17 @@ fs: fs.o ${OSDOBJS} $(LIBS)
 afsio.o: afsio.c ${INCLS} AFS_component_version_number.c
 
 afsio: afsio.o ${RXOSDOBJS} $(LIBS)
-	${CC} ${CFLAGS} -o afsio afsio.o ${RXOSDOBJS} ${TOP_LIBDIR}/libprot.a \
-		${TOP_LIBDIR}/libafsint.a $(LIBS) ${XLIBS}
+	${CC} ${CFLAGS} -o afsio afsio.o  ${RXOSDOBJS} \
+			${TOP_LIBDIR}/libprot.a \
+			${TOP_LIBDIR}/libafsosdint.a \
+			${TOP_LIBDIR}/libafsint.a $(LIBS) ${XLIBS}
 
 tafsio.o: afsio.c ${INCLS} AFS_component_version_number.c
 	${CC} ${CFLAGS} -DAFS_PTHREAD_ENV -o tafsio.o -c ${srcdir}/afsio.c
 
 tafsio: tafsio.o ${RXOSDOBJS} $(LIBS)
 	${CC} ${CFLAGS} -o afsio afsio.o ${RXOSDOBJS} ${FSINTOBJS} \
-		${PTHREADFSLIBS} -lpthread -lresolv
+		${PTHREADFSLIBS} -lpthread -lresolv ${TOP_LIBDIR}/libafsosd.so.0.1 
 
 afsionew.o: afsionew.c ${AFSIO_INCLS} AFS_component_version_number.c
 	${CC} ${CFLAGS} -c afsionew.c AFS_component_version_number.c
@@ -418,7 +420,7 @@ dest: kdump-build fs afsio livesys up fstrace cmdebug
 #
 
 clean:
-	$(RM) -f *.o *.a up fs kdump-* kdump kdump64 core cmdebug AFS_component_version_number.c fstrace gcpags livesys dedebug
+	$(RM) -f *.o *.a up fs afsio kdump-* kdump kdump64 core cmdebug AFS_component_version_number.c fstrace gcpags livesys dedebug
 
 test:
 	cd test; $(MAKE)

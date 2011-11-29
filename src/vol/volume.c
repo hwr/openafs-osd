@@ -134,6 +134,7 @@
 #if !defined(offsetof)
 #include <stddef.h>
 #endif
+#include <afs/afsosd.h>
 
 #ifdef O_LARGEFILE
 #define afs_stat	stat64
@@ -1988,19 +1989,15 @@ VolumeHeaderToDisk(VolumeDiskHeader_t * dh, VolumeHeader_t * h)
     dh->largeVnodeIndex_lo = (afs_int32) h->largeVnodeIndex & 0xffffffff;
     dh->largeVnodeIndex_hi =
 	(afs_int32) (h->largeVnodeIndex >> 32) & 0xffffffff;
-#ifdef AFS_RXOSD_SUPPORT
     dh->OsdMetadata_lo = (afs_int32) h->OsdMetadata & 0xffffffff;
     dh->OsdMetadata_hi = (afs_int32) (h->OsdMetadata >> 32) & 0xffffffff;
-#endif
     dh->linkTable_lo = (afs_int32) h->linkTable & 0xffffffff;
     dh->linkTable_hi = (afs_int32) (h->linkTable >> 32) & 0xffffffff;
 #else
     dh->volumeInfo_lo = h->volumeInfo;
     dh->smallVnodeIndex_lo = h->smallVnodeIndex;
     dh->largeVnodeIndex_lo = h->largeVnodeIndex;
-#ifdef AFS_RXOSD_SUPPORT
     dh->OsdMetadata_lo = h->OsdMetadata;
-#endif
     dh->linkTable_lo = h->linkTable;
 #endif
 }
@@ -2032,7 +2029,6 @@ DiskToVolumeHeader(VolumeHeader_t * h, VolumeDiskHeader_t * dh)
     h->largeVnodeIndex =
 	(Inode) dh->largeVnodeIndex_lo | ((Inode) dh->
 					  largeVnodeIndex_hi << 32);
-#ifdef AFS_RXOSD_SUPPORT
     h->OsdMetadata =
 	(Inode) dh->OsdMetadata_lo | ((Inode) dh->OsdMetadata_hi << 32);
     if (!h->OsdMetadata) {
@@ -2040,21 +2036,18 @@ DiskToVolumeHeader(VolumeHeader_t * h, VolumeDiskHeader_t * dh)
 	Log("VAttachVolume: To prevent damages we better give up!\n");
 	osi_Assert(h->OsdMetadata);
     }
-#endif
     h->linkTable =
 	(Inode) dh->linkTable_lo | ((Inode) dh->linkTable_hi << 32);
 #else
     h->volumeInfo = dh->volumeInfo_lo;
     h->smallVnodeIndex = dh->smallVnodeIndex_lo;
     h->largeVnodeIndex = dh->largeVnodeIndex_lo;
-#ifdef AFS_RXOSD_SUPPORT
     h->OsdMetadata = dh->OsdMetadata_lo;
-    if (!h->OsdMetadata) {
+    if (osdvol && !h->OsdMetadata) {
 	Log("VAttachVolume: Volume %u seems not to belong to an OpenAFS+OSD fileserver. Check your server binaries!\n", h->id);
 	Log("VAttachVolume: To prevent damages we better give up!\n");
 	osi_Assert(h->OsdMetadata);
     }
-#endif
     h->linkTable = dh->linkTable_lo;
 #endif
 }
@@ -2895,11 +2888,11 @@ attach_volume_header(Error *ec, Volume *vp, struct DiskPartition64 *partp,
 	    header.smallVnodeIndex);
     IH_INIT(vp->diskDataHandle, partp->device, header.parent,
 	    header.volumeInfo);
-#ifdef AFS_RXOSD_SUPPORT
-    IH_INIT(vp->osdMetadataHandle, partp->device, header.parent,
+    if (osdvol) {
+        IH_INIT(vp->osdMetadataHandle, partp->device, header.parent,
 	    header.OsdMetadata);
-    Lock_Init(&vp->lock);
-#endif
+        Lock_Init(&vp->lock);
+    }
     IH_INIT(vp->linkHandle, partp->device, header.parent, header.linkTable);
 
     if (first_try) {
@@ -4350,9 +4343,8 @@ VCloseVolumeHandles_r(Volume * vp)
 	IH_CONDSYNC(vp->vnodeIndex[vLarge].handle);
 	IH_CONDSYNC(vp->vnodeIndex[vSmall].handle);
 	IH_CONDSYNC(vp->diskDataHandle);
-#ifdef AFS_RXOSD_SUPPORT
-	IH_CONDSYNC(vp->osdMetadataHandle);
-#endif
+	if (osdvol)
+	    IH_CONDSYNC(vp->osdMetadataHandle);
 #ifdef AFS_NT40_ENV
 	IH_CONDSYNC(vp->linkHandle);
 #endif /* AFS_NT40_ENV */
@@ -4361,9 +4353,8 @@ VCloseVolumeHandles_r(Volume * vp)
     IH_REALLYCLOSE(vp->vnodeIndex[vLarge].handle);
     IH_REALLYCLOSE(vp->vnodeIndex[vSmall].handle);
     IH_REALLYCLOSE(vp->diskDataHandle);
-#ifdef AFS_RXOSD_SUPPORT
-    IH_REALLYCLOSE(vp->osdMetadataHandle);
-#endif
+    if (osdvol)
+        IH_REALLYCLOSE(vp->osdMetadataHandle);
     IH_REALLYCLOSE(vp->linkHandle);
 
 #ifdef AFS_DEMAND_ATTACH_FS
@@ -6013,22 +6004,18 @@ VGetBitmap_r(Error * ec, Volume * vp, VnodeClass class)
 	    if (STREAM_READ(vnode, vcp->diskSize, 1, file) != 1)
 		break;
 	    if (vnode->type != vNull) {
-#ifndef AFS_RXOSD_SUPPORT
-		if (vnode->vnodeMagic != vcp->magic) {
+		if (!osdvol && vnode->vnodeMagic != vcp->magic) {
 		    Log("GetBitmap: addled vnode index in volume %s; volume needs salvage\n", V_name(vp));
 		    *ec = VSALVAGE;
 		    break;
 		}
-#endif /* AFS_RXOSD_SUPPORT */
 #ifdef BITMAP_LATER
 		*(BitMap + (bitNumber >> 3)) |= (1 << (bitNumber & 0x7));
 #else /* BITMAP_LATER */
 		*(vip->bitmap + (bitNumber >> 3)) |= (1 << (bitNumber & 0x7));
 #endif /* BITMAP_LATER */
-#ifndef AFS_RXOSD_SUPPORT
-		if (unique <= vnode->uniquifier)
+		if (!osdvol && unique <= vnode->uniquifier)
 		    unique = vnode->uniquifier + 1;
-#endif /* AFS_RXOSD_SUPPORT */
 	    }
 #ifndef AFS_PTHREAD_ENV
 	    if ((bitNumber & 0x00ff) == 0x0ff) {	/* every 256 iterations */
@@ -6037,12 +6024,10 @@ VGetBitmap_r(Error * ec, Volume * vp, VnodeClass class)
 #endif /* !AFS_PTHREAD_ENV */
 	}
     }
-#ifndef AFS_RXOSD_SUPPORT
-    if (vp->nextVnodeUnique < unique) {
+    if (!osdvol && vp->nextVnodeUnique < unique) {
 	Log("GetBitmap: bad volume uniquifier for volume %s; volume needs salvage\n", V_name(vp));
 	*ec = VSALVAGE;
     }
-#endif /* AFS_RXOSD_SUPPORT */
     /* Paranoia, partly justified--I think fclose after fdopen
      * doesn't seem to close fd.  In any event, the documentation
      * doesn't specify, so it's safer to close it twice.

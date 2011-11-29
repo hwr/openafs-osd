@@ -426,6 +426,7 @@ struct srvAddr {
 #define SNO_64BIT                       0x200
 #define SCAPS_KNOWN			0x400
 #define SRVR_USEOLDRPCS		        0x1000
+#define SRVR_USENEWRPCS		        0x2000
 
 #define SRV_CAPABILITIES(ts) \
 { if ( !(ts->flags & SCAPS_KNOWN)) afs_GetCapabilities(ts); ts->capabilities; }

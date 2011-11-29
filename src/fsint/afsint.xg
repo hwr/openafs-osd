@@ -346,6 +346,17 @@ struct FsCmdOutputs {
     char       chars[MAXCMDCHARS];
 };
 
+struct activecall {
+        afs_uint32 num;
+        afs_uint32 volume;
+        afs_uint32 vnode;
+        afs_uint32 unique;
+        afs_uint32 ip;
+        afs_uint32 timeStamp;
+        afs_uint32 flag;
+};
+typedef activecall activecallList<>;
+
 %#define ResidencyCmdInputs FsCmdInputs
 %#define ResidencyCmdOutputs FsCmdOutputs
 
@@ -508,6 +519,10 @@ case 0:
 case 1:
 	store_recoveryList recovList;
 };
+
+#define MAXASYNCPARAMLNG 4096
+%#define MAXASYNCPARAMLEN 4096
+typedef opaque AsyncParams<MAXASYNCPARAMLNG>;
 
 const FLUSHMAX = 10;
 typedef afs_int32 ViceIds<FLUSHMAX>;
@@ -842,6 +857,7 @@ GetStatistics64(
 /*
  * The following RPC number's shouldn't be used for new RPCs because
  * they were already used in older versions of AFS-OSD or are currently in use:
+ *      65550   Threads			future use
  *      65551   ServerPath0             still used by some clients
  *      65552   PerfTest                not used anymore
  *      65553   RqOdToken               not used anymore
@@ -869,31 +885,41 @@ GetStatistics64(
  *      65575   ExtendAsyncStore        currently used
  *      65576   EndAsyncStore0          still used by some clients
  *      65577   GetPath0                currently used
- *      65578   EndAsyncStore           currently used
- *      65579   StartAsyncFetch         currently used
+ *      65578   EndAsyncStore1          currently used
+ *      65579   StartAsyncFetch1        currently used
  *      65580   GetOSDlocation          still used by many clients
  *      65581   StartAsyncStore1        still used by many clients
- *      65582   EndAsyncFetch           currently used
+ *      65582   EndAsyncFetch1          currently used
  *      65583   announceBlock           implemented, but not yet used
- *      65584   StartAsyncfetch		currently used
- *      65585   StartAsyncStore		currently used
+ *      65584   StartAsyncFetch2	currently used
+ *      65585   StartAsyncStore2	currently used
  *      65586   UpdateOSDmetadata	currently used
  *      65587   Variable                currently used
  *      65588   SetOsdFileReady0        currently used
  *      65589   GetPath                 currently used
+ *      65590   StartAsyncFetch		future use
+ *	65591   StartAsyncStore		future use
+ *	65592   EndAsyncFetch		future use
+ *	65593   EndAsyncStore		future use
  */
 
 /* Now first the actual RPCs which will go into git */
 
+%#define AFSOSD_BACKEND		1
+%#define VICEPACCESS_BACKEND	2
+ 
 StartAsyncFetch(
   IN AFSFid *Fid,
-  IN struct RWparm *p,
-  INOUT struct async *a,
+  IN afs_uint64 offset,
+  IN afs_uint64 length,
+  IN afs_int32 backend,
+  IN AsyncParams *Inputs,
+  OUT AsyncParams *Outputs,
   OUT afs_uint64 *transId,
   OUT afs_uint32 *expires,
   OUT AFSFetchStatus *OutStatus,
   OUT AFSCallBack *CallBack
-) = 65584;
+) = 65590;
 
 ExtendAsyncFetch(
   IN AFSFid *fid,
@@ -904,19 +930,23 @@ ExtendAsyncFetch(
 EndAsyncFetch(
   IN AFSFid *fid,
   IN afs_uint64 transId,
-  IN afs_uint64 bytes_sent,
-  IN afs_uint32 osd
-) = 65582;
+  IN afs_int32 backend,
+  IN AsyncParams *Inputs
+) = 65592;
   
 StartAsyncStore(
   IN AFSFid *Fid,
-  IN struct RWparm *p,
-  INOUT struct async *a,
+  IN afs_uint64 offset,
+  IN afs_uint64 length,
+  IN afs_uint64 fileLength,
+  IN afs_int32 backend,
+  IN AsyncParams *Inputs,
+  OUT AsyncParams *Outputs,
   OUT afs_uint64 *maxlength,
   OUT afs_uint64 *transid,
   OUT afs_uint32 *expires,
   OUT AFSFetchStatus *OutStatus
-) = 65585;
+) = 65591;
 
 ExtendAsyncStore(
   IN AFSFid *Fid,
@@ -928,14 +958,15 @@ EndAsyncStore(
   IN AFSFid *Fid,
   IN afs_uint64 transid,
   IN afs_uint64 filelength,
-  IN afs_uint64 bytes_rcvd,
-  IN afs_uint64 bytes_sent,
-  IN afs_uint32 osd,
-  IN afs_int32 error,
-  IN struct asyncError *ae,
-  IN struct AFSStoreStatus *Instatus,
+  IN afs_int32 backend,
+  IN AsyncParams *Inputs,
+  IN struct AFSStoreStatus *InStatus,
   OUT struct AFSFetchStatus *OutStatus
-) = 65578;
+) = 65593;
+
+Threads(
+  OUT struct activecallList *list
+) = 65550;
 
 InverseLookup(
   IN AFSFid *Fid,
@@ -1022,6 +1053,46 @@ SetOsdFileReady(
 ) = 65588;
 
 /* Now the RPCs we need to support for backwords compatibility */
+
+StartAsyncFetch2(
+  IN AFSFid *Fid,
+  IN struct RWparm *p,
+  INOUT struct async *a,
+  OUT afs_uint64 *transId,
+  OUT afs_uint32 *expires,
+  OUT AFSFetchStatus *OutStatus,
+  OUT AFSCallBack *CallBack
+) = 65584;
+
+EndAsyncFetch1(
+  IN AFSFid *fid,
+  IN afs_uint64 transId,
+  IN afs_uint64 bytes_sent,
+  IN afs_uint32 osd
+) = 65582;
+  
+StartAsyncStore2(
+  IN AFSFid *Fid,
+  IN struct RWparm *p,
+  INOUT struct async *a,
+  OUT afs_uint64 *maxlength,
+  OUT afs_uint64 *transid,
+  OUT afs_uint32 *expires,
+  OUT AFSFetchStatus *OutStatus
+) = 65585;
+
+EndAsyncStore1(
+  IN AFSFid *Fid,
+  IN afs_uint64 transid,
+  IN afs_uint64 filelength,
+  IN afs_uint64 bytes_rcvd,
+  IN afs_uint64 bytes_sent,
+  IN afs_uint32 osd,
+  IN afs_int32 error,
+  IN struct asyncError *ae,
+  IN struct AFSStoreStatus *Instatus,
+  OUT struct AFSFetchStatus *OutStatus
+) = 65578;
 
 GetOSDlocation0(
   IN AFSFid *Fid,

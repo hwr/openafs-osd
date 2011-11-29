@@ -173,6 +173,24 @@ struct rxosd_Variables {
 #define ALLOC_RXOSD(p, s) if (sizeof(s) > AFS_SMALLOCSIZ) p = (s *)afs_osi_Alloc(sizeof(s)); else p = (s *) osi_AllocSmallSpace(sizeof(s))
 #define FREE_RXOSD(p, s) if (sizeof(s) > AFS_SMALLOCSIZ) afs_osi_Free(p,sizeof(s)); else osi_FreeSmallSpace(p)
 
+void
+server14or16(struct rx_connection *rxconn, struct server *ts)
+{
+    /* Find out whether this is a 1.4 or 1.6 rxosd */
+    if (!(ts->flags & (SRVR_USEOLDRPCS + SRVR_USENEWRPCS))) {
+	afs_int32 code;
+        RX_AFS_GUNLOCK();
+	code = RXOSD_ProbeServer(rxconn);
+        RX_AFS_GLOCK();
+	ObtainWriteLock(&afs_xserver, 1102);
+	if (code == RXGEN_OPCODE)
+	    ts->flags |= SRVR_USEOLDRPCS;
+	else 
+	    ts->flags |= SRVR_USENEWRPCS;
+	ReleaseWriteLock(&afs_xserver);
+   }
+}
+
 static afs_int32
 getRxosdConn(struct rxosd_Variables *v, struct osd_obj *o,
 	     struct server **ts, struct afs_conn **conn,
@@ -225,12 +243,15 @@ getRxosdConn(struct rxosd_Variables *v, struct osd_obj *o,
             *conn = afs_ConnBySA((*ts)->addr, port, v->avc->f.fid.Cell,
 		    (struct unixuser *)&dummyuser, 1, 1, SHARED_LOCK, rxconn);
     }
-    if (!*conn) {
+    if (*conn)
+	server14or16((*conn)->id, *ts);
+    else {
     	afs_PutServer(*ts, WRITE_LOCK);
 	code = EIO;
     }
     return code;
 }
+
 
 static afs_int32
 check_for_vicep_access(struct rxosd_Variables *v, int writing, afs_uint32 *osd_id)
@@ -294,9 +315,8 @@ check_for_vicep_access(struct rxosd_Variables *v, int writing, afs_uint32 *osd_i
 afs_int32
 rxosd_Destroy(void **r, afs_int32 error)
 {
-    afs_int32 i, j, code = error;
+    afs_int32 i, code = error;
     struct rxosd_Variables *v = (struct rxosd_Variables *)*r;
-    struct osd_segm * segm;
     struct AFSStoreStatus InStatus;
 
     *r = NULL;
@@ -316,7 +336,32 @@ rxosd_Destroy(void **r, afs_int32 error)
 	InStatus.ClientModTime = v->avc->f.m.Date;
 	RX_AFS_GUNLOCK();
 	if (v->writing) {
-	    code2 = RXAFS_EndAsyncStore(v->fs_conn->id, &v->avc->f.fid.Fid, 
+	    int len;
+	    XDR xdr;
+	    char *buf = NULL;
+
+	    xdrlen_create(&xdr);
+	    xdr_asyncError(&xdr, &v->aE);
+	    len = xdr_getpos(&xdr);
+	    xdr_destroy(&xdr);
+	    buf = osi_Alloc(len);
+	    xdrmem_create(&xdr, buf, len, XDR_ENCODE);
+	    if (xdr_asyncError(&xdr, &v->aE)) {
+		struct AsyncParams Inputs;
+		Inputs.AsyncParams_val = buf;
+		Inputs.AsyncParams_len = len;
+	        code2 = RXAFS_EndAsyncStore(v->fs_conn->id, &v->avc->f.fid.Fid, 
+				v->transid, v->avc->f.m.Length,
+                                AFSOSD_BACKEND, &Inputs, &InStatus, &v->OutStatus);
+	  	if (code2)
+		    printf("RXAFS_EndAsyncStore returns %d\n", code2);
+	    } else {
+		printf("marshal error before RXAFS_EndAsyncStore\n");
+		code2 = RXGEN_CC_MARSHAL;
+	    }
+	    osi_Free(buf, len);
+	    if (code2 == RXGEN_OPCODE)
+	        code2 = RXAFS_EndAsyncStore1(v->fs_conn->id, &v->avc->f.fid.Fid, 
 				v->transid, v->avc->f.m.Length, 0, 0, 0,
 				error, &v->aE, &InStatus, &v->OutStatus);
 	    if (v->aE.error == 1) {
@@ -326,7 +371,7 @@ rxosd_Destroy(void **r, afs_int32 error)
 			sizeof(struct store_recovery));
 	    }
 	} else
-	    code2 = RXAFS_EndAsyncFetch(v->fs_conn->id, &v->avc->f.fid.Fid, 
+	    code2 = RXAFS_EndAsyncFetch1(v->fs_conn->id, &v->avc->f.fid.Fid, 
 					v->transid, 0, 0);
         RX_AFS_GLOCK();
     }
@@ -780,11 +825,13 @@ handleError(struct rxosd_Variables *v, afs_int32 i, afs_int32 error)
 			1, v->avc->f.fid.Cell, v->call[i]->conn->peer->port,
 			WRITE_LOCK, (afsUUID *)0, 0);
     	if (error == RXGEN_OPCODE) {
+	    ObtainWriteLock(&afs_xserver, 1101);
 	    if (ts->flags & SRVR_USEOLDRPCS)
 		ts->flags &= ~SRVR_USEOLDRPCS;
 	    else
 	        ts->flags |= SRVR_USEOLDRPCS;
 	    afs_PutServer(ts, WRITE_LOCK);
+	    ReleaseWriteLock(&afs_xserver);
             RX_AFS_GUNLOCK();
 	    return error;
 	}
@@ -1019,7 +1066,7 @@ rxosd_storeClose(void *r, struct AFSFetchStatus *OutStatus, int *doProcessFS)
 	InStatus.Mask = AFS_SETMODTIME;
 	InStatus.ClientModTime = v->avc->f.m.Date;
 	RX_AFS_GUNLOCK();
-	code = RXAFS_EndAsyncStore(v->fs_conn->id, &v->avc->f.fid.Fid, 
+	code = RXAFS_EndAsyncStore1(v->fs_conn->id, &v->avc->f.fid.Fid, 
 				v->transid, v->avc->f.m.Length, 0, 0, 0,
 				0, &v->aE, &InStatus, OutStatus);
 	RX_AFS_GLOCK();
@@ -1119,6 +1166,7 @@ rxosd_storeInit(struct vcache *avc, struct afs_conn *tc,
     v->avc = avc;
     v->areq = areq;
     v->aE.asyncError_u.no_new_version = 1;
+    v->writing = 1;
     code = bytes;
     afs_Trace3(afs_iclSetp, CM_TRACE_WASHERE,
                    ICL_TYPE_STRING, __FILE__,
@@ -1147,7 +1195,39 @@ rxosd_storeInit(struct vcache *avc, struct afs_conn *tc,
 	p.RWparm_u.p6.filelength = length;
 	p.RWparm_u.p6.flag = SEND_PORT_SERVICE;
 	startTime = osi_Time();
-	code = RXAFS_StartAsyncStore(rxconn, (struct AFSFid *) &avc->f.fid.Fid,
+	{
+	    afs_int32 space[4]; /* long enough for flag, a.type and an empty list */
+	    afs_int32 flag = SEND_PORT_SERVICE;
+	    AsyncParams apin, apout;
+	    XDR xdr;
+
+	    apin.AsyncParams_val = &space;
+	    apin.AsyncParams_len = 12;
+	    apout.AsyncParams_val = NULL;
+	    apout.AsyncParams_len = 0;
+	    xdrmem_create(&xdr, apin.AsyncParams_val, apin.AsyncParams_len,
+			  XDR_ENCODE);
+	    if (xdr_int(&xdr, &flag) && xdr_async(&xdr, &v->a))
+		code = RXAFS_StartAsyncStore(rxconn, (struct AFSFid *) &avc->f.fid.Fid,
+				     base, bytes, length, AFSOSD_BACKEND, &apin, 
+				     &apout, &v->maxlength, &v->transid, &v->expires,
+		 		     &v->OutStatus);
+	    else
+		code = RXGEN_OPCODE;
+	    xdr_destroy(&xdr);
+	    if (!code) {
+	        xdrmem_create(&xdr, apout.AsyncParams_val, apout.AsyncParams_len,
+			  XDR_DECODE);
+	        if (!xdr_async(&xdr, &v->a)) {
+		    printf("xdr_async decode failed after store\n");
+		    code = RXGEN_CC_UNMARSHAL;
+		}
+	    }
+	    if (apout.AsyncParams_val)
+    		xdr_free((xdrproc_t)xdr_AsyncParams, &apout);
+	}
+	if (code == RXGEN_OPCODE)
+	    code = RXAFS_StartAsyncStore2(rxconn, (struct AFSFid *) &avc->f.fid.Fid,
 				&p, &v->a, &v->maxlength, &v->transid, &v->expires, 
 				&v->OutStatus);
 	if (code == RXGEN_OPCODE)
@@ -1513,10 +1593,12 @@ retry:
 		if (!alive || code) {
                     RX_AFS_GUNLOCK();
 		    if (code == RXGEN_OPCODE) {
+			ObtainWriteLock(&afs_xserver, 1100);
 			if (ts->flags & SRVR_USEOLDRPCS)
 			    ts->flags &= ~SRVR_USEOLDRPCS;
 			else
 			    ts->flags |= SRVR_USEOLDRPCS;
+			ReleaseWriteLock(&afs_xserver);
 			goto retry;
 		    }
 		    code = rx_EndCall(v->call[k], 0);
@@ -2008,12 +2090,7 @@ rxosd_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
     }
 #endif
     while (1) {
-    	struct RWparm p;
 	startTime = osi_Time();
-	p.type = 5;
-	p.RWparm_u.p5.offset = base;
-	p.RWparm_u.p5.length = bytes;
-	p.RWparm_u.p5.flag = SEND_PORT_SERVICE;
 #ifdef NEW_OSD_FILE
         v->a.type = 1;
 	v->a.async_u.l1.osd_file1List_len = 0;
@@ -2024,9 +2101,47 @@ rxosd_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
 	v->a.async_u.l2.osd_file2List_val = NULL;
 #endif
         RX_AFS_GUNLOCK();
-	code = RXAFS_StartAsyncFetch(rxconn, (struct AFSFid *) &avc->f.fid.Fid,
+	{
+	    afs_int32 space[4]; /* long enough for flag, a.type and an empty list */
+	    afs_int32 flag = SEND_PORT_SERVICE;
+	    AsyncParams apin, apout;
+	    XDR xdr;
+
+	    apin.AsyncParams_val = &space;
+	    apin.AsyncParams_len = 12;
+	    apout.AsyncParams_val = NULL;
+	    apout.AsyncParams_len = 0;
+	    xdrmem_create(&xdr, apin.AsyncParams_val, apin.AsyncParams_len,
+			  XDR_ENCODE);
+	    if (xdr_int(&xdr, &flag) && xdr_async(&xdr, &v->a))
+		code = RXAFS_StartAsyncFetch(rxconn, (struct AFSFid *) &avc->f.fid.Fid,
+				     base, bytes, AFSOSD_BACKEND, &apin, 
+				     &apout, &v->transid, &v->expires,
+		 		     &v->OutStatus, &v->CallBack);
+	    else
+		code = RXGEN_OPCODE;
+	    xdr_destroy(&xdr);
+	    if (!code) {
+	        xdrmem_create(&xdr, apout.AsyncParams_val, apout.AsyncParams_len,
+			  XDR_DECODE);
+	        if (!xdr_async(&xdr, &v->a)) {
+		    printf("xdr_async decode failed\n");
+		    code = RXGEN_CC_UNMARSHAL;
+		}
+	    }
+	    if (apout.AsyncParams_val)
+    		xdr_free((xdrproc_t)xdr_AsyncParams, &apout);
+	}
+	if (code == RXGEN_OPCODE) {    
+    	    struct RWparm p;
+	    p.type = 5;
+	    p.RWparm_u.p5.offset = base;
+	    p.RWparm_u.p5.length = bytes;
+	    p.RWparm_u.p5.flag = SEND_PORT_SERVICE;
+	    code = RXAFS_StartAsyncFetch2(rxconn, (struct AFSFid *) &avc->f.fid.Fid,
 				&p, &v->a, &v->transid, &v->expires,
 		 		&v->OutStatus, &v->CallBack);
+	}
 	if (code == RXGEN_OPCODE)
 	    code = RXAFS_StartAsyncFetch1(rxconn, (struct AFSFid *) &avc->f.fid.Fid,
 				base, bytes, 0, &v->a, &v->transid, &v->expires,
@@ -2217,11 +2332,11 @@ rxosd_bringOnline(struct vcache *avc, struct vrequest *areq)
         RX_AFS_GUNLOCK();
         code = RXAFS_GetPath(rxconn, (struct AFSFid *) &avc->f.fid.Fid,
 				&v->a);
-	if (code == RXGEN_OPCODE) {
+        if (code == RXGEN_OPCODE) {
 	    code = RXAFS_GetOSDlocation(tc->id, (struct AFSFid *) &avc->f.fid.Fid,
 					v->resid, v->resid, 0, 0, /* all zero */
 					&v->OutStatus, &v->a.async_u.l2);
-	}
+        }
         RX_AFS_GLOCK();
 	if (code != OSD_WAIT_FOR_TAPE && code != VBUSY && code != VRESTARTING) 
 	    break;

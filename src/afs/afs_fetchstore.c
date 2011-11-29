@@ -787,8 +787,9 @@ afs_CacheStoreVCache(struct dcache **dcList, struct vcache *avc,
 		}
 #endif /* AFS_64BIT_CLIENT */
                 if (code && afs_soft_mounted) {
-                    printf("Leaving analyze_loop\n");
+                    printf("Leaving analyze_loop with code %d\n", code);
                     areq->permWriteError = 1;
+		    code = EIO;
                     goto leave_analyze_loop;
                 }
 	    } while (afs_Analyze

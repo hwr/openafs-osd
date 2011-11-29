@@ -50,13 +50,8 @@ private struct stuff {
 	"large inode index", 0}, { {
     ACLMAGIC, ACLVERSION}, VI_ACL, sizeof(struct versionStamp),
 	&tempHeader.volumeAcl, "access control list", 1}, { {
-#ifdef AFS_RXOSD_SUPPORT
     OSDMETAMAGIC, OSDMETAVERSION}, VI_OSDMETADATA, sizeof(struct versionStamp),
 	&tempHeader.OsdMetadata, "OSD metadata", 0}, { {
-#else
-    MOUNTMAGIC, MOUNTVERSION}, VI_MOUNTTABLE, sizeof(struct versionStamp),
-        &tempHeader.volumeMountTable, "mount table", 1}, { {
-#endif
     LINKTABLEMAGIC, LINKTABLEVERSION}, VI_LINKTABLE,
 	sizeof(struct versionStamp), &tempHeader.linkTable, "link table",
 	NO_LINK_TABLE},};

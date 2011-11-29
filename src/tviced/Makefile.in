@@ -34,8 +34,6 @@ OSDDB=${srcdir}/../osddb
 
 VICEDOBJS=viced.o afsfileprocs.o host.o physio.o callback.o serialize_state.o	
 
-RXOSDOBJS=rxosd.cs.o rxosd.xdr.o osddb.cs.o osddb.xdr.o osddbuser.o
-
 VLSERVEROBJS=vldbint.cs.o vldbint.xdr.o
 
 LWPOBJS=lock.o threadname.o
@@ -47,9 +45,9 @@ UTILOBJS=assert.o uuid.o serverLog.o fileutil.o netutils.o dirpath.o volparse.o 
 DIROBJS=buffer.o dir.o salvage.o
 
 VOLOBJS= vnode.o volume.o vutil.o partition.o fssync-server.o \
-	 vol_osd.o vol_osd.xdr.o \
-	 clone.o devname.o common.o ihandle.o listinodes.o namei_ops.o \
-	 fstab.o salvsync-client.o daemon_com.o vg_cache.o vg_scan.o
+	 devname.o common.o ihandle.o listinodes.o namei_ops.o \
+	 fstab.o salvsync-client.o daemon_com.o vg_cache.o vg_scan.o \
+	 libafsosd.o
 
 FSINTOBJS= afsaux.o afscbint.cs.o afsint.ss.o afsint.xdr.o
 
@@ -57,8 +55,6 @@ RXOBJS = rx_pthread.o
 
 objects= ${VICEDOBJS} ${VLSERVEROBJS} ${LWPOBJS} ${LIBACLOBJS} \
 	 ${UTILOBJS} ${DIROBJS} ${VOLOBJS} ${FSINTOBJS} ${RXOBJS}
-
-osdobjects = ${RXOSDOBJS}
 
 LIBS=${TOP_LIBDIR}/libafsauthent.a ${TOP_LIBDIR}/libafsrpc.a ${TOP_LIBDIR}/util.a
 
@@ -86,6 +82,9 @@ viced.o: ${VICED}/viced.c
 	${CCRULE}
 
 afsfileprocs.o: ${VICED}/afsfileprocs.c
+	${CCRULE}
+
+afsosdprocs.o: ${VICED}/afsosdprocs.c
 	${CCRULE}
 
 host.o: ${VICED}/host.c
@@ -193,11 +192,8 @@ nuke.o: ${VOL}/nuke.c
 devname.o: ${VOL}/devname.c
 	${CCRULE}
 
-vol_osd.xdr.o: ../vol/vol_osd.xdr.c
-	${CCRULE}
-
-vol_osd.o: ${VOL}/vol_osd.c
-	${CCRULE} -I../vol
+libafsosd.o: ${VOL}/libafsosd.c
+	${CCRULE} -DBUILDING_FILESERVER 
 
 # only for darwin?
 fstab.o: ${UTIL}/fstab.c
@@ -233,15 +229,17 @@ afsint.ss.o: ../fsint/afsint.ss.c
 afsint.xdr.o: ../fsint/afsint.xdr.c
 	${CCRULE}
 
+afsosdint.cs.o: ../fsint/afsosdint.cs.c
+	${CCRULE}
+
+afsosdint.ss.o: ../fsint/afsosdint.ss.c
+	${CCRULE}
+
+afsosdint.xdr.o: ../fsint/afsosdint.xdr.c
+	${CCRULE}
+
 fileserver: ${objects} ${LIBS}
-	case ${WITH_OBJECT_STORAGE} in \
-	YES) \
-	${MAKE} ${osdobjects} ; \
-	${CC} ${LDFLAGS} -o fileserver ${objects} \
-		${osdobjects} ${LIBS} ${MT_LIBS} ${XLIBS} ;; \
-	*) \
-	${CC} ${LDFLAGS} -o fileserver ${objects} ${LIBS} ${MT_LIBS} ${XLIBS} ;; \
-	esac
+	${CC} ${LDFLAGS} -o fileserver ${objects} -ldl ${LIBS} ${MT_LIBS} ${XLIBS}
 
 install: fileserver
 	${INSTALL} -d ${DESTDIR}${afssrvlibexecdir}

@@ -44,10 +44,6 @@ LIBS=\
 	${TOP_LIBDIR}/libusd.a \
 	${TOP_LIBDIR}/util.a
 
-OSDLIBS= \
-	${TOP_LIBDIR}/librxosd.a \
-	${TOP_LIBDIR}/libosddb.a
-
 VOLDUMP_LIBS = \
 	../vol/ihandle.o \
 	../vol/physio.o \
@@ -65,7 +61,7 @@ VOLDUMP_LIBS = \
 VSOBJS=vsprocs.o vsutils.o lockprocs.o volint.xdr.o volerr.o 
 SOBJS=volmain.o volprocs.o physio.o common.o voltrans.o volerr.o \
  volint.cs.o dumpstuff.o volint.ss.o volint.xdr.o ../fsint/afsint.xdr.o \
- vol_split.o
+ vol_split.o volosdprocs.o libadsosd.o
 
 # remove "vos" from lower all:target
 all: restorevol voldump \
@@ -107,14 +103,8 @@ vos: vos.o ${VSOBJS} libvolser.a ${LIBS}
 	esac
 
 volserver: $(SOBJS) $(LIBS) ${TOP_LIBDIR}/libdir.a
-	case ${WITH_OBJECT_STORAGE} in \
-	YES) \
 	${CC} ${DBUG} -o volserver $(SOBJS) ${TOP_LIBDIR}/libdir.a \
-		${TOP_LIBDIR}/vlib.a ${LDFLAGS} $(LIBS) ${OSDLIBS} ${LIBS} ${XLIBS} ;; \
-	*) \
-	${CC} ${DBUG} -o volserver $(SOBJS) ${TOP_LIBDIR}/libdir.a \
-		${LDFLAGS} $(LIBS) ${XLIBS} ;; \
-	esac
+		${LDFLAGS} $(LIBS) ${XLIBS}
 
 vol-dump.o: vol-dump.c volser.h
 
@@ -177,6 +167,7 @@ physio.o: physio.c ${VINCLS}
 common.o: common.c ${VINCLS}
 lockprocs.o: lockprocs.c ${VINCLS} ${INTINCLS} ${RINCLS}
 vol_split.o: vol_split.c ${VINCLS} ${INTINCLS} ${RINCLS}
+volosdprocs.o: volosdprocs.c ${VINCLS} ${INTINCLS} ${RINCLS}
 
 #
 # Installation targets

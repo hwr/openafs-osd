@@ -44,11 +44,11 @@ UTILOBJS=assert.o uuid.o serverLog.o fileutil.o netutils.o dirpath.o volparse.o 
 VLIBOBJS=volume.o vnode.o vutil.o partition.o fssync-client.o \
 	 nuke.o devname.o listinodes.o ihandle.o \
 	 namei_ops.o salvsync-server.o salvsync-client.o \
-	 daemon_com.o vol_osd_salv.o
+	 daemon_com.o 
 SVLIBOBJS=s_volume.o s_vnode.o s_vutil.o s_partition.o s_fssync-client.o \
 	 s_nuke.o s_devname.o s_listinodes.o s_ihandle.o \
 	 s_namei_ops.o s_salvsync-server.o s_salvsync-client.o \
-	 s_daemon_com.o s_vol_osd_salv.o
+	 s_daemon_com.o
 
 OBJECTS= ${SALVAGEDOBJS} ${UTILOBJS} ${VLIBOBJS} ${DIROBJS} ${LWPOBJS}
 SOBJECTS= ${SALVAGEROBJS} ${SVLIBOBJS}
@@ -75,11 +75,8 @@ salvager.o: ${VOL}/salvager.c
 vol-salvage.o: ${VOL}/vol-salvage.c
 	${CCRULE}
 
-vol_osd.h: ${srcdir}/${VOL}/vol_osd.xg
-	${RXGEN} -x -h -o vol_osd.h ${srcdir}/${VOL}/vol_osd.xg
-
-vol_osd_salv.o: ${srcdir}/${VOL}/vol_osd.c vol_osd.h
-	${CC} ${CFLAGS} -DBUILD_SALVAGER -o vol_osd_salv.o -c ${srcdir}/${VOL}/vol_osd.c
+libafsosd.o: ${VOL}/libafsosd.c
+	${CCRULE} -DBUILD_SALVAGER
 
 physio.o: ${VOL}/physio.c
 	${CCRULE}
@@ -116,7 +113,7 @@ s_salvsync-client.o: ${VOL}/salvsync-client.c
 	${SCCRULE}
 s_daemon_com.o: ${VOL}/daemon_com.c
 	${SCCRULE}
-s_vol_osd_salv.o: ${VOL}/vol_osd.c
+s_libafsosd.o: ${VOL}/libafsosd.c
 	${SCCRULE} -DBUILD_SALVAGER
 
 fssync-debug.o: ${VOL}/fssync-debug.c
@@ -216,11 +213,11 @@ ihandle.o: ${VOL}/ihandle.c
 namei_ops.o: ${VOL}/namei_ops.c
 	${CCRULE}
 
-salvageserver: ${OBJECTS} ${LIBS}
-	${CC} ${LDFLAGS} -o salvageserver ${OBJECTS} ${LIBS} ${MT_LIBS} ${XLIBS}
+salvageserver: ${OBJECTS} libafsosd.o ${LIBS}
+	${CC} ${LDFLAGS} -o salvageserver ${OBJECTS} libafsosd.o -ldl ${LIBS} ${MT_LIBS} ${XLIBS}
 
-dasalvager: ${SOBJECTS} ${SLIBS}
-	${CC} ${LDFLAGS} -o dasalvager ${SOBJECTS} ${SLIBS} ${XLIBS}
+dasalvager: ${SOBJECTS} s_libafsosd.o ${SLIBS}
+	${CC} ${LDFLAGS} -o dasalvager ${SOBJECTS} s_libafsosd.o -ldl ${SLIBS} ${XLIBS}
 
 dafssync-debug: ${FSSDEBUG_OBJS} ${LIBS}
 	${CC} ${LDFLAGS} -o dafssync-debug ${FSSDEBUG_OBJS} ${LIBS} ${MT_LIBS} ${XLIBS}
