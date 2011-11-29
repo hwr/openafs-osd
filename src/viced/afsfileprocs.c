@@ -8414,8 +8414,9 @@ SRXAFS_StartAsyncFetch(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
     afs_int32 rights, anyrights;        /* rights for this and any user */
 
     SETTHREADACTIVE(acall, 65590, Fid);
-    ViceLog(1,("StartAsyncFetch for %u.%u.%u type %d\n", 
-			Fid->Volume, Fid->Vnode, Fid->Unique, backend));
+    ViceLog(1,("StartAsyncFetch for %u.%u.%u type %d offs %llu, len %llu\n", 
+			Fid->Volume, Fid->Vnode, Fid->Unique, backend, 
+			offset, length));
     Outputs->AsyncParams_len = 0;
     Outputs->AsyncParams_val = NULL;
     errorCode = createAsyncTransaction(acall, Fid, CALLED_FROM_START_ASYNC, 
@@ -8590,8 +8591,9 @@ SRXAFS_StartAsyncStore(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
     afs_size_t DataLength, diff;
 
     SETTHREADACTIVE(acall, 65591, Fid);
-    ViceLog(1,("StartAsyncStore for %u.%u.%u type %d\n", 
-			Fid->Volume, Fid->Vnode, Fid->Unique, backend));
+    ViceLog(1,("StartAsyncStore for %u.%u.%u type %d offs %llu len %llu\n", 
+			Fid->Volume, Fid->Vnode, Fid->Unique, backend,
+			offset, length));
     Outputs->AsyncParams_len = 0;
     Outputs->AsyncParams_val = NULL;
     errorCode = createAsyncTransaction(acall, Fid,
