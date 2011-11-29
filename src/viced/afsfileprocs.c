@@ -502,6 +502,7 @@ createAsyncTransaction(struct rx_call *call, AFSFid *Fid, afs_int32 flag,
         port = call->conn->peer->port;
     }
 
+#if 0
     ViceLog(6, ("createAsyncTransaction %u.%u.%u flag 0x%x from %u.%u.%u.%u:%u\n",
 			Fid->Volume,
 			Fid->Vnode,
@@ -512,6 +513,7 @@ createAsyncTransaction(struct rx_call *call, AFSFid *Fid, afs_int32 flag,
 			(ntohl(host) >> 8) & 0xff,
 			ntohl(host) & 0xff,
 			ntohs(port)));
+#endif
     if (flag & FS_OSD_COMMAND)
 	return 0;	/* Just an "fs osd -cm" command, no real I/O */
 
@@ -8414,7 +8416,7 @@ SRXAFS_StartAsyncFetch(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
     afs_int32 rights, anyrights;        /* rights for this and any user */
 
     SETTHREADACTIVE(acall, 65590, Fid);
-    ViceLog(1,("StartAsyncFetch for %u.%u.%u type %d offs %llu, len %llu\n", 
+    ViceLog(1,("StartAsyncFetch for %u.%u.%u backend %d offs %llu, len %llu\n", 
 			Fid->Volume, Fid->Vnode, Fid->Unique, backend, 
 			offset, length));
     Outputs->AsyncParams_len = 0;
@@ -8591,7 +8593,7 @@ SRXAFS_StartAsyncStore(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
     afs_size_t DataLength, diff;
 
     SETTHREADACTIVE(acall, 65591, Fid);
-    ViceLog(1,("StartAsyncStore for %u.%u.%u type %d offs %llu len %llu\n", 
+    ViceLog(1,("StartAsyncStore for %u.%u.%u backend %d offs %llu len %llu\n", 
 			Fid->Volume, Fid->Vnode, Fid->Unique, backend,
 			offset, length));
     Outputs->AsyncParams_len = 0;
@@ -8750,8 +8752,8 @@ SRXAFS_EndAsyncStore(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
     int sameDataVersion = 0;
 
     SETTHREADACTIVE(acall, 65593, Fid);
-    ViceLog(1,("EndAsyncStore for %u.%u.%u\n", 
-			Fid->Volume, Fid->Vnode, Fid->Unique));
+    ViceLog(1,("EndAsyncStore for %u.%u.%u backend %d length %llu\n", 
+			Fid->Volume, Fid->Vnode, Fid->Unique, backend, FileLength));
 
     if ((errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
         goto Bad_EndAsyncStore;
