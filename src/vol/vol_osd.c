@@ -586,6 +586,9 @@ rxosd_copy(afs_uint32 osd, afs_uint64 from_p, afs_uint64 to_p,
 	    to.ometa_u.t.obj_id = to_o;
 	    to.ometa_u.t.osd_id = to_osd;
 	    code = RXOSD_copy(conn->conn, &from, &to, to_osd);
+	    if (code == RXGEN_OPCODE) {
+		code = RXOSD_copy200(conn->conn, from_p, to_p, from_o, to_o, to_osd);
+	    }
 	    PutOsdConn(&conn);
         } else
             code = EIO;
