@@ -137,6 +137,7 @@ struct rxosd_Variables {
     struct afs_conn *fs_conn;
     struct vcache *avc;
     struct rx_call *call[MAXOSDSTRIPES];
+    char oldRPC[MAXOSDSTRIPES];
     afs_uint32 osd[MAXOSDSTRIPES];
     struct ometa *ometaP[MAXOSDSTRIPES];
     struct asyncError aE;
@@ -581,9 +582,11 @@ start_store(struct rxosd_Variables *v, afs_uint64 offset)
 	        goto bad;
 	    }
 	    v->call[lc] = rx_NewCall(rxconn);
+	    if (ts->flags & SRVR_USEOLDRPCS)
+		v->oldRPC[lc] = 1;
             RX_AFS_GUNLOCK();
 #ifdef NEW_OSD_FILE
-	    if (!(ts->flags & SRVR_USEOLDRPCS)) {
+	    if (!v->oldRPC[lc]) {
     		struct RWparm p;
 	        if (v->doFakeStriping) {
 		    p.type = 2;
@@ -893,9 +896,13 @@ rxosd_storeWrite(void *r, char *abuf, afs_uint32 length, afs_uint32 *byteswritte
 		struct ometa out;
 		if (v->call[i]) {
  		    RX_AFS_GUNLOCK();
-		    code = EndRXOSD_write(v->call[i], &out);
-		    if (v->ometaP[i] && copy_ometa(v->ometaP[i], &out, code) > 0) 
-			v->metadataChanged = 1;
+		    if (v->oldRPC[i])
+			code = EndRXOSD_write121(v->call[i]);
+		    else {
+		        code = EndRXOSD_write(v->call[i], &out);
+		        if (v->ometaP[i] && copy_ometa(v->ometaP[i], &out, code) > 0) 
+			    v->metadataChanged = 1;
+		    }
 		    code2 = rx_EndCall(v->call[i], 0);
 		    RX_AFS_GLOCK();
 		    if (code)
@@ -1044,9 +1051,13 @@ rxosd_storeClose(void *r, struct AFSFetchStatus *OutStatus, int *doProcessFS)
 		if (!v->ometaP[k])
 		    v->ometaP[k] = &out;
     	        RX_AFS_GUNLOCK();
-    	        code = EndRXOSD_write(v->call[k], &out);
-		if (v->ometaP[k] && copy_ometa(v->ometaP[k], &out, code) > 0)
-		    v->metadataChanged = 1;
+		if (v->oldRPC[k])
+		    code = EndRXOSD_write121(v->call[k]);
+		else {
+    	            code = EndRXOSD_write(v->call[k], &out);
+		    if (v->ometaP[k] && copy_ometa(v->ometaP[k], &out, code) > 0)
+		        v->metadataChanged = 1;
+		}
 		code = handleError(v, k, code);
 	        if (!worstcode)
 		    worstcode = code;
@@ -1494,11 +1505,13 @@ start_fetch(struct rxosd_Variables *v, afs_uint64 offset)
 	    v->call[k] = rx_NewCall(rxconn);
 	    if (!v->call[k])
 		continue;
+	    if (ts->flags & SRVR_USEOLDRPCS)
+		v->oldRPC[k] = 1;
 
             RX_AFS_GUNLOCK();
 retry:
 #ifdef NEW_OSD_FILE
-	    if (!(ts->flags & SRVR_USEOLDRPCS)) {
+	    if (!v->oldRPC[k]) {
 		struct RWparm p;
 	        if (v->doFakeStriping) {
 		    p.type = 2;
@@ -1540,7 +1553,7 @@ retry:
 				stripeoffset[k], striperesid[k]);
 	    }
 #else
-	    if (!(ts->flags & SRVR_USEOLDRPCS)) {
+	    if (!v->oldRPC[k]) {
 		struct ometa ometa;
 		struct RWparm p;
 		ometa.vsn = 1;
