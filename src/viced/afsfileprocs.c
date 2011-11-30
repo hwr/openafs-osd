@@ -790,7 +790,8 @@ EndAsyncTransaction(struct rx_call *call, AFSFid *Fid, afs_uint64 transid)
 }	    
     
 Volume *
-getAsyncVolptr(struct rx_call *call, AFSFid *Fid, afs_uint64 transid)
+getAsyncVolptr(struct rx_call *call, AFSFid *Fid, afs_uint64 transid,
+	       afs_uint64 *offset, afs_uint64 *length)
 {
     afs_int32 code;
     struct asyncAccess *a, *a2;
@@ -799,6 +800,8 @@ getAsyncVolptr(struct rx_call *call, AFSFid *Fid, afs_uint64 transid)
     afs_uint32 host = 0;
     afs_uint16 port = 0;
     Volume *volptr = 0;
+    *offset = 0;
+    *length = 0;
 
     if (call) {
         host = call->conn->peer->host;
@@ -855,6 +858,8 @@ getAsyncVolptr(struct rx_call *call, AFSFid *Fid, afs_uint64 transid)
 	return volptr;
     }
     volptr = a->volptr;
+    *offset = t->offset;
+    *length = t->length;
     a->volptr = NULL;
     ASYNC_UNLOCK;
     return volptr;
@@ -8748,7 +8753,7 @@ SRXAFS_EndAsyncStore(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
     struct in_addr logHostAddr; /* host ip holder for inet_ntoa */
     struct rx_connection *tcon;
     struct host *thost;
-    afs_uint64 oldlength;
+    afs_uint64 oldlength, offset, length;
     int sameDataVersion = 0;
 
     SETTHREADACTIVE(acall, 65593, Fid);
@@ -8765,7 +8770,7 @@ SRXAFS_EndAsyncStore(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
      * Get volptr back from activeFile to finish old transaction before
      * volserver may get the volume for cloning or moving it.
      */
-    volptr = getAsyncVolptr(acall, Fid, transid);
+    volptr = getAsyncVolptr(acall, Fid, transid, &offset, &length);
     /*
      * Get associated volume/vnode for the stored file; caller's rights
      * are also returned
@@ -8825,6 +8830,10 @@ SRXAFS_EndAsyncStore(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
 		    Fid->Volume, Fid->Vnode, Fid->Unique, errorCode));
 	    errorCode = 0; 	/* don't bother client with this problem! */
 	}
+    } else {
+	FileLength = oldlength;
+        if (offset + length > oldlength)
+	    FileLength = offset + length;
     }
 
     if (FileLength != oldlength) {

@@ -208,7 +208,6 @@ extern afs_int32 FindOsdIgnoreSizePass;
 extern afs_int32 FindOsdWipeableDivisor;
 extern afs_int32 FindOsdNonWipeableDivisor;
 extern afs_int32 FindOsdUsePrior;
-extern Volume *getAsyncVolptr(struct rx_call *call, AFSFid *Fid, afs_uint64 transid);
 
 extern afs_int32 fastRestore;
 
@@ -2589,7 +2588,7 @@ EndAsyncStore1(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
     struct in_addr logHostAddr; /* host ip holder for inet_ntoa */
     struct rx_connection *tcon;
     struct host *thost;
-    afs_uint64 oldlength;
+    afs_uint64 oldlength, offset, length;
 
     if ((errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
         goto Bad_EndAsyncStore;
@@ -2601,7 +2600,7 @@ EndAsyncStore1(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
      * Get volptr back from activeFile to finish old transaction before
      * volserver may get the volume for cloning or moving it.
      */
-    volptr = getAsyncVolptr(acall, Fid, transid);
+    volptr = getAsyncVolptr(acall, Fid, transid, &offset, &length);
     /*
      * Get associated volume/vnode for the stored file; caller's rights
      * are also returned
@@ -2662,6 +2661,10 @@ EndAsyncStore1(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
                         errorCode = 0;
             }
         }
+    } else {
+	filelength = oldlength;
+	if (offset + length > oldlength)
+	    filelength = offset + length;
     }
 
     if (filelength != oldlength) {

@@ -132,6 +132,7 @@ struct rxosd_Variables {
     afs_uint64 resid;
     afs_uint64 segmresid;
     afs_uint64 maxlength;
+    afs_uint64 knownlength;
     afs_uint64 transid;
     struct afs_conn *fs_conn;
     struct vcache *avc;
@@ -351,7 +352,7 @@ rxosd_Destroy(void **r, afs_int32 error)
 		Inputs.AsyncParams_val = buf;
 		Inputs.AsyncParams_len = len;
 	        code2 = RXAFS_EndAsyncStore(v->fs_conn->id, &v->avc->f.fid.Fid, 
-				v->transid, v->avc->f.m.Length,
+				v->transid, v->knownlength,
                                 AFSOSD_BACKEND, &Inputs, &InStatus, &v->OutStatus);
 	  	if (code2)
 		    printf("RXAFS_EndAsyncStore returns %d\n", code2);
@@ -362,7 +363,7 @@ rxosd_Destroy(void **r, afs_int32 error)
 	    osi_Free(buf, len);
 	    if (code2 == RXGEN_OPCODE)
 	        code2 = RXAFS_EndAsyncStore1(v->fs_conn->id, &v->avc->f.fid.Fid, 
-				v->transid, v->avc->f.m.Length, 0, 0, 0,
+				v->transid, v->knownlength, 0, 0, 0,
 				error, &v->aE, &InStatus, &v->OutStatus);
 	    if (v->aE.error == 1) {
 		if (v->aE.asyncError_u.recovList.store_recoveryList_val)
@@ -1067,7 +1068,7 @@ rxosd_storeClose(void *r, struct AFSFetchStatus *OutStatus, int *doProcessFS)
 	InStatus.ClientModTime = v->avc->f.m.Date;
 	RX_AFS_GUNLOCK();
 	code = RXAFS_EndAsyncStore1(v->fs_conn->id, &v->avc->f.fid.Fid, 
-				v->transid, v->avc->f.m.Length, 0, 0, 0,
+				v->transid, v->knownlength, 0, 0, 0,
 				0, &v->aE, &InStatus, OutStatus);
 	RX_AFS_GLOCK();
         if (!code) {
@@ -1174,6 +1175,7 @@ rxosd_storeInit(struct vcache *avc, struct afs_conn *tc,
 
     if (base + bytes > length)
 	length = base + bytes;
+    v->knownlength = length;
 #if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
     if (vicep_fastread)
        afs_fast_vpac_check(avc, tc, rxconn, 1, &osd_id);

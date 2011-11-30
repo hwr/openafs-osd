@@ -15,7 +15,7 @@
  * inside the library. So a version mismatch can easily be detected.
  */
  
-#define LIBAFSOSD_VERSION 1
+#define LIBAFSOSD_VERSION 2
 
 /*
  *	Unspecific operations used in general servers provided by AFS/OSD
@@ -166,7 +166,8 @@ struct viced_ops_v0 {
                                    afs_uint32 *expires);
     int (*evalclient) (void *rock, afs_int32 user);
     struct Volume * (*getAsyncVolptr) (struct rx_call *call, AFSFid *Fid,
-                                       afs_uint64 transid);
+				       afs_uint64 transid, afs_uint64 *offset,
+				       afs_uint64 *length);
     int (*setActive) (struct rx_call *call, afs_uint32 num, AFSFid * fid,
 		      afs_int32 source);
     void (*setInActive) (afs_int32 i);
