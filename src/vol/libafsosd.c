@@ -1017,9 +1017,10 @@ evalclient(void *rock, afs_int32 user)
 }
 
 struct Volume *
-getAsyncVolptr(struct rx_call *call, AFSFid *Fid, afs_uint64 transid)
+getAsyncVolptr(struct rx_call *call, AFSFid *Fid, afs_uint64 transid,
+	       afs_uint64 *offset, afs_uint64 *length)
 {
-    return (viced->getAsyncVolptr)(call, Fid, transid);
+    return (viced->getAsyncVolptr)(call, Fid, transid, offset, length);
 }
 
 int
