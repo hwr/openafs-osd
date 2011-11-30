@@ -1783,7 +1783,7 @@ copy_osd_p_file_to_osd_segm_descList(osd_p_file *pf, osd_segm_descList *rl,
     return 0;
 }
 
-afs_int32 md5flag = 1;  	/* special case for IPP */
+afs_int32 md5flag = 1;  /* special case for RZG: there are some empty old md5 sums */
 
 afs_int32
 compare_md5(struct osd_p_meta *o, afs_uint32 *md5)
@@ -3552,6 +3552,7 @@ osd_archive(struct Vnode *vn, afs_uint32 Osd, afs_int32 flags)
     struct osd_cksum md5;
     afs_uint32 vN = vn->vnodeNumber;
     afs_int32 changed = 0;
+    struct osd_p_meta *oldmeta = 0;
     
 
     VNDISK_GET_LEN(size, vd);
@@ -3718,6 +3719,10 @@ osd_archive(struct Vnode *vn, afs_uint32 Osd, afs_int32 flags)
 	        if (pf->archiveTime && pf->archiveVersion == vd->dataVersion) {
 		    struct osd_p_segm *ps = &pf->segmList.osd_p_segmList_val[0];
                     struct osd_p_obj *po = &ps->objList.osd_p_objList_val[0];
+		    for (j=0; j<pf->metaList.osd_p_metaList_len; j++) {
+			if (pf->metaList.osd_p_metaList_val[j].type == OSD_P_META_MD5) 	
+			    oldmeta = &pf->metaList.osd_p_metaList_val[j];
+		    }
                     if (osd == po->osd_id) {
 			om.vsn = 1;
 			om.ometa_u.t.part_id = po->part_id;
@@ -3818,10 +3823,19 @@ osd_archive(struct Vnode *vn, afs_uint32 Osd, afs_int32 flags)
 	    om.ometa_u.t.osd_id = osd;
 	    code = rxosd_create_archive(&om, &sl, 0, &md5);
 	    free_osd_segm_descList(&sl);
-	    if (!code && md5.size != size) {
-		ViceLog(0, ("osd_archive: length returned is %llu instead of %llu for %u.%u.%u\n", md5.size, size, V_id(vol), vN, vd->uniquifier));
-		rxosd_incdec(osd, md5.o.ometa_u.t.part_id, md5.o.ometa_u.t.obj_id, -1);
-		code = EIO;  
+	    if (!code){
+	        if ( md5.size != size) {
+		    ViceLog(0, ("osd_archive: length returned is %llu instead of %llu for %u.%u.%u\n", md5.size, size, V_id(vol), vN, vd->uniquifier));
+		    code = EIO;  
+		}
+		if (!code && oldmeta) { 	/* check md5 checksum */
+		    code = compare_md5(oldmeta, &md5.c.cksum_u.md5[0]);
+		    if (code)
+		        ViceLog(0, ("osd_archive: wrong md5 sum found for %u.%u.%u\n",
+				V_id(vol), vN, vd->uniquifier));
+		}
+		if (code)
+		    rxosd_incdec(osd, md5.o.ometa_u.t.part_id, md5.o.ometa_u.t.obj_id, -1);
 	    }
 	    if (!code) {
 		struct osd_p_meta *m;
@@ -3863,7 +3877,7 @@ osd_archive(struct Vnode *vn, afs_uint32 Osd, afs_int32 flags)
 		m = &pf->metaList.osd_p_metaList_val[0];
 		m->type = OSD_P_META_MD5;
 		m->magic = OSD_P_META_MAGIC;
-		for (i=0; i<4; i++)
+		for (i=0; i<4; i++) 
 		    m->data[i] = md5.c.cksum_u.md5[i];
 		m->time = FT_ApproxTime();
 		code = write_osd_p_fileList(vol, vd, vN, &list, &changed, 0);
