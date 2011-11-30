@@ -457,9 +457,13 @@ int load_libafsosd(char *initroutine, void *inrock, void *outrock)
 			initroutine, libname, error));
 	if (!code)
 	    code = EIO;
-    } else if (code)
-	ViceLog(0,("call to %s in %s returns %d\n",	
+    } else if (code) {
+	if (code == EINVAL)
+	   ViceLog(0,("Version mismatch between binary and %s, aborting\n", libname));
+	else
+	   ViceLog(0,("call to %s in %s returns %d\n",	
 			initroutine, libname, code));
+    }
     if (!code)
         ViceLog(0, ("AFS RXOSD support activated.\n"));
     return code;
