@@ -1248,13 +1248,12 @@ StartFetch()
     }
 
     namei_HandleToName(&name, f->oh->ih);
-    ViceLog(0,("StartFetch: %s for %u.%u.%u\n", name.n_path,
+    ViceLog(0,("StartFetch: %s for %u.%u.%u\n", 
+		name.n_path,
                 (afs_uint32) (f->d.o.part_id & 0xffffffff),
                 (afs_uint32) (f->d.o.obj_id & RXOSD_VNODEMASK),
                 (afs_uint32) (f->d.o.obj_id >> 32)));
     switch (FetchProc[i].pid = fork()) {
-	char *arguments[MAXARGS]; 
-	char ** argList = &arguments[0];
     case -1:
 	ViceLog(0,("StartFetch: fork failed\n"));
 	FetchProc[i].request = 0;
@@ -1267,17 +1266,16 @@ StartFetch()
                possible contention for any sockets being
                used.*/
             close(i);
-	memset(&arguments, 0, sizeof(arguments));
-	arguments[0] = AFSDIR_RECALL_MIGRATED_FILE_FILE;
 #ifdef AFS_HPSS_SUPPORT
-	    arguments[1] = "-h";
-	    arguments[2] = principal;
-	    arguments[3] = keytab;
-	    arguments[4] = name.n_path;
+	(void) execlp(AFSDIR_SERVER_RECALL_MIGRATED_FILE_FILEPATH,
+		      AFSDIR_RECALL_MIGRATED_FILE_FILE,
+		      "-h", principal, keytab,
+                      name.n_path, (char *) 0);
 #else
-	    arguments[1] = name.n_path;
+	(void) execlp(AFSDIR_SERVER_RECALL_MIGRATED_FILE_FILEPATH,
+		      AFSDIR_RECALL_MIGRATED_FILE_FILE,
+                      name.n_path, (char *) 0);
 #endif
-	(void) execv(AFSDIR_SERVER_RECALL_MIGRATED_FILE_FILEPATH, argList);
 	ViceLog(0,("StartFetch: execv failed\n"));
 	exit(-1);
     }   
