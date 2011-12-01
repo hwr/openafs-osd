@@ -5051,6 +5051,7 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
     char string[FIDSTRLEN];
 
     output->o.vsn = 1;
+    output->c.type = 1;
     if (!afsconf_SuperUser(confDir, call, (char *)0)) {
         code = EACCES;
 	goto finis;
@@ -5256,7 +5257,8 @@ retry:
 	    if (!rcall[j]) {
 		ViceLog(0,("create_archive: %s no connection to remote osd\n",
                                 sprint_oparmT10(o, string, sizeof(string))));
-		code = EIO;
+		if (!code)
+		    code = EIO;
 		goto bad;
 	    }
 	}
@@ -5301,7 +5303,7 @@ retry:
 	}
         output->size += seg->length;
     }
-    output->c.type = 1;
+    /* output->c.type = 1; already set before */
     MD5_Final((char *)&output->c.cksum_u.md5[0], &md5);
     for (i=0; i<4; i++)
         output->c.cksum_u.md5[i] = ntohl(output->c.cksum_u.md5[i]);
