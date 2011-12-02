@@ -164,6 +164,7 @@ afs_StoreAllSegments(struct vcache *avc, struct vrequest *areq,
     struct dcache *tdc;
     afs_int32 code = 0;
     afs_int32 index;
+    afs_int32 nChunksAtOnce = NCHUNKSATONCE;
     afs_int32 origCBs, foreign = 0;
     int hash;
     afs_hyper_t newDV, oldDV;	/* DV when we start, and finish, respectively */
@@ -241,8 +242,11 @@ afs_StoreAllSegments(struct vcache *avc, struct vrequest *areq,
     tlen = avc->f.m.Length;
     minj = 0;
 
+    if ((avc->protocol & PROTOCOL_MASK) == RX_OSD)
+	nChunksAtOnce = 256;
+
     do {
-	memset(dcList, 0, NCHUNKSATONCE * sizeof(struct dcache *));
+	memset(dcList, 0, nChunksAtOnce * sizeof(struct dcache *));
 	high = 0;
 	moredata = FALSE;
 
@@ -258,7 +262,7 @@ afs_StoreAllSegments(struct vcache *avc, struct vrequest *areq,
 		ReleaseReadLock(&tdc->tlock);
 		if (!FidCmp(&tdc->f.fid, &avc->f.fid) && tdc->f.chunk >= minj) {
 		    off = tdc->f.chunk - minj;
-		    if (off < NCHUNKSATONCE) {
+		    if (off < nChunksAtOnce) {
 			if (dcList[off])
 			    osi_Panic("dclist slot already in use!");
 			if (afs_mariner && !marineronce) {
@@ -282,7 +286,7 @@ afs_StoreAllSegments(struct vcache *avc, struct vrequest *areq,
 		    } else {
 			moredata = TRUE;
 			afs_PutDCache(tdc);
-			if (j == NCHUNKSATONCE)
+			if (j == nChunksAtOnce)
 			    break;
 		    }
 		} else {
@@ -314,7 +318,7 @@ afs_StoreAllSegments(struct vcache *avc, struct vrequest *areq,
 	    }
 	}
 	/* if (j) */
-	minj += NCHUNKSATONCE;
+	minj += nChunksAtOnce;
     } while (!code && moredata);
 
     UpgradeSToWLock(&avc->lock, 29);
@@ -349,7 +353,7 @@ afs_StoreAllSegments(struct vcache *avc, struct vrequest *areq,
 	do {
 	    moredata = FALSE;
 	    memset(dcList, 0,
-		   NCHUNKSATONCE * sizeof(struct dcache *));
+		   nChunksAtOnce * sizeof(struct dcache *));
 
 	    /* overkill, but it gets the lock in case GetDSlot needs it */
 	    ObtainWriteLock(&afs_xdcache, 285);
@@ -364,16 +368,16 @@ afs_StoreAllSegments(struct vcache *avc, struct vrequest *areq,
 		    if (!FidCmp(&tdc->f.fid, &avc->f.fid)
 			&& tdc->f.chunk >= minj) {
 			off = tdc->f.chunk - minj;
-			if (off < NCHUNKSATONCE) {
+			if (off < nChunksAtOnce) {
 			    /* this is the file, and the correct chunk range */
-			    if (j >= NCHUNKSATONCE)
+			    if (j >= nChunksAtOnce)
 				osi_Panic
 				    ("Too many dcache entries in range\n");
 			    dcList[j++] = tdc;
 			} else {
 			    moredata = TRUE;
 			    afs_PutDCache(tdc);
-			    if (j == NCHUNKSATONCE)
+			    if (j == nChunksAtOnce)
 				break;
 			}
 		    } else {
@@ -421,7 +425,7 @@ afs_StoreAllSegments(struct vcache *avc, struct vrequest *areq,
 		afs_PutDCache(tdc);
 	    }
 
-	    minj += NCHUNKSATONCE;
+	    minj += nChunksAtOnce;
 
 	} while (moredata);
     }
