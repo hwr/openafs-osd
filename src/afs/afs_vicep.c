@@ -92,11 +92,7 @@ struct vpacRock {
 	afs_uint64 inode;
     } file;
     afs_int32 ServerUuidIndex;
-#if defined(AFS_LINUX26_ENV)
     struct file *fp;
-#elif defined(AFS_AIX53_ENV)
-    struct vnode *fp;
-#endif
     afs_uint64 bytes_rcvd;
     afs_uint64 bytes_sent;
     afs_uint32 osd;
@@ -111,11 +107,7 @@ struct vpacRock {
     
 struct vpac_Variables {
     void *ops;
-#if defined(AFS_LINUX26_ENV)
     struct file *fp;
-#elif defined(AFS_AIX52_ENV)
-    struct vnode *fp;
-#endif
     struct vcache *avc;
     struct afs_conn *fs_conn;
     struct vpacRock *vpacRock;
@@ -352,27 +344,20 @@ vpac_storeMemRead(void *r, struct osi_file *tfile, afs_uint32 offset,
 afs_int32
 vpac_storeWrite(void *r, char *abuf, afs_uint32 tlen, afs_uint32 *byteswritten)
 {
-#if !defined(AFS_LINUX26_ENV) && !defined(AFS_AIX53_ENV)
+#if !defined(AFS_LINUX26_ENV)
     return EIO;
 #else
     afs_int32 code;
-#if defined(AFS_LINUX26_ENV)
     mm_segment_t fs;
     unsigned long savelim = current->TASK_STRUCT_RLIM[RLIMIT_FSIZE].rlim_cur;
-    uid_t fsuid = current_fsuid();
-#endif
     struct vpac_Variables *v = (struct vpac_Variables *)r;
 
     ObtainWriteLock(&v->vpacRock->lock, 801);
-#if defined(AFS_LINUX26_ENV)
     if (!v->fp) {
 	afs_warn("vpac_storeWrite: no fp\n");
         ReleaseWriteLock(&v->vpacRock->lock);
 	return EIO;
     }
-#if !defined(STRUCT_TASK_STRUCT_HAS_CRED)
-    current_fsuid() = 0;
-#endif
     current->TASK_STRUCT_RLIM[RLIMIT_FSIZE].rlim_cur = RLIM_INFINITY;
     fs = get_fs();
     set_fs(KERNEL_DS);
@@ -394,22 +379,7 @@ vpac_storeWrite(void *r, char *abuf, afs_uint32 tlen, afs_uint32 *byteswritten)
 	afs_warn("vpac_storeWrite: llseek failed\n");
     set_fs(fs);
     RX_AFS_GLOCK();
-#if !defined(STRUCT_TASK_STRUCT_HAS_CRED)
-    current_fsuid() = fsuid;
-#endif
     current->TASK_STRUCT_RLIM[RLIMIT_FSIZE].rlim_cur = savelim;
-#elif defined(AFS_AIX52_ENV)
-    afs_uint32 resid;
-
-    code = gop_rdwr(UIO_WRITE, v->fp, abuf, tlen, &v->base, AFS_UIOSYS,
-                                             NULL, &resid);
-    if (code) {
-	afs_warn("vpac_storeWrite: gop_rdwr failed for write with code %d\n", code);
-        ReleaseWriteLock(&v->vpacRock->lock);
-        return EIO;
-    }
-    code = tlen - resid;
-#endif
     v->aE.asyncError_u.no_new_version = 0;
     v->base += tlen;
     if (code != tlen) {
@@ -485,7 +455,7 @@ vpac_storeStatus(void *rock)
 afs_int32
 vpac_storeClose(void *rock, struct AFSFetchStatus *OutStatus, int *doProcessFS)
 {
-#if !defined(AFS_LINUX26_ENV) && !defined(AFS_AIX53_ENV)
+#if !defined(AFS_LINUX26_ENV)
     return EIO;
 #else
     struct vpac_Variables *v = (struct vpac_Variables *)rock;
@@ -495,28 +465,19 @@ vpac_storeClose(void *rock, struct AFSFetchStatus *OutStatus, int *doProcessFS)
     *doProcessFS = 0;
     if (r && (!vicep_nosync || r->fsync)) { 
 	/* Make sure data are also visible on the fileserver */
-#ifdef AFS_LINUX22_ENV
         mm_segment_t fs;
-        uid_t fsuid = current_fsuid();
         struct file *tfp = r->fp;
-#if !defined(STRUCT_TASK_STRUCT_HAS_CRED)
-        current_fsuid() = 0;
-#endif
         fs = get_fs();
         set_fs(KERNEL_DS);
         RX_AFS_GUNLOCK();
         tfp->f_op = fops_get(tfp->f_dentry->d_inode->i_fop);
-        #if defined(HAVE_LINUX_FILE_FSYNC)
+#if defined(HAVE_LINUX_FILE_FSYNC)
         /* just to be sure */
 	if (tfp->f_op && tfp->f_op->fsync)
             code = file_fsync(tfp, tfp->f_dentry, 0);
-        #endif
+#endif
         RX_AFS_GLOCK();
-#if !defined(STRUCT_TASK_STRUCT_HAS_CRED)
-        current_fsuid() = fsuid;
-#endif
         set_fs(fs);
-#endif
     }
 
     code = EndStore(v, doProcessFS);
@@ -625,7 +586,7 @@ common_storeInit(struct vcache *avc, struct afs_conn *tc,
 		afs_uint64 transid, afs_uint32 expires, afs_uint64 maxlength,
 		afs_uint32 osd)
 {
-#if !defined(AFS_LINUX26_ENV) && !defined(AFS_AIX53_ENV)
+#if !defined(AFS_LINUX26_ENV)
     return EIO;
 #else
     struct vpac_Variables *v;
@@ -791,16 +752,13 @@ fake_vpac_storeInit(struct vcache *avc, struct afs_conn *tc,
 afs_int32
 vpac_fetchRead(void *r, afs_uint32 tlen, afs_uint32 *bytesread)
 {
-#if !defined(AFS_LINUX26_ENV) && !defined(AFS_AIX53_ENV)
+#if !defined(AFS_LINUX26_ENV)
     return EIO;
 #else
     afs_int32 code;
     struct vpac_Variables *v = (struct vpac_Variables *)r;
-#if defined (AFS_LINUX26_ENV)
     mm_segment_t fs;
     unsigned long savelim = current->TASK_STRUCT_RLIM[RLIMIT_FSIZE].rlim_cur;
-    uid_t fsuid = current_fsuid();
-#endif
     
     *bytesread = 0;
     ObtainWriteLock(&v->vpacRock->lock, 802);
@@ -809,12 +767,8 @@ vpac_fetchRead(void *r, afs_uint32 tlen, afs_uint32 *bytesread)
         ReleaseWriteLock(&v->vpacRock->lock);
 	return EIO;
     }
-#if defined (AFS_LINUX26_ENV)
     if (tlen > v->bufsize)
 	tlen = v->bufsize;
-#if !defined(STRUCT_TASK_STRUCT_HAS_CRED)
-    current_fsuid() = 0;
-#endif
     current->TASK_STRUCT_RLIM[RLIMIT_FSIZE].rlim_cur = RLIM_INFINITY;
     fs = get_fs();
     set_fs(KERNEL_DS);
@@ -839,22 +793,7 @@ vpac_fetchRead(void *r, afs_uint32 tlen, afs_uint32 *bytesread)
         code = v->fp->f_op->read(v->fp, v->bp, tlen, &v->fp->f_pos);
     set_fs(fs);
     RX_AFS_GLOCK();
-#if !defined(STRUCT_TASK_STRUCT_HAS_CRED)
-    current_fsuid() = fsuid;
-#endif
     current->TASK_STRUCT_RLIM[RLIMIT_FSIZE].rlim_cur = savelim;
-#elif defined(AFS_AIX52_ENV)
-    afs_uint32 resid;
-
-    code = gop_rdwr(UIO_READ, v->fp, v->bp, tlen, &v->base, AFS_UIOSYS,
-                              NULL, &resid);
-    if (code) {
-	afs_warn("vpac_fetchRead: gop_rdwr returned with %d\n", code);
-        ReleaseWriteLock(&v->vpacRock->lock);
-        return EIO;
-    }
-    code = tlen - resid;
-#endif
     if (code != tlen) {
         afs_Trace3(afs_iclSetp, CM_TRACE_WASHERE,
                    ICL_TYPE_STRING, __FILE__,
@@ -905,7 +844,6 @@ vpac_fetchBypassCacheRead(void *r, afs_uint32 size, afs_uint32 *bytesread)
     int nio, curpage, bytes;
     struct page *pp;
     mm_segment_t fs;
-    uid_t fsuid = current_fsuid();
     struct nocache_read_request *bparms =
                                 (struct nocache_read_request *) v->bypassparms;
     
@@ -922,9 +860,6 @@ vpac_fetchBypassCacheRead(void *r, afs_uint32 size, afs_uint32 *bytesread)
     }
     nio = bparms->auio->uio_iovcnt;
     length = size;
-#if !defined(STRUCT_TASK_STRUCT_HAS_CRED)
-    current_fsuid() = 0;
-#endif
     fs = get_fs();
     set_fs(KERNEL_DS);
     RX_AFS_GUNLOCK();
@@ -973,9 +908,6 @@ vpac_fetchBypassCacheRead(void *r, afs_uint32 size, afs_uint32 *bytesread)
     /*  bytes = vfs_readv(v->fp, xiov, nio, &v->fp->f_pos); */
     set_fs(fs);
     RX_AFS_GLOCK();
-#if !defined(STRUCT_TASK_STRUCT_HAS_CRED)
-    current_fsuid() = fsuid;
-#endif
     if (bytes < 0) {
         afs_warn("rxfs_fetchBypassCacheRead: rx_Read error. Return code was %d\n",
                  bytes);
@@ -1038,26 +970,16 @@ afs_int32
 vpac_fetchClose(void *rock, struct vcache *avc, struct dcache *adc, 
 					struct afs_FetchOutput *o)
 {
-#if !defined(AFS_LINUX26_ENV) && !defined(AFS_AIX53_ENV)
+#if !defined(AFS_LINUX26_ENV)
     return EIO;
 #else
     struct vpac_Variables *v = (struct vpac_Variables *)rock;
     afs_uint64 length = avc->f.m.Length;
     afs_uint64 ilength;
 
-#if defined (AFS_LINUX26_ENV)
     ilength = i_size_read(v->fp->f_dentry->d_inode);
     if (ilength > length)
         length = ilength;
-#elif defined(AFS_AIX52_ENV)
-    struct vattr tvattr;
-    afs_int32 code;
-    
-    code = VNOP_GETATTR(v->fp, &tvattr, &afs_osi_cred);
-    if (code)
-        afs_warn("vpac_fetchClose: VNOP_GETATTR returns %d\n", code);
-    length = tvattr.va_size;
-#endif
     SplitInt64(length, o->OutStatus.Length_hi, o->OutStatus.Length);
     if (adc)
         hset(adc->f.versionNo, avc->f.m.DataVersion);
@@ -1107,7 +1029,7 @@ common_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
 	        struct fetchOps **ops, void **rock, afs_uint64 transid,
 		afs_uint32 expires, afs_uint32 osd)
 {
-#if !defined(AFS_LINUX26_ENV) && !defined(AFS_AIX53_ENV)
+#if !defined(AFS_LINUX26_ENV)
     return EIO;
 #else
     afs_int32 code;
@@ -1116,9 +1038,6 @@ common_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
     struct memCacheEntry *mceP = (struct memCacheEntry *)fP;
     afs_int64 tlength;
     afs_int64 ilength;
-#ifdef AFS_AIX52_ENV
-    struct vattr tvattr;
-#endif
 #if defined(AFS_CACHE_BYPASS) && defined(AFS_LINUX26_ENV)
     struct nocache_read_request *bparms;
 
@@ -1212,19 +1131,12 @@ common_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
         }
     }
     tlength = avc->f.m.Length;
-#if defined(AFS_LINUX26_ENV)
     ilength = i_size_read(v->fp->f_dentry->d_inode);
     if (!lustre_hack) 		/* not LUSTRE */
 	tlength = ilength;
     else if (ilength > tlength)	/* LUSTRE sometimes doesn't fill it correctly */
 	tlength = ilength;
     tlength -= base;
-#elif defined(AFS_AIX52_ENV)
-    code = VNOP_GETATTR(v->fp, &tvattr, &afs_osi_cred);
-    if (code)
-        afs_warn("vpac_fetchInit: VNOP_GETATTR returns %d\n", code);
-    tlength = tvattr.va_size;
-#endif
     if (tlength < 0)
 	tlength = 0;
     *length = tlength < bytes ? tlength : bytes;
@@ -1319,65 +1231,68 @@ fake_vpac_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
 static afs_int32
 open_vicep_file(struct vcache *avc, char *path)
 {
-#if !defined(AFS_LINUX26_ENV) && !defined(AFS_AIX53_ENV)
+#if !defined(AFS_LINUX26_ENV)
     return ENOENT;
 #else
     afs_int32 code = 0;
-#ifdef AFS_LINUX26_ENV
     mm_segment_t fs;
+    struct dentry *dentry;
+#if defined(HAVE_LINUX_PATH_LOOKUP)
     struct nameidata nd;
-    uid_t fsuid;
+#else
+    struct path path_data;
+    struct vfsmount *mnt;
+#endif
     struct file *fp = 0;
-#endif
-#if defined(AFS_AIX53_ENV)
-    struct vnode *fp = 0;
-#endif
     struct vpacRock *r = 0;
 
     if (avc->vpacRock) 
 	return 0;
     RX_AFS_GUNLOCK();
-#if defined(AFS_LINUX26_ENV)
-    fsuid = current_fsuid();
     fs = get_fs();
     set_fs(KERNEL_DS);
-#if !defined(STRUCT_TASK_STRUCT_HAS_CRED)
-    current_fsuid() = 0;
-#endif
+#if defined(HAVE_LINUX_PATH_LOOKUP)
     code = path_lookup(path, 0, &nd);
+    if (!code)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,27)
+	dentry = nd.path.dentry;
+#else /* LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,27) */
+	dentry = nd.dentry;
+#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,27) */
+#else /*HAVE_LINUX_PATH_LOOKUP */
+    code = kern_path(path, 0, &path_data);
+    if (!code)
+	code = afs_get_dentry_ref(&path_data, &mnt, &dentry);
+#endif /*HAVE_LINUX_PATH_LOOKUP */
     if (!code) {
 #ifdef NAMEI_DATA_HAS_NO_DENTRY
 	fp = nameidata_to_filp(&nd, O_LARGEFILE | O_RDWR);
 #else /* NAMEI_DATA_HAS_NO_DENTRY */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,27)
 #if defined(STRUCT_TASK_STRUCT_HAS_CRED)
-	fp = dentry_open(nd.path.dentry, nd.path.mnt, O_LARGEFILE | O_RDWR,
+	fp = dentry_open(dentry, nd.path.mnt, O_LARGEFILE | O_RDWR,
 			 cache_creds);
 	if (IS_ERR(fp))
-	    fp = dentry_open(nd.path.dentry, nd.path.mnt, O_LARGEFILE | O_RDWR,
+	    fp = dentry_open(dentry, nd.path.mnt, O_LARGEFILE | O_RDWR,
 			 current_cred());
 #else /* defined(STRUCT_TASK_STRUCT_HAS_CRED) */
-	fp = dentry_open(nd.path.dentry, nd.path.mnt, O_LARGEFILE | O_RDWR);
+	fp = dentry_open(dentry, nd.path.mnt, O_LARGEFILE | O_RDWR);
 #endif /* defined(STRUCT_TASK_STRUCT_HAS_CRED) */
 #else /* LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,27) */
-	fp = dentry_open(nd.dentry, nd.mnt, O_LARGEFILE | O_RDWR);
+	fp = dentry_open(dentry, nd.mnt, O_LARGEFILE | O_RDWR);
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,27) */
 #endif /* NAMEI_DATA_HAS_NO_DENTRY */
+#if !defined(HAVE_LINUX_PATH_LOOKUP)
+	dput(dentry);
+	mntput(mnt);
+#endif /*HAVE_LINUX_PATH_LOOKUP */
     }
-#if !defined(STRUCT_TASK_STRUCT_HAS_CRED)
-    current_fsuid() = fsuid;
-#endif
     set_fs(fs);
     if (!code && IS_ERR(fp)) {
-	afs_warn("dentry_open returns %ld fsuid %d for %s\n", 
-		(long)fp, fsuid, path);
+	afs_warn("dentry_open returns %ld for %s\n", 
+		(long)fp, path);
 	code = ENOENT;
     } 
-#elif defined(AFS_AIX53_ENV)
-    code = gop_lookupname(path, AFS_UIOSYS, 1, NULL, &fp);
-#else
-    code = ENOENT;
-#endif
     RX_AFS_GLOCK();
     if (!code) {
 	ALLOC_VICEP(r, struct vpacRock);
@@ -1555,15 +1470,12 @@ void
 afs_close_vicep_file(struct vcache *avc, struct vrequest *areq, 
 			afs_int32 locked)
 {
-#if defined(AFS_LINUX26_ENV) || defined(AFS_AIX53_ENV)
+#if defined(AFS_LINUX26_ENV)
     struct afs_conn *tc;
     struct rx_connection *rxconn;
     afs_int32 code;
-#ifdef AFS_LINUX22_ENV
     struct file *tfp;
     mm_segment_t fs;
-    uid_t fsuid = current_fsuid();
-#endif
     if (avc->vpacRock) {
         int code2;
 	struct vpacRock *r = (struct vpacRock *) avc->vpacRock;
@@ -1604,11 +1516,7 @@ afs_close_vicep_file(struct vcache *avc, struct vrequest *areq,
 	if (!locked)
             ObtainWriteLock(&avc->lock, 411);
 	if (avc->vpacRock) { /* May have disappeared in a race condition */
-#ifdef AFS_LINUX22_ENV
             tfp = r->fp;
-#if !defined(STRUCT_TASK_STRUCT_HAS_CRED)
-            current_fsuid() = 0;
-#endif
             fs = get_fs();
             set_fs(KERNEL_DS);
             RX_AFS_GUNLOCK();
@@ -1619,19 +1527,11 @@ afs_close_vicep_file(struct vcache *avc, struct vrequest *areq,
 			avc->f.fid.Fid.Unique, code2, openAfsServerVnodes); */
             RX_AFS_GLOCK();
             set_fs(fs);
-#if !defined(STRUCT_TASK_STRUCT_HAS_CRED)
-            current_fsuid() = fsuid;
-#endif
             if (code2)
                 afs_Trace3(afs_iclSetp, CM_TRACE_WASHERE,
                        ICL_TYPE_STRING, __FILE__,
                        ICL_TYPE_INT32, __LINE__,
                        ICL_TYPE_INT32, code2);
-#elif defined(AFS_AIX53_ENV)
-            struct vnode *tnv = r->fp;
-            ObtainWriteLock(&avc->lock, 411);
-            AFS_RELE(tnv);
-#endif
 	    avc->vpacRock = NULL;
 	    FREE_VICEP(r, struct vpacRock);
 	    if (avc->protocol & VICEP_ACCESS)
