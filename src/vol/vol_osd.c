@@ -239,6 +239,13 @@ rxosd_online(struct ometa *om, afs_int32 flag, struct exam *e)
         conn = FindOsdConnection(om->ometa_u.t.osd_id);
         if (conn) {
 	    code = RXOSD_online(conn->conn, om, flag, e);
+	    if (code == RXGEN_OPCODE) {
+		afs_uint64 size;
+		afs_int32 status;
+		code = RXOSD_online317(conn->conn, om->ometa_u.t.part_id,
+				       om->ometa_u.t.obj_id, flag, &size,
+				       &status);
+	    }
 	    PutOsdConn(&conn);
         } else
             code = EIO;
