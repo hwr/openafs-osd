@@ -488,6 +488,7 @@ struct file_lock {
     afs_uint32 vid;
     afs_uint32 dev;
     afs_uint64 ino;
+    afs_uint32 mystripe;
     afs_uint32 writer;
     afs_uint32 readers;
     afs_uint32 waiters;
@@ -507,7 +508,7 @@ struct file_lock *fileLocks = 0;
 #endif
 
 void
-lock_file(FdHandle_t *fdP, afs_int32 mode)
+lock_file(FdHandle_t *fdP, afs_int32 mode, afs_uint32 mystripe)
 {
     struct file_lock *a;
 /* ViceLog(0,("lock_file vid=%u dev=%u ino=%llu mode=%u\n",
@@ -517,8 +518,9 @@ lock_file(FdHandle_t *fdP, afs_int32 mode)
     OSD_LOCK;
     for (a=fileLocks; a; a=a->next) {
 	if (a->vid == fdP->fd_ih->ih_vid
-	 && a->dev == fdP->fd_ih->ih_dev
-	 && a->ino == fdP->fd_ih->ih_ino)
+	 && a->ino == fdP->fd_ih->ih_ino
+	 && a->mystripe == mystripe
+	 && a->dev == fdP->fd_ih->ih_dev)
 	    break;
     }
     if (!a) {	/* no one else working on this file */
@@ -528,6 +530,7 @@ lock_file(FdHandle_t *fdP, afs_int32 mode)
 	a->vid = fdP->fd_ih->ih_vid;
 	a->dev = fdP->fd_ih->ih_dev;
 	a->ino = fdP->fd_ih->ih_ino;
+	a->mystripe = mystripe;
 	a->next = fileLocks;
 	fileLocks = a;
 	if (mode == LOCK_EX)
@@ -561,7 +564,7 @@ lock_file(FdHandle_t *fdP, afs_int32 mode)
 }
 
 void
-unlock_file(FdHandle_t *fdP)
+unlock_file(FdHandle_t *fdP, afs_uint32 mystripe)
 {
     struct file_lock *a, *a2;
 /* ViceLog(0,("unlock_file vid=%u dev=%u ino=%llu\n",
@@ -572,17 +575,19 @@ unlock_file(FdHandle_t *fdP)
     a2 = (struct file_lock *)&fileLocks;
     for (a=a2->next; a; a=a->next) {
 	if (a->vid == fdP->fd_ih->ih_vid
+	 && a->ino == fdP->fd_ih->ih_ino
 	 && a->dev == fdP->fd_ih->ih_dev
-	 && a->ino == fdP->fd_ih->ih_ino)
+	 && a->mystripe == mystripe)
 	    break;
 	a2 = a;
     }
     if (!a) {
-	ViceLog(0,("unlock_file: Entry not found %u.%u.%u.%u on partition %u\n",
+	ViceLog(0,("unlock_file: Entry not found %u.%u.%u.%u stripe %u on partition %u\n",
 			fdP->fd_ih->ih_vid,
 			fdP->fd_ih->ih_ino & RXOSD_VNODEMASK,
 			fdP->fd_ih->ih_ino >> RXOSD_UNIQUESHIFT,
 			(fdP->fd_ih->ih_ino >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK,
+			mystripe,
 			fdP->fd_ih->ih_dev));
 	OSD_UNLOCK;
 	return;
@@ -3400,7 +3405,7 @@ int writePS(struct rx_call *call, t10rock *rock,
         code = EIO;
 	goto finis;
     }
-    lock_file(fdP, LOCK_EX);
+    lock_file(fdP, LOCK_EX, mystripe);
 #ifdef USE_VIO
     while (bytesToXfer > 0) {
 	struct iovec iov[RX_MAXIOVECS];
@@ -3514,7 +3519,7 @@ int writePS(struct rx_call *call, t10rock *rock,
 	
 finis:
     if (fdP) {
-	unlock_file(fdP);
+	unlock_file(fdP, mystripe);
 	FDH_CLOSE(fdP);
     }
     if (oh)
@@ -3720,7 +3725,7 @@ int CopyOnWrite(struct rx_call *call, struct oparmT10 *o, afs_uint64 offs,
         code = EIO;
         goto bad;
     }
-    lock_file(fdP, LOCK_SH);
+    lock_file(fdP, LOCK_SH, 0);
     offset = 0;
     if (FDH_SEEK(fdP, offset, SEEK_SET) < 0){
         code = EIO;
@@ -3744,7 +3749,7 @@ int CopyOnWrite(struct rx_call *call, struct oparmT10 *o, afs_uint64 offs,
         code = EIO;
         goto bad;
     }
-    lock_file(fdP2, LOCK_EX);
+    lock_file(fdP2, LOCK_EX, 0);
     buffer = AllocSendBuffer();
     if (offs) { 		/* copy begin of the file */
 	if (length > offs)
@@ -3808,7 +3813,7 @@ int CopyOnWrite(struct rx_call *call, struct oparmT10 *o, afs_uint64 offs,
 bad:
     if (code) {
         if (fdP2) {
-	    unlock_file(fdP2);
+	    unlock_file(fdP2, 0);
             FDH_REALLYCLOSE(fdP2);
 	}
         if (oh2) {
@@ -3816,12 +3821,12 @@ bad:
             oh_release(oh2);
         }
     } else {
-	unlock_file(fdP2);
+	unlock_file(fdP2, 0);
         FDH_CLOSE(fdP2);
         oh_release(oh2);
     }
     if (fdP) {
-	unlock_file(fdP);
+	unlock_file(fdP, 0);
         FDH_REALLYCLOSE(fdP);
     }
     if (oh)
@@ -3960,7 +3965,7 @@ Truncate(struct rx_call *call, struct oparmT10 *o, afs_uint64 length,
         code = EIO;
 	goto finis;
     }
-    lock_file(fdP, LOCK_EX);
+    lock_file(fdP, LOCK_EX, 0);
     code = FDH_TRUNC(fdP, length);
     ViceLog(0,("truncate of %s on lun %llu to length %llu filedesc %d\n",
 		sprint_oparmT10(o, string, sizeof(string)),
@@ -3970,7 +3975,7 @@ Truncate(struct rx_call *call, struct oparmT10 *o, afs_uint64 length,
                 length, code));
 finis:
     if (fdP) {
-	unlock_file(fdP);
+	unlock_file(fdP, 0);
         FDH_CLOSE(fdP);
     }
     if (oh)
@@ -4171,7 +4176,7 @@ readPS(struct rx_call *call, t10rock *rock, struct oparmT10 * o,
 	    }
 	    goto finis;
         }
-        lock_file(fdP, LOCK_SH);
+        lock_file(fdP, LOCK_SH, mystripe);
     }
     if (code) {
 	code = EIO;
@@ -4302,7 +4307,7 @@ readPS(struct rx_call *call, t10rock *rock, struct oparmT10 * o,
                 (afs_uint32)((o->obj_id >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK)));
 finis:
     if (fdP) {
-	unlock_file(fdP);
+	unlock_file(fdP, mystripe);
 #ifdef AFS_HPSS_SUPPORT
 	if (HSM || oh->ih->ih_dev == hpssDev) {
 #else
@@ -4610,7 +4615,7 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
         code = EIO;
 	goto finis;
     }
-    lock_file(from_fdP, LOCK_SH);
+    lock_file(from_fdP, LOCK_SH, 0);
     offset = 0;
     if (FDH_SEEK(from_fdP, offset, SEEK_SET) < 0) {
         ViceLog(0,("copy: FDH_SEEK ot offset %llu failed for %s\n",
@@ -4715,7 +4720,7 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
             code = EIO;
             goto finis;
         }
-	lock_file(to_fdP, LOCK_EX);
+	lock_file(to_fdP, LOCK_EX, 0);
         if (FDH_SEEK(to_fdP, offset, SEEK_SET) < 0){
             ViceLog(0,("copy: FDH_SEEK ot offset %llu failed for %s\n",
                     offset, sprint_oparmT10(to, string, sizeof(string))));
@@ -4759,13 +4764,13 @@ finis:
     if (buffer)
         FreeSendBuffer((struct afs_buffer *)buffer);
     if (from_fdP) {
-	unlock_file(from_fdP);
+	unlock_file(from_fdP, 0);
         FDH_CLOSE(from_fdP);
     }
     if (from_oh)
         oh_release(from_oh);
     if (to_fdP) {
-	unlock_file(to_fdP);
+	unlock_file(to_fdP, 0);
         FDH_CLOSE(to_fdP);
     }
     if (to_oh)
@@ -5151,7 +5156,7 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
 	}
     }
 #endif /* AFS_HPSS_SUPPORT */    
-    lock_file(fdP, LOCK_EX);
+    lock_file(fdP, LOCK_EX, 0);
     gettimeofday(&start, &tz);
     MD5_Init(&md5);
     for (i=0; i<list->osd_segm_descList_len; i++) {
@@ -5335,7 +5340,7 @@ bad:
     if (fdP) {
 	int code2;
         /* FDH_SYNC(fdP); does not a sync, sets only a flag in the ihandle */
-	unlock_file(fdP);
+	unlock_file(fdP, 0);
         code2 = FDH_REALLYCLOSE(fdP);
 	if (!code)
 	    code = code2;
@@ -5532,7 +5537,7 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 	}
 	goto bad;
     }
-    lock_file(fd, LOCK_SH);
+    lock_file(fd, LOCK_SH, 0);
     if (call) { 	/* not called from XferData */
 	struct fetch_entry *f;
 	f = GetFetchEntry(o);
@@ -5564,7 +5569,7 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 		    om.ometa_u.t = *o;
 		    code = RXOSD_read_from_hpss(tcon, &om, list, flag, output);
 		    if (!code) {
-		        unlock_file(fd);
+		        unlock_file(fd, 0);
 		        FDH_REALLYCLOSE(fd);
 		        fd = 0;
 		        goto done;
@@ -5732,7 +5737,7 @@ bad:
     if (buf)
 	free(buf);
     if (fd) {
-	unlock_file(fd);
+	unlock_file(fd, 0);
         FDH_REALLYCLOSE(fd);
     }
     if (oh)  {
@@ -6628,7 +6633,7 @@ write_to_hpss(struct rx_call *call, struct oparmT10 *o,
 	code = EIO;
 	goto bad;
     }
-    lock_file(fd, LOCK_EX);
+    lock_file(fd, LOCK_EX, 0);
     odsc = &list->osd_segm_descList_val[0].objList.osd_obj_descList_val[0];
     if (odsc->o.vsn != 1) {
 	ViceLog(0, ("write_to_hpss: objcct_desc contained ometa with vsn %d\n", 
@@ -6648,7 +6653,7 @@ write_to_hpss(struct rx_call *call, struct oparmT10 *o,
         code = EIO;
         goto bad;
     }
-    lock_file(fdin, LOCK_SH);
+    lock_file(fdin, LOCK_SH, 0);
     FDH_SEEK(fdin, 0, SEEK_SET);
 
     gettimeofday(&start, &tz);
@@ -6706,14 +6711,14 @@ bad:
     if (fd) {
 	int code2;
         /* FDH_SYNC(fdP); does not a sync, sets only a flag in the ihandle */
-	unlock_file(fd);
+	unlock_file(fd, 0);
         code2 = FDH_REALLYCLOSE(fd);
 	if (!code)
 	    code = code2;
     }
     oh_release(oh);
     if (fdin) {
-	unlock_file(fdin);
+	unlock_file(fdin, 0);
 #ifdef TSM_HSM_ENV
 	FDH_REALLYCLOSE(fdin);
 #else
@@ -6854,7 +6859,7 @@ read_from_hpss(struct rx_call *call, struct oparmT10 *o,
         code = EIO;
 	goto bad;
     }
-    lock_file(fd, LOCK_SH);
+    lock_file(fd, LOCK_SH, 0);
     odsc = &list->osd_segm_descList_val[0].objList.osd_obj_descList_val[0];
     if (odsc->o.vsn != 1)
     if (odsc->o.vsn != 1) {
@@ -6871,7 +6876,7 @@ read_from_hpss(struct rx_call *call, struct oparmT10 *o,
         code = EIO;
 	goto bad;
     }
-    lock_file(fdout, LOCK_EX);
+    lock_file(fdout, LOCK_EX, 0);
     FDH_SEEK(fdout, 0, SEEK_SET);
     gettimeofday(&start, &tz);
     if (output) {
@@ -6914,7 +6919,7 @@ read_from_hpss(struct rx_call *call, struct oparmT10 *o,
 	length -= bytes;
     }
     /* FDH_SYNC(fdout); does not a sync, sets only a flag in the ihandle */
-    unlock_file(fdout);
+    unlock_file(fdout, 0);
     FDH_CLOSE(fdout);
     fdout = 0;
     if (output) {
@@ -6943,13 +6948,13 @@ bad:
     if (buf)
 	free(buf);
     if (fd) {
-	unlock_file(fd);
+	unlock_file(fd, 0);
         FDH_REALLYCLOSE(fd);
     }
     if (oh)
         oh_release(oh);
     if (fdout) {
-	unlock_file(fdout);
+	unlock_file(fdout, 0);
 	FDH_REALLYCLOSE(fdout);
     }
     if (ohout)
