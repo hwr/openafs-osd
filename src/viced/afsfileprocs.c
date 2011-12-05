@@ -8831,6 +8831,13 @@ SRXAFS_EndAsyncStore(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
 	    errorCode = 0; 	/* don't bother client with this problem! */
 	}
     } else {
+        /*
+         *  filelength is avc->f.m.Length which may be more than what has been
+         *  transferred in this async transaction. Don't store this number in
+         *  the vnode. The actual length on disk is either oldlength (when
+         *  a an old chunk has been overwritten) or offset + length when
+         *  data have been appended at the end.
+         */
 	FileLength = oldlength;
         if (offset + length > oldlength)
 	    FileLength = offset + length;
