@@ -96,6 +96,16 @@ SDISK_Begin(struct rx_call *rxcall, struct ubik_tid *atid, afs_int32 index)
 }
 
 afs_int32
+SDISK_BeginOld(struct rx_call *rxcall, struct ubik_tid *atid)
+{
+#ifdef TRY_TO_BE_COMPATIBLE
+    return SDISK_Begin(rxcall, atid, 0);
+#else
+    return RXGEN_OPCODE;
+#endif
+}
+
+afs_int32
 SDISK_Commit(struct rx_call *rxcall, struct ubik_tid *atid, afs_int32 index)
 {
     afs_int32 code;
@@ -134,6 +144,16 @@ SDISK_Commit(struct rx_call *rxcall, struct ubik_tid *atid, afs_int32 index)
     }
     DBRELE(dbase);
     return code;
+}
+
+afs_int32
+SDISK_CommitOld(struct rx_call *rxcall, struct ubik_tid *atid)
+{
+#ifdef TRY_TO_BE_COMPATIBLE
+    return SDISK_Commit(rxcall, atid, 0);
+#else
+    return RXGEN_OPCODE;
+#endif
 }
 
 afs_int32
@@ -180,6 +200,16 @@ SDISK_ReleaseLocks(struct rx_call *rxcall, struct ubik_tid *atid, afs_int32 inde
 }
 
 afs_int32
+SDISK_ReleaseLocksOld(struct rx_call *rxcall, struct ubik_tid *atid)
+{
+#ifdef TRY_TO_BE_COMPATIBLE
+    return SDISK_ReleaseLocks(rxcall, atid, 0);
+#else
+    return RXGEN_OPCODE;
+#endif
+}
+
+afs_int32
 SDISK_Abort(struct rx_call *rxcall, struct ubik_tid *atid, afs_int32 index)
 {
     afs_int32 code;
@@ -221,6 +251,16 @@ SDISK_Abort(struct rx_call *rxcall, struct ubik_tid *atid, afs_int32 index)
     ubik_currentTrans[index] = (struct ubik_trans *)0;
     DBRELE(dbase);
     return code;
+}
+
+afs_int32
+SDISK_AbortOld(struct rx_call *rxcall, struct ubik_tid *atid)
+{
+#ifdef TRY_TO_BE_COMPATIBLE
+    return SDISK_Abort(rxcall, atid, 0);
+#else
+    return RXGEN_OPCODE;
+#endif
 }
 
 /* apos and alen are not used */
@@ -271,6 +311,17 @@ SDISK_Lock(struct rx_call *rxcall, struct ubik_tid *atid, afs_int32 index,
 
     DBRELE(dbase);
     return code;
+}
+
+afs_int32
+SDISK_LockOld(struct rx_call *rxcall, struct ubik_tid *atid,
+	   afs_int32 afile, afs_int32 apos, afs_int32 alen, afs_int32 atype)
+{
+#ifdef TRY_TO_BE_COMPATIBLE
+    return SDISK_Lock(rxcall, atid, 0, afile, apos, alen, atype);
+#else
+    return RXGEN_OPCODE;
+#endif
 }
 
 /*!
@@ -330,6 +381,17 @@ SDISK_WriteV(struct rx_call *rxcall, struct ubik_tid *atid, afs_int32 index,
 }
 
 afs_int32
+SDISK_WriteVOld(struct rx_call *rxcall, struct ubik_tid *atid,
+	     iovec_wrt *io_vector, iovec_buf *io_buffer)
+{
+#ifdef TRY_TO_BE_COMPATIBLE
+    return SDISK_WriteV(rxcall, atid, 0, io_vector, io_buffer);
+#else
+    return RXGEN_OPCODE;
+#endif
+}
+
+afs_int32
 SDISK_Write(struct rx_call *rxcall, struct ubik_tid *atid, afs_int32 index,
 	    afs_int32 afile, afs_int32 apos, bulkdata *adata)
 {
@@ -366,6 +428,17 @@ SDISK_Write(struct rx_call *rxcall, struct ubik_tid *atid, afs_int32 index,
 }
 
 afs_int32
+SDISK_WriteOld(struct rx_call *rxcall, struct ubik_tid *atid,
+	    afs_int32 afile, afs_int32 apos, bulkdata *adata)
+{
+#ifdef TRY_TO_BE_COMPATIBLE
+    return SDISK_Write(rxcall, atid, 0, afile, apos, adata);
+#else
+    return RXGEN_OPCODE;
+#endif
+}
+
+afs_int32
 SDISK_Truncate(struct rx_call *rxcall, struct ubik_tid *atid, afs_int32 index,
 	       afs_int32 afile, afs_int32 alen)
 {
@@ -397,6 +470,17 @@ SDISK_Truncate(struct rx_call *rxcall, struct ubik_tid *atid, afs_int32 index,
     code = udisk_truncate(ubik_currentTrans[index], afile, alen);
     DBRELE(dbase);
     return code;
+}
+
+afs_int32
+SDISK_TruncateOld(struct rx_call *rxcall, struct ubik_tid *atid,
+	       afs_int32 afile, afs_int32 alen)
+{
+#ifdef TRY_TO_BE_COMPATIBLE
+    return SDISK_Truncate(rxcall, atid, 0, afile, alen);
+#else
+    return RXGEN_OPCODE;
+#endif
 }
 
 afs_int32
@@ -438,6 +522,16 @@ SDISK_GetVersion(struct rx_call *rxcall, afs_int32 index,
 	aversion->counter = 0;
     }
     return 0;
+}
+
+afs_int32
+SDISK_GetVersionOld(struct rx_call *rxcall, struct ubik_version *aversion)
+{
+#ifdef TRY_TO_BE_COMPATIBLE
+    return SDISK_GetVersion(rxcall, 0, aversion);
+#else
+    return RXGEN_OPCODE;
+#endif
 }
 
 afs_int32
@@ -501,6 +595,17 @@ SDISK_GetFile(struct rx_call *rxcall, afs_int32 index, afs_int32 file,
     code = (*dbase->getlabel) (dbase, file, version);	/* return the dbase, too */
     DBRELE(dbase);
     return code;
+}
+
+afs_int32
+SDISK_GetFileOld(struct rx_call *rxcall, afs_int32 file,
+	      struct ubik_version *version)
+{
+#ifdef TRY_TO_BE_COMPATIBLE
+    return SDISK_GetFile(rxcall, 0, file, version);
+#else
+    return RXGEN_OPCODE;
+#endif
 }
 
 afs_int32
@@ -679,6 +784,17 @@ SDISK_SendFile(struct rx_call *rxcall, afs_int32 file, afs_int32 index,
 }
 
 afs_int32
+SDISK_SendFileOld(struct rx_call *rxcall, afs_int32 file,
+	       afs_int32 length, struct ubik_version *avers)
+{
+#ifdef TRY_TO_BE_COMPATIBLE
+    return SDISK_SendFile(rxcall, file, 0, length, avers);
+#else
+    return RXGEN_OPCODE;
+#endif
+}
+
+afs_int32
 SDISK_Probe(struct rx_call *rxcall)
 {
     return 0;
@@ -831,3 +947,16 @@ SDISK_SetVersion(struct rx_call *rxcall, struct ubik_tid *atid, afs_int32 index,
     DBRELE(dbase);
     return code;
 }
+
+afs_int32
+SDISK_SetVersionOld(struct rx_call *rxcall, struct ubik_tid *atid,
+		 struct ubik_version *oldversionp,
+		 struct ubik_version *newversionp)
+{
+#ifdef TRY_TO_BE_COMPATIBLE
+    return SDISK_SetVersion(rxcall, atid, 0, oldversionp, newversionp);
+#else
+    return RXGEN_OPCODE;
+#endif
+}
+

@@ -356,6 +356,29 @@ SVOTE_Beacon(struct rx_call * rxcall, afs_int32 astate,
     return vote;
 }
 
+afs_int32
+SVOTE_BeaconOld(struct rx_call * rxcall, afs_int32 astate,
+	     afs_int32 astart, struct ubik_version *Version,
+	     struct ubik_tid *tid)
+{
+#ifdef TRY_TO_BE_COMPATIBLE
+    afs_int32 code;
+    struct ubik_db_stateList list;
+
+    list.ubik_db_stateList_len = 0;
+    list.ubik_db_stateList_val = NULL;
+    code = SVOTE_Beacon(rxcall, astate, astart, &list);
+    if (list.ubik_db_stateList_len) {
+        *Version = list.ubik_db_stateList_val[0].vers;
+        *tid = list.ubik_db_stateList_val[0].tid;
+	free(list.ubik_db_stateList_val);
+    }
+    return code;
+#else
+    return RXGEN_OPCODE;
+#endif
+}
+    
 /*!
  * \brief Handle per-server debug command, where 0 is the first server.
  *
