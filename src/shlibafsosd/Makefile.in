@@ -45,7 +45,9 @@ RXOSDOBJS = \
 OSDDBOBJS =\
 	osddb.cs.o \
 	osddb.xdr.o \
-	osddbuser.o
+	osddbuser.o \
+	osddb.ss.o \
+	osddbprocs.o
 
 VOLOBJS = \
 	vol_osd.o \
@@ -128,6 +130,9 @@ osddb.h: ${OSDDB}/osddb.xg
 osddb.cs.c: ${OSDDB}/osddb.xg
 	${RXGEN} -A -x -C -o $@ ${OSDDB}/osddb.xg
 
+osddb.ss.c: ${OSDDB}/osddb.xg
+	${RXGEN} -A -x -S -o $@ ${OSDDB}/osddb.xg
+
 osddb.xdr.c: ${OSDDB}/osddb.xg
 	${RXGEN} -A -x -c -o $@ ${OSDDB}/osddb.xg
 
@@ -139,6 +144,12 @@ osddb.xdr.o: osddb.xdr.c osddb.h
 
 osddb.cs.o: osddb.cs.c osddb.h
 	${CCRULE2}
+
+osddb.ss.o: osddb.ss.c osddb.h
+	${CCRULE2}
+
+osddbprocs.o: ${OSDDB}/osddbprocs.c
+	${CCRULE}
 
 # rxosd stuff
 

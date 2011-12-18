@@ -15,12 +15,13 @@
  * inside the library. So a version mismatch can easily be detected.
  */
  
-#define LIBAFSOSD_VERSION 2
+#define LIBAFSOSD_VERSION 4
 
 /*
  *	Unspecific operations used in general servers provided by AFS/OSD
  */
 
+#ifndef BUILDING_VLSERVER
 struct osd_vol_ops_v0 {
     int (*op_salv_OsdMetadata) (FdHandle_t *fd, struct VnodeDiskObject *vd,
 				afs_uint32 vn, afs_uint32 entrylength, void *rock,
@@ -79,7 +80,7 @@ struct osd_vol_ops_v0 {
 };
 
 extern struct osd_vol_ops_v0 *osdvol;
-
+#endif /* BUILDING_VLSERVER */
 /*
  *	Unspecific data pointers used in AFS/OSD provided by general servers
  */
@@ -113,7 +114,7 @@ struct rxosd_conn {
     char checked;
 };
 
-#if defined(_AFS_VICED_HOST_H) || defined(BUILD_SHLIBAFSOSD)
+#if defined(_AFS_VICED_HOST_H) || (defined(BUILD_SHLIBAFSOSD) && !defined(BUILDING_VLSERVER))
 /* 
  *	Special stuff for the fileserver
  */
@@ -138,7 +139,7 @@ struct viced_ops_v0 {
                                    struct AFSStoreStatus * InStatus);
     int (*EndAsyncTransaction) (struct rx_call *call, AFSFid *Fid,
                                 afs_uint64 transid);
-    void (*GetStatus) (Vnode * targetptr, struct AFSFetchStatus * status,
+    void (*GetStatus) (struct Vnode * targetptr, struct AFSFetchStatus * status,
 		       afs_int32 rights, afs_int32 anyrights, Vnode * parentptr);
     int (*GetVolumePackage) (struct rx_connection *tcon, AFSFid * Fid,
                              struct Volume ** volptr, Vnode ** targetptr,
@@ -395,7 +396,7 @@ extern struct osd_volser_ops_v0 *osdvolser;
 struct volser_data_v0 {
     afs_int32 *aConvertToOsd;
 };
-#endif
+#endif /* ! BUILDING_VOLSERVER */
 
 struct init_volser_inputs {
     struct vol_data_v0 *voldata;
@@ -409,7 +410,7 @@ struct init_volser_outputs {
 
 extern int init_volser_afsosd(char *afsversion, char** afsosdVersion, void *inrock,
 			      void *outrock, void *libafsosdrock, afs_int32 version);
-#endif
+#endif /* defined(_RXGEN_VOLINT_) || defined(BUILD_SHLIBAFSOSD) */
 
 struct init_salv_inputs {
     struct vol_data_v0 *voldata;
@@ -427,6 +428,20 @@ struct init_salv_outputs {
 extern int init_salv(char *version, char **afsosdVersion, void *inputs,
 		     void *Outputs, void *libafsosdrock);
 
+#ifdef BUILDING_VLSERVER
+struct osddb_ops_v0 {
+    afs_int32 (*op_OSDDB_ExecuteRequest) (struct rx_call *acall);
+};
+
+struct init_osddb_inputs {
+    struct vol_data_v0 *voldata;
+    struct ubik_dbase **OSD_dbase;
+};
+
+struct init_osddb_outputs {
+    struct osddb_ops_v0 **osddb;
+};
+#endif
 #define USE_OSD_BYSIZE 1       /* special value for osdPolicy */
 
 extern int init_osdvol(char *version, char **afsosdVersion,

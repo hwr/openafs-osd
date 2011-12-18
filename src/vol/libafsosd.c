@@ -40,6 +40,8 @@
 /* #if defined(BUILDING_FILESERVER) || defined(BUILDING_VOLSERVER) */
 #include <afs/afsosd.h>
 /* #endif */
+
+extern int ubeacon_AmSyncSite(void);
 extern void FidZap(DirHandle *);
 /*
  *  Everything in alpsbetical order ...
@@ -95,6 +97,7 @@ private struct lwp_ops_v0 {
     void (*Afs_Lock_Obtain) (struct Lock *lock, int how);
     void (*Afs_Lock_ReleaseR) (struct Lock *lock);
     unsigned int (*FT_ApproxTime) (void);
+    int (*FT_GetTimeOfDay) (struct timeval *tv, struct timezone *tz);
 #ifndef AFS_PTHREAD_ENV
     void (*IOMGR_Sleep) (int seconds);
 #endif
@@ -161,13 +164,30 @@ extern int ubik_Call();
 #endif
 
 private struct ubik_ops_v0 {
+    int (*ubeacon_AmSyncSite) (void);
+    int (*ubik_AbortTrans) (struct ubik_trans *transPtr);
+    int (*ubik_BeginTrans) (struct ubik_dbase *dbase, afs_int32 transMode,
+			    struct ubik_trans **transPtr);
+    int (*ubik_BeginTransReadAny) (struct ubik_dbase *dbase, afs_int32 transMode,
+                                   struct ubik_trans **transPtr);
     int (*ubik_Call) (int (*aproc) (), struct ubik_client *aclient,
                       afs_int32 aflags, long p1, long p2, long p3, long p4,
 		      long p5, long p6, long p7, long p8, long p9, long p10,
 		      long p11, long p12, long p13, long p14, long p15,
 		      long p16);
+    int (*ubik_CheckCache) (struct ubik_trans *atrans, ubik_updatecache_func check,
+                            void *rock);
     int (*ubik_ClientInit) (struct rx_connection **serverconns,
                                struct ubik_client **aclient);
+    int (*ubik_EndTrans) (struct ubik_trans *transPtr);
+    int (*ubik_Read) (struct ubik_trans *transPtr, void *buffer,
+                      afs_int32 length);
+    int (*ubik_Seek) (struct ubik_trans *transPtr, afs_int32 fileid,
+                      afs_int32 position);
+    int (*ubik_SetLock) (struct ubik_trans *atrans, afs_int32 apos,
+                         afs_int32 alen, int atype);
+    int (*ubik_Write) (struct ubik_trans *transPtr, void *buffer,
+                       afs_int32 length);
 } ubik_ops_v0;
 static struct ubik_ops_v0 *ubik = NULL;
 
@@ -197,6 +217,8 @@ void viced_fill_ops(struct viced_ops_v0 *viced);
  *  from src/vol
  */
 struct vol_ops_v0 {
+    int (*FSYNC_VolOp) (VolumeId volume, char *partName, int com, int reason,
+                        SYNC_response * res);
     int (*ListDiskVnode) (struct Volume *vp, afs_uint32 vnodeNumber,
                           afs_uint32 **ptr, afs_uint32 length, char *aclbuf);
     int (*ListLockedVnodes) (afs_uint32 *count, afs_uint32 maxcount, afs_uint32 **ptr);
@@ -282,10 +304,12 @@ fill_ops(struct ops_ptr *opsptr)
     opsptr->auth = auth;
 #endif
 
+#ifndef BUILDING_VLSERVER
     dir = &dir_ops_v0;
     dir->FidZap = FidZap;
     dir->InverseLookup = InverseLookup;
     opsptr->dir = dir;
+#endif
  
 #ifdef BUILDING_FILESERVER
     fsint = &fsint_ops_v0;
@@ -304,6 +328,7 @@ fill_ops(struct ops_ptr *opsptr)
     lwp->Afs_Lock_Obtain = Afs_Lock_Obtain;
     lwp->Afs_Lock_ReleaseR = Afs_Lock_ReleaseR;
     lwp->FT_ApproxTime = FT_ApproxTime;
+    lwp->FT_GetTimeOfDay = FT_GetTimeOfDay;
 #ifndef AFS_PTHREAD_ENV
     lwp->IOMGR_Sleep = IOMGR_Sleep;
 #endif
@@ -344,8 +369,24 @@ fill_ops(struct ops_ptr *opsptr)
     opsptr->rx = rx;
 
     ubik = &ubik_ops_v0;
+#ifdef BUILDING_VLSERVER
+    ubik->ubeacon_AmSyncSite = ubeacon_AmSyncSite;
+    ubik->ubik_AbortTrans = ubik_AbortTrans;
+    ubik->ubik_BeginTrans = ubik_BeginTrans;
+    ubik->ubik_BeginTransReadAny = ubik_BeginTransReadAny;
+#endif
     ubik->ubik_Call = ubik_Call;
+#ifdef BUILDING_VLSERVER
+    ubik->ubik_CheckCache = ubik_CheckCache;
+#endif
     ubik->ubik_ClientInit = ubik_ClientInit;
+#ifdef BUILDING_VLSERVER
+    ubik->ubik_EndTrans = ubik_EndTrans;
+    ubik->ubik_Read = ubik_Read;
+    ubik->ubik_Seek = ubik_Seek;
+    ubik->ubik_SetLock = ubik_SetLock;
+    ubik->ubik_Write = ubik_Write;
+#endif
     opsptr->ubik = ubik;
 #endif
 
@@ -362,7 +403,11 @@ fill_ops(struct ops_ptr *opsptr)
     opsptr->viced = viced;
 #endif
 
+#ifndef BUILDING_VLSERVER
     vol = &vol_ops_v0;
+#ifdef BUILDING_VOLSERVER
+    vol->FSYNC_VolOp = FSYNC_VolOp;
+#endif
     vol->ListDiskVnode = ListDiskVnode;
     vol->ListLockedVnodes = ListLockedVnodes;
     vol->VAttachVolume = VAttachVolume;
@@ -395,6 +440,7 @@ fill_ops(struct ops_ptr *opsptr)
     vol->stream_aseek = stream_aseek;
     vol->stream_read = stream_read;
     opsptr->vol = vol;
+#endif
 
 #ifdef BUILDING_VOLSERVER
     volser = &volser_ops_v0;
@@ -639,6 +685,12 @@ FT_ApproxTime(void)
     return (lwp->FT_ApproxTime)();
 }
 
+int
+FT_GetTimeOfDay(struct timeval *tv, struct timezone *tz)
+{
+    return (lwp->FT_GetTimeOfDay)(tv, tz);
+}
+
 #ifndef AFS_PTHREAD_ENV
 void
 IOMGR_Sleep(int seconds)
@@ -845,11 +897,31 @@ xdrrx_create(XDR * xdrs, struct rx_call *call, enum xdr_op op)
 /* 
  *  from src/ubik
  */
+
 int
-ubik_ClientInit(struct rx_connection **serverconns,
-                struct ubik_client **aclient)
+ubeacon_AmSyncSite(void)
 {
-    return (ubik->ubik_ClientInit)(serverconns, aclient);
+    return (ubik->ubeacon_AmSyncSite)();
+}
+
+int
+ubik_AbortTrans(struct ubik_trans *transPtr)
+{
+    return (ubik->ubik_AbortTrans)(transPtr);
+}
+
+int
+ubik_BeginTrans(struct ubik_dbase *dbase, afs_int32 transMode,
+		struct ubik_trans **transPtr)
+{
+    return (ubik->ubik_BeginTrans)(dbase, transMode, transPtr);
+}
+
+int
+ubik_BeginTransReadAny(struct ubik_dbase *dbase, afs_int32 transMode,
+                       struct ubik_trans **transPtr)
+{
+    return (ubik->ubik_BeginTransReadAny)(dbase, transMode, transPtr);
 }
 
 afs_int32
@@ -861,6 +933,51 @@ ubik_Call(int (*aproc) (), struct ubik_client *aclient,
     return (ubik->ubik_Call)(aproc, aclient, aflags, p1, p2, p3, p4,
 				      p5, p6, p7, p8, p9, p10, p11, p12, p13,
 				      p14, p15, p16);
+}
+
+int
+ubik_CheckCache(struct ubik_trans *atrans, ubik_updatecache_func check,
+                            void *rock)
+{
+    return (ubik->ubik_CheckCache)(atrans, check, rock);
+}
+
+int
+ubik_ClientInit(struct rx_connection **serverconns,
+                struct ubik_client **aclient)
+{
+    return (ubik->ubik_ClientInit)(serverconns, aclient);
+}
+
+int
+ubik_EndTrans(struct ubik_trans *transPtr)
+{
+    return (ubik->ubik_EndTrans)(transPtr);
+}
+
+int
+ubik_Read(struct ubik_trans *transPtr, void *buffer, afs_int32 length)
+{
+    return (ubik->ubik_Read)(transPtr, buffer, length);
+}
+
+int
+ubik_Seek(struct ubik_trans *transPtr, afs_int32 fileid, afs_int32 position)
+{
+    return (ubik->ubik_Seek)(transPtr, fileid, position);
+}
+
+int
+ubik_SetLock(struct ubik_trans *atrans, afs_int32 apos,
+             afs_int32 alen, int atype)
+{
+    return (ubik->ubik_SetLock)(atrans, apos, alen, atype);
+}
+
+int
+ubik_Write(struct ubik_trans *transPtr, void *buffer, afs_int32 length)
+{
+    return (ubik->ubik_Write)(transPtr, buffer, length);
 }
 
 /* 
@@ -1048,6 +1165,13 @@ setLegacyFetch(afs_int32 i)
 /* 
  *  from src/vol
  */
+int 
+FSYNC_VolOp(VolumeId volume, char *partName, int com, int reason,
+                             SYNC_response * res)
+{
+    return (vol->FSYNC_VolOp)(volume, partName, com, reason, res);
+}
+
 int
 ListDiskVnode(struct Volume *vp, afs_uint32 vnodeNumber,
               afs_uint32 **ptr, afs_uint32 length, char *aclbuf)

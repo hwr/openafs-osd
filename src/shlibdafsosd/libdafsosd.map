@@ -10,6 +10,7 @@
 	init_viced_afsosd;
 	init_volser_afsosd;
 	init_salv_afsosd;
+	init_osddbserver;
     local:
 	*;
 };

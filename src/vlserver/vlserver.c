@@ -52,6 +52,13 @@
 #include <afs/afsutil.h>
 #include "vlserver.h"
 #include "vlserver_internal.h"
+#ifdef AFS_PTHREAD_ENV
+#include <afs/afsosd.h>
+#endif
+
+struct osddb_ops_v0 *osddb = NULL;
+#define OSDDB_SERVICE_ID 13
+#define OSDDB_SERVER_OLDPORT htons(7012)
 
 #define MAXLWP 16
 const char *vl_dbaseName;
@@ -59,7 +66,7 @@ struct afsconf_dir *vldb_confdir = 0;	/* vldb configuration dir */
 int lwps = 9;
 
 struct vldstats dynamic_statistics;
-struct ubik_dbase *VL_dbase;
+struct ubik_dbase *VL_dbase, *OSD_dbase;
 afs_uint32 HostAddress[MAXSERVERID + 1];
 
 static void *CheckSignal(void*);
@@ -70,6 +77,9 @@ int rxMaxMTU = -1;
 afs_int32 rxBind = 0;
 int rxkadDisableDotCheck = 0;
 int debuglevel = 0;
+#ifdef AFS_PTHREAD_ENV
+int libafsosd = 0;
+#endif
 
 #define ADDRSPERSITE 16         /* Same global is in rx/rx_user.c */
 afs_uint32 SHostAddrs[ADDRSPERSITE];
@@ -234,6 +244,10 @@ main(int argc, char **argv)
 	} else if (strncmp(argv[index], "-syslog=", 8) == 0) {
 	    serverLogSyslog = 1;
 	    serverLogSyslogFacility = atoi(argv[index] + 8);
+#ifdef AFS_PTHREAD_ENV
+	} else if (strcmp(argv[index], "-libafsosd") == 0) {
+	    libafsosd = 1;
+#endif
 #endif
 	} else {
 	    /* support help flag */
@@ -241,7 +255,11 @@ main(int argc, char **argv)
 	    printf("Usage: vlserver [-p <number of processes>] [-nojumbo] "
 		   "[-rxmaxmtu <bytes>] [-rxbind] [-allow-dotted-principals] "
 		   "[-auditlog <log path>] [-jumbo] [-d <debug level>] "
-		   "[-syslog[=FACILITY]] "
+#ifdef AFS_PTHREAD_ENV
+		   "[-syslog[=FACILITY]] [-libafsosd]"
+#else
+		   "[-syslog[=FACILITY]]"
+#endif
 		   "[-enable_peer_stats] [-enable_process_stats] "
 		   "[-help]\n");
 #else
@@ -343,6 +361,10 @@ main(int argc, char **argv)
     }
 
     ubik_nBuffers = 512;
+#ifdef AFS_PTHREAD_ENV
+    if (libafsosd)
+        ubik_nBuffers = 1024;	/* doubled because of second database serve */
+#endif
     ubik_CRXSecurityProc = afsconf_ClientAuth;
     ubik_CRXSecurityRock = (char *)tdir;
     ubik_SRXSecurityProc = afsconf_ServerAuth;
@@ -356,6 +378,51 @@ main(int argc, char **argv)
 	printf("vlserver: Ubik init failed: %s\n", afs_error_message(code));
 	exit(2);
     }
+#ifdef AFS_PTHREAD_ENV
+    if (libafsosd) {
+	struct vol_data_v0 voldata = {
+	    &vldb_confdir,
+	    &LogLevel,
+	    NULL,
+	    NULL,
+	    NULL,
+	    NULL,
+	    NULL,
+	    NULL,
+	    NULL,
+	    NULL,
+	    NULL,
+	    NULL,
+	    NULL,
+	    NULL
+	};
+	struct init_osddb_inputs input = {
+	    &voldata,
+	    &OSD_dbase
+	};
+	struct init_osddb_outputs output = {
+	    &osddb
+ 	};
+        char *osd_dbaseName = AFSDIR_SERVER_OSDDB_FILEPATH;
+
+        code =
+	    ubik_ServerInitByInfoN(myHost, 0, 1 /* index */, &info, clones,
+			           osd_dbaseName, &OSD_dbase);
+        if (code) {
+	    printf("vlserver: Ubik init failed for OSDDB: %s, continuing without OSDDB\n",
+		       afs_error_message(code));
+            libafsosd = 0;
+        }
+	if (OSD_dbase) {
+	    code = load_libafsosd("init_osddbserver", &input, &output);
+	    if (code) {
+	        ViceLog(0, ("Loading libafsosd.so failed with code %d, continuing without OSDDB\n",
+                        code));
+	        libafsosd = 0; 	/* Continue as vlserver without OSDDB */
+	    }
+	}
+    }
+#endif
     if (!rxJumbograms) {
 	rx_SetNoJumbo();
     }
@@ -395,8 +462,30 @@ main(int argc, char **argv)
 	printf("vlserver: Could not create rpc stats rx service\n");
 	exit(3);
     }
+
     rx_SetMinProcs(tservice, 2);
     rx_SetMaxProcs(tservice, 4);
+
+#ifdef AFS_PTHREAD_ENV
+    if (libafsosd) {
+	tservice =
+	    rx_NewServiceHost(host, 0, OSDDB_SERVICE_ID, "osddb server",
+			  securityClasses, numClasses,
+			  (osddb->op_OSDDB_ExecuteRequest));
+	if (!tservice) 
+	    printf("vlserver: Could not create OSDDB service, continuing without ...\n");	
+	tservice =
+	    rx_NewServiceHost(host, OSDDB_SERVER_OLDPORT, OSDDB_SERVICE_ID,
+			      "osddb server", securityClasses, numClasses,
+			  (osddb->op_OSDDB_ExecuteRequest));
+	if (!tservice) 
+	    printf("vlserver: Could not create OSDDB service, continuing without ...\n");	
+    }
+    if (libafsosd) {
+        rx_SetMinProcs(tservice, 4);
+        rx_SetMaxProcs(tservice, 8);
+    }
+#endif
 
     LogCommandLine(argc, argv, "vlserver", VldbVersion, "Starting AFS", FSLog);
     printf("%s\n", cml_version_number);	/* Goes to the log */

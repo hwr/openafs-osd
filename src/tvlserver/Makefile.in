@@ -21,6 +21,7 @@ CCRULE=${CC} ${CFLAGS} -c
 RX=../rx
 UTIL=../util
 VLSERVER=../vlserver
+VOL=../vol
 
 RXOBJS= rx_pthread.o rxkad_errs.o
 
@@ -126,12 +127,12 @@ sascnvldb: sascnvldb.o ${LIBS}
 sascnvldb.o: ${VLSERVER}/sascnvldb.c
 	${CCRULE} ${srcdir}/${VLSERVER}/sascnvldb.c
 
-vlserver: vlserver.o vlutils.o vlprocs.o vldbint.ss.o vldbint.xdr.o $(LIBS)
+vlserver: vlserver.o vlutils.o vlprocs.o vldbint.ss.o vldbint.xdr.o libafsosd.o $(LIBS)
 	$(CC) ${LDFLAGS} -o vlserver vlserver.o vlutils.o vlprocs.o vldbint.ss.o \
-		vldbint.xdr.o $(LIBS) ${MT_LIBS} ${XLIBS} ${TOP_LIBDIR}/libaudit.a
+		vldbint.xdr.o libafsosd.o -ldl $(LIBS) ${MT_LIBS} ${XLIBS} ${TOP_LIBDIR}/libaudit.a
 
 vlserver.o: ${VLSERVER}/vlserver.c ${INCLS} AFS_component_version_number.o
-	${CCRULE} ${srcdir}/${VLSERVER}/vlserver.c
+	${CCRULE} -DBUILDING_VLSERVER ${srcdir}/${VLSERVER}/vlserver.c
 
 vlutils.o: ${VLSERVER}/vlutils.c ${INCLS}
 	${CCRULE} ${srcdir}/${VLSERVER}/vlutils.c
@@ -169,6 +170,9 @@ Kvldbint.cs.c: ${VLSERVER}/vldbint.xg
 
 Kvldbint.xdr.c: ${VLSERVER}/vldbint.xg
 	${RXGEN} -A -x -k -c -o $@ ${srcdir}/${VLSERVER}/vldbint.xg
+
+libafsosd.o: ${srcdir}/${VOL}/libafsosd.c
+	${CCRULE} -DBUILDING_VLSERVER ${srcdir}/${VOL}/libafsosd.c
 
 vlclient: vlclient.o $(OBJS) $(LIBS) ${INCLS}
 	$(CC) ${LDFLAGS} -o vlclient vlclient.o $(OBJS) $(LIBS) ${MT_LIBS} ${XLIBS} ${TOP_LIBDIR}/libcmd.a
