@@ -85,12 +85,30 @@ unthread(struct ubik_trans *atrans)
  * \brief some debugging assistance
  */
 void
+udisk_Debug_new(afs_int32 *lockedPages, afs_int32 *writeLockedPages)
+{
+    struct buffer *tb;
+    int i;
+
+    *lockedPages = 0;
+    *writeLockedPages = 0;
+    tb = Buffers;
+    for (i = 0; i < nbuffers; i++, tb++) {
+	if (tb->lockers) {
+	    *lockedPages++;
+	    if (tb->dirty)
+		*writeLockedPages++;
+	}
+    }
+}
+
+void
 udisk_Debug(struct ubik_debug *aparm)
 {
     struct buffer *tb;
     int i;
 
-    memcpy(&aparm->localVersion, &ubik_dbase->version,
+    memcpy(&aparm->localVersion, &ubik_dbase[0]->version,
 	   sizeof(struct ubik_version));
     aparm->lockedPages = 0;
     aparm->writeLockedPages = 0;
@@ -103,7 +121,6 @@ udisk_Debug(struct ubik_debug *aparm)
 	}
     }
 }
-
 /*!
  * \brief Write an opcode to the log.
  *
@@ -832,7 +849,8 @@ udisk_commit(struct ubik_trans *atrans)
 	dbase = atrans->dbase;
 
 	/* On the first write to the database. We update the versions */
-	if (ubeacon_AmSyncSite() && !(urecovery_state & UBIK_RECLABELDB)) {
+	if (ubeacon_AmSyncSite() 
+	  && !(urecovery_state[dbase->dbase_number] & UBIK_RECLABELDB)) {
 	    oldversion = dbase->version;
 	    newversion.epoch = FT_ApproxTime();;
 	    newversion.counter = 1;
@@ -840,7 +858,7 @@ udisk_commit(struct ubik_trans *atrans)
 	    code = (*dbase->setlabel) (dbase, 0, &newversion);
 	    if (code)
 		return (code);
-	    ubik_epochTime = newversion.epoch;
+	    ubik_epochTime[dbase->dbase_number] = newversion.epoch;
 	    dbase->version = newversion;
 
 	    /* Ignore the error here. If the call fails, the site is
@@ -849,7 +867,7 @@ udisk_commit(struct ubik_trans *atrans)
 	     */
 	    ContactQuorum_DISK_SetVersion( atrans, 1 /*CStampVersion */ ,
 					   &oldversion, &newversion);
-	    urecovery_state |= UBIK_RECLABELDB;
+	    urecovery_state[dbase->dbase_number] |= UBIK_RECLABELDB;
 	}
 
 	dbase->version.counter++;	/* bump commit count */

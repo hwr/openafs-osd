@@ -71,7 +71,10 @@ int ubikPrimaryAddrOnly;
 int
 urecovery_ResetState(void)
 {
-    urecovery_state = 0;
+    afs_int32 i;
+
+    for (i=0; i<MAX_UBIK_DBASES; i++)
+        urecovery_state[i] = 0;
 #if !defined(AFS_PTHREAD_ENV)
     /*  No corresponding LWP_WaitProcess found anywhere for this -- klm */
     LWP_NoYieldSignal(&urecovery_state);
@@ -109,19 +112,20 @@ urecovery_LostServer(void)
 int
 urecovery_AllBetter(struct ubik_dbase *adbase, int areadAny)
 {
-    afs_int32 rcode;
+    afs_int32 rcode, i;
 
     ubik_dprint_25("allbetter checking\n");
     rcode = 0;
 
 
+    i = adbase->dbase_number;
     if (areadAny) {
-	if (ubik_dbase->version.epoch > 1)
+	if (adbase->version.epoch > 1)
 	    rcode = 1;		/* Happy with any good version of database */
     }
 
     /* Check if we're sync site and we've got the right data */
-    else if (ubeacon_AmSyncSite() && (urecovery_state & UBIK_RECHAVEDB)) {
+    else if (ubeacon_AmSyncSite() && (urecovery_state[i] & UBIK_RECHAVEDB)) {
 	rcode = 1;
     }
 
@@ -130,7 +134,7 @@ urecovery_AllBetter(struct ubik_dbase *adbase, int areadAny)
      * that the sync site is still the sync site, 'cause it won't talk
      * to us until a timeout period has gone by.  When we recover, we
      * leave this clear until we get a new dbase */
-    else if ((uvote_GetSyncSite() && (vcmp(ubik_dbVersion, ubik_dbase->version) == 0))) {	/* && order is important */
+    else if ((uvote_GetSyncSite() && (vcmp(ubik_dbVersion[i], adbase->version) == 0))) {	/* && order is important */
 	rcode = 1;
     }
 
@@ -155,23 +159,23 @@ urecovery_AbortAll(struct ubik_dbase *adbase)
  * \brief this routine aborts the current remote transaction, if any, if the tid is wrong
  */
 int
-urecovery_CheckTid(struct ubik_tid *atid)
+urecovery_CheckTid(struct ubik_tid *atid, afs_int32 index)
 {
-    if (ubik_currentTrans) {
+    if (ubik_currentTrans[index]) {
 	/* there is remote write trans, see if we match, see if this
 	 * is a new transaction */
-	if (atid->epoch != ubik_currentTrans->tid.epoch
-	    || atid->counter > ubik_currentTrans->tid.counter) {
+	if (atid->epoch != ubik_currentTrans[index]->tid.epoch
+	    || atid->counter > ubik_currentTrans[index]->tid.counter) {
 	    /* don't match, abort it */
 	    /* If the thread is not waiting for lock - ok to end it */
 #if !defined(UBIK_PAUSE)
-	    if (ubik_currentTrans->locktype != LOCKWAIT) {
+	    if (ubik_currentTrans[index]->locktype != LOCKWAIT) {
 #endif /* UBIK_PAUSE */
-		udisk_end(ubik_currentTrans);
+		udisk_end(ubik_currentTrans[index]);
 #if !defined(UBIK_PAUSE)
 	    }
 #endif /* UBIK_PAUSE */
-	    ubik_currentTrans = (struct ubik_trans *)0;
+	    ubik_currentTrans[index] = (struct ubik_trans *)0;
 	}
     }
     return 0;
@@ -443,13 +447,13 @@ urecovery_Initialize(struct ubik_dbase *adbase)
 void *
 urecovery_Interact(void *dummy)
 {
-    afs_int32 code, tcode;
-    struct ubik_server *bestServer = NULL;
+    afs_int32 code, tcode, i;
+    struct ubik_server *bestServer[MAX_UBIK_DBASES];
     struct ubik_server *ts;
     int dbok, doingRPC, now;
     afs_int32 lastProbeTime, lastDBVCheck;
     /* if we're the sync site, the best db version we've found yet */
-    static struct ubik_version bestDBVersion;
+    static struct ubik_version bestDBVersion[MAX_UBIK_DBASES];
     struct ubik_version tversion;
     struct timeval tv;
     int length, tlen, offset, file, nbytes;
@@ -464,11 +468,14 @@ urecovery_Interact(void *dummy)
     afs_int32 pass;
 #endif
 
+    memset(&bestServer, 0, sizeof(bestServer));
     /* otherwise, begin interaction */
-    urecovery_state = 0;
+    for (i=0; i<MAX_UBIK_DBASES; i++)
+        urecovery_state[i] = 0;
     lastProbeTime = 0;
     lastDBVCheck = 0;
     while (1) {
+main_continue:
 	/* Run through this loop every 4 seconds */
 	tv.tv_sec = 4;
 	tv.tv_usec = 0;
@@ -478,7 +485,9 @@ urecovery_Interact(void *dummy)
 	IOMGR_Select(0, 0, 0, 0, &tv);
 #endif
 
-	ubik_dprint("recovery running in state %x\n", urecovery_state);
+	ubik_dprint_25("recovery running in state [0] %x, [1] %x, [2] %x, [3] %x\n",
+		 	urecovery_state[0], urecovery_state[1],
+			urecovery_state[2], urecovery_state[3]);
 
 	/* Every 30 seconds, check all the down servers and mark them
 	 * as up if they respond. When a server comes up or found to
@@ -492,10 +501,14 @@ urecovery_Interact(void *dummy)
 		    code = DoProbe(ts);
 		    if (code == 0) {
 			ts->up = 1;
-			urecovery_state &= ~UBIK_RECFOUNDDB;
+    			for (i=0; i<MAX_UBIK_DBASES; i++)
+			    urecovery_state[i] &= ~UBIK_RECFOUNDDB;
 		    }
-		} else if (!ts->currentDB) {
-		    urecovery_state &= ~UBIK_RECFOUNDDB;
+		} else {
+    		    for (i=0; i<MAX_UBIK_DBASES; i++) {
+			if (!ts->currentDB[i])
+		            urecovery_state[i] &= ~UBIK_RECFOUNDDB;
+		    }
 		}
 	    }
 	    if (doingRPC)
@@ -505,354 +518,378 @@ urecovery_Interact(void *dummy)
 
 	/* Mark whether we are the sync site */
 	if (!ubeacon_AmSyncSite()) {
-	    urecovery_state &= ~UBIK_RECSYNCSITE;
+    	    for (i=0; i<MAX_UBIK_DBASES; i++)
+	        urecovery_state[i] &= ~UBIK_RECSYNCSITE;
 	    continue;		/* nothing to do */
 	}
-	urecovery_state |= UBIK_RECSYNCSITE;
+    	for (i=0; i<MAX_UBIK_DBASES; i++) {
+	    if (!ubik_dbase[i])
+		continue;
+	    urecovery_state[i] |= UBIK_RECSYNCSITE;
 
-	/* If a server has just come up or if we have not found the
-	 * most current database, then go find the most current db.
-	 */
-	if (!(urecovery_state & UBIK_RECFOUNDDB)) {
-	    bestServer = (struct ubik_server *)0;
-	    bestDBVersion.epoch = 0;
-	    bestDBVersion.counter = 0;
-	    for (ts = ubik_servers; ts; ts = ts->next) {
-		if (!ts->up)
-		    continue;	/* don't bother with these guys */
-		if (ts->isClone)
-		    continue;
-		code = DISK_GetVersion(ts->disk_rxcid, &ts->version);
-		if (code == 0) {
-		    /* perhaps this is the best version */
-		    if (vcmp(ts->version, bestDBVersion) > 0) {
-			/* new best version */
-			bestDBVersion = ts->version;
-			bestServer = ts;
-		    }
-		}
-	    }
-	    /* take into consideration our version. Remember if we,
-	     * the sync site, have the best version. Also note that
-	     * we may need to send the best version out.
+	    /* If a server has just come up or if we have not found the
+	     * most current database, then go find the most current db.
 	     */
-	    if (vcmp(ubik_dbase->version, bestDBVersion) >= 0) {
-		bestDBVersion = ubik_dbase->version;
-		bestServer = (struct ubik_server *)0;
-		urecovery_state |= UBIK_RECHAVEDB;
-	    } else {
-		/* Clear the flag only when we know we have to retrieve
-		 * the db. Because urecovery_AllBetter() looks at it.
-		 */
-		urecovery_state &= ~UBIK_RECHAVEDB;
-	    }
-	    lastDBVCheck = FT_ApproxTime();
-	    urecovery_state |= UBIK_RECFOUNDDB;
-	    urecovery_state &= ~UBIK_RECSENTDB;
-	}
-#if defined(UBIK_PAUSE)
-	/* it's not possible for UBIK_RECFOUNDDB not to be set here.
-	 * However, we might have lost UBIK_RECSYNCSITE, and that
-	 * IS important.
-	 */
-	if (!(urecovery_state & UBIK_RECSYNCSITE))
-	    continue;		/* lost sync */
-#else
-	if (!(urecovery_state & UBIK_RECFOUNDDB))
-	    continue;		/* not ready */
-#endif /* UBIK_PAUSE */
-
-	/* If we, the sync site, do not have the best db version, then
-	 * go and get it from the server that does.
-	 */
-	if ((urecovery_state & UBIK_RECHAVEDB) || !bestServer) {
-	    urecovery_state |= UBIK_RECHAVEDB;
-	} else {
-	    /* we don't have the best version; we should fetch it. */
-	    DBHOLD(ubik_dbase);
-	    urecovery_AbortAll(ubik_dbase);
-
-	    /* Rx code to do the Bulk fetch */
-	    file = 0;
-	    offset = 0;
-	    rxcall = rx_NewCall(bestServer->disk_rxcid);
-
-	    ubik_print("Ubik: Synchronize database with server %s\n",
-		       afs_inet_ntoa_r(bestServer->addr[0], hoststr));
-
-	    code = StartDISK_GetFile(rxcall, file);
-	    if (code) {
-		ubik_dprint("StartDiskGetFile failed=%d\n", code);
-		goto FetchEndCall;
-	    }
-	    nbytes = rx_Read(rxcall, (char *)&length, sizeof(afs_int32));
-	    length = ntohl(length);
-	    if (nbytes != sizeof(afs_int32)) {
-		ubik_dprint("Rx-read length error=%d\n", code = BULK_ERROR);
-		code = EIO;
-		goto FetchEndCall;
-	    }
-
-#ifdef OLD_URECOVERY
-	    /* Truncate the file first */
-	    code = (*ubik_dbase->truncate) (ubik_dbase, file, 0);
-	    if (code) {
-		ubik_dprint("truncate io error=%d\n", code);
-		goto FetchEndCall;
-	    }
-	    tversion.counter = 0;
+	    if (!(urecovery_state[i] & UBIK_RECFOUNDDB)) {
+	        bestServer[i] = (struct ubik_server *)0;
+	        bestDBVersion[i].epoch = 0;
+	        bestDBVersion[i].counter = 0;
+	        for (ts = ubik_servers; ts; ts = ts->next) {
+		    if (!ts->up)
+		        continue;	/* don't bother with these guys */
+#if 0 		/* Why? A clone could have kept the last good copy */
+		    if (ts->isClone)
+		        continue;
 #endif
-	    /* give invalid label during file transit */
-	    tversion.epoch = 0;
-	    code = (*ubik_dbase->setlabel) (ubik_dbase, file, &tversion);
-	    if (code) {
-		ubik_dprint("setlabel io error=%d\n", code);
-		goto FetchEndCall;
-	    }
-#ifndef OLD_URECOVERY
-	    flen = length;
-	    afs_snprintf(pbuffer, sizeof(pbuffer), "%s.DB%s%d.TMP", ubik_dbase->pathName, (file<0)?"SYS":"", (file<0)?-file:file);
-	    fd = open(pbuffer, O_CREAT | O_RDWR | O_TRUNC, 0600);
-	    if (fd < 0) {
-		code = errno;
-		goto FetchEndCall;
-	    }
-	    code = lseek(fd, HDRSIZE, 0);
-	    if (code != HDRSIZE) {
-		close(fd);
-		goto FetchEndCall;
-	    }
-#endif
-
-	    pass = 0;
-	    while (length > 0) {
-		tlen = (length > sizeof(tbuffer) ? sizeof(tbuffer) : length);
-#ifndef AFS_PTHREAD_ENV
-		if (pass % 4 == 0)
-		    IOMGR_Poll();
-#endif
-		nbytes = rx_Read(rxcall, tbuffer, tlen);
-		if (nbytes != tlen) {
-		    ubik_dprint("Rx-read bulk error=%d\n", code = BULK_ERROR);
-		    code = EIO;
-		    close(fd);
-		    goto FetchEndCall;
-		}
-#ifdef OLD_URECOVERY
-		nbytes =
-		    (*ubik_dbase->write) (ubik_dbase, file, tbuffer, offset,
-					  tlen);
-#else
-		nbytes = write(fd, tbuffer, tlen);
-		pass++;
-#endif
-		if (nbytes != tlen) {
-		    code = UIOERROR;
-		    close(fd);
-		    goto FetchEndCall;
-		}
-		offset += tlen;
-		length -= tlen;
-	    }
-#ifndef OLD_URECOVERY
-	    code = close(fd);
-	    if (code)
-		goto FetchEndCall;
-#endif
-	    code = EndDISK_GetFile(rxcall, &tversion);
-	  FetchEndCall:
-	    tcode = rx_EndCall(rxcall, code);
-	    if (!code)
-		code = tcode;
-	    if (!code) {
-		/* we got a new file, set up its header */
-		urecovery_state |= UBIK_RECHAVEDB;
-		memcpy(&ubik_dbase->version, &tversion,
-		       sizeof(struct ubik_version));
-#ifdef OLD_URECOVERY
-		(*ubik_dbase->sync) (ubik_dbase, 0);	/* get data out first */
-#else
-		afs_snprintf(tbuffer, sizeof(tbuffer), "%s.DB%s%d", ubik_dbase->pathName, (file<0)?"SYS":"", (file<0)?-file:file);
-#ifdef AFS_NT40_ENV
-		afs_snprintf(pbuffer, sizeof(pbuffer), "%s.DB%s%d.OLD", ubik_dbase->pathName, (file<0)?"SYS":"", (file<0)?-file:file);
-		code = unlink(pbuffer);
-		if (!code)
-		    code = rename(tbuffer, pbuffer);
-		afs_snprintf(pbuffer, sizeof(pbuffer), "%s.DB%s%d.TMP", ubik_dbase->pathName, (file<0)?"SYS":"", (file<0)?-file:file);
-#endif
-		if (!code)
-		    code = rename(pbuffer, tbuffer);
-		if (!code) {
-		    (*ubik_dbase->open) (ubik_dbase, file);
-#endif
-		    /* after data is good, sync disk with correct label */
-		    code =
-			(*ubik_dbase->setlabel) (ubik_dbase, 0,
-						 &ubik_dbase->version);
-#ifndef OLD_URECOVERY
-		}
-#ifdef AFS_NT40_ENV
-		afs_snprintf(pbuffer, sizeof(pbuffer), "%s.DB%s%d.OLD", ubik_dbase->pathName, (file<0)?"SYS":"", (file<0)?-file:file);
-		unlink(pbuffer);
-#endif
-#endif
-	    }
-	    if (code) {
-#ifndef OLD_URECOVERY
-		unlink(pbuffer);
-		/*
-		 * We will effectively invalidate the old data forever now.
-		 * Unclear if we *should* but we do.
-		 */
-#endif
-		ubik_dbase->version.epoch = 0;
-		ubik_dbase->version.counter = 0;
-		ubik_print("Ubik: Synchronize database failed (error = %d)\n",
-			   code);
-	    } else {
-		ubik_print("Ubik: Synchronize database completed\n");
-		urecovery_state |= UBIK_RECHAVEDB;
-	    }
-	    udisk_Invalidate(ubik_dbase, 0);	/* data has changed */
-#ifdef AFS_PTHREAD_ENV
-	    CV_BROADCAST(&ubik_dbase->version_cond);
-#else
-	    LWP_NoYieldSignal(&ubik_dbase->version);
-#endif
-	    DBRELE(ubik_dbase);
-	}
-#if defined(UBIK_PAUSE)
-	if (!(urecovery_state & UBIK_RECSYNCSITE))
-	    continue;		/* lost sync */
-#endif /* UBIK_PAUSE */
-	if (!(urecovery_state & UBIK_RECHAVEDB))
-	    continue;		/* not ready */
-
-	/* If the database was newly initialized, then when we establish quorum, write
-	 * a new label. This allows urecovery_AllBetter() to allow access for reads.
-	 * Setting it to 2 also allows another site to come along with a newer
-	 * database and overwrite this one.
-	 */
-	if (ubik_dbase->version.epoch == 1) {
-	    DBHOLD(ubik_dbase);
-	    urecovery_AbortAll(ubik_dbase);
-	    ubik_epochTime = 2;
-	    ubik_dbase->version.epoch = ubik_epochTime;
-	    ubik_dbase->version.counter = 1;
-	    code =
-		(*ubik_dbase->setlabel) (ubik_dbase, 0, &ubik_dbase->version);
-	    udisk_Invalidate(ubik_dbase, 0);	/* data may have changed */
-#ifdef AFS_PTHREAD_ENV
-	    CV_BROADCAST(&ubik_dbase->version_cond);
-#else
-	    LWP_NoYieldSignal(&ubik_dbase->version);
-#endif
-	    DBRELE(ubik_dbase);
-	}
-
-	/* Check the other sites and send the database to them if they
-	 * do not have the current db.
-	 */
-	if (!(urecovery_state & UBIK_RECSENTDB)) {
-	    /* now propagate out new version to everyone else */
-	    dbok = 1;		/* start off assuming they all worked */
-
-	    DBHOLD(ubik_dbase);
-	    /*
-	     * Check if a write transaction is in progress. We can't send the
-	     * db when a write is in progress here because the db would be
-	     * obsolete as soon as it goes there. Also, ops after the begin
-	     * trans would reach the recepient and wouldn't find a transaction
-	     * pending there.  Frankly, I don't think it's possible to get past
-	     * the write-lock above if there is a write transaction in progress,
-	     * but then, it won't hurt to check, will it?
-	     */
-	    if (ubik_dbase->flags & DBWRITING) {
-		struct timeval tv;
-		int safety = 0;
-		tv.tv_sec = 0;
-		tv.tv_usec = 50000;
-		while ((ubik_dbase->flags & DBWRITING) && (safety < 500)) {
-		    DBRELE(ubik_dbase);
-		    /* sleep for a little while */
-#ifdef AFS_PTHREAD_ENV
-		    select(0, 0, 0, 0, &tv);
-#else
-		    IOMGR_Select(0, 0, 0, 0, &tv);
-#endif
-		    tv.tv_usec += 10000;
-		    safety++;
-		    DBHOLD(ubik_dbase);
-		}
-	    }
-
-	    for (ts = ubik_servers; ts; ts = ts->next) {
-		inAddr.s_addr = ts->addr[0];
-		if (!ts->up) {
-		    ubik_dprint("recovery cannot send version to %s\n",
-				afs_inet_ntoa_r(inAddr.s_addr, hoststr));
-		    dbok = 0;
-		    continue;
-		}
-		ubik_dprint("recovery sending version to %s\n",
-			    afs_inet_ntoa_r(inAddr.s_addr, hoststr));
-		if (vcmp(ts->version, ubik_dbase->version) != 0) {
-		    ubik_dprint("recovery stating local database\n");
-
-		    /* Rx code to do the Bulk Store */
-		    code = (*ubik_dbase->stat) (ubik_dbase, 0, &ubikstat);
-		    if (!code) {
-			length = ubikstat.size;
-			file = offset = 0;
-			rxcall = rx_NewCall(ts->disk_rxcid);
-			code =
-			    StartDISK_SendFile(rxcall, file, length,
-					       &ubik_dbase->version);
-			if (code) {
-			    ubik_dprint("StartDiskSendFile failed=%d\n",
-					code);
-			    goto StoreEndCall;
-			}
-			while (length > 0) {
-			    tlen =
-				(length >
-				 sizeof(tbuffer) ? sizeof(tbuffer) : length);
-			    nbytes =
-				(*ubik_dbase->read) (ubik_dbase, file,
-						     tbuffer, offset, tlen);
-			    if (nbytes != tlen) {
-				ubik_dprint("Local disk read error=%d\n",
-					    code = UIOERROR);
-				goto StoreEndCall;
-			    }
-			    nbytes = rx_Write(rxcall, tbuffer, tlen);
-			    if (nbytes != tlen) {
-				ubik_dprint("Rx-write bulk error=%d\n", code =
-					    BULK_ERROR);
-				goto StoreEndCall;
-			    }
-			    offset += tlen;
-			    length -= tlen;
-			}
-			code = EndDISK_SendFile(rxcall);
-		      StoreEndCall:
-			code = rx_EndCall(rxcall, code);
-		    }
+		    code = DISK_GetVersion(ts->disk_rxcid, i, &ts->version[i]);
 		    if (code == 0) {
-			/* we set a new file, process its header */
-			ts->version = ubik_dbase->version;
-			ts->currentDB = 1;
-		    } else
-			dbok = 0;
-		} else {
-		    /* mark file up to date */
-		    ts->currentDB = 1;
-		}
+		        /* perhaps this is the best version */
+		        if (vcmp(ts->version[i], bestDBVersion[i]) > 0) {
+			    /* new best version */
+			    bestDBVersion[i] = ts->version[i];
+			    bestServer[i] = ts;
+		        }
+		    } else if (code == ENOENT) {
+			ts->currentDB[i] = 0;
+			ts->version[i].epoch = 0;
+			ts->version[i].counter = 0;
+		    }
+	        }
+	        /* take into consideration our version. Remember if we,
+	         * the sync site, have the best version. Also note that
+	         * we may need to send the best version out.
+	         */
+	        if (vcmp(ubik_dbase[i]->version, bestDBVersion[i]) >= 0) {
+		    bestDBVersion[i] = ubik_dbase[i]->version;
+		    bestServer[i] = (struct ubik_server *)0;
+		    urecovery_state[i] |= UBIK_RECHAVEDB;
+	        } else {
+		    /* Clear the flag only when we know we have to retrieve
+		     * the db. Because urecovery_AllBetter() looks at it.
+		     */
+		    urecovery_state[i] &= ~UBIK_RECHAVEDB;
+	        }
+	        lastDBVCheck = FT_ApproxTime();
+	        urecovery_state[i] |= UBIK_RECFOUNDDB;
+	        urecovery_state[i] &= ~UBIK_RECSENTDB;
 	    }
-	    DBRELE(ubik_dbase);
-	    if (dbok)
-		urecovery_state |= UBIK_RECSENTDB;
-	}
+#if defined(UBIK_PAUSE)
+	    /* it's not possible for UBIK_RECFOUNDDB not to be set here.
+	     * However, we might have lost UBIK_RECSYNCSITE, and that
+	     * IS important.
+	     */
+	    if (!(urecovery_state[i] & UBIK_RECSYNCSITE))
+	        goto main_continue;		/* lost sync */
+#else
+	    if (!(urecovery_state[i] & UBIK_RECFOUNDDB))
+	        goto main_continue;		/* not ready */
+#endif /* UBIK_PAUSE */
+
+	    /* If we, the sync site, do not have the best db version, then
+	     * go and get it from the server that does.
+	     */
+	    if ((urecovery_state[i] & UBIK_RECHAVEDB) || !bestServer[i]) {
+	        urecovery_state[i] |= UBIK_RECHAVEDB;
+	    } else {
+	        /* we don't have the best version; we should fetch it. */
+	        DBHOLD(ubik_dbase[i]);
+	        urecovery_AbortAll(ubik_dbase[i]);
+
+	        /* Rx code to do the Bulk fetch */
+	        file = 0;
+	        offset = 0;
+	        rxcall = rx_NewCall(bestServer[i]->disk_rxcid);
+
+	        ubik_print("Ubik: Synchronize %s with server %s\n",
+			   ubik_dbase[i]->pathName,
+		           afs_inet_ntoa_r(bestServer[i]->addr[0], hoststr));
+
+	        code = StartDISK_GetFile(rxcall, file, i);
+	        if (code) {
+		    ubik_dprint("StartDiskGetFile for dbase [%d] failed=%d\n",
+				 i, code);
+		    goto FetchEndCall;
+	        }
+	        nbytes = rx_Read(rxcall, (char *)&length, sizeof(afs_int32));
+	        length = ntohl(length);
+	        if (nbytes != sizeof(afs_int32)) {
+		    ubik_dprint("Rx-read length error=%d for dbase [%d]\n",
+				 code = BULK_ERROR, i);
+		    code = EIO;
+		    goto FetchEndCall;
+	        }
+
+#ifdef OLD_URECOVERY
+	        /* Truncate the file first */
+	        code = (*ubik_dbase->truncate) (ubik_dbase[i], file, 0);
+	        if (code) {
+		    ubik_dprint("truncate io error=%d\n", code);
+		    goto FetchEndCall;
+	        }
+	        tversion.counter = 0;
+#endif
+	        /* give invalid label during file transit */
+	        tversion.epoch = 0;
+	        code = (*ubik_dbase[i]->setlabel) (ubik_dbase[i], file, &tversion);
+	        if (code) {
+		    ubik_dprint("setlabel io error=%d\n", code);
+		    goto FetchEndCall;
+	        }
+#ifndef OLD_URECOVERY
+	        flen = length;
+	        afs_snprintf(pbuffer, sizeof(pbuffer), "%s.DB%s%d.TMP", ubik_dbase[i]->pathName, (file<0)?"SYS":"", (file<0)?-file:file);
+	        fd = open(pbuffer, O_CREAT | O_RDWR | O_TRUNC, 0600);
+	        if (fd < 0) {
+		    code = errno;
+		    goto FetchEndCall;
+	        }
+	        code = lseek(fd, HDRSIZE, 0);
+	        if (code != HDRSIZE) {
+		    close(fd);
+		    goto FetchEndCall;
+	        }
+#endif
+
+	        pass = 0;
+	        while (length > 0) {
+		    tlen = (length > sizeof(tbuffer) ? sizeof(tbuffer) : length);
+#ifndef AFS_PTHREAD_ENV
+		    if (pass % 4 == 0)
+		        IOMGR_Poll();
+#endif
+		    nbytes = rx_Read(rxcall, tbuffer, tlen);
+		    if (nbytes != tlen) {
+		        ubik_dprint("Rx-read bulk error=%d\n", code = BULK_ERROR);
+		        code = EIO;
+		        close(fd);
+		        goto FetchEndCall;
+		    }
+#ifdef OLD_URECOVERY
+		    nbytes =
+		        (*ubik_dbase[i]->write) (ubik_dbase[i], file, tbuffer, offset,
+					      tlen);
+#else
+		    nbytes = write(fd, tbuffer, tlen);
+		    pass++;
+#endif
+		    if (nbytes != tlen) {
+		        code = UIOERROR;
+		        close(fd);
+		        goto FetchEndCall;
+		    }
+		    offset += tlen;
+		    length -= tlen;
+	        }
+#ifndef OLD_URECOVERY
+	        code = close(fd);
+	        if (code)
+		    goto FetchEndCall;
+#endif
+	        code = EndDISK_GetFile(rxcall, &tversion);
+	      FetchEndCall:
+	        tcode = rx_EndCall(rxcall, code);
+	        if (!code)
+		    code = tcode;
+	        if (!code) {
+		    /* we got a new file, set up its header */
+		    urecovery_state[i] |= UBIK_RECHAVEDB;
+		    memcpy(&ubik_dbase[i]->version, &tversion,
+		           sizeof(struct ubik_version));
+#ifdef OLD_URECOVERY
+		    (*ubik_dbase[i]->sync) (ubik_dbase[i], 0);	/* get data out first */
+#else
+		    afs_snprintf(tbuffer, sizeof(tbuffer), "%s.DB%s%d", ubik_dbase[i]->pathName, (file<0)?"SYS":"", (file<0)?-file:file);
+#ifdef AFS_NT40_ENV
+		    afs_snprintf(pbuffer, sizeof(pbuffer), "%s.DB%s%d.OLD", ubik_dbase[i]->pathName, (file<0)?"SYS":"", (file<0)?-file:file);
+		    code = unlink(pbuffer);
+		    if (!code)
+		        code = rename(tbuffer, pbuffer);
+		    afs_snprintf(pbuffer, sizeof(pbuffer), "%s.DB%s%d.TMP", ubik_dbase[i]->pathName, (file<0)?"SYS":"", (file<0)?-file:file);
+#endif
+		    if (!code)
+		        code = rename(pbuffer, tbuffer);
+		    if (!code) {
+		        (*ubik_dbase[i]->open) (ubik_dbase[i], file);
+#endif
+		        /* after data is good, sync disk with correct label */
+		        code =
+			    (*ubik_dbase[i]->setlabel) (ubik_dbase[i], 0,
+						     &ubik_dbase[i]->version);
+#ifndef OLD_URECOVERY
+		    }
+#ifdef AFS_NT40_ENV
+		    afs_snprintf(pbuffer, sizeof(pbuffer), "%s.DB%s%d.OLD", ubik_dbase[i]->pathName, (file<0)?"SYS":"", (file<0)?-file:file);
+		    unlink(pbuffer);
+#endif
+#endif
+	        }
+	        if (code) {
+#ifndef OLD_URECOVERY
+		    unlink(pbuffer);
+		    /*
+		     * We will effectively invalidate the old data forever now.
+		     * Unclear if we *should* but we do.
+		     */
+#endif
+		    ubik_dbase[i]->version.epoch = 0;
+		    ubik_dbase[i]->version.counter = 0;
+		    ubik_print("Ubik: Synchronize database %s failed (error = %d)\n",
+			       ubik_dbase[i]->pathName, code);
+	        } else {
+		    ubik_print("Ubik: Synchronize database %s completed\n",
+			       ubik_dbase[i]->pathName);
+		    urecovery_state[i] |= UBIK_RECHAVEDB;
+	        }
+	        udisk_Invalidate(ubik_dbase[i], 0);	/* data has changed */
+#ifdef AFS_PTHREAD_ENV
+	        CV_BROADCAST(&ubik_dbase[i]->version_cond);
+#else
+	        LWP_NoYieldSignal(&ubik_dbase[i]->version);
+#endif
+	        DBRELE(ubik_dbase[i]);
+	    }
+#if defined(UBIK_PAUSE)
+	    if (!(urecovery_state[i] & UBIK_RECSYNCSITE))
+	        continue;		/* lost sync */
+#endif /* UBIK_PAUSE */
+	    if (!(urecovery_state[i] & UBIK_RECHAVEDB))
+	        continue;		/* not ready */
+
+	    /* If the database was newly initialized, then when we establish quorum, write
+	     * a new label. This allows urecovery_AllBetter() to allow access for reads.
+	     * Setting it to 2 also allows another site to come along with a newer
+	     * database and overwrite this one.
+	     */
+	    if (ubik_dbase[i]->version.epoch == 1) {
+	        DBHOLD(ubik_dbase[i]);
+	        urecovery_AbortAll(ubik_dbase[i]);
+	        ubik_epochTime[i] = 2;
+	        ubik_dbase[i]->version.epoch = ubik_epochTime[i];
+	        ubik_dbase[i]->version.counter = 1;
+	        code =
+		    (*ubik_dbase[i]->setlabel) (ubik_dbase[i], 0, &ubik_dbase[i]->version);
+	        udisk_Invalidate(ubik_dbase[i], 0);	/* data may have changed */
+#ifdef AFS_PTHREAD_ENV
+	        CV_BROADCAST(&ubik_dbase[i]->version_cond);
+#else
+	        LWP_NoYieldSignal(&ubik_dbase[i]->version);
+#endif
+	        DBRELE(ubik_dbase[i]);
+	    }
+
+	    /* Check the other sites and send the database to them if they
+	     * do not have the current db.
+	     */
+	    if (!(urecovery_state[i] & UBIK_RECSENTDB)) {
+	        /* now propagate out new version to everyone else */
+	        dbok = 1;		/* start off assuming they all worked */
+
+	        DBHOLD(ubik_dbase[i]);
+	        /*
+	         * Check if a write transaction is in progress. We can't send the
+	         * db when a write is in progress here because the db would be
+	         * obsolete as soon as it goes there. Also, ops after the begin
+	         * trans would reach the recepient and wouldn't find a transaction
+	         * pending there.  Frankly, I don't think it's possible to get past
+	         * the write-lock above if there is a write transaction in progress,
+	         * but then, it won't hurt to check, will it?
+	         */
+	        if (ubik_dbase[i]->flags & DBWRITING) {
+		    struct timeval tv;
+		    int safety = 0;
+		    tv.tv_sec = 0;
+		    tv.tv_usec = 50000;
+		    while ((ubik_dbase[i]->flags & DBWRITING) && (safety < 500)) {
+		        DBRELE(ubik_dbase[i]);
+		        /* sleep for a little while */
+#ifdef AFS_PTHREAD_ENV
+		        select(0, 0, 0, 0, &tv);
+#else
+		        IOMGR_Select(0, 0, 0, 0, &tv);
+#endif
+		        tv.tv_usec += 10000;
+		        safety++;
+		        DBHOLD(ubik_dbase[i]);
+		    }
+	        }
+
+	        for (ts = ubik_servers; ts; ts = ts->next) {
+		    struct ubik_version tversion;
+		    inAddr.s_addr = ts->addr[0];
+		    if (!ts->up) {
+		        ubik_dprint("recovery cannot send version to %s\n",
+				    afs_inet_ntoa_r(inAddr.s_addr, hoststr));
+		        dbok = 0;
+		        continue;
+		    }
+		    code = DISK_GetVersion(ts->disk_rxcid, i, &tversion);
+		    if (code == ENOENT) {
+			dbok = 0;
+			continue;
+		    }
+		    ubik_print("recovery sending %s version %d.%d to %s\n",
+			    ubik_dbase[i]->pathName,
+			    ubik_dbase[i]->version.epoch,
+			    ubik_dbase[i]->version.counter,
+			    afs_inet_ntoa_r(inAddr.s_addr, hoststr));
+		    if (vcmp(ts->version[i], ubik_dbase[i]->version) != 0) {
+		        ubik_dprint("recovery stating local database\n");
+    
+		        /* Rx code to do the Bulk Store */
+		        code = (*ubik_dbase[i]->stat) (ubik_dbase[i], 0, &ubikstat);
+		        if (!code) {
+			    length = ubikstat.size;
+			    file = offset = 0;
+			    rxcall = rx_NewCall(ts->disk_rxcid);
+			    code =
+			        StartDISK_SendFile(rxcall, file, i, length,
+					           &ubik_dbase[i]->version);
+			    if (code) {
+			        ubik_dprint("StartDiskSendFile failed=%d\n",
+					    code);
+			        goto StoreEndCall;
+			    }
+			    while (length > 0) {
+			        tlen =
+				    (length >
+				     sizeof(tbuffer) ? sizeof(tbuffer) : length);
+			        nbytes =
+				    (*ubik_dbase[i]->read) (ubik_dbase[i], file,
+						         tbuffer, offset, tlen);
+			        if (nbytes != tlen) {
+				    ubik_dprint("Local disk read error=%d\n",
+					        code = UIOERROR);
+				    goto StoreEndCall;
+			        }
+			        nbytes = rx_Write(rxcall, tbuffer, tlen);
+			        if (nbytes != tlen) {
+				    ubik_dprint("Rx-write bulk error=%d\n", code =
+					        BULK_ERROR);
+				    goto StoreEndCall;
+			        }
+			        offset += tlen;
+			        length -= tlen;
+			    }
+			    code = EndDISK_SendFile(rxcall);
+		          StoreEndCall:
+			    code = rx_EndCall(rxcall, code);
+		        }
+		        if (code == 0) {
+			    /* we set a new file, process its header */
+			    ts->version[i] = ubik_dbase[i]->version;
+			    ts->currentDB[i] = 1;
+		        } else
+			    dbok = 0;
+		    } else {
+		        /* mark file up to date */
+		        ts->currentDB[i] = 1;
+		    }
+	        }
+	        DBRELE(ubik_dbase[i]);
+	        if (dbok)
+		    urecovery_state[i] |= UBIK_RECSENTDB;
+	    }
+        }
     }
     return NULL;
 }

@@ -88,6 +88,14 @@ static int updateUbikNetworkAddress(afs_uint32 ubik_host[UBIK_MAX_INTERFACE_ADDR
 
 /*! \brief procedure called from debug rpc call to get this module's state for debugging */
 void
+ubeacon_Debug_new(afs_int32 *asyncSiteUntil, afs_int32 *anServers)
+{
+    /* fill in beacon's state fields in the ubik_debug_new structure */
+    *asyncSiteUntil = syncSiteUntil;
+    *anServers = nServers;
+}
+
+void
 ubeacon_Debug(struct ubik_debug *aparm)
 {
     /* fill in beacon's state fields in the ubik_debug structure */
@@ -344,10 +352,10 @@ ubeacon_Interact(void *dummy)
     struct timeval tt;
     struct rx_connection *connections[MAXSERVERS];
     struct ubik_server *servers[MAXSERVERS];
-    afs_int32 i;
+    afs_int32 i, j, k, l;
     struct ubik_server *ts;
     afs_int32 temp, yesVotes, lastWakeupTime, oldestYesVote, syncsite;
-    struct ubik_tid ttid;
+    struct ubik_db_stateList list;
     afs_int32 startTime;
 
     /* loop forever getting votes */
@@ -396,20 +404,38 @@ ubeacon_Interact(void *dummy)
 	 * assume we'll be fine until SMALLTIME seconds after we start collecting votes */
 	/* this next is essentially an expansion of rgen's ServBeacon routine */
 
-	ttid.epoch = ubik_epochTime;
-	if (ubik_dbase->flags & DBWRITING) {
-	    /*
-	     * if a write is in progress, we have to send the writeTidCounter
-	     * which holds the tid counter of the write transaction , and not
-	     * send the tidCounter value which holds the tid counter of the
-	     * last transaction.
-	     */
-	    ttid.counter = ubik_dbase->writeTidCounter;
-	} else
-	    ttid.counter = ubik_dbase->tidCounter + 1;
+	l = 0;
+	for (k=0; k<MAX_UBIK_DBASES; k++) {
+	    if (ubik_dbase[k])
+		l++;
+	}
+	list.ubik_db_stateList_val = (struct ubik_db_state *)
+				      malloc(l * sizeof(struct ubik_db_state));
+	list.ubik_db_stateList_len = l;
+	l = 0; /* offset in list */
+	for (k=0; k<MAX_UBIK_DBASES; k++) {
+	    if (!ubik_dbase[k])
+		continue;	/* skip unused entry */
+	    list.ubik_db_stateList_val[l].index = k;
+	    list.ubik_db_stateList_val[l].vers = ubik_dbase[k]->version;
+	    list.ubik_db_stateList_val[l].tid.epoch = ubik_epochTime[k];
+	    if (ubik_dbase[k]->flags & DBWRITING) {
+	        /*
+	         * if a write is in progress, we have to send the writeTidCounter
+	         * which holds the tid counter of the write transaction , and not
+	         * send the tidCounter value which holds the tid counter of the
+	         * last transaction.
+	         */
+	        list.ubik_db_stateList_val[l].tid.counter = 
+					ubik_dbase[k]->writeTidCounter;
+	    } else
+	        list.ubik_db_stateList_val[l].tid.counter = 
+					ubik_dbase[k]->tidCounter + 1;
 #if defined(UBIK_PAUSE)
-	ubik_dbase->flags |= DBVOTING;
+	    ubik_dbase[k]->flags |= DBVOTING;
 #endif /* UBIK_PAUSE */
+	    l++;	/* increment to next list entry */
+	}
 
 	/* now analyze return codes, counting up our votes */
 	yesVotes = 0;		/* count how many to ensure we have quorum */
@@ -422,8 +448,7 @@ ubeacon_Interact(void *dummy)
 	if (i > 0) {
 	    char hoststr[16];
 	    multi_Rx(connections, i) {
-		multi_VOTE_Beacon(syncsite, startTime, &ubik_dbase->version,
-				  &ttid);
+	        multi_VOTE_Beacon(syncsite, startTime, &list);
 		temp = FT_ApproxTime();	/* now, more or less */
 		ts = servers[multi_i];
 		ts->lastBeaconSent = temp;
@@ -443,7 +468,7 @@ ubeacon_Interact(void *dummy)
 		    ts->up = 1;	/* server is up (not really necessary: recovery does this for real) */
 		    ts->beaconSinceDown = 1;
 		    ubik_dprint("yes vote from host %s\n",
-				afs_inet_ntoa_r(ts->addr[0], hoststr));
+			         afs_inet_ntoa_r(ts->addr[0], hoststr));
 		} else if (code == 0) {
 		    ts->lastVoteTime = temp;
 		    ts->lastVote = 0;
@@ -459,12 +484,12 @@ ubeacon_Interact(void *dummy)
 		}
 	    }
 	    multi_End;
-	}
+   	}
 	/* now call our own voter module to see if we'll vote for ourself.  Note that
 	 * the same restrictions apply for our voting for ourself as for our voting
 	 * for anyone else. */
 	i = SVOTE_Beacon((struct rx_call *)0, ubeacon_AmSyncSite(), startTime,
-			 &ubik_dbase->version, &ttid);
+			 &list);
 	if (i) {
 	    yesVotes += 2;
 	    if (amIMagic)

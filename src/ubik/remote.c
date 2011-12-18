@@ -44,7 +44,7 @@ static void printServerInfo(void);
  * write transaction extant at any one time.
  */
 
-struct ubik_trans *ubik_currentTrans = 0;
+struct ubik_trans *ubik_currentTrans[MAX_UBIK_DBASES];
 
 int
 ubik_CheckAuth(struct rx_call *acall)
@@ -62,39 +62,41 @@ ubik_CheckAuth(struct rx_call *acall)
  * sync site is executing a write transaction.
  */
 afs_int32
-SDISK_Begin(struct rx_call *rxcall, struct ubik_tid *atid)
+SDISK_Begin(struct rx_call *rxcall, struct ubik_tid *atid, afs_int32 index)
 {
     afs_int32 code;
 
     if ((code = ubik_CheckAuth(rxcall))) {
 	return code;
     }
-    DBHOLD(ubik_dbase);
-    urecovery_CheckTid(atid);
-    if (ubik_currentTrans) {
+    if (!ubik_dbase[index]) {
+	return ENOENT;
+    }
+    DBHOLD(ubik_dbase[index]);
+    urecovery_CheckTid(atid, index);
+    if (ubik_currentTrans[index]) {
 	/* If the thread is not waiting for lock - ok to end it */
 #if !defined(UBIK_PAUSE)
-	if (ubik_currentTrans->locktype != LOCKWAIT) {
+	if (ubik_currentTrans[index]->locktype != LOCKWAIT) {
 #endif /* UBIK_PAUSE */
-	    udisk_end(ubik_currentTrans);
+	    udisk_end(ubik_currentTrans[index]);
 #if !defined(UBIK_PAUSE)
 	}
 #endif /* UBIK_PAUSE */
-	ubik_currentTrans = (struct ubik_trans *)0;
+	ubik_currentTrans[index] = (struct ubik_trans *)0;
     }
-    code = udisk_begin(ubik_dbase, UBIK_WRITETRANS, &ubik_currentTrans);
-    if (!code && ubik_currentTrans) {
+    code = udisk_begin(ubik_dbase[index], UBIK_WRITETRANS, &ubik_currentTrans[index]);
+    if (!code && ubik_currentTrans[index]) {
 	/* label this trans with the right trans id */
-	ubik_currentTrans->tid.epoch = atid->epoch;
-	ubik_currentTrans->tid.counter = atid->counter;
+	ubik_currentTrans[index]->tid.epoch = atid->epoch;
+	ubik_currentTrans[index]->tid.counter = atid->counter;
     }
-    DBRELE(ubik_dbase);
+    DBRELE(ubik_dbase[index]);
     return code;
 }
 
-
 afs_int32
-SDISK_Commit(struct rx_call *rxcall, struct ubik_tid *atid)
+SDISK_Commit(struct rx_call *rxcall, struct ubik_tid *atid, afs_int32 index)
 {
     afs_int32 code;
     struct ubik_dbase *dbase;
@@ -103,35 +105,39 @@ SDISK_Commit(struct rx_call *rxcall, struct ubik_tid *atid)
 	return code;
     }
 
-    if (!ubik_currentTrans) {
+    if (!ubik_dbase[index]) {
+	return ENOENT;
+    }
+
+    if (!ubik_currentTrans[index]) {
 	return USYNC;
     }
     /*
      * sanity check to make sure only write trans appear here
      */
-    if (ubik_currentTrans->type != UBIK_WRITETRANS) {
+    if (ubik_currentTrans[index]->type != UBIK_WRITETRANS) {
 	return UBADTYPE;
     }
 
-    dbase = ubik_currentTrans->dbase;
+    dbase = ubik_currentTrans[index]->dbase;
     DBHOLD(dbase);
-    urecovery_CheckTid(atid);
-    if (!ubik_currentTrans) {
+    urecovery_CheckTid(atid, index);
+    if (!ubik_currentTrans[index]) {
 	DBRELE(dbase);
 	return USYNC;
     }
 
-    code = udisk_commit(ubik_currentTrans);
+    code = udisk_commit(ubik_currentTrans[index]);
     if (code == 0) {
 	/* sync site should now match */
-	ubik_dbVersion = ubik_dbase->version;
+	ubik_dbVersion[index] = ubik_dbase[index]->version;
     }
     DBRELE(dbase);
     return code;
 }
 
 afs_int32
-SDISK_ReleaseLocks(struct rx_call *rxcall, struct ubik_tid *atid)
+SDISK_ReleaseLocks(struct rx_call *rxcall, struct ubik_tid *atid, afs_int32 index)
 {
     struct ubik_dbase *dbase;
     afs_int32 code;
@@ -140,37 +146,41 @@ SDISK_ReleaseLocks(struct rx_call *rxcall, struct ubik_tid *atid)
 	return code;
     }
 
-    if (!ubik_currentTrans) {
+    if (!ubik_currentTrans[index]) {
 	return USYNC;
     }
     /* sanity check to make sure only write trans appear here */
-    if (ubik_currentTrans->type != UBIK_WRITETRANS) {
+    if (ubik_currentTrans[index]->type != UBIK_WRITETRANS) {
 	return UBADTYPE;
     }
 
-    dbase = ubik_currentTrans->dbase;
+    if (!ubik_dbase[index]) {
+	return ENOENT;
+    }
+
+    dbase = ubik_currentTrans[index]->dbase;
     DBHOLD(dbase);
-    urecovery_CheckTid(atid);
-    if (!ubik_currentTrans) {
+    urecovery_CheckTid(atid, index);
+    if (!ubik_currentTrans[index]) {
 	DBRELE(dbase);
 	return USYNC;
     }
 
     /* If the thread is not waiting for lock - ok to end it */
 #if !defined(UBIK_PAUSE)
-    if (ubik_currentTrans->locktype != LOCKWAIT) {
+    if (ubik_currentTrans[index]->locktype != LOCKWAIT) {
 #endif /* UBIK_PAUSE */
-	udisk_end(ubik_currentTrans);
+	udisk_end(ubik_currentTrans[index]);
 #if !defined(UBIK_PAUSE)
     }
 #endif /* UBIK_PAUSE */
-    ubik_currentTrans = (struct ubik_trans *)0;
+    ubik_currentTrans[index] = (struct ubik_trans *)0;
     DBRELE(dbase);
     return 0;
 }
 
 afs_int32
-SDISK_Abort(struct rx_call *rxcall, struct ubik_tid *atid)
+SDISK_Abort(struct rx_call *rxcall, struct ubik_tid *atid, afs_int32 index)
 {
     afs_int32 code;
     struct ubik_dbase *dbase;
@@ -179,39 +189,43 @@ SDISK_Abort(struct rx_call *rxcall, struct ubik_tid *atid)
 	return code;
     }
 
-    if (!ubik_currentTrans) {
+    if (!ubik_currentTrans[index]) {
 	return USYNC;
     }
     /* sanity check to make sure only write trans appear here  */
-    if (ubik_currentTrans->type != UBIK_WRITETRANS) {
+    if (ubik_currentTrans[index]->type != UBIK_WRITETRANS) {
 	return UBADTYPE;
     }
 
-    dbase = ubik_currentTrans->dbase;
+    if (!ubik_dbase[index]) {
+	return ENOENT;
+    }
+
+    dbase = ubik_currentTrans[index]->dbase;
     DBHOLD(dbase);
-    urecovery_CheckTid(atid);
-    if (!ubik_currentTrans) {
+    urecovery_CheckTid(atid, index);
+    if (!ubik_currentTrans[index]) {
 	DBRELE(dbase);
 	return USYNC;
     }
 
-    code = udisk_abort(ubik_currentTrans);
+    code = udisk_abort(ubik_currentTrans[index]);
     /* If the thread is not waiting for lock - ok to end it */
 #if !defined(UBIK_PAUSE)
-    if (ubik_currentTrans->locktype != LOCKWAIT) {
+    if (ubik_currentTrans[index]->locktype != LOCKWAIT) {
 #endif /* UBIK_PAUSE */
-	udisk_end(ubik_currentTrans);
+	udisk_end(ubik_currentTrans[index]);
 #if !defined(UBIK_PAUSE)
     }
 #endif /* UBIK_PAUSE */
-    ubik_currentTrans = (struct ubik_trans *)0;
+    ubik_currentTrans[index] = (struct ubik_trans *)0;
     DBRELE(dbase);
     return code;
 }
 
 /* apos and alen are not used */
 afs_int32
-SDISK_Lock(struct rx_call *rxcall, struct ubik_tid *atid,
+SDISK_Lock(struct rx_call *rxcall, struct ubik_tid *atid, afs_int32 index,
 	   afs_int32 afile, afs_int32 apos, afs_int32 alen, afs_int32 atype)
 {
     afs_int32 code;
@@ -221,32 +235,36 @@ SDISK_Lock(struct rx_call *rxcall, struct ubik_tid *atid,
     if ((code = ubik_CheckAuth(rxcall))) {
 	return code;
     }
-    if (!ubik_currentTrans) {
+    if (!ubik_currentTrans[index]) {
 	return USYNC;
     }
+    if (!ubik_dbase[index]) {
+	return ENOENT;
+    }
+
     /* sanity check to make sure only write trans appear here */
-    if (ubik_currentTrans->type != UBIK_WRITETRANS) {
+    if (ubik_currentTrans[index]->type != UBIK_WRITETRANS) {
 	return UBADTYPE;
     }
     if (alen != 1) {
 	return UBADLOCK;
     }
-    dbase = ubik_currentTrans->dbase;
+    dbase = ubik_currentTrans[index]->dbase;
     DBHOLD(dbase);
-    urecovery_CheckTid(atid);
-    if (!ubik_currentTrans) {
+    urecovery_CheckTid(atid, index);
+    if (!ubik_currentTrans[index]) {
 	DBRELE(dbase);
 	return USYNC;
     }
 
-    ubik_thisTrans = ubik_currentTrans;
-    code = ulock_getLock(ubik_currentTrans, atype, 1);
+    ubik_thisTrans = ubik_currentTrans[index];
+    code = ulock_getLock(ubik_currentTrans[index], atype, 1);
 
     /* While waiting, the transaction may have been ended/
      * aborted from under us (urecovery_CheckTid). In that
      * case, end the transaction here.
      */
-    if (!code && (ubik_currentTrans != ubik_thisTrans)) {
+    if (!code && (ubik_currentTrans[index] != ubik_thisTrans)) {
 	udisk_end(ubik_thisTrans);
 	code = USYNC;
     }
@@ -259,7 +277,7 @@ SDISK_Lock(struct rx_call *rxcall, struct ubik_tid *atid,
  * \brief Write a vector of data
  */
 afs_int32
-SDISK_WriteV(struct rx_call *rxcall, struct ubik_tid *atid,
+SDISK_WriteV(struct rx_call *rxcall, struct ubik_tid *atid, afs_int32 index,
 	     iovec_wrt *io_vector, iovec_buf *io_buffer)
 {
     afs_int32 code, i, offset;
@@ -270,18 +288,22 @@ SDISK_WriteV(struct rx_call *rxcall, struct ubik_tid *atid,
     if ((code = ubik_CheckAuth(rxcall))) {
 	return code;
     }
-    if (!ubik_currentTrans) {
+    if (!ubik_currentTrans[index]) {
 	return USYNC;
     }
     /* sanity check to make sure only write trans appear here */
-    if (ubik_currentTrans->type != UBIK_WRITETRANS) {
+    if (ubik_currentTrans[index]->type != UBIK_WRITETRANS) {
 	return UBADTYPE;
     }
 
-    dbase = ubik_currentTrans->dbase;
+    if (!ubik_dbase[index]) {
+	return ENOENT;
+    }
+
+    dbase = ubik_currentTrans[index]->dbase;
     DBHOLD(dbase);
-    urecovery_CheckTid(atid);
-    if (!ubik_currentTrans) {
+    urecovery_CheckTid(atid, index);
+    if (!ubik_currentTrans[index]) {
 	DBRELE(dbase);
 	return USYNC;
     }
@@ -294,7 +316,7 @@ SDISK_WriteV(struct rx_call *rxcall, struct ubik_tid *atid,
 	    code = UINTERNAL;
 	} else {
 	    code =
-		udisk_write(ubik_currentTrans, iovec[i].file, &iobuf[offset],
+		udisk_write(ubik_currentTrans[index], iovec[i].file, &iobuf[offset],
 			    iovec[i].position, iovec[i].length);
 	}
 	if (code)
@@ -308,7 +330,7 @@ SDISK_WriteV(struct rx_call *rxcall, struct ubik_tid *atid,
 }
 
 afs_int32
-SDISK_Write(struct rx_call *rxcall, struct ubik_tid *atid,
+SDISK_Write(struct rx_call *rxcall, struct ubik_tid *atid, afs_int32 index,
 	    afs_int32 afile, afs_int32 apos, bulkdata *adata)
 {
     afs_int32 code;
@@ -317,30 +339,34 @@ SDISK_Write(struct rx_call *rxcall, struct ubik_tid *atid,
     if ((code = ubik_CheckAuth(rxcall))) {
 	return code;
     }
-    if (!ubik_currentTrans) {
+    if (!ubik_currentTrans[index]) {
 	return USYNC;
     }
     /* sanity check to make sure only write trans appear here */
-    if (ubik_currentTrans->type != UBIK_WRITETRANS) {
+    if (ubik_currentTrans[index]->type != UBIK_WRITETRANS) {
 	return UBADTYPE;
     }
 
-    dbase = ubik_currentTrans->dbase;
+    if (!ubik_dbase[index]) {
+	return ENOENT;
+    }
+
+    dbase = ubik_currentTrans[index]->dbase;
     DBHOLD(dbase);
-    urecovery_CheckTid(atid);
-    if (!ubik_currentTrans) {
+    urecovery_CheckTid(atid, index);
+    if (!ubik_currentTrans[index]) {
 	DBRELE(dbase);
 	return USYNC;
     }
     code =
-	udisk_write(ubik_currentTrans, afile, adata->bulkdata_val, apos,
+	udisk_write(ubik_currentTrans[index], afile, adata->bulkdata_val, apos,
 		    adata->bulkdata_len);
     DBRELE(dbase);
     return code;
 }
 
 afs_int32
-SDISK_Truncate(struct rx_call *rxcall, struct ubik_tid *atid,
+SDISK_Truncate(struct rx_call *rxcall, struct ubik_tid *atid, afs_int32 index,
 	       afs_int32 afile, afs_int32 alen)
 {
     afs_int32 code;
@@ -349,28 +375,32 @@ SDISK_Truncate(struct rx_call *rxcall, struct ubik_tid *atid,
     if ((code = ubik_CheckAuth(rxcall))) {
 	return code;
     }
-    if (!ubik_currentTrans) {
+    if (!ubik_currentTrans[index]) {
 	return USYNC;
     }
     /* sanity check to make sure only write trans appear here */
-    if (ubik_currentTrans->type != UBIK_WRITETRANS) {
+    if (ubik_currentTrans[index]->type != UBIK_WRITETRANS) {
 	return UBADTYPE;
     }
 
-    dbase = ubik_currentTrans->dbase;
+    if (!ubik_dbase[index]) {
+	return ENOENT;
+    }
+
+    dbase = ubik_currentTrans[index]->dbase;
     DBHOLD(dbase);
-    urecovery_CheckTid(atid);
-    if (!ubik_currentTrans) {
+    urecovery_CheckTid(atid, index);
+    if (!ubik_currentTrans[index]) {
 	DBRELE(dbase);
 	return USYNC;
     }
-    code = udisk_truncate(ubik_currentTrans, afile, alen);
+    code = udisk_truncate(ubik_currentTrans[index], afile, alen);
     DBRELE(dbase);
     return code;
 }
 
 afs_int32
-SDISK_GetVersion(struct rx_call *rxcall,
+SDISK_GetVersion(struct rx_call *rxcall, afs_int32 index,
 		 struct ubik_version *aversion)
 {
     afs_int32 code;
@@ -395,9 +425,13 @@ SDISK_GetVersion(struct rx_call *rxcall,
 	return UDEADLOCK;
     }
 
-    DBHOLD(ubik_dbase);
-    code = (*ubik_dbase->getlabel) (ubik_dbase, 0, aversion);
-    DBRELE(ubik_dbase);
+    if (!ubik_dbase[index]) {
+	return ENOENT;
+    }
+
+    DBHOLD(ubik_dbase[index]);
+    code = (*ubik_dbase[index]->getlabel) (ubik_dbase[index], 0, aversion);
+    DBRELE(ubik_dbase[index]);
     if (code) {
 	/* tell other side there's no dbase */
 	aversion->epoch = 0;
@@ -407,7 +441,7 @@ SDISK_GetVersion(struct rx_call *rxcall,
 }
 
 afs_int32
-SDISK_GetFile(struct rx_call *rxcall, afs_int32 file,
+SDISK_GetFile(struct rx_call *rxcall, afs_int32 index, afs_int32 file,
 	      struct ubik_version *version)
 {
     afs_int32 code;
@@ -427,7 +461,11 @@ SDISK_GetFile(struct rx_call *rxcall, afs_int32 file,
       return UDEADLOCK;
     }
 */
-    dbase = ubik_dbase;
+    if (!ubik_dbase[index]) {
+	return ENOENT;
+    }
+
+    dbase = ubik_dbase[index];
     DBHOLD(dbase);
     code = (*dbase->stat) (dbase, file, &ubikstat);
     if (code < 0) {
@@ -466,7 +504,7 @@ SDISK_GetFile(struct rx_call *rxcall, afs_int32 file,
 }
 
 afs_int32
-SDISK_SendFile(struct rx_call *rxcall, afs_int32 file,
+SDISK_SendFile(struct rx_call *rxcall, afs_int32 file, afs_int32 index,
 	       afs_int32 length, struct ubik_version *avers)
 {
     afs_int32 code;
@@ -492,6 +530,11 @@ SDISK_SendFile(struct rx_call *rxcall, afs_int32 file,
 	goto failed;
     }
 
+    if (!ubik_dbase[index]) {
+	code = ENOENT;
+	goto failed;
+    }
+
     /* next, we do a sanity check to see if the guy sending us the database is
      * the guy we think is the sync site.  It turns out that we might not have
      * decided yet that someone's the sync site, but they could have enough
@@ -512,14 +555,14 @@ SDISK_SendFile(struct rx_call *rxcall, afs_int32 file,
 	goto failed;
     }
 
-    dbase = ubik_dbase;
+    dbase = ubik_dbase[index];
     DBHOLD(dbase);
 
     /* abort any active trans that may scribble over the database */
     urecovery_AbortAll(dbase);
 
-    ubik_print("Ubik: Synchronize database with server %s\n",
-	       afs_inet_ntoa_r(otherHost, hoststr));
+    ubik_print("Ubik: Synchronize %s with server %s\n",
+	       dbase->pathName, afs_inet_ntoa_r(otherHost, hoststr));
 
     offset = 0;
 #ifdef OLD_URECOVERY
@@ -532,7 +575,7 @@ SDISK_SendFile(struct rx_call *rxcall, afs_int32 file,
     (*dbase->setlabel) (dbase, file, &tversion);	/* setlabel does sync */
 #ifndef OLD_URECOVERY
     flen = length;
-    afs_snprintf(pbuffer, sizeof(pbuffer), "%s.DB%s%d.TMP", ubik_dbase->pathName, (file<0)?"SYS":"", (file<0)?-file:file);
+    afs_snprintf(pbuffer, sizeof(pbuffer), "%s.DB%s%d.TMP", dbase->pathName, (file<0)?"SYS":"", (file<0)?-file:file);
     fd = open(pbuffer, O_CREAT | O_RDWR | O_TRUNC, 0600);
     if (fd < 0) {
 	code = errno;
@@ -545,7 +588,7 @@ SDISK_SendFile(struct rx_call *rxcall, afs_int32 file,
     }
     pass = 0;
 #endif
-    memcpy(&ubik_dbase->version, &tversion, sizeof(struct ubik_version));
+    memcpy(&ubik_dbase[index]->version, &tversion, sizeof(struct ubik_version));
     while (length > 0) {
 	tlen = (length > sizeof(tbuffer) ? sizeof(tbuffer) : length);
 #if !defined(OLD_URECOVERY) && !defined(AFS_PTHREAD_ENV)
@@ -585,30 +628,30 @@ SDISK_SendFile(struct rx_call *rxcall, afs_int32 file,
     /* sync data first, then write label and resync (resync done by setlabel call).
      * This way, good label is only on good database. */
 #ifdef OLD_URECOVERY
-    (*ubik_dbase->sync) (dbase, file);
+    (*dbase->sync) (dbase, file);
 #else
-    afs_snprintf(tbuffer, sizeof(tbuffer), "%s.DB%s%d", ubik_dbase->pathName, (file<0)?"SYS":"", (file<0)?-file:file);
+    afs_snprintf(tbuffer, sizeof(tbuffer), "%s.DB%s%d", dbase->pathName, (file<0)?"SYS":"", (file<0)?-file:file);
 #ifdef AFS_NT40_ENV
-    afs_snprintf(pbuffer, sizeof(pbuffer), "%s.DB%s%d.OLD", ubik_dbase->pathName, (file<0)?"SYS":"", (file<0)?-file:file);
+    afs_snprintf(pbuffer, sizeof(pbuffer), "%s.DB%s%d.OLD", dbase->pathName, (file<0)?"SYS":"", (file<0)?-file:file);
     code = unlink(pbuffer);
     if (!code)
 	code = rename(tbuffer, pbuffer);
-    afs_snprintf(pbuffer, sizeof(pbuffer), "%s.DB%s%d.TMP", ubik_dbase->pathName, (file<0)?"SYS":"", (file<0)?-file:file);
+    afs_snprintf(pbuffer, sizeof(pbuffer), "%s.DB%s%d.TMP", dbase->pathName, (file<0)?"SYS":"", (file<0)?-file:file);
 #endif
     if (!code)
 	code = rename(pbuffer, tbuffer);
     if (!code) {
-	(*ubik_dbase->open) (ubik_dbase, file);
+	(*dbase->open) (dbase, file);
 #endif
-	code = (*ubik_dbase->setlabel) (dbase, file, avers);
+	code = (*dbase->setlabel) (dbase, file, avers);
 #ifndef OLD_URECOVERY
     }
 #ifdef AFS_NT40_ENV
-    afs_snprintf(pbuffer, sizeof(pbuffer), "%s.DB%s%d.OLD", ubik_dbase->pathName, (file<0)?"SYS":"", (file<0)?-file:file);
+    afs_snprintf(pbuffer, sizeof(pbuffer), "%s.DB%s%d.OLD", dbase->pathName, (file<0)?"SYS":"", (file<0)?-file:file);
     unlink(pbuffer);
 #endif
 #endif
-    memcpy(&ubik_dbase->version, avers, sizeof(struct ubik_version));
+    memcpy(&dbase->version, avers, sizeof(struct ubik_version));
     udisk_Invalidate(dbase, file);	/* new dbase, flush disk buffers */
 #ifdef AFS_PTHREAD_ENV
     assert(pthread_cond_broadcast(&dbase->version_cond) == 0);
@@ -627,14 +670,13 @@ SDISK_SendFile(struct rx_call *rxcall, afs_int32 file,
 	}
 #endif
 	ubik_print
-	    ("Ubik: Synchronize database with server %s failed (error = %d)\n",
-	     afs_inet_ntoa_r(otherHost, hoststr), code);
+	    ("Ubik: Synchronize database %s with server %s failed (error = %d)\n",
+	     ubik_dbase[index]->pathName, afs_inet_ntoa_r(otherHost, hoststr), code);
     } else {
-	ubik_print("Ubik: Synchronize database completed\n");
+	ubik_print("Ubik: Synchronize database %s completed\n", dbase->pathName);
     }
     return code;
 }
-
 
 afs_int32
 SDISK_Probe(struct rx_call *rxcall)
@@ -657,6 +699,8 @@ SDISK_UpdateInterfaceAddr(struct rx_call *rxcall,
     afs_uint32 remoteAddr;	/* in net byte order */
     int i, j, found = 0, probableMatch = 0;
     char hoststr[16];
+    char ipstr[32];
+    char *msg;
 
     /* copy the output parameters */
     for (i = 0; i < UBIK_MAX_INTERFACE_ADDR; i++)
@@ -706,10 +750,15 @@ SDISK_UpdateInterfaceAddr(struct rx_call *rxcall,
     for (i = 1; i < UBIK_MAX_INTERFACE_ADDR; i++)
 	ts->addr[i] = htonl(inAddr->hostAddr[i]);
 
-    ubik_print("ubik: A Remote Server has addresses: ");
-    for (i = 0; i < UBIK_MAX_INTERFACE_ADDR && ts->addr[i]; i++)
-	ubik_print("%s ", afs_inet_ntoa_r(ts->addr[i], hoststr));
-    ubik_print("\n");
+    msg = malloc(4096);
+    sprintf(msg, "ubik: A Remote Server has addresses: ");
+    for (i = 0; i < UBIK_MAX_INTERFACE_ADDR && ts->addr[i]; i++) {
+	sprintf(ipstr, "%s, ", afs_inet_ntoa_r(ts->addr[i], hoststr));
+	strcat(msg, ipstr);
+    }
+    msg[strlen(msg)-2] = 0;
+    ubik_print("%s\n", msg);
+    free(msg);
 
     return 0;
 }
@@ -731,7 +780,7 @@ printServerInfo(void)
 }
 
 afs_int32
-SDISK_SetVersion(struct rx_call *rxcall, struct ubik_tid *atid,
+SDISK_SetVersion(struct rx_call *rxcall, struct ubik_tid *atid, afs_int32 index,
 		 struct ubik_version *oldversionp,
 		 struct ubik_version *newversionp)
 {
@@ -742,11 +791,11 @@ SDISK_SetVersion(struct rx_call *rxcall, struct ubik_tid *atid,
 	return (code);
     }
 
-    if (!ubik_currentTrans) {
+    if (!ubik_currentTrans[index]) {
 	return USYNC;
     }
     /* sanity check to make sure only write trans appear here */
-    if (ubik_currentTrans->type != UBIK_WRITETRANS) {
+    if (ubik_currentTrans[index]->type != UBIK_WRITETRANS) {
 	return UBADTYPE;
     }
 
@@ -755,21 +804,25 @@ SDISK_SetVersion(struct rx_call *rxcall, struct ubik_tid *atid,
 	return UDEADLOCK;
     }
 
-    dbase = ubik_currentTrans->dbase;
+    if (!ubik_dbase[index]) {
+	return ENOENT;
+    }
+
+    dbase = ubik_currentTrans[index]->dbase;
     DBHOLD(dbase);
-    urecovery_CheckTid(atid);
-    if (!ubik_currentTrans) {
+    urecovery_CheckTid(atid, index);
+    if (!ubik_currentTrans[index]) {
 	DBRELE(dbase);
 	return USYNC;
     }
 
     /* Set the label if its version matches the sync-site's */
-    if ((oldversionp->epoch == ubik_dbVersion.epoch)
-	&& (oldversionp->counter == ubik_dbVersion.counter)) {
-	code = (*dbase->setlabel) (ubik_dbase, 0, newversionp);
+    if ((oldversionp->epoch == ubik_dbVersion[index].epoch)
+	&& (oldversionp->counter == ubik_dbVersion[index].counter)) {
+	code = (*dbase->setlabel) (dbase, 0, newversionp);
 	if (!code) {
-	    ubik_dbase->version = *newversionp;
-	    ubik_dbVersion = *newversionp;
+	    dbase->version = *newversionp;
+	    ubik_dbVersion[index] = *newversionp;
 	}
     } else {
 	code = USYNC;

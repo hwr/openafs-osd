@@ -15,6 +15,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <time.h>
+#include <errno.h>
 
 #ifdef AFS_NT40_ENV
 #include <winsock2.h>
@@ -79,11 +80,11 @@
 
 /* some globals */
 afs_int32 ubik_quorum = 0;
-struct ubik_dbase *ubik_dbase = 0;
+struct ubik_dbase *ubik_dbase[MAX_UBIK_DBASES];
 struct ubik_stats ubik_stats;
 afs_uint32 ubik_host[UBIK_MAX_INTERFACE_ADDR];
-afs_int32 ubik_epochTime = 0;
-afs_int32 urecovery_state = 0;
+afs_int32 ubik_epochTime[MAX_UBIK_DBASES];
+afs_int32 urecovery_state[MAX_UBIK_DBASES];
 int (*ubik_SRXSecurityProc) (void *, struct rx_securityClass **, afs_int32 *);
 void *ubik_SRXSecurityRock;
 struct ubik_server *ubik_servers;
@@ -111,33 +112,34 @@ struct rx_securityClass *ubik_sc[3];
  * marks it as \b really up (\p beaconSinceDown).
  */
 afs_int32
-ContactQuorum_NoArguments(afs_int32 (*proc)(struct rx_connection *, ubik_tid *),
+ContactQuorum_NoArguments(afs_int32 (*proc)(struct rx_connection *, ubik_tid *, afs_int32),
 	       		  struct ubik_trans *atrans, int aflags)
 {
     struct ubik_server *ts;
     afs_int32 code;
     afs_int32 rcode, okcalls;
+    afs_int32 i = atrans->dbase->dbase_number;
 
     rcode = 0;
     okcalls = 0;
     for (ts = ubik_servers; ts; ts = ts->next) {
 	/* for each server */
-	if (!ts->up || !ts->currentDB) {
-	    ts->currentDB = 0;	/* db is no longer current; we just missed an update */
+	if (!ts->up || !ts->currentDB[i]) {
+	    ts->currentDB[i] = 0;	/* db is no longer current; we just missed an update */
 	    continue;		/* not up-to-date, don't bother */
 	}
-	code = (*proc)(ts->disk_rxcid, &atrans->tid);
+	code = (*proc)(ts->disk_rxcid, &atrans->tid, atrans->dbase->dbase_number);
 	if (code) {		/* failure */
 	    rcode = code;
 	    ts->up = 0;		/* mark as down now; beacons will no longer be sent */
-	    ts->currentDB = 0;
+	    ts->currentDB[i] = 0;
 	    ts->beaconSinceDown = 0;
 	    urecovery_LostServer();	/* tell recovery to try to resend dbase later */
-	} else {		/* success */
+	} else { 		/* success */
 	    if (!ts->isClone)
 		okcalls++;	/* count up how many worked */
 	    if (aflags & CStampVersion) {
-		ts->version = atrans->dbase->version;
+		ts->version[i] = atrans->dbase->version;
 	    }
 	}
     }
@@ -155,28 +157,29 @@ ContactQuorum_DISK_Lock(struct ubik_trans *atrans, int aflags,afs_int32 file,
     struct ubik_server *ts;
     afs_int32 code;
     afs_int32 rcode, okcalls;
+    afs_int32 i = atrans->dbase->dbase_number;
 
     rcode = 0;
     okcalls = 0;
     for (ts = ubik_servers; ts; ts = ts->next) {
 	/* for each server */
-	if (!ts->up || !ts->currentDB) {
-	    ts->currentDB = 0;	/* db is no longer current; we just missed an update */
+	if (!ts->up || !ts->currentDB[i]) {
+	    ts->currentDB[i] = 0;  /* db is no longer current; we just missed an update */
 	    continue;		/* not up-to-date, don't bother */
 	}
-	code = DISK_Lock(ts->disk_rxcid, &atrans->tid, file, position, length,
+	code = DISK_Lock(ts->disk_rxcid, &atrans->tid, i, file, position, length,
 			   type);
 	if (code) {		/* failure */
 	    rcode = code;
 	    ts->up = 0;		/* mark as down now; beacons will no longer be sent */
-	    ts->currentDB = 0;
+	    ts->currentDB[i] = 0;
 	    ts->beaconSinceDown = 0;
 	    urecovery_LostServer();	/* tell recovery to try to resend dbase later */
 	} else {		/* success */
 	    if (!ts->isClone)
 		okcalls++;	/* count up how many worked */
 	    if (aflags & CStampVersion) {
-		ts->version = atrans->dbase->version;
+		ts->version[i] = atrans->dbase->version;
 	    }
 	}
     }
@@ -194,27 +197,28 @@ ContactQuorum_DISK_Write(struct ubik_trans *atrans, int aflags,
     struct ubik_server *ts;
     afs_int32 code;
     afs_int32 rcode, okcalls;
+    afs_int32 i = atrans->dbase->dbase_number;
 
     rcode = 0;
     okcalls = 0;
     for (ts = ubik_servers; ts; ts = ts->next) {
 	/* for each server */
-	if (!ts->up || !ts->currentDB) {
-	    ts->currentDB = 0;	/* db is no longer current; we just missed an update */
+	if (!ts->up || !ts->currentDB[i]) {
+	    ts->currentDB[i] = 0; /* db is no longer current; we just missed an update */
 	    continue;		/* not up-to-date, don't bother */
 	}
-	code = DISK_Write(ts->disk_rxcid, &atrans->tid, file, position, data);
+	code = DISK_Write(ts->disk_rxcid, &atrans->tid, i, file, position, data);
 	if (code) {		/* failure */
 	    rcode = code;
 	    ts->up = 0;		/* mark as down now; beacons will no longer be sent */
-	    ts->currentDB = 0;
+	    ts->currentDB[i] = 0;
 	    ts->beaconSinceDown = 0;
 	    urecovery_LostServer();	/* tell recovery to try to resend dbase later */
 	} else {		/* success */
 	    if (!ts->isClone)
 		okcalls++;	/* count up how many worked */
 	    if (aflags & CStampVersion) {
-		ts->version = atrans->dbase->version;
+		ts->version[i] = atrans->dbase->version;
 	    }
 	}
     }
@@ -232,27 +236,28 @@ ContactQuorum_DISK_Truncate(struct ubik_trans *atrans, int aflags,
     struct ubik_server *ts;
     afs_int32 code;
     afs_int32 rcode, okcalls;
+    afs_int32 i = atrans->dbase->dbase_number;
 
     rcode = 0;
     okcalls = 0;
     for (ts = ubik_servers; ts; ts = ts->next) {
 	/* for each server */
-	if (!ts->up || !ts->currentDB) {
-	    ts->currentDB = 0;	/* db is no longer current; we just missed an update */
+	if (!ts->up || !ts->currentDB[i]) {
+	    ts->currentDB[i] = 0; /* db is no longer current; we just missed an update */
 	    continue;		/* not up-to-date, don't bother */
 	}
-	code = DISK_Truncate(ts->disk_rxcid, &atrans->tid, file, length);
+	code = DISK_Truncate(ts->disk_rxcid, &atrans->tid, i, file, length);
 	if (code) {		/* failure */
 	    rcode = code;
 	    ts->up = 0;		/* mark as down now; beacons will no longer be sent */
-	    ts->currentDB = 0;
+	    ts->currentDB[i] = 0;
 	    ts->beaconSinceDown = 0;
 	    urecovery_LostServer();	/* tell recovery to try to resend dbase later */
 	} else {		/* success */
 	    if (!ts->isClone)
 		okcalls++;	/* count up how many worked */
 	    if (aflags & CStampVersion) {
-		ts->version = atrans->dbase->version;
+		ts->version[i] = atrans->dbase->version;
 	    }
 	}
     }
@@ -270,17 +275,18 @@ ContactQuorum_DISK_WriteV(struct ubik_trans *atrans, int aflags,
     struct ubik_server *ts;
     afs_int32 code;
     afs_int32 rcode, okcalls;
+    afs_int32 i = atrans->dbase->dbase_number;
 
     rcode = 0;
     okcalls = 0;
     for (ts = ubik_servers; ts; ts = ts->next) {
 	/* for each server */
-	if (!ts->up || !ts->currentDB) {
-	    ts->currentDB = 0;	/* db is no longer current; we just missed an update */
+	if (!ts->up || !ts->currentDB[i]) {
+	    ts->currentDB[i] = 0; /* db is no longer current; we just missed an update */
 	    continue;		/* not up-to-date, don't bother */
 	}
 
-	code = DISK_WriteV(ts->disk_rxcid, &atrans->tid, io_vector, io_buffer);
+	code = DISK_WriteV(ts->disk_rxcid, &atrans->tid, i, io_vector, io_buffer);
 
 	if ((code <= -450) && (code > -500)) {
 	    /* An RPC interface mismatch (as defined in comerr/error_msg.c).
@@ -302,7 +308,7 @@ ContactQuorum_DISK_WriteV(struct ubik_trans *atrans, int aflags,
 		tcbs.bulkdata_len = iovec[i].length;
 		tcbs.bulkdata_val = &iobuf[offset];
 		code =
-		    DISK_Write(ts->disk_rxcid, &atrans->tid, iovec[i].file,
+		    DISK_Write(ts->disk_rxcid, &atrans->tid, i, iovec[i].file,
 			       iovec[i].position, &tcbs);
 		if (code)
 		    break;
@@ -314,14 +320,14 @@ ContactQuorum_DISK_WriteV(struct ubik_trans *atrans, int aflags,
 	if (code) {		/* failure */
 	    rcode = code;
 	    ts->up = 0;		/* mark as down now; beacons will no longer be sent */
-	    ts->currentDB = 0;
+	    ts->currentDB[i] = 0;
 	    ts->beaconSinceDown = 0;
 	    urecovery_LostServer();	/* tell recovery to try to resend dbase later */
 	} else {		/* success */
 	    if (!ts->isClone)
 		okcalls++;	/* count up how many worked */
 	    if (aflags & CStampVersion) {
-		ts->version = atrans->dbase->version;
+		ts->version[i] = atrans->dbase->version;
 	    }
 	}
     }
@@ -340,28 +346,29 @@ ContactQuorum_DISK_SetVersion(struct ubik_trans *atrans, int aflags,
     struct ubik_server *ts;
     afs_int32 code;
     afs_int32 rcode, okcalls;
+    afs_int32 i = atrans->dbase->dbase_number;
 
     rcode = 0;
     okcalls = 0;
     for (ts = ubik_servers; ts; ts = ts->next) {
 	/* for each server */
-	if (!ts->up || !ts->currentDB) {
-	    ts->currentDB = 0;	/* db is no longer current; we just missed an update */
+	if (!ts->up || !ts->currentDB[i]) {
+	    ts->currentDB[i] = 0;	/* db is no longer current; we just missed an update */
 	    continue;		/* not up-to-date, don't bother */
 	}
-	code = DISK_SetVersion(ts->disk_rxcid, &atrans->tid, OldVersion,
+	code = DISK_SetVersion(ts->disk_rxcid, &atrans->tid, i, OldVersion,
 			       NewVersion);
 	if (code) {		/* failure */
 	    rcode = code;
 	    ts->up = 0;		/* mark as down now; beacons will no longer be sent */
-	    ts->currentDB = 0;
+	    ts->currentDB[i] = 0;
 	    ts->beaconSinceDown = 0;
 	    urecovery_LostServer();	/* tell recovery to try to resend dbase later */
 	} else {		/* success */
 	    if (!ts->isClone)
 		okcalls++;	/* count up how many worked */
 	    if (aflags & CStampVersion) {
-		ts->version = atrans->dbase->version;
+		ts->version[i] = atrans->dbase->version;
 	    }
 	}
     }
@@ -386,13 +393,13 @@ ContactQuorum_DISK_SetVersion(struct ubik_trans *atrans, int aflags,
  * \see ubik_ServerInit(), ubik_ServerInitByInfo()
  */
 int
-ubik_ServerInitCommon(afs_uint32 myHost, short myPort,
+ubik_ServerInitCommon(afs_uint32 myHost, short myPort, afs_int32 index,
 		      struct afsconf_cell *info, char clones[],
 		      afs_uint32 serverList[], const char *pathName,
 		      struct ubik_dbase **dbase)
 {
     struct ubik_dbase *tdb;
-    afs_int32 code;
+    afs_int32 code, i;
 #ifdef AFS_PTHREAD_ENV
     pthread_t rxServerThread;        /* pthread variables */
     pthread_t ubeacon_InteractThread;
@@ -410,7 +417,13 @@ ubik_ServerInitCommon(afs_uint32 myHost, short myPort,
 
     struct rx_service *tservice;
 
-    initialize_U_error_table();
+    if (index == 0) {
+        initialize_U_error_table();
+	memset(&ubik_dbase, 0, sizeof(ubik_dbase));
+	memset(&urecovery_state, 0, sizeof(urecovery_state));
+	memset(&ubik_currentTrans, 0, sizeof(ubik_currentTrans));
+	memset(&ubik_epochTime, 0, sizeof(ubik_epochTime));
+    }
 
     tdb = (struct ubik_dbase *)malloc(sizeof(struct ubik_dbase));
     tdb->pathName = (char *)malloc(strlen(pathName) + 1);
@@ -436,134 +449,137 @@ ubik_ServerInitCommon(afs_uint32 myHost, short myPort,
     tdb->getnfiles = uphys_getnfiles;
     tdb->readers = 0;
     tdb->tidCounter = tdb->writeTidCounter = 0;
+    tdb->dbase_number = index;
+    ubik_dbase[index] = tdb;
     *dbase = tdb;
-    ubik_dbase = tdb;		/* for now, only one db per server; can fix later when we have names for the other dbases */
 
 #ifdef AFS_PTHREAD_ENV
     CV_INIT(&tdb->version_cond, "version", CV_DEFAULT, 0);
     CV_INIT(&tdb->flags_cond, "flags", CV_DEFAULT, 0);
 #endif /* AFS_PTHREAD_ENV */
 
-    /* initialize RX */
+    if (index == 0) { /* 
+		   * If there are multiple databases handled by the same process
+		   * do the following only for the 1st one.
+		   */
 
-    /* the following call is idempotent so when/if it got called earlier,
-     * by whatever called us, it doesn't really matter -- klm */
-    code = rx_Init(myPort);
-    if (code < 0)
-	return code;
+        /* initialize RX */
 
-    ubik_callPortal = myPort;
-    /* try to get an additional security object */
-    ubik_sc[0] = rxnull_NewServerSecurityObject();
-    ubik_sc[1] = 0;
-    ubik_sc[2] = 0;
-    if (ubik_SRXSecurityProc) {
-	code =
-	    (*ubik_SRXSecurityProc) (ubik_SRXSecurityRock, &secClass,
-				     &secIndex);
-	if (code == 0) {
-	    ubik_sc[secIndex] = secClass;
-	}
-    }
-    /* for backwards compat this should keep working as it does now
-       and not host bind */
-#if 0
-    /* This really needs to be up above, where I have put it.  It works
-     * here when we're non-pthreaded, but the code above, when using
-     * pthreads may (and almost certainly does) end up calling on a
-     * pthread resource which gets initialized by rx_Init.  The end
-     * result is that an assert fails and the program dies. -- klm
-     */
-    code = rx_Init(myPort);
-    if (code < 0)
-	return code;
-#endif
+        /* the following call is idempotent so when/if it got called earlier,
+         * by whatever called us, it doesn't really matter -- klm */
+        code = rx_Init(myPort);
+        if (code < 0)
+	    return code;
+    
+        ubik_callPortal = myPort;
+        /* try to get an additional security object */
+        ubik_sc[0] = rxnull_NewServerSecurityObject();
+        ubik_sc[1] = 0;
+        ubik_sc[2] = 0;
+        if (ubik_SRXSecurityProc) {
+	    code =
+	        (*ubik_SRXSecurityProc) (ubik_SRXSecurityRock, &secClass,
+				         &secIndex);
+	    if (code == 0) {
+	        ubik_sc[secIndex] = secClass;
+	    }
+        }
+        /* for backwards compat this should keep working as it does now
+           and not host bind */
+    #if 0
+        /* This really needs to be up above, where I have put it.  It works
+         * here when we're non-pthreaded, but the code above, when using
+         * pthreads may (and almost certainly does) end up calling on a
+         * pthread resource which gets initialized by rx_Init.  The end
+         * result is that an assert fails and the program dies. -- klm
+         */
+        code = rx_Init(myPort);
+        if (code < 0)
+	    return code;
+    #endif
 
-    tservice =
-	rx_NewService(0, VOTE_SERVICE_ID, "VOTE", ubik_sc, 3,
-		      VOTE_ExecuteRequest);
-    if (tservice == (struct rx_service *)0) {
-	ubik_dprint("Could not create VOTE rx service!\n");
-	return -1;
-    }
-    rx_SetMinProcs(tservice, 2);
-    rx_SetMaxProcs(tservice, 3);
+        tservice =
+	    rx_NewService(0, VOTE_SERVICE_ID, "VOTE", ubik_sc, 3,
+		          VOTE_ExecuteRequest);
+        if (tservice == (struct rx_service *)0) {
+	    ubik_dprint("Could not create VOTE rx service!\n");
+	    return -1;
+        }
+        rx_SetMinProcs(tservice, 2);
+        rx_SetMaxProcs(tservice, 3);
+    
+        tservice =
+	    rx_NewService(0, DISK_SERVICE_ID, "DISK", ubik_sc, 3,
+		          DISK_ExecuteRequest);
+        if (tservice == (struct rx_service *)0) {
+	    ubik_dprint("Could not create DISK rx service!\n");
+	    return -1;
+        }
+        rx_SetMinProcs(tservice, 2);
+        rx_SetMaxProcs(tservice, 3);
 
-    tservice =
-	rx_NewService(0, DISK_SERVICE_ID, "DISK", ubik_sc, 3,
-		      DISK_ExecuteRequest);
-    if (tservice == (struct rx_service *)0) {
-	ubik_dprint("Could not create DISK rx service!\n");
-	return -1;
-    }
-    rx_SetMinProcs(tservice, 2);
-    rx_SetMaxProcs(tservice, 3);
-
-    /* start an rx_ServerProc to handle incoming RPC's in particular the
-     * UpdateInterfaceAddr RPC that occurs in ubeacon_InitServerList. This avoids
-     * the "steplock" problem in ubik initialization. Defect 11037.
-     */
+        /* start an rx_ServerProc to handle incoming RPC's in particular the
+         * UpdateInterfaceAddr RPC that occurs in ubeacon_InitServerList. This avoids
+         * the "steplock" problem in ubik initialization. Defect 11037.
+         */
 #ifdef AFS_PTHREAD_ENV
-/* do assert stuff */
-    osi_Assert(pthread_attr_init(&rxServer_tattr) == 0);
-    osi_Assert(pthread_attr_setdetachstate(&rxServer_tattr, PTHREAD_CREATE_DETACHED) == 0);
-/*    osi_Assert(pthread_attr_setstacksize(&rxServer_tattr, rx_stackSize) == 0); */
+    /* do assert stuff */
+        osi_Assert(pthread_attr_init(&rxServer_tattr) == 0);
+        osi_Assert(pthread_attr_setdetachstate(&rxServer_tattr, PTHREAD_CREATE_DETACHED) == 0);
+    /*    osi_Assert(pthread_attr_setstacksize(&rxServer_tattr, rx_stackSize) == 0); */
 
-    osi_Assert(pthread_create(&rxServerThread, &rxServer_tattr, (void *)rx_ServerProc, NULL) == 0);
+        osi_Assert(pthread_create(&rxServerThread, &rxServer_tattr, (void *)rx_ServerProc, NULL) == 0);
 #else
-    LWP_CreateProcess(rx_ServerProc, rx_stackSize, RX_PROCESS_PRIORITY,
-              NULL, "rx_ServerProc", &junk);
+        LWP_CreateProcess(rx_ServerProc, rx_stackSize, RX_PROCESS_PRIORITY,
+                  NULL, "rx_ServerProc", &junk);
 #endif
-
-    /* do basic initialization */
-    code = uvote_Init();
-    if (code)
-	return code;
+    
+        /* do basic initialization */
+        code = uvote_Init();
+        if (code)
+	    return code;
+    }
     code = urecovery_Initialize(tdb);
     if (code)
 	return code;
-    if (info)
-	code = ubeacon_InitServerListByInfo(myHost, info, clones);
-    else
-	code = ubeacon_InitServerList(myHost, serverList);
-    if (code)
-	return code;
+    if (index == 0) {
+        if (info)
+	    code = ubeacon_InitServerListByInfo(myHost, info, clones);
+        else
+	    code = ubeacon_InitServerList(myHost, serverList);
+        if (code)
+	    return code;
 
-    /* now start up async processes */
+        /* now start up async processes */
 #ifdef AFS_PTHREAD_ENV
-/* do assert stuff */
-    osi_Assert(pthread_attr_init(&ubeacon_Interact_tattr) == 0);
-    osi_Assert(pthread_attr_setdetachstate(&ubeacon_Interact_tattr, PTHREAD_CREATE_DETACHED) == 0);
-/*    osi_Assert(pthread_attr_setstacksize(&ubeacon_Interact_tattr, 16384) == 0); */
-    /*  need another attr set here for priority???  - klm */
+    /* do assert stuff */
+        osi_Assert(pthread_attr_init(&ubeacon_Interact_tattr) == 0);
+        osi_Assert(pthread_attr_setdetachstate(&ubeacon_Interact_tattr, PTHREAD_CREATE_DETACHED) == 0);
+    /*    osi_Assert(pthread_attr_setstacksize(&ubeacon_Interact_tattr, 16384) == 0); */
+        /*  need another attr set here for priority???  - klm */
 
-    osi_Assert(pthread_create(&ubeacon_InteractThread, &ubeacon_Interact_tattr,
-           (void *)ubeacon_Interact, NULL) == 0);
+        osi_Assert(pthread_create(&ubeacon_InteractThread, &ubeacon_Interact_tattr,
+               (void *)ubeacon_Interact, NULL) == 0);
+
+        osi_Assert(pthread_attr_init(&urecovery_Interact_tattr) == 0);
+        osi_Assert(pthread_attr_setdetachstate(&urecovery_Interact_tattr, PTHREAD_CREATE_DETACHED) == 0);
+    /*    osi_Assert(pthread_attr_setstacksize(&urecovery_Interact_tattr, 16384) == 0); */
+        /*  need another attr set here for priority???  - klm */
+
+        osi_Assert(pthread_create(&urecovery_InteractThread, &urecovery_Interact_tattr,
+               (void *)urecovery_Interact, (void *)tdb) == 0);
 #else
-    code = LWP_CreateProcess(ubeacon_Interact, 16384 /*8192 */ ,
-			     LWP_MAX_PRIORITY - 1, (void *)0, "beacon",
-			     &junk);
-    if (code)
-	return code;
+        code = LWP_CreateProcess(ubeacon_Interact, 16384 /*8192 */ ,
+			         LWP_MAX_PRIORITY - 1, (void *)0, "beacon",
+			         &junk);
+        if (code)
+	    return code;
+        code = LWP_CreateProcess(urecovery_Interact, 16384 /*8192 */ ,
+          		         LWP_MAX_PRIORITY - 1, (void *)tdb, "recovery",
+			         &junk);
 #endif
-
-#ifdef AFS_PTHREAD_ENV
-/* do assert stuff */
-    osi_Assert(pthread_attr_init(&urecovery_Interact_tattr) == 0);
-    osi_Assert(pthread_attr_setdetachstate(&urecovery_Interact_tattr, PTHREAD_CREATE_DETACHED) == 0);
-/*    osi_Assert(pthread_attr_setstacksize(&urecovery_Interact_tattr, 16384) == 0); */
-    /*  need another attr set here for priority???  - klm */
-
-    osi_Assert(pthread_create(&urecovery_InteractThread, &urecovery_Interact_tattr,
-           (void *)urecovery_Interact, NULL) == 0);
-
-    return 0;  /* is this correct?  - klm */
-#else
-    code = LWP_CreateProcess(urecovery_Interact, 16384 /*8192 */ ,
-			     LWP_MAX_PRIORITY - 1, (void *)0, "recovery",
-			     &junk);
+    }
     return code;
-#endif
 
 }
 
@@ -578,8 +594,21 @@ ubik_ServerInitByInfo(afs_uint32 myHost, short myPort,
     afs_int32 code;
 
     code =
-	ubik_ServerInitCommon(myHost, myPort, info, clones, 0, pathName,
-			      dbase);
+	ubik_ServerInitCommon(myHost, myPort, 0, info, clones, 0,
+			      pathName, dbase);
+    return code;
+}
+
+int
+ubik_ServerInitByInfoN(afs_uint32 myHost, short myPort, afs_int32 index,
+		      struct afsconf_cell *info, char clones[],
+		      const char *pathName, struct ubik_dbase **dbase)
+{
+    afs_int32 code;
+
+    code =
+	ubik_ServerInitCommon(myHost, myPort, index, info, clones, 0,
+			      pathName, dbase);
     return code;
 }
 
@@ -587,14 +616,28 @@ ubik_ServerInitByInfo(afs_uint32 myHost, short myPort,
  * \see ubik_ServerInitCommon()
  */
 int
-ubik_ServerInit(afs_uint32 myHost, short myPort, afs_uint32 serverList[],
-		const char *pathName, struct ubik_dbase **dbase)
+ubik_ServerInit(afs_uint32 myHost, short myPort,
+		afs_uint32 serverList[], const char *pathName,
+		struct ubik_dbase **dbase)
 {
     afs_int32 code;
 
     code =
-	ubik_ServerInitCommon(myHost, myPort, (struct afsconf_cell *)0, 0,
-			      serverList, pathName, dbase);
+	ubik_ServerInitCommon(myHost, myPort, 0, (struct afsconf_cell *)0,
+			      0, serverList, pathName, dbase);
+    return code;
+}
+
+int
+ubik_ServerInitN(afs_uint32 myHost, short myPort, afs_int32 index,
+		afs_uint32 serverList[], const char *pathName,
+		struct ubik_dbase **dbase)
+{
+    afs_int32 code;
+
+    code =
+	ubik_ServerInitCommon(myHost, myPort, index, (struct afsconf_cell *)0,
+			      0, serverList, pathName, dbase);
     return code;
 }
 
@@ -693,7 +736,7 @@ BeginTrans(struct ubik_dbase *dbase, afs_int32 transMode,
     if (readAny)
 	tt->flags |= TRREADANY;
     /* label trans and dbase with new tid */
-    tt->tid.epoch = ubik_epochTime;
+    tt->tid.epoch = ubik_epochTime[dbase->dbase_number];
     /* bump by two, since tidCounter+1 means trans id'd by tidCounter has finished */
     tt->tid.counter = (dbase->tidCounter += 2);
 

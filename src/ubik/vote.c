@@ -112,8 +112,8 @@ static afs_int32 syncHost = 0;
 /*\}*/
 
 /*! \name used to remember which dbase version is the one at the sync site (for non-sync sites) */
-struct ubik_version ubik_dbVersion;	/*!< sync site's dbase version */
-struct ubik_tid ubik_dbTid;	/*!< sync site's tid, or 0 if none */
+struct ubik_version ubik_dbVersion[MAX_UBIK_DBASES]; /*!< sync site's dbase version */
+struct ubik_tid ubik_dbTid[MAX_UBIK_DBASES];	/*!< sync site's tid, or 0 if none */
 /*\}*/
 
 /*!
@@ -188,12 +188,12 @@ uvote_GetSyncSite(void)
  */
 afs_int32
 SVOTE_Beacon(struct rx_call * rxcall, afs_int32 astate,
-	     afs_int32 astart, struct ubik_version * avers,
-	     struct ubik_tid * atid)
+	     afs_int32 astart, struct ubik_db_stateList * alist)
 {
     afs_int32 otherHost;
     afs_int32 now;
     afs_int32 vote;
+    afs_int32 i;
     struct rx_connection *aconn;
     struct rx_peer *rxp;
     struct ubik_server *ts;
@@ -337,9 +337,21 @@ SVOTE_Beacon(struct rx_call * rxcall, afs_int32 astate,
 	lastYesClaim = astart;	/* remember for computing when sync site expires */
 	lastYesHost = otherHost;	/* and who for */
 	lastYesState = astate;	/* remember if site is a sync site */
-	ubik_dbVersion = *avers;	/* resync value */
-	ubik_dbTid = *atid;	/* transaction id, if any, of active trans */
-	urecovery_CheckTid(atid);	/* check if current write trans needs aborted */
+	for (i=0; i<alist->ubik_db_stateList_len; i++) {
+	    struct ubik_db_state *dbstate = &alist->ubik_db_stateList_val[i];
+	    afs_int32 j = dbstate->index;
+	    if (!ubik_dbase[j]) /* This dbase is here not initialized */
+		continue;
+	    if (ubik_dbase[j]->dbase_number != j) {
+		ubik_dprint("VOTE_Beacon wrong index %d instead of %d in dbase\n",
+			j, ubik_dbase[j]->dbase_number);
+		continue;
+	    }
+	    ubik_dbVersion[j] = dbstate->vers;	/* resync value */
+	    ubik_dbTid[j] = dbstate->tid; /* transaction id, if any, of active trans */
+	    urecovery_CheckTid(&dbstate->tid, j);
+				/* check if current write trans needs aborted */
+	}
     }
     return vote;
 }
@@ -349,6 +361,54 @@ SVOTE_Beacon(struct rx_call * rxcall, afs_int32 astate,
  *
  * Basic network debugging hooks.
  */
+afs_int32
+SVOTE_MXSDebug(struct rx_call * rxcall, afs_int32 awhich,
+	      struct ubik_sdebug_new * aparm, afs_int32 * isclone)
+{
+    struct ubik_server *ts;
+    int i, j, k;
+    char *p;
+    for (ts = ubik_servers; ts; ts = ts->next) {
+	if (awhich-- == 0) {
+	    /* we're done */
+	    aparm->addr = ntohl(ts->addr[0]);	/* primary interface */
+	    for (i = 0; i < UBIK_MAX_INTERFACE_ADDR - 1; i++)
+		aparm->altAddr[i] = ntohl(ts->addr[i + 1]);
+	    aparm->lastVoteTime = ts->lastVoteTime;
+	    aparm->lastBeaconSent = ts->lastBeaconSent;
+	    aparm->lastVote = ts->lastVote;
+	    aparm->beaconSinceDown = ts->beaconSinceDown;
+	    aparm->up = ts->up;
+	    k = 0;
+	    for (j=0; j<MAX_UBIK_DBASES; j++)
+		if (ubik_dbase[j])
+		    k++;
+	    aparm->list.ubik_db_remoteList_len = k;
+	    if (k)
+		aparm->list.ubik_db_remoteList_val = (struct ubik_db_remote *)
+				malloc(k * sizeof(struct ubik_db_remote));
+	    k = 0;
+	    for (j=0; j<MAX_UBIK_DBASES; j++) {
+		if (ubik_dbase[j]) {
+		    struct ubik_db_remote *info =
+					 &aparm->list.ubik_db_remoteList_val[k];
+		    p = strrchr(ubik_dbase[j]->pathName, '/');
+		    if (p)
+			strncpy(info->name, p+1, 8);
+		    info->index = ubik_dbase[j]->dbase_number;
+	    	    memcpy(&info->remoteVersion, &ts->version[j],
+		   	   sizeof(struct ubik_version));
+	    	    info->currentDB = ts->currentDB[j];
+		    k++;
+		}
+	    }
+	    *isclone = ts->isClone;
+	    return 0;
+	}
+    }
+    return 2;
+}
+
 afs_int32
 SVOTE_SDebug(struct rx_call * rxcall, afs_int32 awhich,
 	     struct ubik_sdebug * aparm)
@@ -377,7 +437,7 @@ SVOTE_XSDebug(struct rx_call * rxcall, afs_int32 awhich,
 	    aparm->lastVote = ts->lastVote;
 	    aparm->up = ts->up;
 	    aparm->beaconSinceDown = ts->beaconSinceDown;
-	    aparm->currentDB = ts->currentDB;
+	    aparm->currentDB = ts->currentDB[0];
 	    *isclone = ts->isClone;
 	    return 0;
 	}
@@ -399,6 +459,84 @@ SVOTE_XDebug(struct rx_call * rxcall, struct ubik_debug * aparm,
 /*!
  * \brief Handle basic network debug command.  This is the global state dumper.
  */
+afs_int32
+SVOTE_MXDebug(struct rx_call * rxcall, struct ubik_debug_new * aparm,
+	      afs_int32 * isclone)
+{
+    int i, j, k;
+    /* fill in the basic debug structure.  Note the the RPC protocol transfers,
+     * integers in host order. */
+
+    aparm->now = FT_ApproxTime();
+    aparm->lastYesTime = ubik_lastYesTime;
+    aparm->lastYesHost = ntohl(lastYesHost);
+    aparm->lastYesState = lastYesState;
+    aparm->lastYesClaim = lastYesClaim;
+    aparm->lowestHost = ntohl(lowestHost);
+    aparm->lowestTime = lowestTime;
+    aparm->syncHost = ntohl(syncHost);
+    aparm->syncTime = syncTime;
+
+    /* fill in all interface addresses of myself in hostbyte order */
+    for (i = 0; i < UBIK_MAX_INTERFACE_ADDR; i++)
+	aparm->interfaceAddr[i] = ntohl(ubik_host[i]);
+
+    aparm->amSyncSite = ubik_amSyncSite;
+    ubeacon_Debug_new(&aparm->syncSiteUntil, &aparm->nServers);
+
+    udisk_Debug_new(&aparm->lockedPages, &aparm->writeLockedPages);
+
+    ulock_Debug_new(&aparm->anyReadLocks, &aparm->anyWriteLocks);
+
+    k = 0;
+    for (j=0; j<MAX_UBIK_DBASES; j++)
+	if (ubik_dbase[j])
+	    k++;
+    aparm->list.ubik_db_localList_len = k;
+    aparm->list.ubik_db_localList_val = (struct ubik_db_local *) 
+			malloc(k * sizeof(struct ubik_db_local));
+    k = 0;
+    for (j=0; j<MAX_UBIK_DBASES; j++) {
+	if (ubik_dbase[j]) {
+	    struct ubik_db_local *info = &aparm->list.ubik_db_localList_val[k];
+	    char *p = strrchr(ubik_dbase[j]->pathName, '/');
+	    if (p)
+		strncpy(info->name, p+1, 8);
+	    info->index = ubik_dbase[j]->dbase_number;
+	    memcpy(&info->localVersion, &ubik_dbase[j]->version,
+	   	   sizeof(struct ubik_version));
+	    memcpy(&info->syncVersion, &ubik_dbVersion[j],
+	   	   sizeof(struct ubik_version));
+    	    memcpy(&info->syncTid, &ubik_dbTid[j], sizeof(struct ubik_tid));
+    	    info->recoveryState = urecovery_state[j];
+    	    if ((urecovery_state[j] & UBIK_RECSYNCSITE)
+	      && (urecovery_state[j] & UBIK_RECFOUNDDB)
+	      && (urecovery_state[j] & UBIK_RECHAVEDB)) {
+		info->recoveryState |= UBIK_RECLABELDB;
+    	    }
+    	    info->activeWrite = (ubik_dbase[j]->flags & DBWRITING);
+    	    info->tidCounter = ubik_dbase[j]->tidCounter;
+    	    /* Get the recovery state. The label of the database may not have
+     	     * been written yet but set the flag so udebug behavior remains.
+     	     * Defect 9477.
+     	     */
+    	    if (ubik_currentTrans[j]) {
+		info->currentTrans = 1;
+	        if (ubik_currentTrans[j]->type == UBIK_WRITETRANS)
+	    	    info->writeTrans = 1;
+	        else
+	    	    info->writeTrans = 0;
+            } else {
+	        info->currentTrans = 0;
+            }
+    	    info->epochTime = ubik_epochTime[j];
+	    k++;
+	}
+    }
+    *isclone = amIClone;
+    return 0;
+}
+
 afs_int32
 SVOTE_Debug(struct rx_call * rxcall, struct ubik_debug * aparm)
 {
@@ -431,20 +569,20 @@ SVOTE_Debug(struct rx_call * rxcall, struct ubik_debug * aparm)
      * been written yet but set the flag so udebug behavior remains.
      * Defect 9477.
      */
-    aparm->recoveryState = urecovery_state;
-    if ((urecovery_state & UBIK_RECSYNCSITE)
-	&& (urecovery_state & UBIK_RECFOUNDDB)
-	&& (urecovery_state & UBIK_RECHAVEDB)) {
+    aparm->recoveryState = urecovery_state[0];
+    if ((urecovery_state[0] & UBIK_RECSYNCSITE)
+	&& (urecovery_state[0] & UBIK_RECFOUNDDB)
+	&& (urecovery_state[0] & UBIK_RECHAVEDB)) {
 	aparm->recoveryState |= UBIK_RECLABELDB;
     }
     memcpy(&aparm->syncVersion, &ubik_dbVersion, sizeof(struct ubik_version));
-    memcpy(&aparm->syncTid, &ubik_dbTid, sizeof(struct ubik_tid));
-    aparm->activeWrite = (ubik_dbase->flags & DBWRITING);
-    aparm->tidCounter = ubik_dbase->tidCounter;
+    memcpy(&aparm->syncTid, &ubik_dbTid[0], sizeof(struct ubik_tid));
+    aparm->activeWrite = (ubik_dbase[0]->flags & DBWRITING);
+    aparm->tidCounter = ubik_dbase[0]->tidCounter;
 
-    if (ubik_currentTrans) {
+    if (ubik_currentTrans[0]) {
 	aparm->currentTrans = 1;
-	if (ubik_currentTrans->type == UBIK_WRITETRANS)
+	if (ubik_currentTrans[0]->type == UBIK_WRITETRANS)
 	    aparm->writeTrans = 1;
 	else
 	    aparm->writeTrans = 0;
@@ -452,7 +590,7 @@ SVOTE_Debug(struct rx_call * rxcall, struct ubik_debug * aparm)
 	aparm->currentTrans = 0;
     }
 
-    aparm->epochTime = ubik_epochTime;
+    aparm->epochTime = ubik_epochTime[0];
 
     return 0;
 }
@@ -474,7 +612,7 @@ SVOTE_SDebugOld(struct rx_call * rxcall, afs_int32 awhich,
 	    aparm->lastVote = ts->lastVote;
 	    aparm->up = ts->up;
 	    aparm->beaconSinceDown = ts->beaconSinceDown;
-	    aparm->currentDB = ts->currentDB;
+	    aparm->currentDB = ts->currentDB[0];
 	    return 0;
 	}
     }
@@ -514,20 +652,20 @@ SVOTE_DebugOld(struct rx_call * rxcall,
      * been written yet but set the flag so udebug behavior remains.
      * Defect 9477.
      */
-    aparm->recoveryState = urecovery_state;
-    if ((urecovery_state & UBIK_RECSYNCSITE)
-	&& (urecovery_state & UBIK_RECFOUNDDB)
-	&& (urecovery_state & UBIK_RECHAVEDB)) {
+    aparm->recoveryState = urecovery_state[0];
+    if ((urecovery_state[0] & UBIK_RECSYNCSITE)
+	&& (urecovery_state[0] & UBIK_RECFOUNDDB)
+	&& (urecovery_state[0] & UBIK_RECHAVEDB)) {
 	aparm->recoveryState |= UBIK_RECLABELDB;
     }
     memcpy(&aparm->syncVersion, &ubik_dbVersion, sizeof(struct ubik_version));
-    memcpy(&aparm->syncTid, &ubik_dbTid, sizeof(struct ubik_tid));
-    aparm->activeWrite = (ubik_dbase->flags & DBWRITING);
-    aparm->tidCounter = ubik_dbase->tidCounter;
+    memcpy(&aparm->syncTid, &ubik_dbTid[0], sizeof(struct ubik_tid));
+    aparm->activeWrite = (ubik_dbase[0]->flags & DBWRITING);
+    aparm->tidCounter = ubik_dbase[0]->tidCounter;
 
     if (ubik_currentTrans) {
 	aparm->currentTrans = 1;
-	if (ubik_currentTrans->type == UBIK_WRITETRANS)
+	if (ubik_currentTrans[0]->type == UBIK_WRITETRANS)
 	    aparm->writeTrans = 1;
 	else
 	    aparm->writeTrans = 0;
@@ -535,7 +673,7 @@ SVOTE_DebugOld(struct rx_call * rxcall,
 	aparm->currentTrans = 0;
     }
 
-    aparm->epochTime = ubik_epochTime;
+    aparm->epochTime = ubik_epochTime[0];
 
     return 0;
 }

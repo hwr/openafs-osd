@@ -68,6 +68,8 @@
 #define	MAXSERVERS	    20	/*!< max number of servers */
 /*\}*/
 
+#define MAX_UBIK_DBASES 4
+
 /*! version comparison macro */
 #define vcmp(a,b) ((a).epoch == (b).epoch? ((a).counter - (b).counter) : ((a).epoch - (b).epoch))
 
@@ -174,6 +176,7 @@ struct ubik_dbase {
     afs_int32 tidCounter;	/*!< last RW or RO trans tid counter */
     afs_int32 writeTidCounter;	/*!< last write trans tid counter */
     afs_int32 flags;		/*!< flags */
+    afs_int32 dbase_number;     /*!< offset in ubik_dbase[] */
     /* physio procedures */
     int (*read) (struct ubik_dbase * adbase, afs_int32 afile, void *abuffer,
 		 afs_int32 apos, afs_int32 alength);
@@ -294,13 +297,14 @@ struct ubik_server {
     afs_uint32 addr[UBIK_MAX_INTERFACE_ADDR];	/*!< network order, addr[0] is primary */
     afs_int32 lastVoteTime;	/*!< last time yes vote received */
     afs_int32 lastBeaconSent;	/*!< last time beacon attempted */
-    struct ubik_version version;	/*!< version, only used during recovery */
+    struct ubik_version version[MAX_UBIK_DBASES];	
+				/*!< version, only used during recovery */
     struct rx_connection *vote_rxcid;	/*!< cid to use to contact dude for votes */
     struct rx_connection *disk_rxcid;	/*!< cid to use to contact dude for disk reqs */
     char lastVote;		/*!< true if last vote was yes */
     char up;			/*!< is it up? */
     char beaconSinceDown;	/*!< did beacon get through since last crash? */
-    char currentDB;		/*!< is dbase up-to-date */
+    char currentDB[MAX_UBIK_DBASES];	/*!< is dbase up-to-date */
     char magic;			/*!< the one whose vote counts twice */
     char isClone;		/*!< is only a clone, doesn't vote */
 };
@@ -336,16 +340,16 @@ extern short ubik_callPortal;
 /*\}*/
 
 extern afs_int32 ubik_quorum;	/* min hosts in quorum */
-extern struct ubik_dbase *ubik_dbase;	/* the database handled by this server */
+extern struct ubik_dbase *ubik_dbase[MAX_UBIK_DBASES];	/* the database handled by this server */
 extern afs_uint32 ubik_host[UBIK_MAX_INTERFACE_ADDR];	/* this host addr, in net order */
 extern int ubik_amSyncSite;	/* sleep on this waiting to be sync site */
 extern struct ubik_stats {	/* random stats */
     afs_int32 escapes;
 } ubik_stats;
-extern afs_int32 ubik_epochTime;	/* time when this site started */
-extern afs_int32 urecovery_state;	/* sync site recovery process state */
-extern struct ubik_trans *ubik_currentTrans;	/* current trans */
-extern struct ubik_version ubik_dbVersion;	/* sync site's dbase version */
+extern afs_int32 ubik_epochTime[MAX_UBIK_DBASES];	/* time when this site started */
+extern afs_int32 urecovery_state[MAX_UBIK_DBASES];	/* sync site recovery process state */
+extern struct ubik_trans *ubik_currentTrans[MAX_UBIK_DBASES];	/* current trans */
+extern struct ubik_version ubik_dbVersion[MAX_UBIK_DBASES];	/* sync site's dbase version */
 extern afs_int32 ubik_debugFlag;	/* ubik debug flag */
 extern int ubikPrimaryAddrOnly;	/* use only primary address */
 
@@ -378,7 +382,7 @@ extern int urecovery_LostServer(void);
 extern int urecovery_AllBetter(struct ubik_dbase *adbase,
 			       int areadAny);
 extern int urecovery_AbortAll(struct ubik_dbase *adbase);
-extern int urecovery_CheckTid(struct ubik_tid *atid);
+extern int urecovery_CheckTid(struct ubik_tid *atid, afs_int32 index);
 extern int urecovery_Initialize(struct ubik_dbase *adbase);
 extern void *urecovery_Interact(void *);
 extern int DoProbe(struct ubik_server *server);
@@ -387,7 +391,7 @@ extern int DoProbe(struct ubik_server *server);
 /*! \name ubik.c */
 extern afs_int32 ContactQuorum_NoArguments(afs_int32 (*proc)
 						       (struct rx_connection *,
-							ubik_tid *),
+							ubik_tid *, afs_int32),
 					   struct ubik_trans *atrans,
 					   int aflags);
 
@@ -424,6 +428,7 @@ extern afs_uint32 ubikGetPrimaryInterfaceAddr(afs_uint32 addr);
 /*! \name beacon.c */
 struct afsconf_cell;
 extern void ubeacon_Debug(struct ubik_debug *aparm);
+extern void ubeacon_Debug_new(afs_int32 *, afs_int32 *);
 extern int ubeacon_AmSyncSite(void);
 extern int ubeacon_InitServerListByInfo(afs_uint32 ame,
 					struct afsconf_cell *info,
@@ -434,6 +439,7 @@ extern void *ubeacon_Interact(void *);
 
 /*! \name disk.c */
 extern void udisk_Debug(struct ubik_debug *aparm);
+extern void udisk_Debug_new(afs_int32 *, afs_int32 *);
 extern int udisk_Invalidate(struct ubik_dbase *adbase, afs_int32 afid);
 extern int udisk_read(struct ubik_trans *atrans, afs_int32 afile,
 		      void *abuffer, afs_int32 apos, afs_int32 alen);
@@ -452,6 +458,7 @@ extern int udisk_end(struct ubik_trans *atrans);
 extern int  ulock_getLock(struct ubik_trans *atrans, int atype, int await);
 extern void ulock_relLock(struct ubik_trans *atrans);
 extern void ulock_Debug(struct ubik_debug *aparm);
+extern void ulock_Debug_new(afs_int32 *, afs_int32 *);
 /*\}*/
 
 /*! \name vote.c */
@@ -485,7 +492,14 @@ extern int ubik_ServerInitByInfo(afs_uint32 myHost, short myPort,
 				 struct afsconf_cell *info, char clones[],
 				 const char *pathName,
 				 struct ubik_dbase **dbase);
+extern int ubik_ServerInitByInfoN(afs_uint32 myHost, short myPort, afs_int32 index,
+				 struct afsconf_cell *info, char clones[],
+				 const char *pathName,
+				 struct ubik_dbase **dbase);
 extern int ubik_ServerInit(afs_uint32 myHost, short myPort,
+			   afs_uint32 serverList[],
+			   const char *pathName, struct ubik_dbase **dbase);
+extern int ubik_ServerInitN(afs_uint32 myHost, short myPort, afs_int32 index,
 			   afs_uint32 serverList[],
 			   const char *pathName, struct ubik_dbase **dbase);
 extern int ubik_BeginTrans(struct ubik_dbase *dbase,
