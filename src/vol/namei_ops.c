@@ -1317,6 +1317,11 @@ namei_dec(IHandle_t * ih, Inode ino, int p1)
 		/* Try to remove directory. If it fails, that's ok.
 		 * Salvage will clean up.
 		 */
+		char *slash = strrchr(name.n_path, OS_DIRSEPC);
+		if (slash) {
+		    /* avoid an rmdir() on the file we just unlinked */
+		    *slash = '\0';
+		}
 		(void)namei_RemoveDataDirectories(&name);
 	    }
 	}
@@ -1914,6 +1919,9 @@ namei_GetLinkCount(FdHandle_t * h, Inode ino, int lockit, int fixup, int nowrite
     }
 
     rc = OS_PREAD(h->fd_fd, buf, length, offset);
+    if (rc == -1)
+	goto bad_getLinkByte;
+
     if ((rc == 0 || !((row >> index) & NAMEI_TAGMASK)) && fixup && nowrite) {
         return 1;
     }
@@ -2541,9 +2549,12 @@ _namei_examine_special(char * path1,
 
     if (!judgeFun ||
 	(*judgeFun) (&info, singleVolumeNumber, rock)) {
-	ret = 1;
-        if ((*writeFun) (fp, &info, path1, dname) < 0) {
+	ret = (*writeFun) (fp, &info, path1, dname);
+	if (ret < 0) {
+	    Log("_namei_examine_special: writeFun returned %d\n", ret);
 	    ret = -1;
+	} else {
+	    ret = 1;
 	}
     }
 
@@ -2623,9 +2634,12 @@ _namei_examine_reg(char * path3,
 
     if (!judgeFun ||
 	(*judgeFun) (&info, singleVolumeNumber, rock)) {
-	ret = 1;
-        if ((*writeFun) (fp, &info, path3, dname) < 0) {
+	ret = (*writeFun) (fp, &info, path3, dname);
+	if (ret < 0) {
+	    Log("_namei_examine_reg: writeFun returned %d\n", ret);
 	    ret = -1;
+	} else {
+	    ret = 1;
 	}
     }
 
@@ -3423,8 +3437,20 @@ convertVolumeInfo(FD_t fdr, FD_t fdw, afs_uint32 vid)
     vd.inUse = 0;
     vd.uniquifier += 5000;	/* just in case there are still file copies from
 				 * the old RW volume around */
-    if (vd.copyDate)
+
+    /* For ROs, the copyDate contains the time that the RO volume was actually
+     * created, and the creationDate just contains the last time the RO was
+     * copied from the RW data. So, make the new RW creationDate more accurate
+     * by setting it to copyDate, if copyDate is older. Since, we know the
+     * volume is at least as old as copyDate. */
+    if (vd.copyDate < vd.creationDate) {
         vd.creationDate = vd.copyDate;
+    } else {
+        /* If copyDate is newer, just make copyDate and creationDate the same,
+         * for consistency with other RWs */
+        vd.copyDate = vd.creationDate;
+    }
+
     p = strrchr(vd.name, '.');
     if (p && !strcmp(p, ".readonly")) {
 	memset(p, 0, 9);

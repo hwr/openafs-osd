@@ -10,12 +10,16 @@
 #ifndef _BOSPROTOTYPES_H_
 #define _BOSPROTOTYPES_H_
 
+#ifdef AFS_NT40_ENV
+typedef int pid_t;
+#endif
+
 #include <rx/rxkad.h>
 
 /* bnode.c */
 int bnode_CoreName(struct bnode *abnode, char *acoreName, char *abuffer);
 int bnode_GetString(struct bnode *abnode, char *abuffer, afs_int32 alen);
-int bnode_GetParm(struct bnode *abnode, afs_int32 aindex, char *abuffer, 
+int bnode_GetParm(struct bnode *abnode, afs_int32 aindex, char *abuffer,
 		  afs_int32 alen);
 int bnode_GetStat(struct bnode *abnode, afs_int32 * astatus);
 int bnode_RestartP(struct bnode *abnode);
@@ -43,9 +47,11 @@ int bnode_Deactivate(struct bnode *abnode);
 void bozo_Log(char *format, ... );
 int bozo_ReBozo(void);
 int WriteBozoFile(char *aname);
+int bozo_CreatePidFile(char *ainst, char *aname, pid_t apid);
+int bozo_DeletePidFile(char *ainst, char *aname);
 
 /* bosoprocs.c */
-int GetRequiredDirPerm(const char *path);	
+int GetRequiredDirPerm(const char *path);
 void *bozo_ShutdownAndExit(void *arock /* really int asignal */);
 int initBosEntryStats(void);
 int DirAccessOK(void);

@@ -60,9 +60,7 @@
 
 #include <afsconfig.h>
 #include "afs/param.h"
-
-#if defined(AFS_CACHE_BYPASS) && defined(AFS_LINUX24_ENV)
-
+#if defined(AFS_CACHE_BYPASS) || defined(UKERNEL)
 #include "afs/afs_bypasscache.h"
 
 /*
@@ -78,37 +76,6 @@
 #ifndef afs_min
 #define afs_min(A,B) ((A)<(B)) ? (A) : (B)
 #endif
-
-/* conditional GLOCK macros */
-#define COND_GLOCK(var)	\
-	do { \
-		var = ISAFS_GLOCK(); \
-		if(!var) \
-			RX_AFS_GLOCK(); \
-	} while(0)
-
-#define COND_RE_GUNLOCK(var) \
-	do { \
-		if(var)	\
-			RX_AFS_GUNLOCK(); \
-	} while(0)
-
-
-/* conditional GUNLOCK macros */
-
-#define COND_GUNLOCK(var) \
-	do {	\
-		var = ISAFS_GLOCK(); \
-		if(var)	\
-			RX_AFS_GUNLOCK(); \
-	} while(0)
-
-#define COND_RE_GLOCK(var) \
-	do { \
-		if(var)	\
-			RX_AFS_GLOCK();	\
-	} while(0)
-
 
 int cache_bypass_strategy 	   = 	NEVER_BYPASS_CACHE;
 afs_size_t cache_bypass_threshold  =  	AFS_CACHE_BYPASS_DISABLED; /* file size > threshold triggers bypass */
@@ -242,7 +209,7 @@ afs_TransitionToCaching(struct vcache *avc,
      * when we checked the flag earlier.  No cause to panic, just return.
      */
     bypasscache = avc->cachingStates & FCSBypass ? 1 : 0;
-    if (!(avc->cachingStates & FCSBypass))
+    if (!bypasscache)
 	goto done;
 
     /* Ok, we actually do need to flush */
@@ -338,17 +305,11 @@ cleanup:
      * do everything that would normally happen when the request was
      * processed, like unlocking the pages and freeing memory.
      */
-#ifdef AFS_LINUX24_ENV
     unlock_and_release_pages(bparms->auio);
-#else
-#ifndef UKERNEL
-#error AFS_CACHE_BYPASS not implemented on this platform
-#endif
-#endif
     osi_Free(areq, sizeof(struct vrequest));
     osi_Free(bparms->auio->uio_iov,
 	     bparms->auio->uio_iovcnt * sizeof(struct iovec));	
-    osi_Free(bparms->auio, sizeof(uio_t));
+    osi_Free(bparms->auio, sizeof(struct uio));
     osi_Free(bparms, sizeof(struct nocache_read_request));
     return code;
 
@@ -361,8 +322,10 @@ afs_PrefetchNoCache(struct vcache *avc,
 		    afs_ucred_t *acred,
 		    struct nocache_read_request *bparms)
 {
-    uio_t *auio;
+    struct uio *auio;
+#ifndef UKERNEL
     struct iovec *iovecp;
+#endif
     struct vrequest *areq;
     afs_int32 code = 0;    
     struct afs_conn *tc;
@@ -372,7 +335,9 @@ afs_PrefetchNoCache(struct vcache *avc,
 			
     auio = bparms->auio;
     areq = bparms->areq;
+#ifndef UKERNEL
     iovecp = auio->uio_iov;	
+#endif
 	
     tcallspec = (struct afs_FetchOutput *) osi_Alloc(sizeof(struct afs_FetchOutput));
     do {
@@ -392,21 +357,18 @@ afs_PrefetchNoCache(struct vcache *avc,
 						 AFS_STATS_FS_RPCIDX_FETCHDATA,
 						 SHARED_LOCK,0));
     if (code) {
-#ifdef AFS_LINUX24_ENV
         unlock_and_release_pages(auio);
-#else
-#ifndef UKERNEL
-#error AFS_CACHE_BYPASS not implemented on this platform
-#endif
-#endif
     } else
 	afs_ProcessFS(avc, &tcallspec->OutStatus, areq);
 
     osi_Free(areq, sizeof(struct vrequest));
     osi_Free(tcallspec, sizeof(struct afs_FetchOutput));
-    osi_Free(iovecp, auio->uio_iovcnt * sizeof(struct iovec));	
     osi_Free(bparms, sizeof(struct nocache_read_request));
-    osi_Free(auio, sizeof(uio_t));
+#ifndef UKERNEL
+    /* in UKERNEL, the "pages" are passed in */
+    osi_Free(iovecp, auio->uio_iovcnt * sizeof(struct iovec));	
+    osi_Free(auio, sizeof(struct uio));
+#endif
     return code;
 }
 

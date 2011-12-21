@@ -91,6 +91,9 @@
 /* define if your fops.fsync takes an dentry argument */
 #undef FOP_FSYNC_TAKES_DENTRY
 
+/* define if your fops.fsync takes range arguments */
+#undef FOP_FSYNC_TAKES_RANGE
+
 /* define if your get_sb_nodev needs a struct vfsmount argument */
 #undef GET_SB_HAS_STRUCT_VFSMOUNT
 
@@ -197,6 +200,9 @@
 /* Define to 1 if `keyblock' is member of `krb5_creds'. */
 #undef HAVE_KRB5_CREDS_KEYBLOCK
 
+/* Define to 1 if `keyblock.enctype' is member of `krb5_creds'. */
+#undef HAVE_KRB5_CREDS_KEYBLOCK_ENCTYPE
+
 /* Define to 1 if `session' is member of `krb5_creds'. */
 #undef HAVE_KRB5_CREDS_SESSION
 
@@ -265,9 +271,6 @@
 
 /* Define if your kernel has linux/exportfs.h */
 #undef HAVE_LINUX_EXPORTFS_H
-
-/* define if file_fsync is exists */
-#undef HAVE_LINUX_FILE_FSYNC
 
 /* Define if your kernel has the find_task_by_pid function */
 #undef HAVE_LINUX_FIND_TASK_BY_PID
@@ -401,6 +404,9 @@
 /* Define if resolv.h's res_state has the fields retrans/retry */
 #undef HAVE_RES_RETRANSRETRY
 
+/* Define to 1 if you have the <search.h> header file. */
+#undef HAVE_SEARCH_H
+
 /* Define to 1 if you have the <security/pam_modules.h> header file. */
 #undef HAVE_SECURITY_PAM_MODULES_H
 
@@ -412,6 +418,9 @@
 
 /* Define to 1 if you have the `setvbuf' function. */
 #undef HAVE_SETVBUF
+
+/* define if set_nlink exists */
+#undef HAVE_SET_NLINK
 
 /* Define to 1 if you have the `sigaction' function. */
 #undef HAVE_SIGACTION
@@ -446,8 +455,17 @@
 /* Define to 1 if you have the `strlcpy' function. */
 #undef HAVE_STRLCPY
 
+/* Define to 1 if you have the `strnlen' function. */
+#undef HAVE_STRNLEN
+
 /* Define to 1 if your compiler supports labels in structs. */
 #undef HAVE_STRUCT_LABEL_SUPPORT
+
+/* Define to 1 if `st_ctimensec' is member of `struct stat'. */
+#undef HAVE_STRUCT_STAT_ST_CTIMENSEC
+
+/* Define to 1 if `st_ctimespec' is member of `struct stat'. */
+#undef HAVE_STRUCT_STAT_ST_CTIMESPEC
 
 /* Define to 1 if you have the <sys/bitypes.h> header file. */
 #undef HAVE_SYS_BITYPES_H
@@ -522,6 +540,9 @@
 
 /* define if your kernel has the try_to_freeze function */
 #undef HAVE_TRY_TO_FREEZE
+
+/* Define to 1 if you have the `tsearch' function. */
+#undef HAVE_TSEARCH
 
 /* Define to 1 if you have the <ucontext.h> header file. */
 #undef HAVE_UCONTEXT_H

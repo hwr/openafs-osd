@@ -291,7 +291,7 @@ DECL_PIOCTL(PCallBackAddr);
 DECL_PIOCTL(PDiscon);
 DECL_PIOCTL(PNFSNukeCreds);
 DECL_PIOCTL(PNewUuid);
-DECL_PIOCTL(PPrecache);
+DECL_PIOCTL(PPrecache); 
 DECL_PIOCTL(PGetPAG);
 #if defined(AFS_CACHE_BYPASS) && defined(AFS_LINUX24_ENV)
 DECL_PIOCTL(PSetCachingThreshold);
@@ -654,7 +654,7 @@ struct afs_ioctl_sys {
     int arg;
 };
 
-int
+int 
 afs_xioctl(struct afs_ioctl_sys *uap, rval_t *rvp)
 {
     struct file *fd;
@@ -865,7 +865,11 @@ afs_xioctl(afs_proc_t *p, struct ioctl_args *uap, register_t *retval)
 
     if (!ioctlDone) {
 # if defined(AFS_FBSD_ENV)
+#  if (__FreeBSD_version >= 900044)
+        return sys_ioctl(td, uap);
+#  else
 	return ioctl(td, uap);
+#  endif
 # elif defined(AFS_OBSD_ENV)
 	code = sys_ioctl(p, uap, retval);
 # elif defined(AFS_NBSD_ENV)
@@ -1006,14 +1010,14 @@ afs_pioctl(afs_proc_t *p, void *args, int *retval)
 
 int
 #ifdef	AFS_SUN5_ENV
-afs_syscall_pioctl(char *path, unsigned int com, caddr_t cmarg, int follow,
+afs_syscall_pioctl(char *path, unsigned int com, caddr_t cmarg, int follow, 
 		   rval_t *vvp, afs_ucred_t *credp)
 #else
 #ifdef AFS_DARWIN100_ENV
 afs_syscall64_pioctl(user_addr_t path, unsigned int com, user_addr_t cmarg,
 		   int follow, afs_ucred_t *credp)
 #elif defined(AFS_DARWIN_ENV) || defined(AFS_XBSD_ENV)
-afs_syscall_pioctl(char *path, unsigned int com, caddr_t cmarg, int follow,
+afs_syscall_pioctl(char *path, unsigned int com, caddr_t cmarg, int follow, 
 		   afs_ucred_t *credp)
 #else
 afs_syscall_pioctl(char *path, unsigned int com, caddr_t cmarg, int follow)
@@ -1149,13 +1153,13 @@ afs_syscall_pioctl(char *path, unsigned int com, caddr_t cmarg, int follow)
 	struct vnode *realvp;
 	if
 #ifdef AFS_SUN511_ENV
-          (VOP_REALVP(vp, &realvp, NULL) == 0)
+          (VOP_REALVP(vp, &realvp, NULL) == 0) 
 #else
-	  (VOP_REALVP(vp, &realvp) == 0)
+	  (VOP_REALVP(vp, &realvp) == 0) 
 #endif
 {
 	    struct vnode *oldvp = vp;
-
+	    
 	    VN_HOLD(realvp);
 	    vp = realvp;
 	    AFS_RELE(oldvp);
@@ -1801,9 +1805,9 @@ DECL_PIOCTL(PSetTokens)
     struct unixuser *tu;
     struct ClearToken clear;
     struct cell *tcell;
-    char *stp;
+    char *stp, *stpNew;
     char *cellName;
-    int stLen;
+    int stLen, stLenOld;
     struct vrequest treq;
     afs_int32 flag, set_parent_pag = 0;
 
@@ -1877,18 +1881,21 @@ DECL_PIOCTL(PSetTokens)
 	    areq = &treq;
 	}
     }
+
+    stpNew = (char *)afs_osi_Alloc(stLen);
+    if (stpNew == NULL) {
+        return ENOMEM;
+    }
+    memcpy(stpNew, stp, stLen);
+
     /* now we just set the tokens */
     tu = afs_GetUser(areq->uid, i, WRITE_LOCK);	/* i has the cell # */
+    stp = tu->stp;
+    stLenOld = tu->stLen;
+
     tu->vid = clear.ViceId;
-    if (tu->stp != NULL) {
-	afs_osi_Free(tu->stp, tu->stLen);
-    }
-    tu->stp = (char *)afs_osi_Alloc(stLen);
-    if (tu->stp == NULL) {
-	return ENOMEM;
-    }
+    tu->stp = stpNew;
     tu->stLen = stLen;
-    memcpy(tu->stp, stp, stLen);
     tu->ct = clear;
 #ifndef AFS_NOSTATS
     afs_stats_cmfullperf.authent.TicketUpdates++;
@@ -1901,6 +1908,10 @@ DECL_PIOCTL(PSetTokens)
     afs_ResetUserConns(tu);
     afs_NotifyUser(tu, UTokensObtained);
     afs_PutUser(tu, WRITE_LOCK);
+
+    if (stp) {
+        afs_osi_Free(stp, stLenOld);
+    }
 
     return 0;
 
@@ -2219,12 +2230,12 @@ DECL_PIOCTL(PNewStatMount)
 
 /*!
  * VIOCGETTOK (8) - Get authentication tokens
- *
+ *  
  * \ingroup pioctl
- *
+ *      
  * \param[in] ain       cellid to return tokens for
  * \param[out] aout     token
- *
+ * 
  * \retval EIO
  * 	Error if the afs daemon hasn't started yet
  * \retval EDOM
@@ -2232,7 +2243,7 @@ DECL_PIOCTL(PNewStatMount)
  * 	tokens
  * \retval ENOTCONN
  * 	Error if there aren't tokens for this cell
- *
+ *  
  * \post
  * 	If the input paramater exists, get the token that corresponds to
  * 	the parameter value, if there is no token at this value, get the
@@ -2848,7 +2859,7 @@ DECL_PIOCTL(PGetCacheSize)
     afs_int32 flags;
     struct dcache * tdc;
     int i, size;
-
+    
     AFS_STATCNT(PGetCacheSize);
 
     if (afs_pd_remaining(ain) == sizeof(afs_int32)) {
@@ -2858,12 +2869,12 @@ DECL_PIOCTL(PGetCacheSize)
     } else {
 	return EINVAL;
     }
-
+    
     memset(results, 0, sizeof(results));
     results[0] = afs_cacheBlocks;
     results[1] = afs_blocksUsed;
     results[2] = afs_cacheFiles;
-
+    
     if (1 == flags){
         for (i = 0; i < afs_cacheFiles; i++) {
 	    if (afs_indexFlags[i] & IFFree) results[3]++;
@@ -3495,7 +3506,7 @@ DECL_PIOCTL(PFlushVolumeData)
 		     * then someone probably has the file open and is writing
 		     * into it. Better to skip flushing such a file, it will be
 		     * brought back immediately on the next write anyway.
-		     *
+		     * 
 		     * If we *must* flush, then this code has to be rearranged
 		     * to call afs_storeAllSegments() first */
 		    afs_FlushDCache(tdc);
@@ -3915,7 +3926,7 @@ afs_setsprefs(struct spref *sp, unsigned int num, unsigned int vlonly)
 	    afs_uint32 temp = sp->host.s_addr;
 	    srvr =
 		afs_GetServer(&temp, 1, 0, (vlonly ? AFS_VLPORT : AFS_FSPORT),
-			      WRITE_LOCK, (afsUUID *) 0, 0);
+			      WRITE_LOCK, (afsUUID *) 0, 0, NULL);
 	    srvr->addr->sa_iprank = sp->rank + afs_randomMod15();
 	    afs_PutServer(srvr, WRITE_LOCK);
 	}
@@ -3965,7 +3976,7 @@ DECL_PIOCTL(PSetSPrefs)
 
     ssp = (struct setspref *)ainPtr;
     if (ainSize < (sizeof(struct setspref)
-		   + sizeof(struct spref) * ssp->num_servers-1))
+		   + sizeof(struct spref) * (ssp->num_servers-1)))
 	return EINVAL;
 
     afs_setsprefs(&(ssp->servers[0]), ssp->num_servers,
@@ -3973,7 +3984,7 @@ DECL_PIOCTL(PSetSPrefs)
     return 0;
 }
 
-/*
+/* 
  * VIOC_SETPREFS33 (42) - Set server ranks (deprecated)
  *
  * \param[in] ain	the server preferences to be set
@@ -4002,7 +4013,7 @@ DECL_PIOCTL(PSetSPrefs33)
     return 0;
 }
 
-/*
+/* 
  * VIOC_GETSPREFS (43) - Get server ranks
  *
  * \ingroup pioctl
@@ -4552,14 +4563,14 @@ HandleClientContext(struct afs_ioctl *ablob, int *com,
     } else if (!code) {
 	EXP_RELE(outexporter);
     }
-    if (!code)
+    if (!code) 
 	*com = (*com) | comp;
     return code;
 }
 #endif /* AFS_NEED_CLIENTCONTEXT */
 
 
-/*!
+/*! 
  * VIOC_GETCPREFS (50) - Get client interface
  *
  * \ingroup pioctl
@@ -5042,19 +5053,19 @@ DECL_PIOCTL(PSetCachingThreshold)
 
     if (setting == 0 && getting == 0)
 	return EINVAL;
-
-    /*
+	
+    /* 
      * If setting, set first, and return the value now in effect
      */
     if (setting) {
 	if (!afs_osi_suser(*acred))
 	    return EPERM;
 	cache_bypass_threshold = threshold;
-        afs_warn("Cache Bypass Threshold set to: %d\n", threshold);
+        afs_warn("Cache Bypass Threshold set to: %d\n", threshold);		
 	/* TODO:  move to separate pioctl, or enhance pioctl */
 	cache_bypass_strategy = LARGE_FILES_BYPASS_CACHE;
     }
-
+	
     /* Return the current size threshold */
     if (getting)
 	return afs_pd_putInt(aout, cache_bypass_threshold);
@@ -5305,7 +5316,7 @@ DECL_PIOCTL(PSetProtocols)
             afs_protocols |= VICEP_ACCESS;
         else
             afs_protocols &= ~VICEP_ACCESS;
-
+	 
         if (mask & VPA_USE_LUSTRE_HACK)
             lustre_hack = 1;
         else

@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -77,7 +77,7 @@
 #define afs_hz HZ
 #include "h/sched.h"
 #if defined(HAVE_LINUX_CURRENT_KERNEL_TIME)
-static inline time_t osi_Time(void) { 
+static inline time_t osi_Time(void) {
     struct timespec xtime;
     xtime = current_kernel_time();
     return xtime.tv_sec;
@@ -224,14 +224,14 @@ afs_set_cr_group_info(cred_t *cred, struct group_info *group_info) {
 /* UIO manipulation */
 typedef enum { AFS_UIOSYS, AFS_UIOUSER } uio_seg_t;
 typedef enum { UIO_READ, UIO_WRITE } uio_flag_t;
-typedef struct uio {
+struct uio {
     struct iovec *uio_iov;
     int uio_iovcnt;
     afs_offs_t uio_offset;
     uio_seg_t uio_seg;
     int uio_resid;
     uio_flag_t uio_flag;
-} uio_t;
+};
 #define	afsio_iov	uio_iov
 #define	afsio_iovcnt	uio_iovcnt
 #define	afsio_offset	uio_offset

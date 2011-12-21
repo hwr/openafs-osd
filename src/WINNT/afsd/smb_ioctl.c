@@ -220,6 +220,14 @@ smb_IoctlRead(smb_fid_t *fidp, smb_vc_t *vcp, smb_packet_t *inp, smb_packet_t *o
     smbp = (smb_t *) inp;
     uidp = smb_FindUID(vcp, smbp->uid, 0);
     if (uidp) {
+        if (uidp->unp) {
+            osi_Log3(afsd_logp, "Ioctl uid %d user %x name %s",
+                      uidp->userID, userp,
+                      osi_LogSaveClientString(afsd_logp, uidp->unp->name));
+        } else {
+            osi_Log2(afsd_logp, "Ioctl uid %d user %x no name",
+                      uidp->userID, userp);
+        }
         isSystem = smb_userIsLocalSystem(uidp);
         userp = smb_GetUserFromUID(uidp);
         if (uidp->unp) {
@@ -418,7 +426,6 @@ smb_IoctlV3Read(smb_fid_t *fidp, smb_vc_t *vcp, smb_packet_t *inp, smb_packet_t 
     }
 
     iop->uidp = uidp;
-
 
     code = smb_LookupTIDPath(vcp, ((smb_t *)inp)->tid, &iop->tidPathp);
     if (code) {
@@ -643,7 +650,7 @@ smb_ParseIoctlPath(smb_ioctl_t *ioctlp, cm_user_t *userp, cm_req_t *reqp,
     if (relativePath[0] == relativePath[1] &&
         relativePath[1] == '\\' &&
         !cm_ClientStrCmpNI(cm_NetbiosNameC, relativePath+2,
-                           cm_ClientStrLen(cm_NetbiosNameC)))
+                           (int)cm_ClientStrLen(cm_NetbiosNameC)))
     {
         clientchar_t shareName[256];
         clientchar_t *sharePath;
@@ -894,7 +901,7 @@ smb_ParseIoctlParent(smb_ioctl_t *ioctlp, cm_user_t *userp, cm_req_t *reqp,
     if (tbuffer[0] == tbuffer[1] &&
         tbuffer[1] == '\\' &&
         !cm_ClientStrCmpNI(cm_NetbiosNameC, tbuffer+2,
-                           cm_ClientStrLen(cm_NetbiosNameC)))
+                           (int)cm_ClientStrLen(cm_NetbiosNameC)))
     {
         clientchar_t shareName[256];
         clientchar_t *sharePath;
@@ -1232,7 +1239,7 @@ smb_IoctlGetSMBName(smb_ioctl_t *ioctlp, cm_user_t *userp, afs_uint32 pflags)
         cch = cm_ClientStringToUtf8(uidp->unp->name,
                                     -1,
                                     ioctlp->ioctl.outDatap,
-                                    (SMB_IOCTL_MAXDATA -
+                                    (int)(SMB_IOCTL_MAXDATA -
                                      (ioctlp->ioctl.outDatap - ioctlp->ioctl.outAllocp))
                                     / sizeof(cm_utf8char_t));
 

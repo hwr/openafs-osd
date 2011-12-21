@@ -87,6 +87,7 @@ afs_int32 ubik_epochTime[MAX_UBIK_DBASES];
 afs_int32 urecovery_state[MAX_UBIK_DBASES];
 int (*ubik_SRXSecurityProc) (void *, struct rx_securityClass **, afs_int32 *);
 void *ubik_SRXSecurityRock;
+int (*ubik_SyncWriterCacheProc) (void);
 struct ubik_server *ubik_servers;
 short ubik_callPortal;
 
@@ -648,8 +649,9 @@ ubik_ServerInitN(afs_uint32 myHost, short myPort, afs_int32 index,
  * An open mode of ubik_READTRANS identifies this as a read transaction,
  * while a mode of ubik_WRITETRANS identifies this as a write transaction.
  * transPtr is set to the returned transaction control block.
- * The readAny flag is set to 0 or 1 by the wrapper functions ubik_BeginTrans() or
- * ubik_BeginTransReadAny() below.
+ * The readAny flag is set to 0 or 1 or 2 by the wrapper functions
+ * ubik_BeginTrans() or ubik_BeginTransReadAny() or
+ * ubik_BeginTransReadAnyWrite() below.
  *
  * \note We can only begin transaction when we have an up-to-date database.
  */
@@ -663,6 +665,16 @@ BeginTrans(struct ubik_dbase *dbase, afs_int32 transMode,
 #if defined(UBIK_PAUSE)
     int count;
 #endif /* UBIK_PAUSE */
+
+    if (readAny > 1 && ubik_SyncWriterCacheProc == NULL) {
+        /* it's not safe to use ubik_BeginTransReadAnyWrite without a
+         * cache-syncing function; fall back to ubik_BeginTransReadAny,
+         * which is safe but slower */
+        ubik_print("ubik_BeginTransReadAnyWrite called, but "
+                   "ubik_SyncWriterCacheProc not set; pretending "
+                   "ubik_BeginTransReadAny was called instead\n");
+        readAny = 1;
+    }
 
     if ((transMode != UBIK_READTRANS) && readAny)
 	return UBADTYPE;
@@ -733,8 +745,12 @@ BeginTrans(struct ubik_dbase *dbase, afs_int32 transMode,
 	DBRELE(dbase);
 	return code;
     }
-    if (readAny)
+    if (readAny) {
 	tt->flags |= TRREADANY;
+	if (readAny > 1) {
+	    tt->flags |= TRREADWRITE;
+	}
+    }
     /* label trans and dbase with new tid */
     tt->tid.epoch = ubik_epochTime[dbase->dbase_number];
     /* bump by two, since tidCounter+1 means trans id'd by tidCounter has finished */
@@ -742,11 +758,7 @@ BeginTrans(struct ubik_dbase *dbase, afs_int32 transMode,
 
     if (transMode == UBIK_WRITETRANS) {
 	/* for a write trans, we have to keep track of the write tid counter too */
-#if defined(UBIK_PAUSE)
 	dbase->writeTidCounter = tt->tid.counter;
-#else
-	dbase->writeTidCounter += 2;
-#endif /* UBIK_PAUSE */
 
 	/* next try to start transaction on appropriate number of machines */
 	code = ContactQuorum_NoArguments(DISK_Begin, tt, 0);
@@ -783,6 +795,16 @@ ubik_BeginTransReadAny(struct ubik_dbase *dbase, afs_int32 transMode,
 		       struct ubik_trans **transPtr)
 {
     return BeginTrans(dbase, transMode, transPtr, 1);
+}
+
+/*!
+ * \see BeginTrans()
+ */
+int
+ubik_BeginTransReadAnyWrite(struct ubik_dbase *dbase, afs_int32 transMode,
+                            struct ubik_trans **transPtr)
+{
+    return BeginTrans(dbase, transMode, transPtr, 2);
 }
 
 /*!
@@ -840,6 +862,23 @@ ubik_AbortTrans(struct ubik_trans *transPtr)
     return (code ? code : code2);
 }
 
+static void
+WritebackApplicationCache(struct ubik_dbase *dbase)
+{
+    int code = 0;
+    if (ubik_SyncWriterCacheProc) {
+        code = ubik_SyncWriterCacheProc();
+    }
+    if (code) {
+        /* we failed to sync the local cache, so just invalidate the cache;
+         * we'll try to read the cache in again on the next read */
+        memset(&dbase->cachedVersion, 0, sizeof(dbase->cachedVersion));
+    } else {
+        memcpy(&dbase->cachedVersion, &dbase->version,
+               sizeof(dbase->cachedVersion));
+    }
+}
+
 /*!
  * \brief This routine ends a read or write transaction on the open transaction identified by transPtr.
  * \return an error code.
@@ -852,6 +891,7 @@ ubik_EndTrans(struct ubik_trans *transPtr)
     afs_int32 realStart;
     struct ubik_server *ts;
     afs_int32 now;
+    int cachelocked = 0;
     struct ubik_dbase *dbase;
 
     if (transPtr->type == UBIK_WRITETRANS) {
@@ -868,6 +908,13 @@ ubik_EndTrans(struct ubik_trans *transPtr)
 	ReleaseReadLock(&dbase->cache_lock);
 	transPtr->flags &= ~TRCACHELOCKED;
     }
+
+    if (transPtr->type != UBIK_READTRANS) {
+        /* must hold cache_lock before DBHOLD'ing */
+        ObtainWriteLock(&dbase->cache_lock);
+        cachelocked = 1;
+    }
+
     DBHOLD(dbase);
 
     /* give up if no longer current */
@@ -898,8 +945,19 @@ ubik_EndTrans(struct ubik_trans *transPtr)
 
     /* now it is safe to do commit */
     code = udisk_commit(transPtr);
-    if (code == 0)
+    if (code == 0) {
+	/* db data has been committed locally; update the local cache so
+	 * readers can get at it */
+	WritebackApplicationCache(dbase);
+
+	ReleaseWriteLock(&dbase->cache_lock);
+
 	code = ContactQuorum_NoArguments(DISK_Commit, transPtr, CStampVersion);
+    } else {
+	memset(&dbase->cachedVersion, 0, sizeof(struct ubik_version));
+	ReleaseWriteLock(&dbase->cache_lock);
+    }
+    cachelocked = 0;
     if (code) {
 	/* failed to commit, so must return failure.  Try to clear locks first, just for fun
 	 * Note that we don't know if this transaction will eventually commit at this point.
@@ -946,12 +1004,6 @@ ubik_EndTrans(struct ubik_trans *transPtr)
 	    break;		/* no down ones still pseudo-active */
     }
 
-    /* the commit bumped the dbase version, and since the write was local
-     * our cache should still be up to date, so make sure to update
-     * cachedVersion, too */
-    memcpy(&dbase->cachedVersion, &dbase->version,
-           sizeof(dbase->cachedVersion));
-
     /* finally, unlock all the dudes.  We can return success independent of the number of servers
      * that really unlock the dbase; the others will do it if/when they elect a new sync site.
      * The transaction is committed anyway, since we succeeded in contacting a quorum
@@ -964,10 +1016,15 @@ ubik_EndTrans(struct ubik_trans *transPtr)
     /* don't update cachedVersion here; it should have been updated way back
      * in ubik_CheckCache, and earlier in this function for writes */
     DBRELE(dbase);
+    if (cachelocked) {
+	ReleaseWriteLock(&dbase->cache_lock);
+    }
     return 0;
 
   error:
-    ObtainWriteLock(&dbase->cache_lock);
+    if (!cachelocked) {
+        ObtainWriteLock(&dbase->cache_lock);
+    }
     memset(&dbase->cachedVersion, 0, sizeof(struct ubik_version));
     ReleaseWriteLock(&dbase->cache_lock);
     return code;

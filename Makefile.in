@@ -153,6 +153,9 @@ procmgmt: config
 util: procmgmt des lwp_depinstall rx_depinstall
 	+${COMPILE_PART1} util ${COMPILE_PART2}
 
+libafscp: util afs volser vlserver rx auth fsint
+	+${COMPILE_PART1} libafscp ${COMPILE_PART2}
+
 audit: util rx rxkad fsint
 	+${COMPILE_PART1} audit ${COMPILE_PART2} #TODO
 
@@ -217,7 +220,7 @@ ubik: cmd comerr auth ubik_depinstall sys
 
 tubik: ubik libafsrpc
 	+[ yes != "$(ENABLE_PTHREADED_UBIK)" ] || case ${SYS_NAME} in \
-	alpha_dux*|sgi_*|sun*_5*|rs_aix*|*linux*|hp_ux11*|ia64_hpux*|*[of]bsd*|*nbsd[234]*) \
+	alpha_dux*|sgi_*|sun*_5*|rs_aix*|*linux*|hp_ux11*|ia64_hpux*|*[nof]bsd*) \
 		${COMPILE_PART1} tubik ${COMPILE_PART2} ;; \
 	*_darwin_[1-6][0-9]) \
 		echo Not building MT ubik for ${SYS_NAME} ;; \
@@ -237,7 +240,7 @@ ptserver: cmd comerr ubik cmd comerr auth audit ptserver_depinstall
 
 tptserver: cmd comerr ptserver tubik libafsrpc libafsauthent
 	+[ yes != "$(ENABLE_PTHREADED_UBIK)" ] || case ${SYS_NAME} in \
-	alpha_dux*|sgi_*|sun*_5*|rs_aix*|*linux*|hp_ux11*|ia64_hpux*|*[of]bsd*|*nbsd[234]*) \
+	alpha_dux*|sgi_*|sun*_5*|rs_aix*|*linux*|hp_ux11*|ia64_hpux*|*[nof]bsd*) \
 		${COMPILE_PART1} tptserver ${COMPILE_PART2} ;; \
 	*_darwin_[1-6][0-9]) \
 		echo Not building MT ptserver for ${SYS_NAME} ;; \
@@ -285,7 +288,7 @@ vlserver: cmd comerr vol audit vlserver_depinstall
 
 tvlserver: cmd comerr vol audit tubik libafsrpc libafsauthent tvlserver_depinstall
 	+[ yes != "$(ENABLE_PTHREADED_UBIK)" ] || case ${SYS_NAME} in \
-	alpha_dux*|sgi_*|sun*_5*|rs_aix*|*linux*|hp_ux11*|ia64_hpux*|*[of]bsd*|*nbsd[234]*) \
+	alpha_dux*|sgi_*|sun*_5*|rs_aix*|*linux*|hp_ux11*|ia64_hpux*|*[nof]bsd*) \
 		${COMPILE_PART1} tvlserver ${COMPILE_PART2} ;; \
 	*_darwin_[1-6][0-9]) \
 		echo Not building MT tvlserver for ${SYS_NAME} ;; \
@@ -301,7 +304,7 @@ viced: cmd comerr vlserver tvlserver audit vol rxosd osddb
 
 tviced: cmd comerr viced vlserver tvlserver libafsrpc libafsauthent
 	+case ${SYS_NAME} in \
-	alpha_dux*|sgi_*|sun*_5*|rs_aix*|*linux*|hp_ux11*|ia64_hpux*|*[of]bsd*|*nbsd[234]*|*_darwin_*) \
+	alpha_dux*|sgi_*|sun*_5*|rs_aix*|*linux*|hp_ux11*|ia64_hpux*|*[nof]bsd*|*_darwin_*) \
 		${COMPILE_PART1} tviced ${COMPILE_PART2} ;; \
 	*) \
 		echo Not building MT viced for ${SYS_NAME} ;; \
@@ -309,7 +312,7 @@ tviced: cmd comerr viced vlserver tvlserver libafsrpc libafsauthent
 
 dviced: cmd comerr viced vlserver tvlserver libafsrpc libafsauthent
 	+case ${SYS_NAME} in \
-	alpha_dux*|sgi_*|sun*_5*|rs_aix*|*linux*|hp_ux11*|ia64_hpux*|*[of]bsd*|*nbsd[234]*|*_darwin_*) \
+	alpha_dux*|sgi_*|sun*_5*|rs_aix*|*linux*|hp_ux11*|ia64_hpux*|*[nof]bsd*|*_darwin_*) \
 		${COMPILE_PART1} dviced ${COMPILE_PART2} ;; \
 	*) \
 		echo Not building DAFS viced for ${SYS_NAME} ;; \
@@ -346,7 +349,7 @@ rxosd: project usd libafsrpc libafsauthent vol osddb
 rxosdsrc: rxgen fsint
 	${COMPILE_PART1} rxosd ${COMPILE_PART2A} source
 
-venus: cmd comerr volser ptserver shlibafsosd
+venus: cmd comerr volser ptserver shlibafsosd libafscp
 	+${COMPILE_PART1} venus ${COMPILE_PART2}
 	+${COMPILE_PART1} venus/test ${COMPILE_PART2}
 
@@ -561,7 +564,7 @@ budb: cmd comerr bubasics uss
 
 tbudb: budb tubik
 	+[ yes != "$(ENABLE_PTHREADED_UBIK)" ] || case ${SYS_NAME} in \
-	alpha_dux*|sgi_*|sun*_5*|rs_aix*|*linux*|hp_ux11*|ia64_hpux*|*[of]bsd*|*nbsd[234]*) \
+	alpha_dux*|sgi_*|sun*_5*|rs_aix*|*linux*|hp_ux11*|ia64_hpux*|*[nof]bsd*) \
 		${COMPILE_PART1} tbudb ${COMPILE_PART2} ;; \
 	*_darwin_[1-6][0-9]) \
 		echo Not building MT budb for ${SYS_NAME} ;; \
@@ -589,7 +592,7 @@ tests: rxtests ubiktests rpctestlib
 # pthread based user space RX library
 libafsrpc: rx rxkad rxstat fsint des
 	+case ${SYS_NAME} in \
-	alpha_dux*|sgi_*|sun4x_*|sunx86_*|rs_aix*|*linux*|hp_ux11*|ia64_hpux*|*[of]bsd*|*nbsd[234]*) \
+	alpha_dux*|sgi_*|sun4x_*|sunx86_*|rs_aix*|*linux*|hp_ux11*|ia64_hpux*|*[nof]bsd*) \
 	${COMPILE_PART1} libafsrpc ${COMPILE_PART2} ;; \
 	*_darwin_[1-6][0-9]) \
 		echo Not building MT libafsrpc for ${SYS_NAME} ;; \
@@ -601,7 +604,7 @@ libafsrpc: rx rxkad rxstat fsint des
 
 libafsauthent: ubik auth kauth libafsrpc
 	+case ${SYS_NAME} in \
-	alpha_dux*|sgi_*|sun4x_*|sunx86_*|rs_aix*|*linux*|hp_ux11*|ia64_hpux*|*[of]bsd*|*nbsd[234]*) \
+	alpha_dux*|sgi_*|sun4x_*|sunx86_*|rs_aix*|*linux*|hp_ux11*|ia64_hpux*|*[nof]bsd*) \
 	${COMPILE_PART1} libafsauthent ${COMPILE_PART2} ;; \
 	*_darwin_[1-6][0-9]) \
 		echo Not building MT libafsauthent for ${SYS_NAME} ;; \
@@ -692,7 +695,7 @@ build_tools: config des comerr rxgen
 
 finale: project cmd comerr afsd butc tbutc tbudb @ENABLE_KERNEL_MODULE@ libuafs audit kauth log \
 	ptserver tptserver scout bu_utils ubik uss bozo @VFSCK@ volser tvolser tsalvaged \
-	dviced dvolser shlibafsosd  shlibdafsosd \
+	dviced dvolser libafscp shlibafsosd  shlibdafsosd \
 	venus update xstat afsmonitor rxdebug libafsrpc \
 	libafsauthent shlibafsrpc shlibafsauthent libadmin man-pages \
 	platform kopenafs authtools tvlserver
@@ -700,7 +703,7 @@ finale: project cmd comerr afsd butc tbutc tbudb @ENABLE_KERNEL_MODULE@ libuafs 
 
 finale_nolibafs: project cmd comerr afsd butc tbutc tbudb libuafs audit kauth log \
 	ptserver tptserver scout bu_utils ubik tubik uss bozo @VFSCK@ volser tvolser tsalvaged \
-	dviced dvolser shlibafsosd  shlibdafsosd \
+	dviced dvolser libafscp shlibafsosd  shlibdafsosd \
 	venus update xstat afsmonitor rxdebug libafsrpc \
 	libafsauthent shlibafsrpc shlibafsauthent libadmin man-pages \
 	platform kopenafs authtools
@@ -956,6 +959,7 @@ distclean: clean
 	src/uss/Makefile \
 	src/util/Makefile \
 	src/util/test/Makefile \
+	src/libafscp/Makefile \
 	src/venus/Makefile \
 	src/venus/test/Makefile \
 	src/vfsck/Makefile \

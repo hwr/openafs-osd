@@ -14,6 +14,7 @@
 #include <winsock2.h>
 #include <nb30.h>
 #include <string.h>
+#include <strsafe.h>
 #include <malloc.h>
 #include "afsd.h"
 #include <osi.h>
@@ -160,10 +161,76 @@ cm_VolNameIsID(char *aname)
  *    first, and fall back to successively older versions if you get
  *    RXGEN_OPCODE.
  */
-#define MULTIHOMED 1
+static long
+cm_GetEntryByName( struct cm_cell *cellp, const char *name,
+                   struct vldbentry *vldbEntryp,
+                   struct nvldbentry *nvldbEntryp,
+                   struct uvldbentry *uvldbEntryp,
+                   int *methodp,
+                   cm_user_t *userp,
+                   cm_req_t *reqp
+                   )
+{
+    long code;
+    cm_conn_t *connp;
+    struct rx_connection * rxconnp;
+
+    osi_Log2(afsd_logp, "CALL VL_GetEntryByName{UNO} name %s:%s",
+              osi_LogSaveString(afsd_logp,cellp->name),
+              osi_LogSaveString(afsd_logp,name));
+    do {
+
+        code = cm_ConnByMServers(cellp->vlServersp, userp, reqp, &connp);
+        if (code)
+            continue;
+
+        rxconnp = cm_GetRxConn(connp);
+        code = VL_GetEntryByNameU(rxconnp, name, uvldbEntryp);
+        *methodp = 2;
+        if ( code == RXGEN_OPCODE )
+        {
+            code = VL_GetEntryByNameN(rxconnp, name, nvldbEntryp);
+            *methodp = 1;
+        }
+        if ( code == RXGEN_OPCODE ) {
+            code = VL_GetEntryByNameO(rxconnp, name, vldbEntryp);
+            *methodp = 0;
+        }
+        rx_PutConnection(rxconnp);
+    } while (cm_Analyze(connp, userp, reqp, NULL, NULL, cellp->vlServersp, NULL, code));
+    code = cm_MapVLRPCError(code, reqp);
+    if ( code )
+        osi_Log3(afsd_logp, "CALL VL_GetEntryByName{UNO} name %s:%s FAILURE, code 0x%x",
+                  osi_LogSaveString(afsd_logp,cellp->name),
+                  osi_LogSaveString(afsd_logp,name), code);
+    else
+        osi_Log2(afsd_logp, "CALL VL_GetEntryByName{UNO} name %s:%s SUCCESS",
+                  osi_LogSaveString(afsd_logp,cellp->name),
+                  osi_LogSaveString(afsd_logp,name));
+    return code;
+}
+
+static long
+cm_GetEntryByID( struct cm_cell *cellp, afs_uint32 id,
+                 struct vldbentry *vldbEntryp,
+                 struct nvldbentry *nvldbEntryp,
+                 struct uvldbentry *uvldbEntryp,
+                 int *methodp,
+                 cm_user_t *userp,
+                 cm_req_t *reqp
+                 )
+{
+    char name[64];
+
+    StringCbPrintf(name, sizeof(name), "%u", id);
+
+    return cm_GetEntryByName(cellp, name, vldbEntryp, nvldbEntryp, uvldbEntryp, methodp, userp, reqp);
+}
+
 long cm_UpdateVolumeLocation(struct cm_cell *cellp, cm_user_t *userp, cm_req_t *reqp,
 		     cm_volume_t *volp)
 {
+    struct rx_connection *rxconnp;
     cm_conn_t *connp;
     int i;
     afs_uint32 j, k;
@@ -174,9 +241,7 @@ long cm_UpdateVolumeLocation(struct cm_cell *cellp, cm_user_t *userp, cm_req_t *
     u_long tempAddr;
     struct vldbentry vldbEntry;
     struct nvldbentry nvldbEntry;
-#ifdef MULTIHOMED
     struct uvldbentry uvldbEntry;
-#endif
     int method = -1;
     int ROcount = 0;
     long code;
@@ -237,41 +302,9 @@ long cm_UpdateVolumeLocation(struct cm_cell *cellp, cm_user_t *userp, cm_req_t *
             cm_UpdateCell(cellp, 0);
 
         /* now we have volume structure locked and held; make RPC to fill it */
-	osi_Log2(afsd_logp, "CALL VL_GetEntryByName{UNO} name %s:%s",
-                  osi_LogSaveString(afsd_logp,volp->cellp->name),
-                  osi_LogSaveString(afsd_logp,volp->namep));
-        do {
-            struct rx_connection * rxconnp;
-
-            code = cm_ConnByMServers(cellp->vlServersp, userp, reqp, &connp);
-            if (code)
-                continue;
-
-            rxconnp = cm_GetRxConn(connp);
-#ifdef MULTIHOMED
-            code = VL_GetEntryByNameU(rxconnp, volp->namep, &uvldbEntry);
-            method = 2;
-            if ( code == RXGEN_OPCODE )
-#endif
-            {
-                code = VL_GetEntryByNameN(rxconnp, volp->namep, &nvldbEntry);
-                method = 1;
-            }
-            if ( code == RXGEN_OPCODE ) {
-                code = VL_GetEntryByNameO(rxconnp, volp->namep, &vldbEntry);
-                method = 0;
-            }
-            rx_PutConnection(rxconnp);
-        } while (cm_Analyze(connp, userp, reqp, NULL, NULL, cellp->vlServersp, NULL, code));
-        code = cm_MapVLRPCError(code, reqp);
-	if ( code )
-	    osi_Log3(afsd_logp, "CALL VL_GetEntryByName{UNO} name %s:%s FAILURE, code 0x%x",
-		      osi_LogSaveString(afsd_logp,volp->cellp->name),
-                      osi_LogSaveString(afsd_logp,volp->namep), code);
-	else
-	    osi_Log2(afsd_logp, "CALL VL_GetEntryByName{UNO} name %s:%s SUCCESS",
-		      osi_LogSaveString(afsd_logp,volp->cellp->name),
-                      osi_LogSaveString(afsd_logp,volp->namep));
+        code = cm_GetEntryByName(cellp, volp->namep, &vldbEntry, &nvldbEntry,
+                                 &uvldbEntry,
+                                 &method, userp, reqp);
     }
 
     /* We can end up here with code == CM_ERROR_NOSUCHVOLUME if the base volume name
@@ -288,41 +321,26 @@ long cm_UpdateVolumeLocation(struct cm_cell *cellp, cm_user_t *userp, cm_req_t *
         snprintf(name, VL_MAXNAMELEN, "%s.readonly", volp->namep);
 
         /* now we have volume structure locked and held; make RPC to fill it */
-	osi_Log2(afsd_logp, "CALL VL_GetEntryByName{UNO} name %s:%s",
-                 osi_LogSaveString(afsd_logp,volp->cellp->name),
-                 osi_LogSaveString(afsd_logp,name));
-        do {
-            struct rx_connection * rxconnp;
+        code = cm_GetEntryByName(cellp, name, &vldbEntry, &nvldbEntry,
+                                 &uvldbEntry,
+                                 &method, userp, reqp);
+    }
 
-            code = cm_ConnByMServers(cellp->vlServersp, userp, reqp, &connp);
-            if (code)
-                continue;
-
-            rxconnp = cm_GetRxConn(connp);
-#ifdef MULTIHOMED
-            code = VL_GetEntryByNameU(connp->rxconnp, name, &uvldbEntry);
-            method = 2;
-            if ( code == RXGEN_OPCODE )
-#endif
-            {
-                code = VL_GetEntryByNameN(connp->rxconnp, name, &nvldbEntry);
-                method = 1;
-            }
-            if ( code == RXGEN_OPCODE ) {
-                code = VL_GetEntryByNameO(connp->rxconnp, name, &vldbEntry);
-                method = 0;
-            }
-            rx_PutConnection(rxconnp);
-        } while (cm_Analyze(connp, userp, reqp, NULL, NULL, cellp->vlServersp, NULL, code));
-        code = cm_MapVLRPCError(code, reqp);
-	if ( code )
-	    osi_Log3(afsd_logp, "CALL VL_GetEntryByName{UNO} name %s:%s FAILURE, code 0x%x",
-		     osi_LogSaveString(afsd_logp,volp->cellp->name),
-                     osi_LogSaveString(afsd_logp,name), code);
-	else
-	    osi_Log2(afsd_logp, "CALL VL_GetEntryByName{UNO} name %s:%s SUCCESS",
-		     osi_LogSaveString(afsd_logp,volp->cellp->name),
-                     osi_LogSaveString(afsd_logp,name));
+    /*
+     * What if there was a volume rename?  The volume name no longer exists but the
+     * volume id might.  Try to refresh the volume location information based one
+     * of the readwrite or readonly volume id.
+     */
+    if (code == CM_ERROR_NOSUCHVOLUME) {
+        if (volp->vol[RWVOL].ID != 0) {
+            code = cm_GetEntryByID(cellp, volp->vol[RWVOL].ID, &vldbEntry, &nvldbEntry,
+                                    &uvldbEntry,
+                                    &method, userp, reqp);
+        } else if (volp->vol[ROVOL].ID != 0) {
+            code = cm_GetEntryByID(cellp, volp->vol[ROVOL].ID, &vldbEntry, &nvldbEntry,
+                                    &uvldbEntry,
+                                    &method, userp, reqp);
+        }
     }
 
     lock_ObtainWrite(&volp->rw);
@@ -380,7 +398,6 @@ long cm_UpdateVolumeLocation(struct cm_cell *cellp, cm_user_t *userp, cm_req_t *
             strncpy(name, nvldbEntry.name, VL_MAXNAMELEN);
             name[VL_MAXNAMELEN - 1] = '\0';
             break;
-#ifdef MULTIHOMED
         case 2:
             flags = uvldbEntry.flags;
             nServers = uvldbEntry.nServers;
@@ -405,8 +422,6 @@ long cm_UpdateVolumeLocation(struct cm_cell *cellp, cm_user_t *userp, cm_req_t *
                     memset(&addrs, 0, sizeof(addrs));
 
                     do {
-                        struct rx_connection *rxconnp;
-
                         code = cm_ConnByMServers(cellp->vlServersp, userp, reqp, &connp);
                         if (code)
                             continue;
@@ -441,12 +456,11 @@ long cm_UpdateVolumeLocation(struct cm_cell *cellp, cm_user_t *userp, cm_req_t *
             strncpy(name, uvldbEntry.name, VL_MAXNAMELEN);
             name[VL_MAXNAMELEN - 1] = '\0';
             break;
-#endif
         }
 
         /* decode the response */
         lock_ObtainWrite(&cm_volumeLock);
-        if (cm_VolNameIsID(volp->namep)) {
+        if (!cm_VolNameIsID(volp->namep)) {
             size_t    len;
 
             len = strlen(name);
@@ -521,7 +535,6 @@ long cm_UpdateVolumeLocation(struct cm_cell *cellp, cm_user_t *userp, cm_req_t *
             tempAddr = htonl(serverNumber[i]);
             tsockAddr.sin_addr.s_addr = tempAddr;
             tsp = cm_FindServer(&tsockAddr, CM_SERVER_FILE, FALSE);
-#ifdef MULTIHOMED
             if (tsp && (method == 2) && (tsp->flags & CM_SERVERFLAG_UUID)) {
                 /*
                  * Check to see if the uuid of the server we know at this address
@@ -542,7 +555,6 @@ long cm_UpdateVolumeLocation(struct cm_cell *cellp, cm_user_t *userp, cm_req_t *
                               osi_LogSaveString(afsd_logp, hoststr));
                 }
             }
-#endif
             if (!tsp) {
                 /*
                  * cm_NewServer will probe the file server which in turn will
@@ -1226,8 +1238,9 @@ cm_CheckOfflineVolumeState(cm_volume_t *volp, cm_vol_state_t *statep, afs_uint32
                     continue;
 
                 alldeleted = 0;
-                *onlinep = 1;
-                alldown = 0;
+
+                if (!(serversp->server->flags & CM_SERVERFLAG_DOWN))
+                    alldown = 0;
 
                 if (serversp->status == srv_busy || serversp->status == srv_offline)
                     serversp->status = srv_not_busy;
@@ -1272,10 +1285,12 @@ cm_CheckOfflineVolumeState(cm_volume_t *volp, cm_vol_state_t *statep, afs_uint32
                 cm_VolumeStatusNotification(volp, statep->ID, statep->state, vl_alldown);
                 statep->state = vl_alldown;
             }
-        } else if (statep->state != vl_alldown) {
+        } else {
             lock_ReleaseRead(&cm_serverLock);
-            cm_VolumeStatusNotification(volp, statep->ID, statep->state, vl_alldown);
-            statep->state = vl_alldown;
+            if (statep->state != vl_alldown) {
+                cm_VolumeStatusNotification(volp, statep->ID, statep->state, vl_alldown);
+                statep->state = vl_alldown;
+            }
         }
     }
 }

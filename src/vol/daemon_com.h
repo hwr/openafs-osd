@@ -1,7 +1,7 @@
 /*
  * Copyright 2006-2008, Sine Nomine Associates and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -10,7 +10,7 @@
 #ifndef _AFS_VOL_DAEMON_COM_H
 #define _AFS_VOL_DAEMON_COM_H 1
 
-/* 
+/*
  * SYNC protocol constants
  */
 
@@ -22,7 +22,7 @@
 #define SYNC_COM_CODE_USER_BASE 65536
 #define SYNC_COM_CODE_DECL(code) (SYNC_COM_CODE_USER_BASE+(code))
 
-/** 
+/**
  * general command codes.
  */
 enum SYNCOpCode {
@@ -33,7 +33,7 @@ enum SYNCOpCode {
 
 /* SYNC protocol response codes
  *
- * response codes 0-65535 are reserved for 
+ * response codes 0-65535 are reserved for
  * global SYNC package response codes
  */
 #define SYNC_RES_CODE_USER_BASE 65536
@@ -86,6 +86,15 @@ enum SYNCReasonCode {
 #define SYNC_PROTO_BUF_DECL(buf) \
     afs_int64 _##buf##_l[SYNC_PROTO_MAX_LEN/sizeof(afs_int64)]; \
     char * buf = (char *)(_##buf##_l)
+
+#ifdef AFS_LINUX26_ENV
+/* Some Linux kernels have a bug where we are not woken up immediately from a
+ * select() when data is available. Work around this by having a low select()
+ * timeout, so we don't hang in those situations. */
+# define SYNC_SELECT_TIMEOUT 10
+#else
+# define SYNC_SELECT_TIMEOUT 86400
+#endif
 
 #ifdef USE_UNIX_SOCKETS
 #include <afs/afsutil.h>

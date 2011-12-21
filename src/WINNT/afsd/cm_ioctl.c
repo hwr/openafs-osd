@@ -2011,7 +2011,7 @@ cm_IoctlCreateMountPoint(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_scac
             goto done;
         }
 
-        StringCbPrintfA(mpInfo, sizeof(mpInfo), "%c%s:%s", (char) *mpp,
+        StringCbPrintfA(mpInfo, sizeof(mpInfo), "%c%s:%s.", (char) *mpp,
                         fullCell, fsvolume);
 
     } else {
@@ -2055,7 +2055,7 @@ cm_IoctlCreateMountPoint(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_scac
         tattr.unixModeBits = 0644;
         tattr.clientModTime = time(NULL);
 
-        code = cm_SymLink(dscp, leaf, mpInfo, 0, &tattr, userp, reqp);
+        code = cm_SymLink(dscp, leaf, mpInfo, 0, &tattr, userp, reqp, NULL);
     }
 
     if (code == 0 && (dscp->flags & CM_SCACHEFLAG_ANYWATCH))
@@ -2088,15 +2088,13 @@ cm_IoctlSymlink(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_scache_t *dsc
     afs_int32 code;
     cm_attr_t tattr;
     char *cp;
-    char *symlp;
-    int free_syml = FALSE;
 
     if (!(ioctlp->flags & CM_IOCTLFLAG_USEUTF8)) {
         /* Translate chars for the linked to name */
         TranslateExtendedChars(ioctlp->inDatap);
     }
 
-    cp = symlp = ioctlp->inDatap;		/* contents of link */
+    cp = ioctlp->inDatap;		/* contents of link */
 
 #ifdef AFS_FREELANCE_CLIENT
     if (cm_freelanceEnabled && dscp == cm_data.rootSCachep) {
@@ -2115,7 +2113,7 @@ cm_IoctlSymlink(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_scache_t *dsc
             cp = p;
         }
 
-        osi_Log0(afsd_logp,"IoctlCreateSymlink within Freelance root dir");
+        osi_Log0(afsd_logp,"IoctlSymlink within Freelance root dir");
         fsleaf = cm_ClientStringToFsStringAlloc(leaf, -1, NULL);
         code = cm_FreelanceAddSymlink(fsleaf, cp, NULL);
         free(fsleaf);
@@ -2126,7 +2124,7 @@ cm_IoctlSymlink(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_scache_t *dsc
         tattr.mask = CM_ATTRMASK_UNIXMODEBITS;
         tattr.unixModeBits = 0755;
 
-        code = cm_SymLink(dscp, leaf, cp, 0, &tattr, userp, reqp);
+        code = cm_SymLink(dscp, leaf, cp, 0, &tattr, userp, reqp, NULL);
     }
 
     if (code == 0 && (dscp->flags & CM_SCACHEFLAG_ANYWATCH))
@@ -2228,7 +2226,6 @@ cm_IoctlIslink(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_scache_t *dscp
         TranslateExtendedChars(ioctlp->inDatap);
     }
     cp = ioctlp->inDatap;
-    osi_LogEvent("cm_IoctlListlink",NULL," name[%s]",cp);
 
     clientp = cm_Utf8ToClientStringAlloc(cp, -1, NULL);
     code = cm_Lookup(dscp, clientp[0] ? clientp : L".", CM_FLAG_NOMOUNTCHASE, userp, reqp, &scp);

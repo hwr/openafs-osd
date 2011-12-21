@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -62,7 +62,7 @@ enum FSYNCOpCode {
 };
 
 /**
- * FSYNC reason codes. 
+ * FSYNC reason codes.
  */
 enum FSYNCReasonCode {
     FSYNC_WHATEVER            = SYNC_REASON_CODE_DECL(0), /**< XXXX */
@@ -132,7 +132,7 @@ enum FSSYNC_VolOpState {
 typedef struct FSSYNC_VolOp_info {
     SYNC_command_hdr com;
     FSSYNC_VolOp_hdr vop;
-    enum FSSYNC_VolOpState vol_op_state; 
+    enum FSSYNC_VolOpState vol_op_state;
 } FSSYNC_VolOp_info;
 
 
@@ -192,8 +192,8 @@ typedef struct FSSYNC_VGUpdate_command {
  */
 extern void FSYNC_Init(void);
 
-/* 
- * fsync client interfaces 
+/*
+ * fsync client interfaces
  */
 extern void FSYNC_clientFinis(void);
 extern int FSYNC_clientInit(void);
@@ -207,8 +207,12 @@ extern afs_int32 FSYNC_GenericOp(void * ext_hdr, size_t ext_len,
 				 int command, int reason,
 				 SYNC_response * res);
 
-/* volume operations control interface */
-extern afs_int32 FSYNC_VolOp(VolumeId volume, char *partName, int com, int reason, 
+/*
+ * volume operations control interface
+ *
+ * FSYNC_VolOp must be called with the partition name and not the partition path.
+ */
+extern afs_int32 FSYNC_VolOp(VolumeId volume, char *partName, int com, int reason,
 			     SYNC_response * res);
 
 /* statistics query interface */

@@ -161,11 +161,9 @@ void buf_ReleaseLocked(cm_buf_t *bp, afs_uint32 writeLocked)
 
         if (bp->refCount == 0 &&
             !(bp->qFlags & CM_BUF_QINLRU)) {
-            osi_QAdd((osi_queue_t **) &cm_data.buf_freeListp, &bp->q);
-
-            /* watch for transition from empty to one element */
-            if (!cm_data.buf_freeListEndp)
-                cm_data.buf_freeListEndp = cm_data.buf_freeListp;
+            osi_QAddH( (osi_queue_t **) &cm_data.buf_freeListp,
+                       (osi_queue_t **) &cm_data.buf_freeListEndp,
+                       &bp->q);
             _InterlockedOr(&bp->qFlags, CM_BUF_QINLRU);
         }
 
@@ -201,11 +199,9 @@ void buf_Release(cm_buf_t *bp)
         lock_ObtainWrite(&buf_globalLock);
         if (bp->refCount == 0 &&
             !(bp->qFlags & CM_BUF_QINLRU)) {
-            osi_QAdd((osi_queue_t **) &cm_data.buf_freeListp, &bp->q);
-
-            /* watch for transition from empty to one element */
-            if (!cm_data.buf_freeListEndp)
-                cm_data.buf_freeListEndp = cm_data.buf_freeListp;
+            osi_QAddH( (osi_queue_t **) &cm_data.buf_freeListp,
+                       (osi_queue_t **) &cm_data.buf_freeListEndp,
+                       &bp->q);
             _InterlockedOr(&bp->qFlags, CM_BUF_QINLRU);
         }
         lock_ReleaseWrite(&buf_globalLock);
@@ -263,8 +259,8 @@ buf_Sync(int quitOnShutdown)
             lock_ObtainWrite(&buf_globalLock);
 #ifdef DEBUG_REFCOUNT
             if (bp->dirtyp == NULL && bp != cm_data.buf_dirtyListEndp) {
-                osi_Log1(afsd_logp,"buf_IncrSyncer bp 0x%p list corruption",bp);
-                afsi_log("buf_IncrSyncer bp 0x%p list corruption", bp);
+                osi_Log1(afsd_logp,"buf_Sync bp 0x%p list corruption",bp);
+                afsi_log("buf_Sync bp 0x%p list corruption", bp);
             }
 #endif
             *bpp = bp->dirtyp;
@@ -324,7 +320,6 @@ void buf_IncrSyncer(long parm)
     long i;
 
     while (buf_ShutdownFlag == 0) {
-
         if (!wasDirty) {
 	    i = SleepEx(5000, 1);
 	    if (i != 0)
@@ -481,16 +476,14 @@ long buf_Init(int newFile, cm_buf_ops_t *opsp, afs_uint64 nbuffers)
                 bp->allp = cm_data.buf_allp;
                 cm_data.buf_allp = bp;
 
-                osi_QAdd((osi_queue_t **)&cm_data.buf_freeListp, &bp->q);
+                osi_QAddH( (osi_queue_t **) &cm_data.buf_freeListp,
+                           (osi_queue_t **) &cm_data.buf_freeListEndp,
+                           &bp->q);
                 _InterlockedOr(&bp->qFlags, CM_BUF_QINLRU);
                 lock_InitializeMutex(&bp->mx, "Buffer mutex", LOCK_HIERARCHY_BUFFER);
 
                 /* grab appropriate number of bytes from aligned zone */
                 bp->datap = data;
-
-                /* setup last buffer pointer */
-                if (i == 0)
-                    cm_data.buf_freeListEndp = bp;
 
                 /* next */
                 bp++;
@@ -892,7 +885,7 @@ void buf_Recycle(cm_buf_t *bp)
 
         i = BUF_HASH(&bp->fid, &bp->offset);
         lbpp = &(cm_data.buf_scacheHashTablepp[i]);
-        for(tbp = *lbpp; tbp; lbpp = &tbp->hashp, tbp = *lbpp) {
+        for(tbp = *lbpp; tbp; lbpp = &tbp->hashp, tbp = tbp->hashp) {
             if (tbp == bp)
                 break;
         }
@@ -1011,10 +1004,12 @@ long buf_GetNewLocked(struct cm_scache *scp, osi_hyper_t *offsetp, cm_req_t *req
                 continue;
 
             /* don't recycle someone in our own chunk */
-            if (!cm_FidCmp(&bp->fid, &scp->fid)
-                 && (bp->offset.LowPart & (-cm_chunkSize))
-                 == (offsetp->LowPart & (-cm_chunkSize)))
+            if (!cm_FidCmp(&bp->fid, &scp->fid) &&
+                bp->dataVersion >= scp->bufDataVersionLow &&
+                bp->dataVersion <= scp->dataVersion &&
+                (bp->offset.LowPart & (-cm_chunkSize)) == (offsetp->LowPart & (-cm_chunkSize))) {
                 continue;
+            }
 
             /* if this page is being filled (!) or cleaned, see if
              * the I/O has completed.  If not, skip it, otherwise
@@ -1087,17 +1082,15 @@ long buf_GetNewLocked(struct cm_scache *scp, osi_hyper_t *offsetp, cm_req_t *req
                 cm_data.buf_fileHashTablepp[i] = bp;
             }
 
-            /* we should move it from the lru queue.  It better still be there,
+            /* we should remove it from the lru queue.  It better still be there,
              * since we've held the global (big) lock since we found it there.
              */
             osi_assertx(bp->qFlags & CM_BUF_QINLRU,
                          "buf_GetNewLocked: LRU screwup");
 
-            if (cm_data.buf_freeListEndp == bp) {
-                /* we're the last guy in this queue, so maintain it */
-                cm_data.buf_freeListEndp = (cm_buf_t *) osi_QPrev(&bp->q);
-            }
-            osi_QRemove((osi_queue_t **) &cm_data.buf_freeListp, &bp->q);
+            osi_QRemoveHT( (osi_queue_t **) &cm_data.buf_freeListp,
+                           (osi_queue_t **) &cm_data.buf_freeListEndp,
+                           &bp->q);
             _InterlockedAnd(&bp->qFlags, ~CM_BUF_QINLRU);
 
             /* prepare to return it.  Give it a refcount */
@@ -1271,9 +1264,9 @@ long buf_Get(struct cm_scache *scp, osi_hyper_t *offsetp, cm_req_t *reqp, cm_buf
      */
     lock_ObtainWrite(&buf_globalLock);
     if (bp->qFlags & CM_BUF_QINLRU) {
-        if (cm_data.buf_freeListEndp == bp)
-            cm_data.buf_freeListEndp = (cm_buf_t *) osi_QPrev(&bp->q);
-        osi_QRemove((osi_queue_t **) &cm_data.buf_freeListp, &bp->q);
+        osi_QRemoveHT( (osi_queue_t **) &cm_data.buf_freeListp,
+                       (osi_queue_t **) &cm_data.buf_freeListEndp,
+                       &bp->q);
         _InterlockedAnd(&bp->qFlags, ~CM_BUF_QINLRU);
     }
     lock_ReleaseWrite(&buf_globalLock);
@@ -1343,10 +1336,13 @@ void buf_CleanWait(cm_scache_t * scp, cm_buf_t *bp, afs_uint32 locked)
  *
  * The buffer must be locked before calling this routine.
  */
-void buf_SetDirty(cm_buf_t *bp, afs_uint32 offset, afs_uint32 length, cm_user_t *userp)
+void buf_SetDirty(cm_buf_t *bp, cm_req_t *reqp, afs_uint32 offset, afs_uint32 length, cm_user_t *userp)
 {
     osi_assertx(bp->magic == CM_BUF_MAGIC, "invalid cm_buf_t magic");
     osi_assertx(bp->refCount > 0, "cm_buf_t refcount 0");
+
+    if (length == 0)
+        return;
 
     if (bp->flags & CM_BUF_DIRTY) {
 

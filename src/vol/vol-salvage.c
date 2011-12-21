@@ -183,6 +183,7 @@ Vnodes with 0 inode pointers in RW volumes are now deleted.
 #include "partition.h"
 #include "daemon_com.h"
 #include "fssync.h"
+#include "fssync_inline.h"
 #include "volume_inline.h"
 #include "salvsync.h"
 #include "viceinode.h"
@@ -291,7 +292,7 @@ FILE *logFile = 0;	/* one of {/usr/afs/logs,/vice/file}/SalvageLog */
 struct SalvInfo {
     Device fileSysDevice;    /**< The device number of the current partition
                               *   being salvaged */
-    char fileSysPath[8];     /**< The path of the mounted partition currently
+    char fileSysPath[9];     /**< The path of the mounted partition currently
                               *   being salvaged, i.e. the directory containing
                               *   the volume headers */
     char *fileSysPathName;   /**< NT needs this to make name pretty log. */
@@ -337,6 +338,7 @@ char *tmpdir = NULL;
 static int IsVnodeOrphaned(struct SalvInfo *salvinfo, VnodeId vnode);
 static int AskVolumeSummary(struct SalvInfo *salvinfo,
 			    VolumeId singleVolumeNumber);
+static void MaybeAskOnline(struct SalvInfo *salvinfo, VolumeId volumeId);
 
 #if defined(AFS_DEMAND_ATTACH_FS) || defined(AFS_DEMAND_ATTACH_UTIL)
 static int LockVolume(struct SalvInfo *salvinfo, VolumeId volumeId);
@@ -888,6 +890,11 @@ SalvageFileSys1(struct DiskPartition64 *partP, VolumeId singleVolumeNumber)
 
     if (GetInodeSummary(salvinfo, inodeFile, singleVolumeNumber) < 0) {
 	fclose(inodeFile);
+        if (singleVolumeNumber) {
+            /* the volume group -- let alone the volume -- does not exist,
+             * but we checked it out, so give it back to the fileserver */
+            AskDelete(salvinfo, singleVolumeNumber);
+        }
 	return;
     }
     salvinfo->inodeFd = fileno(inodeFile);
@@ -896,6 +903,14 @@ SalvageFileSys1(struct DiskPartition64 *partP, VolumeId singleVolumeNumber)
     afs_lseek(salvinfo->inodeFd, 0L, SEEK_SET);
     if (ListInodeOption) {
 	PrintInodeList(salvinfo);
+        if (singleVolumeNumber) {
+            /* We've checked out the volume from the fileserver, and we need
+             * to give it back. We don't know if the volume exists or not,
+             * so we don't know whether to AskOnline or not. Try to determine
+             * if the volume exists by trying to read the volume header, and
+             * AskOnline if it is readable. */
+            MaybeAskOnline(salvinfo, singleVolumeNumber);
+        }
 	return;
     }
     /* enumerate volumes in the partition.
@@ -975,9 +990,11 @@ SalvageFileSys1(struct DiskPartition64 *partP, VolumeId singleVolumeNumber)
 	}
 
         if (!foundSVN) {
-            /* singleVolumeNumber generally should always be in the constructed
-             * volumeSummary, but just in case it's not... */
-            AskOnline(salvinfo, singleVolumeNumber);
+            /* If singleVolumeNumber is not in our volumeSummary, it means that
+             * at least one other volume in the VG is on the partition, but the
+             * RW volume is not. We've already AskOffline'd it by now, though,
+             * so make sure we don't still have the volume checked out. */
+            AskDelete(salvinfo, singleVolumeNumber);
         }
 
         for (j = 0; j < salvinfo->nVolumes; j++) {
@@ -1818,7 +1835,7 @@ CreateLinkTable(struct SalvInfo *salvinfo, struct InodeSummary *isp, Inode ino)
 
     if (!VALID_INO(ino))
 	ino =
-	    IH_CREATE(NULL, salvinfo->fileSysDevice, salvinfo->fileSysPath, 0, isp->volumeId,
+	    IH_CREATE(NULL, salvinfo->fileSysDevice, salvinfo->fileSysPath, 0, isp->RWvolumeId,
 		      INODESPECIAL, VI_LINKTABLE, isp->RWvolumeId);
     if (!VALID_INO(ino))
 	Abort
@@ -4441,7 +4458,7 @@ LockVolume(struct SalvInfo *salvinfo, VolumeId volumeId)
 	      afs_printable_uint32_lu(volumeId));
     }
 
-    code = FSYNC_VerifyCheckout(volumeId, salvinfo->fileSysPathName, FSYNC_VOL_OFF, FSYNC_SALVAGE);
+    code = FSYNC_VerifyCheckout(volumeId, salvinfo->fileSysPartition->name, FSYNC_VOL_OFF, FSYNC_SALVAGE);
     if (code == SYNC_DENIED) {
 	/* need to retry checking out volumes */
 	return -1;
@@ -4549,8 +4566,8 @@ static int isDAFS = -1;
 int
 AskDAFS(void)
 {
-    afs_int32 code, i, ret = 0;
     SYNC_response res;
+    afs_int32 code = 1, i;
 
     /* we don't care if we race. the answer shouldn't change */
     if (isDAFS != -1)
@@ -4558,35 +4575,42 @@ AskDAFS(void)
 
     memset(&res, 0, sizeof(res));
 
-    for (i = 0; i < 3; i++) {
-        code = FSYNC_VolOp(1, NULL,
-                           FSYNC_VOL_QUERY_VOP, FSYNC_SALVAGE, &res);
-
-        if (code == SYNC_OK) {
-            ret = 1;
-            break;
-        } else if (code == SYNC_DENIED) {
-            ret = 1;
-            break;
-        } else if (code == SYNC_BAD_COMMAND) {
-            ret = 0;
-            break;
-        } else if (code == SYNC_FAILED) {
-            if (res.hdr.reason == FSYNC_UNKNOWN_VOLID)
-                ret = 1;
-            else
-                ret = 0;
-            break;
-        } else if (i < 2) {
-            /* try it again */
-            Log("AskDAFS:  request to query fileserver failed; trying again...\n");
+    for (i = 0; code && i < 3; i++) {
+        code = FSYNC_VolOp(0, NULL, FSYNC_VOL_LISTVOLUMES, FSYNC_SALVAGE, &res);
+        if (code) {
+            Log("AskDAFS: FSYNC_VOL_LISTVOLUMES failed with code %ld reason "
+                "%ld (%s); trying again...\n", (long)code, (long)res.hdr.reason,
+                FSYNC_reason2string(res.hdr.reason));
             FSYNC_clientFinis();
             FSYNC_clientInit();
         }
     }
 
-    isDAFS = ret;
-    return ret;
+    if (code) {
+        Log("AskDAFS: could not determine DAFS-ness, assuming not DAFS\n");
+        res.hdr.flags = 0;
+    }
+
+    if ((res.hdr.flags & SYNC_FLAG_DAFS_EXTENSIONS)) {
+        isDAFS = 1;
+    } else {
+        isDAFS = 0;
+    }
+
+    return isDAFS;
+}
+
+static void
+MaybeAskOnline(struct SalvInfo *salvinfo, VolumeId volumeId)
+{
+    struct VolumeDiskHeader diskHdr;
+    int code;
+    code = VReadVolumeDiskHeader(volumeId, salvinfo->fileSysPartition, &diskHdr);
+    if (code) {
+        /* volume probably does not exist; no need to bring back online */
+        return;
+    }
+    AskOnline(salvinfo, volumeId);
 }
 
 void
@@ -4609,7 +4633,7 @@ AskOnline(struct SalvInfo *salvinfo, VolumeId volumeId)
 	    break;
 	} else if (i < 2) {
 	    /* try it again */
-	    Log("AskOnline:  request for fileserver to take volume offline failed; trying again...\n");
+	    Log("AskOnline:  request for fileserver to put volume offline failed; trying again...\n");
 	    FSYNC_clientFinis();
 	    FSYNC_clientInit();
 	}
@@ -4620,10 +4644,12 @@ void
 AskDelete(struct SalvInfo *salvinfo, VolumeId volumeId)
 {
     afs_int32 code, i;
+    SYNC_response res;
 
     for (i = 0; i < 3; i++) {
+	memset(&res, 0, sizeof(res));
         code = FSYNC_VolOp(volumeId, salvinfo->fileSysPartition->name,
-                           FSYNC_VOL_DONE, FSYNC_SALVAGE, NULL);
+                           FSYNC_VOL_DONE, FSYNC_SALVAGE, &res);
 
         if (code == SYNC_OK) {
             break;
@@ -4646,6 +4672,11 @@ AskDelete(struct SalvInfo *salvinfo, VolumeId volumeId)
 #endif
             }
             break;
+	} else if (code == SYNC_FAILED &&
+		     (res.hdr.reason == FSYNC_UNKNOWN_VOLID ||
+		      res.hdr.reason == FSYNC_WRONG_PART)) {
+	    /* volume is already effectively 'deleted' */
+	    break;
         } else if (i < 2) {
             /* try it again */
             Log("AskOnline:  request for fileserver to delete volume failed; trying again...\n");

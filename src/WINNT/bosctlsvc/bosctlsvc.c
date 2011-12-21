@@ -35,7 +35,7 @@
 
 #define BOSSERVER_STARTMSG_EXE  "afslegal.exe"
 
-#define BOSSERVER_RESTART_ARG_MAX  2  /* "-noauth", "-log" */
+#define BOSSERVER_RESTART_ARG_MAX  3  /* "-noauth", "-log", "-rxbind" */
 #define BOSSERVER_WAIT_TIME_HINT  60  /* seconds */
 #define BOSSERVER_STOP_TIME_MAX  (FSSDTIME + 60)  /* seconds */
 
@@ -415,6 +415,11 @@ BosserverDoExitEvent(pid_t cpid,
 		if (exitCode & BOSEXIT_LOGGING_FLAG) {
 		    /* pass "-log" to new bosserver */
 		    restartArgv[i] = "-log";
+		    i++;
+		}
+		if (exitCode & BOSEXIT_RXBIND_FLAG) {
+		    /* pass "-rxbind" to new bosserver */
+		    restartArgv[i] = "-rxbind";
 		    i++;
 		}
 		restartArgv[i] = NULL;

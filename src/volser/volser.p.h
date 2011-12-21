@@ -184,6 +184,7 @@ struct partList {		/*used by the backup system */
 #define RV_NOVLDB	0x040000
 #define RV_NOCLONE	0x080000
 #define RV_NODEL        0x100000
+#define RV_RWONLY	0x200000
 
 /* Values for DumpVolume flag */
 #define FORCEDUMP               1

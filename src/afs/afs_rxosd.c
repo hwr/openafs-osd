@@ -218,7 +218,7 @@ getRxosdConn(struct rxosd_Variables *v, struct osd_obj *o,
     ip = htonl(o->osd_ip);
 #endif
     *ts = afs_GetServer(&ip, 1, v->avc->f.fid.Cell, port,
-			WRITE_LOCK, (afsUUID *)0, 0);
+			WRITE_LOCK, (afsUUID *)0, 0, 0);
     if (!*ts) { 
         code = EIO;
         return code;
@@ -827,7 +827,7 @@ handleError(struct rxosd_Variables *v, afs_int32 i, afs_int32 error)
         ts = afs_GetServer(
 			&v->call[i]->conn->peer->host,	
 			1, v->avc->f.fid.Cell, v->call[i]->conn->peer->port,
-			WRITE_LOCK, (afsUUID *)0, 0);
+			WRITE_LOCK, (afsUUID *)0, 0, 0);
     	if (error == RXGEN_OPCODE) {
 	    ObtainWriteLock(&afs_xserver, 1101);
 	    if (ts->flags & SRVR_USEOLDRPCS)
@@ -1387,7 +1387,7 @@ rxosd_serverUp(struct rxosd_Variables *v, struct osd_obj *o)
     ip = htonl(o->osd_ip);
 #endif
     ts = afs_GetServer(&ip, 1, v->avc->f.fid.Cell, port, 
-			WRITE_LOCK, (afsUUID *)0, 0);
+			WRITE_LOCK, (afsUUID *)0, 0, 0);
     if (ts->flags & SRVR_ISDOWN) 
 	up = 0;
     afs_PutServer(ts, WRITE_LOCK);

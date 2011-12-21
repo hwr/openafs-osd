@@ -2044,7 +2044,7 @@ er_ProcDeclExterns_setup(void)
     list *listp;
     definition *defp;
 
-    if ( cflag )        /* not needed for opcode translation */
+    if ( !Sflag )        /* not needed for opcode translation */
         return;
 
     f_print(fout, "\n");
@@ -2180,6 +2180,12 @@ er_BodyofOldStyleProc_setup(void)
 static void
 proc_er_case(definition * defp)
 {
+    if ( cflag ) {
+        f_print(fout, "\t\tcase %d:", defp->pc.proc_opcodenum);
+        f_print(fout, "\treturn \"%s%s\";\n",
+                defp->pc.proc_prefix, defp->pc.proc_name);
+        return;
+    }
     if (opcodesnotallowed[PackageIndex]) {
 	f_print(fout, "\t\tcase %d:\n", defp->pc.proc_opcodenum);
     } else {

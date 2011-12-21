@@ -803,7 +803,6 @@ DumpFile(struct iod *iodp, int vnode, FdHandle_t * handleP)
 #ifndef AFS_NT40_ENV
     struct afs_stat status;
 #endif
-    afs_sfsize_t size;
 #ifdef  AFS_AIX_ENV
 #include <sys/statfs.h>
 #if defined(AFS_AIX52_ENV)
@@ -842,8 +841,7 @@ DumpFile(struct iod *iodp, int vnode, FdHandle_t * handleP)
 #endif /* AFS_NT40_ENV */
 
 
-    size = FDH_SIZE(handleP);
-    SplitInt64(size, hi, lo);
+    SplitInt64(howBig, hi, lo);
     if (hi == 0L) {
 	code = DumpInt32(iodp, 'f', lo);
     } else {
@@ -859,7 +857,7 @@ DumpFile(struct iod *iodp, int vnode, FdHandle_t * handleP)
 	return VOLSERDUMPERROR;
     }
 
-    for (nbytes = size; (nbytes && !error); nbytes -= howMany) {
+    for (nbytes = howBig; (nbytes && !error); nbytes -= howMany) {
 	if (nbytes < howMany)
 	    howMany = nbytes;
 
@@ -900,7 +898,7 @@ DumpFile(struct iod *iodp, int vnode, FdHandle_t * handleP)
 	    /* Now seek over the data we could not get. An error here means we
 	     * can't do the next read.
 	     */
-	    howFar = (size_t)((size - nbytes) + howMany);
+	    howFar = (size_t)((howBig - nbytes) + howMany);
 	}
 
 	/* Now write the data out */
@@ -1374,10 +1372,6 @@ ProcessIndex(Volume * vp, VnodeClass class, afs_foff_t ** Bufp, int *sizep,
 	    (size <=
 	     vcp->diskSize ? 0 : size - vcp->diskSize) >> vcp->logSize;
 	if (nVnodes > 0) {
-	    if (DoLogging) {
-		Log("RestoreVolume ProcessIndex: Set up %d inodes for volume %d\n",
-		    nVnodes, V_id(vp));
-	    }
 	    Buf = malloc(nVnodes * sizeof(afs_foff_t));
 	    if (Buf == NULL) {
 		STREAM_CLOSE(afile);
@@ -1397,9 +1391,6 @@ ProcessIndex(Volume * vp, VnodeClass class, afs_foff_t ** Bufp, int *sizep,
 		    cnt++;
 		}
 		offset += vcp->diskSize;
-	    }
-	    if (DoLogging) {
-		Log("RestoreVolume ProcessIndex: found %d inodes\n", cnt);
 	    }
 	    *Bufp = Buf;
 	    *sizep = nVnodes;
@@ -1456,6 +1447,8 @@ RestoreVolume(struct rx_call *call, Volume * avp, int incremental,
     vol.cloneId = cookie->clone;
     vol.parentId = cookie->parent;
 
+    V_needsSalvaged(vp) = 0;
+
     tdelo = delo;
     while (1) {
 	int temprc;
@@ -1503,6 +1496,11 @@ RestoreVolume(struct rx_call *call, Volume * avp, int incremental,
 
   clean:
     ClearVolumeStats(&vol);
+    if (V_needsSalvaged(vp)) {
+        /* needsSalvaged may have been set while we tried to write volume data.
+         * prevent it from getting overwritten. */
+        vol.needsSalvaged = V_needsSalvaged(vp);
+    }
     CopyVolumeHeader(&vol, &V_disk(vp));
     V_destroyMe(vp) = 0;
     VUpdateVolume(&vupdate, vp);
@@ -1561,9 +1559,6 @@ ReadVnodes(struct iod *iodp, Volume * vp, int incremental,
 	if (!ReadInt32(iodp, &vnode->uniquifier))
             return VOLSERREAD_DUMPERROR;
 
-	if (DoLogging) {
-	    Log("ReadVnodes: setup %d/%d\n", vnodeNumber, vnode->uniquifier);
-	}
 	while ((tag = iod_getc(iodp)) > D_MAX && tag != EOF) {
 	    if (critical)
 		critical--;
@@ -1788,7 +1783,8 @@ ReadVnodes(struct iod *iodp, Volume * vp, int incremental,
 				  	  vnode->uniquifier, vnode->dataVersion);
 		    	if (!VALID_INO(ino)) {
 			    Log("1 Volser: ReadVnodes: IH_CREATE returned %d - restore aborted\n",
-				errno);
+				afs_error_message(errno));
+			    V_needsSalvaged(vp) = 1;
 			    return VOLSERREAD_DUMPERROR;
 		        }
 		        nearInode = ino;
@@ -1797,7 +1793,8 @@ ReadVnodes(struct iod *iodp, Volume * vp, int incremental,
 		        fdP = IH_OPEN(tmpH);
 		        if (fdP == NULL) {
 			    Log("1 Volser: ReadVnodes: IH_OPEN returned %d - restore aborted\n",
-				errno);
+				afs_error_message(errno));
+			    V_needsSalvaged(vp) = 1;
 			    IH_RELEASE(tmpH);
 			    return VOLSERREAD_DUMPERROR;
 		        }
@@ -1811,6 +1808,7 @@ ReadVnodes(struct iod *iodp, Volume * vp, int incremental,
 			    Log("1 Volser: ReadVnodes: IDEC inode %llu\n",
 			        (afs_uintmax_t) ino);
 			    IH_DEC(V_linkHandle(vp), ino, V_parentId(vp));
+			    V_needsSalvaged(vp) = 1;
 			    return VOLSERREAD_DUMPERROR;
 			}
 			haveFile = 1;
@@ -1875,6 +1873,7 @@ ReadVnodes(struct iod *iodp, Volume * vp, int incremental,
 	    if (fdP == NULL) {
 		Log("1 Volser: ReadVnodes: Error opening vnode index: %s; restore aborted\n",
 			afs_error_message(errno));
+	        V_needsSalvaged(vp) = 1;
 		return VOLSERREAD_DUMPERROR;
 	    }
 	    if (FDH_PREAD(fdP, &oldvnode, sizeof(oldvnode), vnodeIndexOffset(vcp, vnodeNumber)) != sizeof(oldvnode)) 
@@ -1916,6 +1915,7 @@ ReadVnodes(struct iod *iodp, Volume * vp, int incremental,
 	    if (FDH_PWRITE(fdP, vnode, vcp->diskSize, vnodeIndexOffset(vcp, vnodeNumber)) != vcp->diskSize) {
 		Log("1 Volser: ReadVnodes: Error writing vnode index; restore aborted\n");
 		FDH_REALLYCLOSE(fdP);
+		V_needsSalvaged(vp) = 1;
 		return VOLSERREAD_DUMPERROR;
 	    }
 	    if (oldvnode.type != vNull) {

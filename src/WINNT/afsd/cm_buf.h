@@ -95,8 +95,6 @@ typedef struct cm_buf {
 #define CM_BUF_CMSTORING	2	/* storing this buffer */
 #define CM_BUF_CMFULLYFETCHED	4	/* read-while-fetching optimization */
 #define CM_BUF_CMWRITING        8       /* writing to this buffer */
-#define CM_BUF_CMBKGFETCH      16       /* background fetch queued by
-                                         * prefetch or redirector */
 /* waiting is done based on scp->flags.  Removing bits from cmFlags
    should be followed by waking the scp. */
 
@@ -179,7 +177,7 @@ extern afs_uint32 buf_CleanAsync(cm_scache_t *, cm_buf_t *, cm_req_t *, afs_uint
 
 extern void buf_CleanWait(cm_scache_t *, cm_buf_t *, afs_uint32 locked);
 
-extern void buf_SetDirty(cm_buf_t *, afs_uint32 offset, afs_uint32 length, cm_user_t *);
+extern void buf_SetDirty(cm_buf_t *, cm_req_t *, afs_uint32 offset, afs_uint32 length, cm_user_t *);
 
 extern long buf_CleanAndReset(void);
 

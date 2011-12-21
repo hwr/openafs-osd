@@ -278,6 +278,11 @@ CommandProc(struct cmd_syndesc *as, void *arock)
 		   udebug.list.ubik_db_localList_val[i].epochTime,
 		   udebug.list.ubik_db_localList_val[i].tidCounter,
 		   udebug.list.ubik_db_localList_val[i].index);
+	    } else {
+	        printf("The last trans I handled on [%d] was %d.%d\n",
+		   udebug.list.ubik_db_localList_val[i].index,
+		   udebug.list.ubik_db_localList_val[i].epochTime,
+		   udebug.list.ubik_db_localList_val[i].tidCounter);
 	    }
 	}
     } else {
