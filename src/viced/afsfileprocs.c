@@ -4097,7 +4097,9 @@ common_StoreData64(struct rx_call *acall, struct AFSFid *Fid,
 
     /* Do the actual storing of the data */
 
-    if (V_osdPolicy(volptr) && targetptr->disk.osdMetadataIndex && osdviced) {
+    if (osdviced && osdvol 
+      && (osdvol->op_isOsdFile)(V_osdPolicy(volptr), V_id(volptr),
+				&targetptr->disk, targetptr->vnodeNumber)) {
 	bytesToXfer = 0;
 	bytesXferred = 0;
 	errorCode = (osdviced->op_legacyStoreData) (volptr, targetptr, Fid, client,
@@ -9073,7 +9075,9 @@ StoreData_RXStyle(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
 
     VN_GET_LEN(targSize, targetptr);
 
-    if (osdviced && targetptr->disk.osdMetadataIndex && !VN_GET_INO(targetptr)) {
+    if (osdviced && osdvol 
+      && (osdvol->op_isOsdFile)(V_osdPolicy(volptr), V_id(volptr), 
+				&targetptr->disk, targetptr->vnodeNumber)) {
         errorCode = (osdviced->op_Store_OSD)(volptr, &targetptr, Fid, client, Call,
                 Pos, Length, FileLength);
         if ( Length > 0 && !errorCode ) /* goto Good_StoreData */
@@ -9206,7 +9210,9 @@ StoreData_RXStyle(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
     adjustSize = nBlocks(NewLength) - nBlocks(targSize);
     {
 	afs_int32 adjustPart = adjustSize - SpareComp(volptr);
-	if (V_osdPolicy(volptr) && targetptr->disk.osdMetadataIndex) {
+        if (osdvol && (osdvol->op_isOsdFile)(V_osdPolicy(volptr), V_id(volptr),
+					     &targetptr->disk,
+					     targetptr->vnodeNumber)) {
 	    if (V_maxquota(volptr) 
 	      && V_diskused(volptr) + adjustSize > V_maxquota(volptr)) {
 		errorCode = VOVERQUOTA;
@@ -9250,7 +9256,9 @@ StoreData_RXStyle(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
 	/* Set the file's length; we've already done an lseek to the right
 	 * spot above.
 	 */
-	if (!V_osdPolicy(volptr) || !targetptr->disk.osdMetadataIndex) {
+        if (!osdvol || !(osdvol->op_isOsdFile)(V_osdPolicy(volptr), V_id(volptr),
+					       &targetptr->disk,
+					       targetptr->vnodeNumber)) {
 	    nBytes = FDH_PWRITE(fdP, &tlen, 1, Pos);
 	    if (nBytes != 1) {
 		errorCode = -1;

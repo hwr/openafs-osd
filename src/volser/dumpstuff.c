@@ -1091,12 +1091,13 @@ DumpVnodeIndex(struct iod *iodp, Volume * vp, VnodeClass class,
     for (vnodeIndex = 0;
 	 nVnodes && STREAM_READ(vnode, vcp->diskSize, 1, file) == 1 && !code;
 	 nVnodes--, vnodeIndex++) {
+	afs_uint32 vN = bitNumberToVnodeNumber(vnodeIndex, class);
 	myFlag = flag;
 	if (osdvol) {
 	    if (vnode->serverModifyTime >= fromtime 
 	      && (VNDISK_GET_INO(vnode) || !(myFlag & TARGETHASOSDSUPPORT)))
 	        myFlag |= FORCEDUMP;
-	    if (vnode->type == vFile && vnode->osdMetadataIndex
+	    if ((osdvol->op_isOsdFile)(V_osdPolicy(vp), V_id(vp), vnode, vN)
 	      && (osdvol->op_dump_metadata_time)(vp, vnode) >= fromtime 
 	      && (myFlag & TARGETHASOSDSUPPORT))
 	        myFlag |= FORCEMETADATA;
@@ -1109,8 +1110,7 @@ DumpVnodeIndex(struct iod *iodp, Volume * vp, VnodeClass class,
 	 * does dump the file! */
 	if (!code)
 	    code =
-		DumpVnode(iodp, vnode, vp,
-			  bitNumberToVnodeNumber(vnodeIndex, class), myFlag);
+		DumpVnode(iodp, vnode, vp, vN, myFlag);
 #ifndef AFS_PTHREAD_ENV
 	if (!(myFlag & FORCEDUMP))
 	    IOMGR_Poll();	/* if we dont' xfr data, but scan instead, could lose conn */
@@ -1195,7 +1195,8 @@ DumpVnode(struct iod *iodp, struct VnodeDiskObject *v, Volume *vp,
 	/* 
 	 * If only the metadata should be dumped 
 	 */
-        if (v->type == vFile && v->osdMetadataIndex && (flag & TARGETHASOSDSUPPORT) 
+        if ((osdvol->op_isOsdFile)(V_osdPolicy(vp), V_id(vp), v, vnodeNumber)
+	  && (flag & TARGETHASOSDSUPPORT) 
           && (flag & FORCEMETADATA)) {
 	    void *rock;
             byte *data;
@@ -1329,9 +1330,10 @@ ProcessIndex(Volume * vp, VnodeClass class, afs_foff_t ** Bufp, int *sizep,
 		STREAM_ASEEK(afile, Buf[i]);
 		code = STREAM_READ(vnode, vcp->diskSize, 1, afile);
 		if (code == 1) {
-		    if (osdvol && vnode->type != vNull && vnode->osdMetadataIndex) {
-			(osdvol->op_remove)(vp, vnode, 
-				bitNumberToVnodeNumber(i, class));
+		    afs_uint32 vN = bitNumberToVnodeNumber(i, class);
+		    if (osdvol && (osdvol->op_isOsdFile)(V_osdPolicy(vp), V_id(vp),
+							 vnode, vN)) {
+			(osdvol->op_remove)(vp, vnode, vN); 
 			rs->metadataDeleted++;
 			if (!VNDISK_GET_INO(vnode)) {
 			    cnt1++;
@@ -1381,12 +1383,14 @@ ProcessIndex(Volume * vp, VnodeClass class, afs_foff_t ** Bufp, int *sizep,
 	    memset((char *)Buf, 0, nVnodes * sizeof(afs_foff_t));
 	    STREAM_ASEEK(afile, offset = vcp->diskSize);
 	    while (1) {
+		afs_uint32 vN = (offset >> (vcp->logSize - 1)) - class;
 		code = STREAM_READ(vnode, vcp->diskSize, 1, afile);
 		if (code != 1) {
 		    break;
 		}
 		if (vnode->type != vNull && (VNDISK_GET_INO(vnode) 
-		  || (vnode->osdMetadataIndex && osdvol))) {
+		  || (osdvol && (osdvol->op_isOsdFile)(V_osdPolicy(vp), V_id(vp),
+						       vnode, vN)))) {
 		    Buf[(offset >> vcp->logSize) - 1] = offset;
 		    cnt++;
 		}
@@ -1896,7 +1900,8 @@ ReadVnodes(struct iod *iodp, Volume * vp, int incremental,
 		        rs->filesDeleted++;
 		    if (haveMetadata)
 		        rs->metadataNew++;
-		    if (oldvnode.osdMetadataIndex)
+		    if (osdvol && (osdvol->op_isOsdFile)(V_osdPolicy(vp), V_id(vp),
+							 &oldvnode, vnodeNumber))
 		        rs->metadataDeleted++;
 		}
 	    }

@@ -468,13 +468,14 @@ int load_libafsosd(char *initroutine, void *inrock, void *outrock)
     afs_int32 version = LIBAFSOSD_VERSION; 	/* compiled in server binary */
 
     memset(&opsptr, 0, sizeof(opsptr));
-    strcpy(libname, AFSDIR_SERVER_BIN_DIRPATH);
-    strcat(libname, "/");
+    sprintf(libname, "%s/%s.%d.%d",
+		AFSDIR_SERVER_BIN_DIRPATH,
 #ifdef AFS_DEMAND_ATTACH_FS
-    strcat(libname, "libdafsosd.so.0.1");
+		"libdafsosd.so",
 #else
-    strcat(libname, "libafsosd.so.0.1");
+		"libafsosd.so",
 #endif
+		0, LIBAFSOSD_VERSION);
     libHandle = dlopen (libname, RTLD_LAZY);
     if (!libHandle) {
         fprintf (stderr, "dlopen of %s failed: %s\n", libname, dlerror());

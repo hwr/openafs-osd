@@ -15,7 +15,7 @@
  * inside the library. So a version mismatch can easily be detected.
  */
  
-#define LIBAFSOSD_VERSION 4
+#define LIBAFSOSD_VERSION 6
 
 /*
  *	Unspecific operations used in general servers provided by AFS/OSD
@@ -27,6 +27,8 @@ struct osd_vol_ops_v0 {
 				afs_uint32 vn, afs_uint32 entrylength, void *rock,
 				afs_int32 Testing);
     int (*op_salv_GetOsdEntryLength) (FdHandle_t *fd, void **rock);
+    int (*op_isOsdFile) (afs_int32 osdPolicy, afs_uint32 vid,
+			 struct VnodeDiskObject *vd, afs_uint32 vN);
     int (*op_truncate_osd_file) (struct Vnode *targetptr, afs_uint64 filelength);
     int (*op_clone_pre_loop) (struct Volume *rwvp, struct Volume *clvp,
 			      struct VnodeDiskObject *rwvnode,

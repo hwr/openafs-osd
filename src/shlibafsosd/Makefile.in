@@ -1,7 +1,6 @@
 # API version. When something changes, increment as appropriate. 
 # Ignore at your own risk.
 LIBAFSRPCMAJOR=0
-LIBAFSRPCMINOR=1
 
 # Copyright 2000, International Business Machines Corporation and others.
 # All Rights Reserved.
@@ -20,6 +19,8 @@ INSTALL = @INSTALL@
 INSTALL_DATA = @INSTALL_DATA@
 INSTALL_PROGRAM = @INSTALL_PROGRAM@
 INSTALL_SCRIPT = @INSTALL_SCRIPT@
+
+LIBAFSRPCMINOR=`grep LIBAFSOSD_VERSION ${TOP_INCDIR}/afs/afsosd.h | /usr/bin/awk '{print$$3}'`
 
 CC=${MT_CC}
 CFLAGS = ${COMMON_CFLAGS} -DRXDEBUG ${MT_CFLAGS} ${SHLIB_CFLAGS}

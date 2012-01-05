@@ -976,6 +976,49 @@ GetOsdEntryLength(FdHandle_t *fd, void **rock)
     return tentry->length;
 }
    
+private int
+isOsdFile(afs_int32 osdPolicy, afs_uint32 vid, struct VnodeDiskObject *vd, 
+	      afs_uint32 vN)
+{
+    Inode ino = VNDISK_GET_INO(vd);
+
+    if (vd->type != vFile)
+	return 0;
+    if (!osdPolicy && ino && vd->vnodeMagic == SMALLVNODEMAGIC)
+	return 0;	/* File in a normal OpenAFS volume */
+    if (osdPolicy && !ino && vd->osdMetadataIndex)
+	return 1;	/* OSD-File in an OSD-Volume */
+    if (osdPolicy && ino && !vd->osdMetadataIndex)
+	return 0;	/* non-Osd-File in an OSD-Volume */
+    /* Anything else is suspect */
+    if (osdPolicy && ino && vd->vnodeMagic == SMALLVNODEMAGIC) {
+        ViceLog(0, ("isOsdFile: %u.%u.%u has vnodeMagic. Handled as local file\n",
+		 vid, vN, vd->uniquifier)); 
+	return 0;	/* Handle this case as normal file in an OSD-Volume */
+    }
+    if (!osdPolicy && !ino && vd->vnodeMagic != SMALLVNODEMAGIC
+      && vd->osdMetadataIndex) {
+        ViceLog(0, ("isOsdFile: %u.%u.%u OSD-file in a non-OSD-volume\n",
+		 vid, vN, vd->uniquifier)); 
+	return  1;
+    }
+    if (osdPolicy && !ino && vd->vnodeMagic == SMALLVNODEMAGIC) {
+        ViceLog(0, ("isOsdFile: %u.%u.%u osdMetadataIndex fits SMALLVNODEMAGIC\n",
+		 vid, vN, vd->uniquifier)); 
+	return 1;	/* Try to handle this as an OSD-file in an OSD-Volume */
+    }
+    if (!ino && !vd->osdMetadataIndex) {
+        ViceLog(0, ("isOsdFile: %u.%u.%u has has neither ino nor osdMetadata\n",
+		 vid, vN, vd->uniquifier)); 
+	return 0;	/* Handle this case as normal file in an OSD-Volume */
+    }
+    ViceLog(0, ("isOsdFile: %u.%u.%u unknown case\n",
+		 vid, vN, vd->uniquifier)); 
+    if (ino)
+	return 0;
+    return 1;
+};
+
 static afs_int32
 SalvageOsdMetadata(FdHandle_t *fd, struct VnodeDiskObject *vd, afs_uint32 vn,
 			afs_uint32 entrylength, void *rock,
@@ -7163,6 +7206,7 @@ int init_osdvol (char *version, char **afsosdVersion, struct osd_vol_ops_v0 **os
     static struct osd_vol_ops_v0 osd_vol_ops_v0 = {
         NULL,
         GetOsdEntryLength,
+	isOsdFile,
         truncate_osd_file,
         clone_pre_loop,
         clone_metadata,
@@ -7207,6 +7251,7 @@ int init_salv_afsosd (char *afsversion, char **afsosdVersion, void *inrock, void
     static struct osd_vol_ops_v0 osd_vol_ops_v0 = {
         SalvageOsdMetadata,
         GetOsdEntryLength,
+	isOsdFile,
         NULL,
         NULL,
         NULL,

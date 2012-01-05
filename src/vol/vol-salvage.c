@@ -2690,21 +2690,24 @@ SalvageIndex(struct SalvInfo *salvinfo, Inode ino, VnodeClass class, int RW,
 	if (vnode->type != vNull) {
 	    int vnodeChanged = 0;
 	    int vnodeNumber = bitNumberToVnodeNumber(vnodeIndex, class);
+	    int osdFile = 0;
 	    /* Log programs that belong to root (potentially suid root);
 	     * don't bother for read-only or backup volumes */
 #ifdef	notdef			/* This is done elsewhere */
 	    if (ShowRootFiles && RW && vnode->owner == 0 && vnodeNumber != 1)
 		Log("OWNER IS ROOT %s %u dir %u vnode %u author %u owner %u mode %o\n", salvinfo->VolInfo.name, volumeNumber, vnode->parent, vnodeNumber, vnode->author, vnode->owner, vnode->modeBits);
 #endif
-            if (osdvol && vnode->type == vFile && vnode->osdMetadataIndex) {
+            if (osdvol)
+		 osdFile = (osdvol->op_isOsdFile)(salvinfo->VolInfo.osdPolicy, 
+						  volumeNumber, vnode, vnodeNumber);
+            if (osdFile) { 
                 afs_int32 code;
                 code = (osdvol->op_salv_OsdMetadata)(osdMetadataFd, vnode,
                             vnodeNumber, osdEntryLength, osdrock, Testing);
                 if (code && !Testing)
                     vnodeChanged = 1;
 	    }
-            if (VNDISK_GET_INO(vnode) == 0
-              && (vnode->type != vFile || (osdvol && !vnode->osdMetadataIndex))){
+            if (VNDISK_GET_INO(vnode) == 0 && !osdFile) {
 		if (RW) {
 		    /* Log("### DEBUG ### Deleted Vnode with 0 inode (vnode %d)\n", vnodeNumber); */
 		    memset(vnode, 0, vcp->diskSize);
@@ -2769,9 +2772,6 @@ SalvageIndex(struct SalvInfo *salvinfo, Inode ino, VnodeClass class, int RW,
 		}
 		if (nInodes && ip->u.vnode.vnodeNumber == vnodeNumber) {
 		    /* "Matching" inode */
-		    int badunique = 0;
-		    int badinode = 0;
-		    int badlength = 0;
 		    if (RW) {
 			Unique vu, iu;
 			FileVersion vd, id;
@@ -2782,18 +2782,10 @@ SalvageIndex(struct SalvInfo *salvinfo, Inode ino, VnodeClass class, int RW,
 			/*
 			 * Because of the possibility of the uniquifier overflows (> 4M)
 			 * we compare them modulo the low 22-bits; we shouldn't worry
-			 * about mismatching since they shouldn't to many old 
+			 * about mismatching since they shouldn't be too many old 
 			 * uniquifiers of the same vnode...
 			 */
-			if (osdvol) { 
-                            if ( (!vnode->osdMetadataIndex || vnode->type != vFile)
-                              && IUnique(vu) != IUnique(iu))
-			    	badunique = 1;
-			} else { 
-			    if (IUnique(vu) != IUnique(iu))
-			    	badunique = 1;
-			}
-			if (badunique) {
+                        if (!osdFile && IUnique(vu) != IUnique(iu)) {
 			    if (!Showmode) {
 				Log("Vnode %u: vnode.unique, %u, does not match inode unique, %u; fixed, but status will be wrong\n", vnodeNumber, IUnique(vu), IUnique(iu));
 			    }
@@ -2846,15 +2838,7 @@ SalvageIndex(struct SalvInfo *salvinfo, Inode ino, VnodeClass class, int RW,
 			    }
 			}
 		    }
-		    if (osdvol) {
-                         if ((!vnode->osdMetadataIndex || vnode->type != vFile)
-                          && ip->inodeNumber != VNDISK_GET_INO(vnode))
-			    badinode = 1;
-		    } else {
-		        if (ip->inodeNumber != VNDISK_GET_INO(vnode))
-			    badinode = 1;
-		    }
-		    if (badinode) {
+		    if (!osdFile && ip->inodeNumber != VNDISK_GET_INO(vnode)) {
 			if (check) {
 			    if (!Showmode) {
 				Log("Vnode %d:  inode number incorrect (is %s should be %s). FileSize=%llu\n", vnodeNumber, PrintInode(stmp1, VNDISK_GET_INO(vnode)), PrintInode(stmp2, ip->inodeNumber), (afs_uintmax_t) ip->byteCount);
@@ -2870,15 +2854,7 @@ SalvageIndex(struct SalvInfo *salvinfo, Inode ino, VnodeClass class, int RW,
 			vnodeChanged = 1;
 		    }
 		    VNDISK_GET_LEN(vnodeLength, vnode);
-		    if (osdvol) {
-                        if (ip->byteCount != vnodeLength
-                          && (vnode->type == vFile && !vnode->osdMetadataIndex))
-			    badlength = 1;
-		    } else {
-		        if (ip->byteCount != vnodeLength)
-			    badlength = 1;
-		    }
-		    if (badlength) {
+		    if (!osdFile && ip->byteCount != vnodeLength) {
 			if (check) {
 			    if (!Showmode)
 				Log("Vnode %d: length incorrect; (is %llu should be %llu)\n", vnodeNumber, (afs_uintmax_t) vnodeLength, (afs_uintmax_t) ip->byteCount);
@@ -3428,6 +3404,7 @@ DistilVnodeEssence(struct SalvInfo *salvinfo, VolumeId rwVId,
 	 nVnodes && STREAM_READ(vnode, vcp->diskSize, 1, file) == 1;
 	 nVnodes--, vnodeIndex++) {
 	if (vnode->type != vNull) {
+	    VnodeId vnodeNumber = bitNumberToVnodeNumber(vnodeIndex, class);
 	    struct VnodeEssence *vep = &vip->vnodes[vnodeIndex];
 	    afs_fsize_t vnodeLength;
 	    vip->nAllocatedVnodes++;
@@ -3447,7 +3424,6 @@ DistilVnodeEssence(struct SalvInfo *salvinfo, VolumeId rwVId,
 	    vep->group = vnode->group;
 	    if (vnode->type == vDirectory) {
 		if (class != vLarge) {
-		    VnodeId vnodeNumber = bitNumberToVnodeNumber(vnodeIndex, class);
 		    vip->nAllocatedVnodes--;
 		    memset(vnode, 0, sizeof(vnode));
 		    IH_IWRITE(salvinfo->vnodeInfo[vSmall].handle,
@@ -3458,7 +3434,8 @@ DistilVnodeEssence(struct SalvInfo *salvinfo, VolumeId rwVId,
 		    vip->inodes[vnodeIndex] = VNDISK_GET_INO(vnode);
 	    }
             vep->osdMetadataIndex = 0;
-            if (osdvol && vnode->osdMetadataIndex && vnode->type == vFile)
+            if (osdvol && (osdvol->op_isOsdFile(salvinfo->VolInfo.osdPolicy,
+						rwVId, vnode, vnodeNumber)))
                 vep->osdMetadataIndex = vnode->osdMetadataIndex;
 	}
     }
