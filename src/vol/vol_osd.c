@@ -990,6 +990,8 @@ isOsdFile(afs_int32 osdPolicy, afs_uint32 vid, struct VnodeDiskObject *vd,
 	return 1;	/* OSD-File in an OSD-Volume */
     if (osdPolicy && ino && !vd->osdMetadataIndex)
 	return 0;	/* non-Osd-File in an OSD-Volume */
+    if (!osdPolicy && ino && !vd->osdMetadataIndex)
+	return 0;	/* non-Osd-File in an non-OSD-Volume */
     /* Anything else is suspect */
     if (osdPolicy && ino && vd->vnodeMagic == SMALLVNODEMAGIC) {
         ViceLog(0, ("isOsdFile: %u.%u.%u has vnodeMagic. Handled as local file\n",
