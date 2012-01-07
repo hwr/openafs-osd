@@ -677,6 +677,10 @@ ShutDownAndCore(int dopanic)
     char tbuffer[32];
     afs_int32 i, active = 1, slept = 0;
     char string[FIDSTRLEN];
+    char *timestring;
+    afs_uint32 days, hours, minutes, seconds, tsec;
+    char *unit[] = {"bytes", "kb", "mb", "gb", "tb"};
+    afs_uint64 t64;
 
     ViceLog(0,
             ("Shutting down rxosd at %s",
@@ -715,6 +719,53 @@ ShutDownAndCore(int dopanic)
     ViceLog(0,
             ("ShutDown complete at %s",
              afs_ctime(&now, tbuffer, sizeof(tbuffer))));
+    timestring = afs_ctime(&statisticStart.tv_sec, tbuffer, sizeof(tbuffer));
+    tbuffer[strlen(tbuffer) -1] = 0;
+    seconds = tsec = now - statisticStart.tv_sec;
+    days = tsec / 86400;
+    tsec = tsec % 86400;
+    hours = tsec/3600;
+    tsec = tsec % 3600;
+    minutes = tsec/60;
+    tsec = tsec % 60;
+    ViceLog(0, ("Since %s (%u seconds == %u days, %u:%02u:%02u hours)\n",
+                        timestring, seconds, days, hours, minutes, tsec));
+    t64 = total_bytes_rcvd;
+    i = 0;
+    while (t64>1023) {
+        t64 = t64 >> 10;
+        i++;
+    }
+    ViceLog(0,
+            ("Total bytes received    %16llu %4llu %s\n",
+			total_bytes_rcvd, t64, unit[i]));
+    t64 = total_bytes_rcvd_vpac;
+    i = 0;
+    while (t64>1023) {
+        t64 = t64 >> 10;
+        i++;
+    }
+    ViceLog(0,
+	    ("   thereof vicep-access %16llu %4llu %s\n",
+			total_bytes_rcvd_vpac, t64, unit[i]));
+    t64 = total_bytes_sent;
+    i = 0;
+    while (t64>1023) {
+        t64 = t64 >> 10;
+        i++;
+    }
+    ViceLog(0,
+            ("Total bytes sent        %16llu %4llu %s\n",
+			total_bytes_sent, t64, unit[i]));
+    t64 = total_bytes_sent_vpac;
+    i = 0;
+    while (t64>1023) {
+        t64 = t64 >> 10;
+        i++;
+    }
+    ViceLog(0,
+	    ("   thereof vicep-access %16llu %4llu %s\n",
+			total_bytes_sent_vpac, t64, unit[i]));
     exit(0);
 }
 
