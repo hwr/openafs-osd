@@ -2386,6 +2386,68 @@ SOSDDB_GetPoliciesRevision68(struct rx_call *call, afs_uint32 *revision)
     return code;
 }
 
+void
+OSDDB_5_minuteCheck()
+{
+    afs_int32 code;
+    osds.OsdList_len = 0;
+    osds.OsdList_val = NULL;
+    while(1) {
+        if (ubeacon_AmSyncSite()) {
+            int i;
+            struct timeval now;
+            FT_GetTimeOfDay(&now, 0);
+            if (!osds.OsdList_val) {
+                code = SOSDDB_OsdList(0, &osds);
+                if (!code) { /* initialize timeStamps */
+                    for (i=0; i<osds.OsdList_len; i++) {
+                        if (osds.OsdList_val[i].id == 1) {
+                            osds.OsdList_val[i].t.etype_u.osd.unavail = 0;
+                            continue;
+                        }
+                        if (osds.OsdList_val[i].t.etype_u.osd.unavail)
+                            osds.OsdList_val[i].t.etype_u.osd.timeStamp = 0;
+                        else
+                            osds.OsdList_val[i].t.etype_u.osd.timeStamp =
+                                                now.tv_sec;
+                    }
+                }
+            } else { /* find dead osds and update database if necessary */
+                for (i=0; i<osds.OsdList_len; i++) {
+                    struct Osd *o = &osds.OsdList_val[i];
+                    if (o->id == 1) {
+                        o->t.etype_u.osd.unavail = 0;
+                        continue;
+                    }
+                    if ((now.tv_sec - o->t.etype_u.osd.timeStamp) > OSD_TIMEOUT
+                      && !(o->t.etype_u.osd.unavail & OSDDB_OSD_DEAD)) {
+                        afs_int32 code2;
+                        struct osddb_osd_tab *t;
+                        t = malloc(sizeof(struct osddb_osd_tab));
+                        if (t) {
+                            fill_osd_tab_from_Osd(t, o->id, o->name, o->t);
+                            t->unavail |= OSDDB_OSD_DEAD;
+                            ViceLog(1,("main: unavail changed from %u to %u for %s (%u).\n",
+                                    o->t.etype_u.osd.unavail,
+                                    t->unavail,
+                                    o->name, o->id));
+                            ViceLog(0,("OSD %u %s  marked dead\n", o->id, o->name));
+                            code2 = SOSDDB_SetOsd(0, t);
+                            free(t);
+                        } else {
+                            ViceLog(0,("OSD %u %s couldn't mark dead - malloc failed\n",
+                                    o->id, o->name));
+                        }
+                    }
+                }
+            }
+        } else { /* remove in memory list */
+            xdr_free ((xdrproc_t) xdr_OsdList, &osds);
+        }
+	sleep(60);
+    }
+}
+
 struct osddb_ops_v0 osddb_ops_v0 = {
     OSDDB_ExecuteRequest
 };
@@ -2395,6 +2457,9 @@ init_osddbserver(char *afsversion, char **afsosdVersion, void *inrock,
 		 void *outrock, void *libafsosdrock, afs_int32 version)
 {
     afs_int32 code, i;
+    int fiveminutes = 300;
+    pthread_t serverPid;
+    pthread_attr_t tattr;
     struct init_osddb_inputs *input = (struct init_osddb_inputs *) inrock;
     struct init_osddb_outputs *output = (struct init_osddb_outputs *) outrock;
 
@@ -2406,5 +2471,9 @@ init_osddbserver(char *afsversion, char **afsosdVersion, void *inrock,
     for (i=0; i<STAT_INDICES; i++) 
 	stat_index[i] = -1;
     statisticStart = FT_ApproxTime();
+    osi_Assert(pthread_attr_init(&tattr) == 0);
+    osi_Assert(pthread_attr_setdetachstate(&tattr, PTHREAD_CREATE_DETACHED) == 0);
+    osi_Assert(pthread_create(&serverPid, &tattr, OSDDB_5_minuteCheck,
+            &fiveminutes) == 0);
     return code;
 }
