@@ -1124,6 +1124,11 @@ FillMetadataBuffer(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN,
     index = vd->osdMetadataIndex; 
     if (!index)
 	return;
+    if (!vol->osdMetadataHandle) {
+	ViceLog(0, ("FillMetadataBuffer: volume %u has no osdMetadataHandle\n",
+		V_id(vol)));
+	return;
+    }
     fd = IH_OPEN(vol->osdMetadataHandle);
     if (!fd)
 	return;
@@ -4086,12 +4091,12 @@ replace_osd(struct Vnode *vn, afs_uint32 old, afs_int32 new, afs_int32 *result)
 	    return code;
 	}
 	FDH_CLOSE(fdP);
-	VNDISK_SET_INO(vd, ino);
 #if 0
 	vd->lastUsageTime = 0; 		/* clear vn_ino_hi */
 #else
 	vd->vn_ino_hi = 0; 		/* clear vn_ino_hi */
 #endif
+	VNDISK_SET_INO(vd, ino);
     	code = osdRemove(vol, vd, vN);
 	vn->changed_newTime = 1;
 	vd->osdMetadataIndex = 0;
@@ -5338,6 +5343,145 @@ afs_int32 createFileWithPolicy(AFSFid *Fid,
     return tcode;
 }
 
+/*
+ * Called when setting osdPolicy
+ *	make sure volume has osdMetadata special file when converting it to OSD
+ *	make sure there are no OSD-files when converting it back
+ */
+afs_int32
+setOsdPolicy(struct Volume *vol, afs_int32 osdPolicy)
+{
+    afs_int32 code = 0, i;
+    afs_uint32 step;
+    struct VnodeDiskObject vnode;
+    struct VnodeDiskObject *vd = &vnode;
+    FdHandle_t *fdP;
+    afs_foff_t offset = 0;
+
+    if (!V_osdPolicy(vol) && osdPolicy) {	/* normal volume to OSD volume */
+	if (!vol->osdMetadataHandle) {
+	    struct VolumeDiskHeader diskHeader;
+	    struct versionStamp stamp;
+	    Inode ino;
+	    int fd;
+	    namei_t name;
+
+            ino = IH_CREATE(NULL, V_device(vol), VPartitionPath(V_partition(vol)), 0,
+              V_id(vol), INODESPECIAL, VI_OSDMETADATA, V_parentId(vol));
+	    IH_INIT(vol->osdMetadataHandle, V_device(vol), V_parentId(vol), ino);
+	    namei_HandleToName(&name, vol->osdMetadataHandle);
+	    fd = afs_open(name.n_path, O_CREAT | O_RDWR, 0);
+	    if (fd == INVALID_FD) {
+		code = EIO;
+		goto bad;
+	    }
+	    stamp.version = OSDMETAVERSION;
+	    stamp.magic = OSDMETAMAGIC;
+	    if (write(fd, &stamp, sizeof(stamp)) != sizeof(stamp)) {
+		goto bad;
+	    }
+#ifdef AFS_NAMEI_ENV
+	    {	/* Do what SetOGM would have done */
+		int owner, group, mode;
+		owner = V_id(vol) & 0x7fff;
+		group = (V_id(vol) >> 15) & 0x7fff;
+		mode = (V_id(vol) >> 27) & 0x18;
+		mode |= 5;
+	        fchown(fd, owner, group);
+		fchmod(fd, mode);
+	    }
+#endif
+	    OS_CLOSE(fd);
+	    code = VReadVolumeDiskHeader(V_id(vol), vol->partition, &diskHeader);
+	    if (code)
+		goto bad;
+#ifdef AFS_64BIT_IOPS_ENV
+	    diskHeader.OsdMetadata_lo = (afs_int32) ino & 0xffffffff;
+	    diskHeader.OsdMetadata_hi = (afs_int32) (ino >> 32) & 0xffffffff;
+#else
+	    diskHeader.OsdMetadata_lo = ino;
+#endif
+	    code = VWriteVolumeDiskHeader(&diskHeader, vol->partition);
+	    if (code)
+		goto bad;
+	}
+        for (i=0; i<nVNODECLASSES; i++) {
+            step = voldata->aVnodeClassInfo[i].diskSize;
+            offset = step;
+            fdP = IH_OPEN(vol->vnodeIndex[i].handle);
+            if (!fdP) {
+                ViceLog(0, ("Couldn't open metadata file of volume %u\n", V_id(vol)));
+		code = EIO;
+                goto bad;
+            }
+            FDH_SEEK(fdP, offset, SEEK_SET);
+	    /* Clear vnodeMagic which becomes osdMetadataIndex or osdPolicyIndex */
+            while (FDH_READ(fdP, vd, sizeof(vnode)) == sizeof(vnode)) {
+                if (vd->type == vFile || vd->type == vDirectory) {
+		    vd->vnodeMagic = 0;
+            	    FDH_SEEK(fdP, offset, SEEK_SET);
+		    if (FDH_WRITE(fdP, vd, sizeof(vnode)) != sizeof(vnode))
+                	ViceLog(0, ("setOsdPolicy: error writing vnode in %u\n", V_id(vol)));
+		}
+		offset += step;
+                FDH_SEEK(fdP, offset, SEEK_SET);
+	    }
+	}
+    } else if (V_osdPolicy(vol) && !osdPolicy) { /* OSD volume to normal volume */
+	/* First loop to find out whether there are still OSD files */
+        for (i=1; i<nVNODECLASSES; i++) {
+            step = voldata->aVnodeClassInfo[i].diskSize;
+            offset = step;
+            fdP = IH_OPEN(vol->vnodeIndex[i].handle);
+            if (!fdP) {
+                ViceLog(0, ("Couldn't open metadata file of volume %u\n", V_id(vol)));
+		code = EIO;
+                goto bad;
+            }
+            FDH_SEEK(fdP, offset, SEEK_SET);
+            while (FDH_READ(fdP, vd, sizeof(vnode)) == sizeof(vnode)) {
+                if (vd->type == vFile) {
+		    if (vd->osdMetadataIndex) {
+                	ViceLog(0, ("setOsdPolicy: cannot reset to zero because volume %u contains still OSD files\n", V_id(vol)));
+			goto bad;
+		    }
+		}
+		offset += step;
+                FDH_SEEK(fdP, offset, SEEK_SET);
+	    }
+	}
+#ifdef RECREATE_VNODE_MAGIC
+	/* Second loop to set vnodeMagic to normal value */
+        for (i=0; i<nVNODECLASSES; i++) {
+            step = voldata->aVnodeClassInfo[i].diskSize;
+            offset = step;
+            fdP = IH_OPEN(vol->vnodeIndex[i].handle);
+            if (!fdP) {
+                ViceLog(0, ("Couldn't open metadata file of volume %u\n", V_id(vol)));
+		code = EIO;
+                goto bad;
+            }
+            FDH_SEEK(fdP, offset, SEEK_SET);
+            while (FDH_READ(fdP, vd, sizeof(vnode)) == sizeof(vnode)) {
+                if (vd->type == vNULL) {
+		    vd->vnodeMagic = voldata->aVnodeClassInfo[i].magic;
+            	    FDH_SEEK(fdP, offset, SEEK_SET);
+		    if (FDH_WRITE(fdP, vd, sizeof(vnode)) != sizeof(vnode))
+                	ViceLog(0, ("setOsdPolicy: error writing vnode in %u\n", V_id(vol)));
+		}
+		offset += step;
+                FDH_SEEK(fdP, offset, SEEK_SET);
+	    }
+	}
+#endif
+    }
+
+bad:
+    if (!code)				/* finally update osdPolicy in the volume */
+        V_osdPolicy(vol) = osdPolicy;
+    return code;
+}
+
 /* 
  * Some routines used by the volserver when cloning a volume.
  */
@@ -6444,6 +6588,7 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 #else
 			    vd->vn_ino_hi = 0;
 #endif
+			    VNDISK_SET_INO(vd, ino);
 			    vd->serverModifyTime = now;
 	    		    if (FDH_SEEK(fdP, offset, SEEK_SET) == offset) {
 	    		        if (FDH_WRITE(fdP, vd, sizeof(vnode)) == 
@@ -7230,7 +7375,8 @@ int init_osdvol (char *version, char **afsosdVersion, struct osd_vol_ops_v0 **os
 	restore_osd_file,
 	restore_correct_linkcounts,
 	restore_dec,
-	osd_split_objects
+	osd_split_objects,
+	setOsdPolicy
     };
 
     *osdvol = &osd_vol_ops_v0;
@@ -7254,6 +7400,7 @@ int init_salv_afsosd (char *afsversion, char **afsosdVersion, void *inrock, void
         SalvageOsdMetadata,
         GetOsdEntryLength,
 	isOsdFile,
+        NULL,
         NULL,
         NULL,
         NULL,

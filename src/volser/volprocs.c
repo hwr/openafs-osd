@@ -1755,7 +1755,7 @@ VolSetInfo(struct rx_call *acid, afs_int32 atrans,
     struct VolumeDiskData *td;
     struct volser_trans *tt;
     char caller[MAXKTCNAMELEN];
-    Error error;
+    Error error, code = 0;
 
     if (!afsconf_SuperUser(tdir, acid, caller))
 	return VOLSERBAD_ACCESS;	/*not a super user */
@@ -1791,13 +1791,20 @@ VolSetInfo(struct rx_call *acid, afs_int32 atrans,
 	td->volUpdateCounter = (unsigned int)astatus->spare2;
     if (astatus->filequota > 0)
         td->maxfiles = astatus->filequota;
-    if (astatus->osdPolicy != -1)
-        td->osdPolicy = astatus->osdPolicy;
+    if (astatus->osdPolicy != -1) {
+	if (osdvol) {
+	    code = (osdvol->op_setOsdPolicy)(tv, astatus->osdPolicy);
+	} else if (astatus->osdPolicy != 0) {
+	    code = EINVAL;
+	}
+    }
     VUpdateVolume(&error, tv);
+    if (code && !error)
+	error = code; 
     TClearRxCall(tt);
     if (TRELE(tt))
 	return VOLSERTRELE_ERROR;
-    return 0;
+    return error;
 }
 
 

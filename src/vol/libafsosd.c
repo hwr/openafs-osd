@@ -234,11 +234,15 @@ struct vol_ops_v0 {
     char *(*VPartitionPath) (struct DiskPartition64 *p);
     void (*VPutVnode) (Error *ec, struct Vnode *vnp);
     void (*VPutVolume) (struct Volume *vp);
+    afs_int32 (*VReadVolumeDiskHeader) (VolumeId volid, struct DiskPartition64 * dp,
+					VolumeDiskHeader_t * hdr);
     void (*VSetPartitionDiskUsage) (struct DiskPartition64 *dp);
     int (*VSyncVnode) (struct Volume *vp, struct VnodeDiskObject *vd, afs_uint32 vN,
                        int newtime);
     void (*VTakeOffline) (struct Volume *vp);
     void (*VUpdateVolume) (Error * ec, struct Volume * vp);
+    afs_int32 (*VWriteVolumeDiskHeader) (VolumeDiskHeader_t * hdr,
+                                         struct DiskPartition64 * dp);
     int (*fd_close) (FdHandle_t * fdP);
     int (*fd_reallyclose) (FdHandle_t * fdP);
 #ifndef AFS_NAMEI_ENV
@@ -419,10 +423,15 @@ fill_ops(struct ops_ptr *opsptr)
     vol->VGetVolume = VGetVolume;
     vol->VPartitionPath = VPartitionPath;
     vol->VPutVnode = VPutVnode;
+    vol->VPutVolume = VPutVolume;
+    vol->VReadVolumeDiskHeader = VReadVolumeDiskHeader;
     vol->VSetPartitionDiskUsage = VSetPartitionDiskUsage;
     vol->VSyncVnode = VSyncVnode;
     vol->VTakeOffline = VTakeOffline;
     vol->VUpdateVolume = VUpdateVolume;
+#ifdef BUILDING_VOLSERVER
+    vol->VWriteVolumeDiskHeader = VWriteVolumeDiskHeader;
+#endif
     vol->fd_close = fd_close;
     vol->fd_reallyclose = fd_reallyclose;
 #ifndef AFS_NAMEI_ENV
@@ -1246,6 +1255,13 @@ VPutVolume(struct Volume *vp)
     (vol->VPutVolume)(vp);
 }
 
+afs_int32 
+VReadVolumeDiskHeader(VolumeId volid, struct DiskPartition64 * dp,
+                      VolumeDiskHeader_t * hdr)
+{
+    return (vol->VReadVolumeDiskHeader)(volid, dp, hdr);
+}
+
 void
 VSetPartitionDiskUsage(struct DiskPartition64 *dp)
 {
@@ -1268,6 +1284,12 @@ void
 VUpdateVolume(Error * ec, struct Volume * vp)
 {
     (vol->VUpdateVolume)(ec, vp);
+}
+
+afs_int32 
+VWriteVolumeDiskHeader(VolumeDiskHeader_t * hdr, struct DiskPartition64 * dp)
+{
+    return (vol->VWriteVolumeDiskHeader)(hdr, dp);
 }
 
 int
