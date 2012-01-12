@@ -1260,6 +1260,10 @@ FiveMinuteCheckLWP()
         sleepseconds = 300 - (now % 300); /* synchronize with wall clock */
         sleep(sleepseconds);
         TransferRate();
+	sleep(180); /* sleep 3 minutes, that allows us to update OSDDB 2 minutes
+		       before the fileserver tries to get the list of osds. In 
+		       between the OSDDB fiveminutecheck runs to sort out dead
+		       OSDs. */
     }
 }
 
