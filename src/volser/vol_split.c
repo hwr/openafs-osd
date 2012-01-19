@@ -591,8 +591,8 @@ createMountpoint(Volume *vol, Volume *newvol, struct VnodeDiskObject *parent,
 		V_id(vol), newvN, vnode.uniquifier);
 	return EIO;
     }
-    sprintf(symlink, "#%s", V_name(newvol));
-    size = strlen(symlink) + 1;
+    sprintf(symlink, "#%s.", V_name(newvol));
+    size = strlen(symlink);
     if (FDH_PWRITE(fdP2, symlink, size, 0) != size) {
 	Log("split volume: couldn't write mountpoint %u.%u.%u\n", 
 		V_id(vol), newvN, vnode.uniquifier);
@@ -690,9 +690,7 @@ deleteVnodes(Volume *vol, afs_int32 class,
 	    *blocks += (size + 0x3ff) >> 10;
 	    ino = VNDISK_GET_INO(vnode);
 	    if (ino) {
-		IHandle_t *h;
-	        IH_INIT(h, vol->device, V_parentId(vol), ino);
-		    IH_DEC(h, ino, V_parentId(vol));
+		IH_DEC(V_linkHandle(vol), ino, V_parentId(vol));
        	    } else if (osdvol) {
 		code = (osdvol->op_remove)(vol, vnode, e->vN);
 	    }
@@ -753,6 +751,11 @@ split_volume(struct rx_call *call, Volume *vol, Volume *newvol,
 	return code;
     }
 
+    /* 
+     *  Second step: 
+     *  Find the directory entry of the directory to become the new root directory.
+     */
+
     sprintf(m->line, "2nd step: look for name of vnode %u in directory %u.%u.%u\n",
 		where, V_id(vol), parent, parVnode->uniquifier); 
     inform(m, 0);
@@ -768,17 +771,27 @@ split_volume(struct rx_call *call, Volume *vol, Volume *newvol,
     sprintf(m->line, "name of %u is %s\n", where, name); 
     inform(m, 0);
 
+    /* 
+     *  Third step: 
+     *  Find all directory vnodes which should go to the new volume.
+     */
+
     sprintf(m->line, "3rd step: find all directory vnodes belonging to the subtree under %u \"%s\"\n", 
 			where, name);
     inform(m, 0);
 
-    code = FindVnodes(m, where, dirList, dl, dirList, dl, &dirsNeeded, 1);
+    code = FindVnodes(m, where, dirList, dl, dirList, dl, &dirsNeeded, vLarge);
     if (code) {
 	sprintf(m->line, 
 		"FindVnodes for directories failed with code %d\n", code);
         inform(m, 1);
 	return code;
     }
+
+    /* 
+     *  Fourth step: 
+     *  Extract vnode essenca from small vnode file.
+     */
 
     sprintf(m->line, "4th step extract vnode essence from small vnode file\n");
     inform(m, 0);
@@ -791,14 +804,19 @@ split_volume(struct rx_call *call, Volume *vol, Volume *newvol,
         inform(m, 1);
 	return code;
     }
+    /* 
+     *  Fifth step: 
+     *  Find small vnodes to go into the new volume.
+     */
+
     sprintf(m->line, "5th step: find all small vnodes belonging to the subtree under %u \"%s\"\n", 
 			where, name);
     inform(m, 0);
 
-    FindVnodes(m, where, fileList, fl, dirList, dl, &filesNeeded, 0);
+    FindVnodes(m, where, fileList, fl, dirList, dl, &filesNeeded, vSmall);
 
     /* 
-     *  Third step: create hard links for all files needed
+     *  Sixth step: create hard links for all small vnode objects needed
      *
      */
 
@@ -815,7 +833,7 @@ split_volume(struct rx_call *call, Volume *vol, Volume *newvol,
     }
 	
     /* 
-     *  Forth step: create hard links for all directories and copy 
+     *  Seventh step: create hard links for all directories and copy 
      *  split directory to new root directory
      */
 
