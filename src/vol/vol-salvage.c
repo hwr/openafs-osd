@@ -2457,7 +2457,7 @@ SalvageHeader(struct SalvInfo *salvinfo, struct stuff *sp,
     if (sp->inodeType == VI_LINKTABLE)
 	return 0; /* header magic was already checked */
 #endif
-    if (*(sp->inode) == 0) {
+    if (*(sp->inode) == 0 && sp->inodeType != VI_OSDMETADATA) {
 	if (check) {
 	    Log("Missing inode in volume header (%s)\n", sp->description);
 	    return -1;
