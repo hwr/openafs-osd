@@ -2935,6 +2935,22 @@ SRXAFS_FsCmd(struct rx_call * acall, struct AFSFid * Fid,
             errorCode = 0;
             break;
         }
+    case CMD_INVERSELOOKUP:
+        {
+            struct AFSFid tmpFid;
+            tmpFid.Volume = Fid->Volume;
+            tmpFid.Vnode = Inputs->int32s[1];
+            tmpFid.Unique = 0;
+            struct afs_filename file;
+            file.afs_filename_val = &Outputs->chars[0];
+            file.afs_filename_len = MAXCMDCHARS;
+            errorCode = SRXAFS_InverseLookup(acall, &tmpFid,
+                                                     Inputs->int32s[0], &file,
+                                                     &Outputs->int32s[0]);
+            Outputs->code = errorCode;
+            errorCode = 0;
+            break;
+        }
     default:
     if (osdviced) 
 	errorCode = (osdviced->op_FsCmd)(acall, Fid, Inputs, Outputs);
@@ -4097,23 +4113,6 @@ common_StoreData64(struct rx_call *acall, struct AFSFid *Fid,
 
     /* Do the actual storing of the data */
 
-    if (osdviced && osdvol 
-      && (osdvol->op_isOsdFile)(V_osdPolicy(volptr), V_id(volptr),
-				&targetptr->disk, targetptr->vnodeNumber)) {
-	bytesToXfer = 0;
-	bytesXferred = 0;
-	errorCode = (osdviced->op_legacyStoreData) (volptr, targetptr, Fid, client,
-					       acall, Pos, Length, FileLength,
-					       &tparentwhentargetnotdir, thost);
-	if (!errorCode) {
-	    bytesToXfer = Length;
-	    bytesXferred = Length;
-	    goto Good_StoreData;
-	}
-	if (errorCode != EINVAL)
-	    goto Bad_StoreData;
-    } 
-
 #if FS_STATS_DETAILED
     errorCode =
 	StoreData_RXStyle(volptr, targetptr, Fid, client, acall, Pos, Length,
@@ -4192,8 +4191,6 @@ common_StoreData64(struct rx_call *acall, struct AFSFid *Fid,
     if (errorCode && (!targetptr->changed_newTime))
 	goto Bad_StoreData;
 #endif /* FS_STATS_DETAILED */
-
-Good_StoreData:
 
     /* Update the status of the target's vnode */
     Update_TargetVnodeStatus(targetptr, TVS_SDATA, client, InStatus,
@@ -9078,12 +9075,17 @@ StoreData_RXStyle(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
     if (osdviced && osdvol 
       && (osdvol->op_isOsdFile)(V_osdPolicy(volptr), V_id(volptr), 
 				&targetptr->disk, targetptr->vnodeNumber)) {
-        errorCode = (osdviced->op_Store_OSD)(volptr, &targetptr, Fid, client, Call,
+        rx_SetLocalStatus(Call, 1);
+        FT_GetTimeOfDay(&StartTime, 0);
+        errorCode = (osdviced->op_legacyStoreData)(volptr, &targetptr, Fid, client, Call,
                 Pos, Length, FileLength);
-        if ( Length > 0 && !errorCode ) /* goto Good_StoreData */
-            return 0;
-        if ( errorCode )                /* goto Bad_StoreData */
-            return errorCode;
+        if (errorCode)
+	    return errorCode;
+#if FS_STATS_DETAILED
+    	(*a_bytesToStoreP) = Length;
+    	(*a_bytesStoredP) = Length;
+#endif
+	goto Done;
     } else if (VN_GET_INO(targetptr) == 0) {
 	/* the inode should have been created in Alloc_NewVnode */
 	logHostAddr.s_addr = rx_HostOf(rx_PeerOf(rx_ConnectionOf(Call)));
@@ -9207,23 +9209,16 @@ StoreData_RXStyle(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
     TruncatedLength = NewLength;	/* remember length after possible ftruncate */
 
     /* adjust the disk block count by the difference in the files */
-    adjustSize = nBlocks(NewLength) - nBlocks(targSize);
     {
-	afs_int32 adjustPart = adjustSize - SpareComp(volptr);
-        if (osdvol && (osdvol->op_isOsdFile)(V_osdPolicy(volptr), V_id(volptr),
-					     &targetptr->disk,
-					     targetptr->vnodeNumber)) {
-	    if (V_maxquota(volptr) 
-	      && V_diskused(volptr) + adjustSize > V_maxquota(volptr)) {
-		errorCode = VOVERQUOTA;
-		return errorCode;
-	    }
-	    V_diskused(volptr) += adjustSize;
-	} else 
-            if ((errorCode = AdjustDiskUsage(volptr, adjustSize, adjustPart))) {
-	        FDH_CLOSE(fdP);
-	        return errorCode;
-	}
+        afs_fsize_t targSize;
+        VN_GET_LEN(targSize, targetptr);
+        adjustSize = nBlocks(NewLength) - nBlocks(targSize);
+    }
+    if ((errorCode =
+         AdjustDiskUsage(volptr, adjustSize,
+                         adjustSize - SpareComp(volptr)))) {
+        FDH_CLOSE(fdP);
+        return (errorCode);
     }
 
     /* can signal cache manager to proceed from close now */
@@ -9348,6 +9343,7 @@ StoreData_RXStyle(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
 
     VN_SET_LEN(targetptr, NewLength);
 
+Done:
     /* Update all StoreData related stats */
     FS_LOCK;
     if (AFSCallStats.TotalStoredBytes > 2000000000)	/* reset if over 2 billion */
@@ -10248,7 +10244,6 @@ void viced_fill_ops(struct viced_ops_v0 *viced)
     viced->PartialCopyOnWrite = PartialCopyOnWrite;
     viced->PutVolumePackage = PutVolumePackage;
     viced->SetCallBackStruct = SetCallBackStruct;
-    viced->SRXAFS_InverseLookup = SRXAFS_InverseLookup;
     viced->Update_TargetVnodeStatus = Update_TargetVnodeStatus;
     viced->VanillaUser = VanillaUser;
     viced->createAsyncTransaction = createAsyncTransaction;

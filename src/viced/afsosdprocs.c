@@ -301,41 +301,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
     struct AFSVolSync sync;
 
     switch (Inputs->command) {
-    case CMD_LISTLOCKEDVNODES:
-        {
-            afs_int32 code;
-            afs_uint32 *p = (afs_uint32 *)&Outputs->int32s[2];
-            Outputs->int32s[1] = 49;
-            code = ListLockedVnodes(Outputs->int32s,
-						 Outputs->int32s[1], &p);
-            Outputs->code = code;
-            code  = 0;
-            break;
-        }
-    case CMD_LISTDISKVNODE:
-        {
-            struct Volume *vp = 0;
-            afs_int32 code, localcode;
-            afs_uint32 *p = (afs_uint32 *)&Outputs->int32s[0];
-            afs_uint32 Vnode = Inputs->int32s[0];
-
-            memset(&Outputs->int32s[0], 0, MAXCMDINT32S * 4);
-            vp = VGetVolume(&localcode, &code, Fid->Volume);
-            if (!code) {
-                if (Vnode && Fid->Vnode == 1)
-                   code = ListDiskVnode(vp, Vnode, &p, 200,
-						     &Outputs->chars[0]);
-                else
-                   code = ListDiskVnode(vp, Fid->Vnode, &p, 200,
-						     &Outputs->chars[0]);
-            }
-	    if (vp)
-                VPutVolume(vp);
-            Outputs->code = code;
-            code  = 0;
-            break;
-        }
-    case CMD_SHOWTHREADS:
+    case CMD_SHOWTHREADS:	/* Obsolete in 1.6 but called by 1.4 fs */
         {
 #define MAXTHREADENTRIES MAXCMDINT32S >> 2
             afs_int32 i, j = 0;
@@ -355,22 +321,6 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
             else
                 Outputs->code = 1;
             code = 0;
-            break;
-        }
-    case CMD_INVERSELOOKUP:
-        {
-            struct AFSFid tmpFid;
-            tmpFid.Volume = Fid->Volume;
-            tmpFid.Vnode = Inputs->int32s[1];
-            tmpFid.Unique = 0;
-	    struct afs_filename file;
-	    file.afs_filename_val = &Outputs->chars[0];
-	    file.afs_filename_len = MAXCMDCHARS;
-            code = SRXAFS_InverseLookup(acall, &tmpFid,
-					 	     Inputs->int32s[0], &file, 
-					 	     &Outputs->int32s[0]);
-	    Outputs->code = code;
-	    code = 0;
             break;
         }
     case CMD_OSD_ARCHIVE:
@@ -1966,7 +1916,7 @@ GetLinkCountAndSize(Volume * vp, FdHandle_t * fdP, int *lc,
 }
 
 afs_int32
-Store_OSD(Volume * volptr, Vnode **targetptr, struct AFSFid * Fid,
+legacyStoreData(Volume * volptr, Vnode **targetptr, struct AFSFid * Fid,
 	  struct client * client, struct rx_call * Call,
 	  afs_fsize_t Pos, afs_fsize_t Length, afs_fsize_t FileLength)
 {
@@ -2001,18 +1951,17 @@ Store_OSD(Volume * volptr, Vnode **targetptr, struct AFSFid * Fid,
     if (errorCode)
 	return errorCode;
     *(voldata->aTotal_bytes_rcvd) += Length;
-    if (TruncatedLength) {
-	VN_GET_LEN(vnodeLength, *targetptr);
-	if (TruncatedLength < vnodeLength) { 
-	    errorCode = truncate_osd_file(*targetptr, TruncatedLength);
-	    if (errorCode)
-		return errorCode;
-	}
-	if (TruncatedLength != vnodeLength) {
-	    VN_SET_LEN(*targetptr, TruncatedLength);
-	    vnodeLength = TruncatedLength;
-	    (*targetptr)->changed_newTime = 1;
-	}
+
+    VN_GET_LEN(vnodeLength, *targetptr);
+    if (TruncatedLength < vnodeLength) { 
+	errorCode = truncate_osd_file(*targetptr, TruncatedLength);
+	if (errorCode)
+	    return errorCode;
+    }
+    if (TruncatedLength != vnodeLength) {
+	VN_SET_LEN(*targetptr, TruncatedLength);
+	vnodeLength = TruncatedLength;
+	(*targetptr)->changed_newTime = 1;
     }
     ViceLog(1, ("StoreData to osd file %u.%u.%u file length %llu returns 0\n",
 		    Fid->Volume, Fid->Vnode, Fid->Unique, vnodeLength));
@@ -2048,23 +1997,6 @@ MaybeStore_OSD(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
 			    targetptr->disk.uniquifier,
 			    policyIndex));
     }
-}
-
-afs_int32 
-legacyStoreData  (Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
-		  struct client * client, struct rx_call * Call,
-		  afs_fsize_t Pos, afs_fsize_t Length, afs_fsize_t FileLength,
-		  Vnode *parentwhentargetnotdir, struct host *thost)
-{
-    afs_int32 errorCode = EINVAL;
-
-    if (targetptr->disk.osdMetadataIndex && targetptr->disk.type == vFile
-      && Length > 0) {
-       BreakCallBack(client->host, Fid, 0);
-        errorCode = Store_OSD(volptr, &targetptr, Fid, client,
-                                           Call, Pos, Length, FileLength);
-    }
-    return errorCode;
 }
 
 extern afs_int32 md5flag;
@@ -2271,15 +2203,19 @@ void
 fill_status(Vnode *targetptr, afs_fsize_t targetLen, AFSFetchStatus *status)
 {
     if (targetptr->disk.type == vFile) {
-        if (targetptr->disk.osdMetadataIndex) {
-            status->FetchStatusProtocol = RX_OSD;
-            if (!targetptr->disk.osdFileOnline) {
-                status->FetchStatusProtocol |= RX_OSD_NOT_ONLINE;
+	if (!(targetptr->volumePtr->osdMetadataHandle)) { /* traditional AFS volume */
+	    status->FetchStatusProtocol = 1;
+	} else {
+            if (targetptr->disk.osdMetadataIndex) {
+                status->FetchStatusProtocol = RX_OSD;
+                if (!targetptr->disk.osdFileOnline) {
+                    status->FetchStatusProtocol |= RX_OSD_NOT_ONLINE;
+                }
+            } else if (V_osdPolicy(targetptr->volumePtr)
+                     && targetLen <= max_move_osd_size) {
+                status->FetchStatusProtocol |= POSSIBLY_OSD;
             }
-        } else if (V_osdPolicy(targetptr->volumePtr)
-                 && targetLen <= max_move_osd_size) {
-            status->FetchStatusProtocol |= POSSIBLY_OSD;
-        }
+	}
     }
     if (ClientsWithAccessToFileserverPartitions && VN_GET_INO(targetptr)) {
         namei_t name;
@@ -3293,9 +3229,8 @@ struct osd_viced_ops_v0 osd_viced_ops_v0 = {
     startvicepstore,
     endvicepfetch,
     endvicepstore,
-    legacyStoreData,
     legacyFetchData,
-    Store_OSD,
+    legacyStoreData,
     osdVariable,
     remove_if_osd_file,
     fill_status,

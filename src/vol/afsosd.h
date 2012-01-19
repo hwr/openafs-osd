@@ -15,7 +15,7 @@
  * inside the library. So a version mismatch can easily be detected.
  */
  
-#define LIBAFSOSD_VERSION 9
+#define LIBAFSOSD_VERSION 11
 
 /*
  *	Unspecific operations used in general servers provided by AFS/OSD
@@ -156,9 +156,6 @@ struct viced_ops_v0 {
                               struct Vnode * targetptr, struct Vnode * parentptr,
                               struct Volume * volptr, struct client **client);
     void (*SetCallBackStruct) (afs_uint32 CallBackTime, struct AFSCallBack *CallBack);
-    int (*SRXAFS_InverseLookup) (struct rx_call *acall, struct AFSFid *Fid,
-                                 afs_uint32 parent, struct afs_filename *file,
-                                 afs_uint32 *nextparent);
     void (*Update_TargetVnodeStatus) (struct Vnode * targetptr, afs_uint32 Caller,
                                       struct client *client, AFSStoreStatus * InStatus,
                                       struct Vnode * parentptr, struct Volume * volptr,
@@ -200,21 +197,18 @@ struct osd_viced_ops_v0 {
     int (*op_startvicepstore) (struct Volume *volptr, Vnode *targetptr,
               		       struct AsyncParams *Inputs, struct AsyncParams *Outputs);
     int (*op_endvicepfetch) (struct AsyncParams *Inputs);
-    int (*op_endvicepstore) (struct Volume *volptr, Vnode *targetptr, struct rx_connection *tcon,
-			   struct AsyncParams *Inputs, afs_int32 *sameDataVersion);
-    int (*op_legacyStoreData) (struct Volume *volptr, Vnode *targetptr,
-			      struct AFSFid *Fid, struct client *client,
-			      struct rx_call *Call, afs_fsize_t Pos,
-			      afs_fsize_t Length, afs_fsize_t FileLength,
-			      Vnode *parentwhentargetnotdir, struct host *thost);
+    int (*op_endvicepstore) (struct Volume *volptr, Vnode *targetptr,
+			     struct rx_connection *tcon, struct AsyncParams *Inputs,
+			     afs_int32 *sameDataVersion);
     int (*op_legacyFetchData) (struct Volume *volptr, Vnode **targetptr,
 			     struct rx_call * Call, afs_sfsize_t Pos,
 			     afs_sfsize_t Len, afs_int32 Int64Mode,
 			     int client_vice_id, afs_int32 MyThreadEntry,
 			     struct in_addr *logHostAddr);
-    int (*op_Store_OSD) (struct Volume * volptr, Vnode **targetptr, struct AFSFid * Fid,
-			struct client * client, struct rx_call * Call,
-			afs_fsize_t Pos, afs_fsize_t Length, afs_fsize_t FileLength);
+    int (*op_legacyStoreData) (struct Volume * volptr, Vnode **targetptr,
+			       struct AFSFid * Fid, struct client * client,
+			       struct rx_call * Call, afs_fsize_t Pos,
+			       afs_fsize_t Length, afs_fsize_t FileLength);
     int (*op_osdVariable) (struct rx_call *acall, afs_int32 cmd, char *name,
                            afs_int64 value, afs_int64 *result);
     void (*op_remove_if_osd_file) (Vnode **targetptr);
