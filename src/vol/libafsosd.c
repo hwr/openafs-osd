@@ -1110,13 +1110,6 @@ SetCallBackStruct(afs_uint32 CallBackTime, struct AFSCallBack *CallBack)
     (viced->SetCallBackStruct)(CallBackTime, CallBack);
 }
 
-int
-SRXAFS_InverseLookup(struct rx_call *acall, struct AFSFid *Fid, afs_uint32 parent,
-		     struct afs_filename *file, afs_uint32 *nextparent)
-{
-    return (viced->SRXAFS_InverseLookup)(acall, Fid, parent, file, nextparent);
-}
-
 void
 Update_TargetVnodeStatus(Vnode * targetptr, afs_uint32 Caller, struct client *client,
 			 AFSStoreStatus * InStatus, Vnode * parentptr,
