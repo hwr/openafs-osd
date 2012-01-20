@@ -2321,7 +2321,7 @@ bad:
 }
 
 afs_int32
-rxosd_bringOnline(struct vcache *avc, struct vrequest *areq)
+rxosd_bringOnline(struct vcache *avc, struct vrequest *areq, afs_int32 dontWait)
 {
     afs_int32 code;
     struct rxosd_Variables *v;
@@ -2355,8 +2355,12 @@ rxosd_bringOnline(struct vcache *avc, struct vrequest *areq)
         RX_AFS_GLOCK();
 	if (code != OSD_WAIT_FOR_TAPE && code != VBUSY && code != VRESTARTING) 
 	    break;
-        if (code == OSD_WAIT_FOR_TAPE && afs_asyncRecallFromHSM)
-            return EAGAIN;
+        if (code == OSD_WAIT_FOR_TAPE && afs_asyncRecallFromHSM) {
+            code = EAGAIN;
+	    break;
+	}
+	if (code == OSD_WAIT_FOR_TAPE & dontWait)
+	    break;
 	if (waitcount == 0) {
 	    if (code == VBUSY)
 	        afs_warnuser("waiting for busy volume %u\n", avc->f.fid.Fid.Volume);

@@ -4869,18 +4869,11 @@ struct prefetchout {
 
 DECL_PIOCTL(PPrefetchFromTape)
 {
-    afs_int32 code, code1;
-    afs_int32 bytes;
-    struct afs_conn *tc;
-    struct rx_call *tcall;
-    struct AFSVolSync tsync;
-    struct AFSFetchStatus OutStatus;
-    struct AFSCallBack CallBack;
+    afs_int32 code;
     struct VenusFid tfid;
     struct AFSFid *Fid;
     struct vcache *tvc;
     struct prefetchout out;
-    struct rx_connection *rxconn;
 
     AFS_STATCNT(PSetAcl);
     if (!avc)
@@ -4904,37 +4897,20 @@ DECL_PIOCTL(PPrefetchFromTape)
     afs_Trace3(afs_iclSetp, CM_TRACE_PREFETCHCMD, ICL_TYPE_POINTER, tvc,
 	       ICL_TYPE_FID, &tfid, ICL_TYPE_FID, &tvc->f.fid);
 
-    do {
-	tc = afs_Conn(&tvc->f.fid, areq, SHARED_LOCK, &rxconn);
-	if (tc) {
+    code = rxosd_bringOnline(tvc, areq, 1 /* dontWait */);
 
-	    RX_AFS_GUNLOCK();
-	    tcall = rx_NewCall(rxconn);
-	    code =
-		StartRXAFS_FetchData(tcall, (struct AFSFid *)&tvc->f.fid.Fid, 0,
-				     0);
-	    if (!code) {
-		bytes = rx_Read(tcall, (char *)&out.length, sizeof(afs_int32));
-		code =
-		    EndRXAFS_FetchData(tcall, &OutStatus, &CallBack, &tsync);
-	    }
-	    code1 = rx_EndCall(tcall, code);
-	    RX_AFS_GLOCK();
-	} else
-	    code = -1;
-    } while (afs_Analyze
-	     (tc, rxconn, code, &tvc->f.fid, areq, AFS_STATS_FS_RPCIDX_RESIDENCYRPCS,
-	      SHARED_LOCK, NULL));
-    /* This call is done only to have the callback things handled correctly */
-    afs_FetchStatus(tvc, &tfid, areq, &OutStatus);
     afs_PutVCache(tvc);
 
-    if (code)
+    if (code && code != OSD_WAIT_FOR_TAPE)
 	return code;
 
     out.fid.Volume = tfid.Fid.Volume;
     out.fid.Vnode = tfid.Fid.Vnode;
     out.fid.Unique = tfid.Fid.Unique;
+    if (code)
+	out.length = -1;	/* tape fetch started */
+    else
+        out.length = 0;		/* file already on-line */
 
     return afs_pd_putBytes(aout, &out, sizeof(struct prefetchout));
 }

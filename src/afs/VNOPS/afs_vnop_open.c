@@ -145,7 +145,7 @@ afs_open(struct vcache **avcp, afs_int32 aflags, afs_ucred_t *acred)
 	afs_BozonUnlock(&tvc->pvnLock, tvc);
 #endif
         if (tvc->protocol & RX_OSD_NOT_ONLINE) {
-            code = rxosd_bringOnline(tvc, &treq);
+            code = rxosd_bringOnline(tvc, &treq, 0);
             if (code)
                 goto done;
             tvc->protocol &= ~RX_OSD_NOT_ONLINE;
