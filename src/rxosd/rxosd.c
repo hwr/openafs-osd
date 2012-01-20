@@ -256,7 +256,7 @@ extern struct ih_posix_ops ih_hpss_ops;
 extern struct ih_posix_ops ih_namei_ops;
 char *principal = NULL;
 char *keytab = NULL;
-int dontTrustHPSS = 1;
+int dontTrustHPSS = 0;
 #endif
 
 struct MHhost {
@@ -5562,6 +5562,14 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
     }
     for (i=0; i<MAXOSDSTRIPES; i++)
 	rcall[i] = NULL;
+    if (output) { 	/* Must do that early to avoid RXGEN_SS_MARSHAL when 
+			   returning after FindInFetchqueue! */ 
+	memset(output, 0, sizeof(struct osd_cksum));
+	output->o.vsn = 1;
+	output->o.ometa_u.t.obj_id =  o->obj_id;
+	output->o.ometa_u.t.part_id =  o->part_id;
+	output->c.type = 1;
+    }
     inode = o->obj_id;
     vid = o->part_id & 0xffffffff;
     lun = (afs_uint64)(o->part_id >> 32);
@@ -5638,15 +5646,8 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 	}
     }
 #endif
-    if (output) {
-	memset(output, 0, sizeof(struct osd_cksum));
-	output->o.vsn = 1;
-	output->o.ometa_u.t.obj_id =  o->obj_id;
-	output->o.ometa_u.t.part_id =  o->part_id;
-	output->c.type = 1;
-	if (!(flag & NO_CHECKSUM))
-            MD5_Init(&md5);
-    }
+    if (output && !(flag & NO_CHECKSUM))
+        MD5_Init(&md5);
     for (i=0; i<list->osd_segm_descList_len; i++) {
 	struct osd_segm_desc * seg = &list->osd_segm_descList_val[i];
 	length =  seg->length;
