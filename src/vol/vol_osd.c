@@ -2075,6 +2075,7 @@ retry:
 			om.ometa_u.t.part_id = p_id;
 			om.ometa_u.t.obj_id = po->obj_id;
 			om.ometa_u.t.osd_id = osd;
+			memset(&new_md5, 0, sizeof(new_md5));
                         code = rxosd_restore_archive(&om, user, &rlist, flag, &new_md5);
                         if (!code && meta && !(flag & NO_CHECKSUM))
                             code = compare_md5(meta, &new_md5.c.cksum_u.md5[0]);
@@ -4593,7 +4594,10 @@ get_osd_location1(Volume *vol, Vnode *vn, afs_uint32 flag, afs_uint32 user,
 	return EINVAL;
 
     file = a->async_u.l1.osd_file1List_val;
-    if (!file) {
+    if (file) {
+        file->segmList.osd_segm1List_len = 0;
+        file->segmList.osd_segm1List_val = 0;
+    } else {
 	file = (struct osd_file1 *) malloc(sizeof(struct osd_file1));
 	if (!file) 
 	    return ENOMEM;
@@ -4601,8 +4605,6 @@ get_osd_location1(Volume *vol, Vnode *vn, afs_uint32 flag, afs_uint32 user,
 	a->async_u.l1.osd_file1List_val = file;
 	a->async_u.l1.osd_file1List_len = 1;
     }
-    file->segmList.osd_segm1List_len = 0;
-    file->segmList.osd_segm1List_val = 0;
     if (vn->disk.type != vFile || !vn->disk.osdMetadataIndex)
 	return EINVAL;
 restart:
@@ -4691,6 +4693,8 @@ get_osd_location2(Volume *vol, Vnode *vn, afs_uint32 flag, afs_uint32 user,
         file->segmList.osd_segm2List_val = 0;
     } else {
 	file = (struct osd_file2 *) malloc(sizeof(struct osd_file2));
+	if (!file) 
+	    return ENOMEM;
 	memset(file, 0, sizeof(struct osd_file2));
 	a->async_u.l2.osd_file2List_val = file;
 	a->async_u.l2.osd_file2List_len = 1;
