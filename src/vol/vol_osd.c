@@ -4686,10 +4686,15 @@ get_osd_location2(Volume *vol, Vnode *vn, afs_uint32 flag, afs_uint32 user,
 	return EINVAL;
 
     file = a->async_u.l2.osd_file2List_val;
-    if (!file)
-	return EINVAL;
-    file->segmList.osd_segm2List_len = 0;
-    file->segmList.osd_segm2List_val = 0;
+    if (file) {
+        file->segmList.osd_segm2List_len = 0;
+        file->segmList.osd_segm2List_val = 0;
+    } else {
+	file = (struct osd_file2 *) malloc(sizeof(struct osd_file2));
+	memset(file, 0, sizeof(struct osd_file2));
+	a->async_u.l2.osd_file2List_val = file;
+	a->async_u.l2.osd_file2List_len = 1;
+    }
     if (vn->disk.type != vFile || !vn->disk.osdMetadataIndex)
 	return EINVAL;
 restart:
