@@ -1863,7 +1863,7 @@ common_GetPath(struct rx_call *acall, AFSFid *Fid, struct async *a)
     }
 
 Bad_GetPath:
-    if (errorCode)
+    if (errorCode && errorCode != OSD_WAIT_FOR_TAPE)
 	ViceLog(0,("SRXAFSOSD_GetPath for %u.%u.%u returns %d\n",
 			Fid->Volume, Fid->Vnode, Fid->Unique, errorCode));
     (void)PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *) 0,
