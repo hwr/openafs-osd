@@ -3183,7 +3183,9 @@ common_FetchData64(struct rx_call *acall, struct AFSFid *Fid,
     bytesXferred = 0;
 #endif
 
-    if (osdviced) {
+    if (osdviced && osdvol 
+      && (osdvol->op_isOsdFile)(V_osdPolicy(volptr), V_id(volptr), 
+				&targetptr->disk, targetptr->vnodeNumber)) {
 	if (Len == 0) { /* probably a request to bring the file on-line
 			   we need WRITE_LOCK to update the osdMetadata */
 	    (void)PutVolumePackage(parentwhentargetnotdir, targetptr,
@@ -3201,12 +3203,10 @@ common_FetchData64(struct rx_call *acall, struct AFSFid *Fid,
 					       Pos, Len, Int64Mode,
 					       client->ViceId, MyThreadEntry,
 					       &logHostAddr);
-	if (!errorCode)
-	    goto Good_FetchData;
-	if (errorCode != EINVAL)
+	if (errorCode)
 	    goto Bad_FetchData;
-	errorCode = 0;
-    } else {
+	goto Good_FetchData;
+    } else if (!osdviced) {
 	if (V_osdPolicy(volptr)) {
 	    ViceLog(0,("FetchData to OSD volume %u without OSD-interface loaded, aborting\n",
 			V_id(volptr)));
