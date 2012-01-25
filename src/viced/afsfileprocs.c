@@ -3199,20 +3199,24 @@ common_FetchData64(struct rx_call *acall, struct AFSFid *Fid,
                           &rights, &anyrights)))
                 goto Bad_FetchData;
         }
+#if FS_STATS_DETAILED
+	bytesToXfer = Len;
+#endif
 	errorCode = (osdviced->op_legacyFetchData) (volptr, &targetptr, acall,
 					       Pos, Len, Int64Mode,
 					       client->ViceId, MyThreadEntry,
 					       &logHostAddr);
 	if (errorCode)
 	    goto Bad_FetchData;
+#if FS_STATS_DETAILED
+	bytesXferred = Len;
+#endif
 	goto Good_FetchData;
-    } else if (!osdviced) {
-	if (V_osdPolicy(volptr)) {
-	    ViceLog(0,("FetchData to OSD volume %u without OSD-interface loaded, aborting\n",
+    } else if (V_osdPolicy(volptr) && !osdviced) {
+	ViceLog(0,("FetchData to OSD volume %u without OSD-interface loaded, aborting\n",
 			V_id(volptr)));
-	    errorCode = EIO;
-	    goto Bad_FetchData;
-	}
+	errorCode = EIO;
+	goto Bad_FetchData;
     }
 
 #if FS_STATS_DETAILED
@@ -3225,6 +3229,7 @@ common_FetchData64(struct rx_call *acall, struct AFSFid *Fid,
 	goto Bad_FetchData;
 #endif /* FS_STATS_DETAILED */
 
+  Good_FetchData:
 
 #if FS_STATS_DETAILED
     /*
@@ -3293,7 +3298,6 @@ common_FetchData64(struct rx_call *acall, struct AFSFid *Fid,
 	goto Bad_FetchData;
 #endif /* FS_STATS_DETAILED */
 
-  Good_FetchData:
     /* write back  the OutStatus from the target vnode  */
     GetStatus(targetptr, OutStatus, rights, anyrights,
 	      &tparentwhentargetnotdir);
