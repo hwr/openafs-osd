@@ -834,17 +834,17 @@ main_continue:
 			dbok = 0;
 			continue;
 		    }
-		    ubik_print("recovery sending %s version %d.%d to %s\n",
-			    ubik_dbase[i]->pathName,
-			    ubik_dbase[i]->version.epoch,
-			    ubik_dbase[i]->version.counter,
-			    afs_inet_ntoa_r(inAddr.s_addr, hoststr));
 		    if (vcmp(ts->version[i], ubik_dbase[i]->version) != 0) {
 		        ubik_dprint("recovery stating local database\n");
     
 		        /* Rx code to do the Bulk Store */
 		        code = (*ubik_dbase[i]->stat) (ubik_dbase[i], 0, &ubikstat);
 		        if (!code) {
+		    	    ubik_print("recovery sending %s version %d.%d to %s\n",
+			    		ubik_dbase[i]->pathName,
+			    		ubik_dbase[i]->version.epoch,
+			    		ubik_dbase[i]->version.counter,
+			    		afs_inet_ntoa_r(inAddr.s_addr, hoststr));
 			    length = ubikstat.size;
 			    file = offset = 0;
 			    rxcall = rx_NewCall(ts->disk_rxcid);
