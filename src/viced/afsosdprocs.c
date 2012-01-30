@@ -346,7 +346,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 		goto Bad_OSD_Archive;
 
     	    if ((code =
-	 	GetVolumePackage(tcon, Fid, &volptr, &targetptr, MustNOTBeDIR,
+	 	GetVolumePackage(acall, Fid, &volptr, &targetptr, MustNOTBeDIR,
 			  &parentwhentargetnotdir, &client, SHARED_LOCK,
 			  &rights, &anyrights))) {
 		goto Bad_OSD_Archive;
@@ -364,7 +364,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 	    code = osd_archive(targetptr, Inputs->int32s[0], Inputs->int32s[1]);
 
     Bad_OSD_Archive:
-    	    PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *) 0, 
+    	    PutVolumePackage(acall, parentwhentargetnotdir, targetptr, (Vnode *) 0, 
 			volptr, &client);
     	    CallPostamble(tcon, code, thost);
 	    if (transid)
@@ -399,7 +399,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 		goto Bad_OSD_Wipe;
 
     	    if ((code =
-	 	GetVolumePackage(tcon, Fid, &volptr, &targetptr, MustNOTBeDIR,
+	 	GetVolumePackage(acall, Fid, &volptr, &targetptr, MustNOTBeDIR,
 			  &parentwhentargetnotdir, &client, WRITE_LOCK,
 			  &rights, &anyrights))) {
 		goto Bad_OSD_Wipe;
@@ -424,7 +424,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 	    code = remove_osd_online_file(targetptr, version);
 
     Bad_OSD_Wipe:
-    	    PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *) 0, 
+    	    PutVolumePackage(acall, parentwhentargetnotdir, targetptr, (Vnode *) 0, 
 			volptr, &client);
 	    if (transid)
         	EndAsyncTransaction(acall, Fid, transid);
@@ -449,7 +449,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 		goto Bad_StripedOsdFile;
 
     	    if ((code =
-	 	GetVolumePackage(tcon, Fid, &volptr, &targetptr, MustNOTBeDIR,
+	 	GetVolumePackage(acall, Fid, &volptr, &targetptr, MustNOTBeDIR,
 			  &parentwhentargetnotdir, &client, WRITE_LOCK,
 			  &rights, &anyrights))) {
 		goto Bad_StripedOsdFile;
@@ -465,7 +465,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 					Inputs->int64s[0]);
 
     Bad_StripedOsdFile:
-    	    PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *) 0, 
+    	    PutVolumePackage(acall, parentwhentargetnotdir, targetptr, (Vnode *) 0, 
 			volptr, &client);
     	    CallPostamble(tcon, code, thost);
 	    Outputs->code = code;
@@ -496,7 +496,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 		goto Bad_ReplaceOSD;
 
     	    if ((code =
-	 	GetVolumePackage(tcon, Fid, &volptr, &targetptr, MustNOTBeDIR,
+	 	GetVolumePackage(acall, Fid, &volptr, &targetptr, MustNOTBeDIR,
 			  &parentwhentargetnotdir, &client, SHARED_LOCK,
 			  &rights, &anyrights))) {
 		goto Bad_ReplaceOSD;
@@ -512,11 +512,13 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
     	    }
 	    code = replace_osd(targetptr, Inputs->int32s[0], Inputs->int32s[1],
 				&Outputs->int32s[0]);
-	    if (!code) 
+	    if (!code) {
+		rx_KeepAliveOn(acall);
 		BreakCallBack(client->host, Fid, 0);
+	    }
 
     Bad_ReplaceOSD:
-    	    PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *) 0, 
+    	    PutVolumePackage(acall, parentwhentargetnotdir, targetptr, (Vnode *) 0, 
 			volptr, &client);
 	    if (transid)
         	EndAsyncTransaction(acall, Fid, transid);
@@ -540,7 +542,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 		goto Bad_Get_Arch_Osds;
 
     	    if ((code =
-	 	GetVolumePackage(tcon, Fid, &volptr, &targetptr, MustNOTBeDIR,
+	 	GetVolumePackage(acall, Fid, &volptr, &targetptr, MustNOTBeDIR,
 			  &parentwhentargetnotdir, &client, READ_LOCK,
 			  &rights, &anyrights))) {
 		goto Bad_Get_Arch_Osds;
@@ -552,7 +554,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 	    code = get_arch_osds(targetptr, &Outputs->int64s[0], 
 				 &Outputs->int32s[0]);
         Bad_Get_Arch_Osds:
-    	    PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *) 0, 
+    	    PutVolumePackage(acall, parentwhentargetnotdir, targetptr, (Vnode *) 0, 
 			volptr, &client);
     	    CallPostamble(tcon, code, thost);
 	    Outputs->code = code;
@@ -574,7 +576,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 		goto Bad_List_Osds;
 
     	    if ((code =
-	 	GetVolumePackage(tcon, Fid, &volptr, &targetptr, MustNOTBeDIR,
+	 	GetVolumePackage(acall, Fid, &volptr, &targetptr, MustNOTBeDIR,
 			  &parentwhentargetnotdir, &client, READ_LOCK,
 			  &rights, &anyrights))) {
 		goto Bad_List_Osds;
@@ -591,7 +593,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 	    code = list_osds(targetptr, &Outputs->int32s[0]);
 
         Bad_List_Osds:
-    	    PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *) 0, 
+    	    PutVolumePackage(acall, parentwhentargetnotdir, targetptr, (Vnode *) 0, 
 			volptr, &client);
     	    CallPostamble(tcon, code, thost);
 	    Outputs->code = code;
@@ -619,7 +621,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 	    }
 
     	    if ((code =
-	 	GetVolumePackage(tcon, Fid, &volptr, &targetptr, MustBeDIR,
+	 	GetVolumePackage(acall, Fid, &volptr, &targetptr, MustBeDIR,
 			  &parentwhentargetnotdir, &client, WRITE_LOCK,
 			  &rights, &anyrights))) {
 		goto Bad_SetPolicy;
@@ -638,7 +640,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 	    targetptr->disk.osdPolicyIndex = policy;
 	    targetptr->changed_newTime = 1;
  Bad_SetPolicy:
-    	    PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *) 0, 
+    	    PutVolumePackage(acall, parentwhentargetnotdir, targetptr, (Vnode *) 0, 
 			volptr, &client);
     	    CallPostamble(tcon, code, thost);
             Outputs->code = code;
@@ -660,7 +662,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
                 goto Bad_Get_Policies;
  
             if ((code =
-                GetVolumePackage(tcon, Fid, &volptr, &targetptr, 0,
+                GetVolumePackage(acall, Fid, &volptr, &targetptr, 0,
                           &parentwhentargetnotdir, &client, READ_LOCK,
                           &rights, &anyrights)))
                 goto Bad_Get_Policies;
@@ -673,7 +675,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
                         (afs_int32)parentwhentargetnotdir->disk.osdPolicyIndex;
  
           Bad_Get_Policies:
-            PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *) 0,
+            PutVolumePackage(acall, parentwhentargetnotdir, targetptr, (Vnode *) 0,
                         volptr, &client);
             CallPostamble(tcon, code, thost);
             Outputs->code = code;
@@ -1291,14 +1293,14 @@ GetOSDlocation(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
      * Get associated volume/vnode for the stored file; caller's rights
      * are also returned
      */
-    if (errorCode = GetVolumePackage(tcon, Fid, &volptr, &targetptr,
+    if (errorCode = GetVolumePackage(acall, Fid, &volptr, &targetptr,
                                  MustNOTBeDIR, &parentwhentargetnotdir,
                                  &client,
                                  flag & FS_OSD_COMMAND ? READ_LOCK : WRITE_LOCK,
                                  &rights, &anyrights)) {
 	if (writing || (flag & FS_OSD_COMMAND))  
             goto Bad_GetOSDloc;
-	if (errorCode = GetVolumePackage(tcon, Fid, &volptr, &targetptr,
+	if (errorCode = GetVolumePackage(acall, Fid, &volptr, &targetptr,
                                  MustNOTBeDIR, &parentwhentargetnotdir,
                                  &client, READ_LOCK,
                                  &rights, &anyrights)) 
@@ -1368,7 +1370,8 @@ Bad_GetOSDloc:
     if (errorCode && !(flag & (FS_OSD_COMMAND | CALLED_FROM_START_ASYNC))) {
 	EndAsyncTransaction(acall, Fid, 0);
     }
-    PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *)0, volptr, &client);
+    PutVolumePackage(acall, parentwhentargetnotdir, targetptr, (Vnode *)0,
+		     volptr, &client);
     if (errorCode && errorCode != 1096)
         ViceLog(0,("GetOsdLoc for %u.%u.%u returns %d to %u.%u.%u.%u\n",
 			Fid->Volume, Fid->Vnode, Fid->Unique, errorCode,
@@ -1429,7 +1432,7 @@ ApplyOsdPolicy(struct rx_call *acall, AFSFid *Fid, afs_uint64 length,
      * Get associated volume/vnode for the stored file; caller's rights
      * are also returned
      */
-    if (errorCode = GetVolumePackage(tcon, Fid, &volptr, &targetptr,
+    if (errorCode = GetVolumePackage(acall, Fid, &volptr, &targetptr,
                                      MustNOTBeDIR, &parentwhentargetnotdir,
                                      &client, WRITE_LOCK,
                                      &rights, &anyrights))
@@ -1477,7 +1480,8 @@ Bad_ApplyOsdPolicy:
     ViceLog(1,("SRXAFSOSD_ApplyOsdPolicy for %u.%u.%u returns %d, protocol %u\n",
 			Fid->Volume, Fid->Vnode, Fid->Unique, 
 			errorCode, *protocol));
-    PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *)0, volptr, &client);
+    PutVolumePackage(acall, parentwhentargetnotdir, targetptr, (Vnode *)0,
+		     volptr, &client);
     errorCode = CallPostamble(tcon, errorCode, thost);
     if (errorCode < 0)
         errorCode = EIO;
@@ -1581,7 +1585,7 @@ GetOsdMetadata(struct rx_call *acall, AFSFid *Fid)
      * Get associated volume/vnode for the stored file; caller's rights
      * are also returned
      */
-    if (errorCode = GetVolumePackage(tcon, Fid, &volptr, &targetptr,
+    if (errorCode = GetVolumePackage(acall, Fid, &volptr, &targetptr,
                                      MustNOTBeDIR, &parentwhentargetnotdir,
                                      &client, READ_LOCK,
                                      &rights, &anyrights))
@@ -1613,7 +1617,7 @@ GetOsdMetadata(struct rx_call *acall, AFSFid *Fid)
 Bad_GetOsdMetadata:
     if (errorCode) 
         rx_Write(acall, (char *)&tlen, 4);
-    PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *)0, volptr, 
+    PutVolumePackage(acall, parentwhentargetnotdir, targetptr, (Vnode *)0, volptr, 
 					&client);
     errorCode = CallPostamble(tcon, errorCode, thost);
     return errorCode;
@@ -1831,7 +1835,7 @@ common_GetPath(struct rx_call *acall, AFSFid *Fid, struct async *a)
     }
 
     if ((errorCode =
-         GetVolumePackage(tcon, Fid, &volptr, &targetptr, DONTCHECK,
+         GetVolumePackage(acall, Fid, &volptr, &targetptr, DONTCHECK,
                           &parentwhentargetnotdir, &client, lockType,
                           &rights, &anyrights)))
         goto Bad_GetPath;
@@ -1866,7 +1870,7 @@ Bad_GetPath:
     if (errorCode && errorCode != OSD_WAIT_FOR_TAPE)
 	ViceLog(0,("SRXAFSOSD_GetPath for %u.%u.%u returns %d\n",
 			Fid->Volume, Fid->Vnode, Fid->Unique, errorCode));
-    (void)PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *) 0,
+    (void)PutVolumePackage(acall, parentwhentargetnotdir, targetptr, (Vnode *) 0,
                            volptr, &client);
     errorCode = CallPostamble(tcon, errorCode, thost);
     return errorCode;
@@ -2542,7 +2546,7 @@ EndAsyncStore1(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
      * are also returned
      */
     if ((errorCode =
-        GetVolumePackage(tcon, Fid, &volptr, &targetptr, MustNOTBeDIR,
+        GetVolumePackage(acall, Fid, &volptr, &targetptr, MustNOTBeDIR,
                           &parentwhentargetnotdir, &client, WRITE_LOCK,
                           &rights, &anyrights))) {
         goto Bad_EndAsyncStore;
@@ -2614,6 +2618,9 @@ EndAsyncStore1(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
     /* Get the updated File's status back to the caller */
     GetStatus(targetptr, OutStatus, rights, anyrights,
               &tparentwhentargetnotdir);
+
+    rx_KeepAliveOn(acall);
+
     BreakCallBack(client->host, Fid, 0);
   NothingHappened:
     errorCode = EndAsyncTransaction(acall, Fid, transid);
@@ -2627,7 +2634,7 @@ EndAsyncStore1(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
 	*(voldata->aTotal_bytes_rcvd_vpac) += bytes_rcvd;
     }
     /* Update and store volume/vnode and parent vnodes back */
-    (void)PutVolumePackage(parentwhentargetnotdir, targetptr,
+    (void)PutVolumePackage(acall, parentwhentargetnotdir, targetptr,
 					 (Vnode *) 0, volptr, &client);
     ViceLog(2, ("EndAsyncStore returns %d for %u.%u.%u\n",
                         errorCode, Fid->Volume, Fid->Vnode, Fid->Unique));
@@ -2831,7 +2838,7 @@ ServerPath(struct rx_call * acall, AFSFid *Fid, afs_int32 writing,
         goto Bad_ServerPath;
 
     if ((errorCode =
-         GetVolumePackage(tcon, Fid, &volptr, &targetptr, DONTCHECK,
+         GetVolumePackage(acall, Fid, &volptr, &targetptr, DONTCHECK,
                           &parentwhentargetnotdir, &client,
                           writing ? WRITE_LOCK : READ_LOCK,
                           &rights, &anyrights)))
@@ -2929,7 +2936,7 @@ ServerPath(struct rx_call * acall, AFSFid *Fid, afs_int32 writing,
               &tparentwhentargetnotdir);
 
 Bad_ServerPath:
-    (void)PutVolumePackage(parentwhentargetnotdir, targetptr,
+    (void)PutVolumePackage(acall, parentwhentargetnotdir, targetptr,
 					 (Vnode *) 0, volptr, &client);
     errorCode = CallPostamble(tcon, errorCode, thost);
 #endif /* AFS_ENABLE_VICEP_ACCESS */
@@ -2999,7 +3006,7 @@ SRXAFS_GetPath0(struct rx_call *acall, AFSFid *Fid, afs_uint64 *ino, afs_uint32 
         goto Bad_GetPath0;
 
     if ((errorCode =
-         GetVolumePackage(tcon, Fid, &volptr, &targetptr, DONTCHECK,
+         GetVolumePackage(acall, Fid, &volptr, &targetptr, DONTCHECK,
                           &parentwhentargetnotdir, &client,
                           READ_LOCK,
                           &rights, &anyrights)))
@@ -3010,7 +3017,7 @@ SRXAFS_GetPath0(struct rx_call *acall, AFSFid *Fid, afs_uint64 *ino, afs_uint32 
     *uuid = *(voldata->aFS_HostUUID);
 
 Bad_GetPath0:
-    (void)PutVolumePackage(parentwhentargetnotdir, targetptr, (Vnode *) 0,
+    (void)PutVolumePackage(acall, parentwhentargetnotdir, targetptr, (Vnode *) 0,
                            volptr, &client);
     errorCode = CallPostamble(tcon, errorCode, thost);
     return errorCode;

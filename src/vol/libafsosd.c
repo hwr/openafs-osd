@@ -137,6 +137,8 @@ private struct rx_ops_v0 {
                                      struct clock *execTime,
                                      afs_hyper_t * bytesSent,
                                      afs_hyper_t * bytesRcvd, int isServer);
+    void (*rx_KeepAliveOff) (struct rx_call *call);
+    void (*rx_KeepAliveOn) (struct rx_call *call);
     struct rx_call *(*rx_NewCall) (struct rx_connection *conn);
     struct rx_connection *(*rx_NewConnection) (afs_uint32 shost,
                                               u_short sport, u_short sservice,
@@ -358,6 +360,8 @@ fill_ops(struct ops_ptr *opsptr)
     rx->rx_EndCall = rx_EndCall;
     rx->rx_GetSpecific = rx_GetSpecific;
     rx->rx_IncrementTimeAndCount = rx_IncrementTimeAndCount;
+    rx->rx_KeepAliveOff = rx_KeepAliveOff;
+    rx->rx_KeepAliveOn = rx_KeepAliveOn;
     rx->rx_NewCall = rx_NewCall;
     rx->rx_NewConnection = rx_NewConnection;
     rx->rx_ReadProc = rx_ReadProc;
@@ -829,6 +833,16 @@ rx_IncrementTimeAndCount(struct rx_peer *peer, afs_uint32 rxInterface,
 				   isServer);
 }
 
+void rx_KeepAliveOff(struct rx_call *call)
+{
+    (rx->rx_KeepAliveOff)(call);
+}
+
+void rx_KeepAliveOn(struct rx_call *call)
+{
+    (rx->rx_KeepAliveOn)(call);
+}
+
 struct rx_call *
 rx_NewCall(struct rx_connection *conn)
 {
@@ -1078,12 +1092,12 @@ GetStatus(Vnode * targetptr, AFSFetchStatus * status, afs_int32 rights,
 }
 
 int
-GetVolumePackage(struct rx_connection *tcon, AFSFid * Fid, struct Volume ** volptr,
+GetVolumePackage(struct rx_call *acall, AFSFid * Fid, struct Volume ** volptr,
 		 Vnode ** targetptr, int chkforDir, Vnode ** parent,
                  struct client **client, int locktype, afs_int32 * rights,
 		 afs_int32 * anyrights)
 {
-    return (viced->GetVolumePackage)(tcon, Fid, volptr, targetptr, chkforDir,
+    return (viced->GetVolumePackage)(acall, Fid, volptr, targetptr, chkforDir,
 				     parent, client, locktype, rights, anyrights);
 }
 
@@ -1096,12 +1110,12 @@ PartialCopyOnWrite(Vnode * targetptr, struct Volume *volptr, afs_foff_t offset,
 }
 
 void
-PutVolumePackage(struct Vnode * parentwhentargetnotdir, struct Vnode * targetptr,
-		 struct Vnode * parentptr, struct Volume * volptr,
-		 struct client **client)
+PutVolumePackage(struct rx_call *acall, struct Vnode * parentwhentargetnotdir,
+		 struct Vnode * targetptr, struct Vnode * parentptr,
+		 struct Volume * volptr, struct client **client)
 {
-    (viced->PutVolumePackage)(parentwhentargetnotdir, targetptr, parentptr,
-			      volptr, client);
+    (viced->PutVolumePackage)(acall, parentwhentargetnotdir, targetptr,
+			      parentptr, volptr, client);
 }
 
 void

@@ -95,13 +95,15 @@ extern int afs_shuttingdown;
 #define	AFS_NRXPACKETS	4096
 #define	AFS_RXDEADTIME	50
 #define AFS_HARDDEADTIME	120
-#define	AFS_IDLEDEADTIME	50
+#define	AFS_IDLEDEADTIME	1200
+#define	AFS_IDLEDEADTIME_REP	180 /* more than fs's cb dead time */
 #define AFS_BLKBITS	12
 #define AFS_BLKSIZE	(1 << AFS_BLKBITS)
 
 extern afs_int32 afs_rx_deadtime;
 extern afs_int32 afs_rx_harddead;
 extern afs_int32 afs_rx_idledead;
+extern afs_int32 afs_rx_idledead_rep;
 
 struct sysname_info {
     char *name;
@@ -365,6 +367,8 @@ struct unixuser {
     void *cellinfo;             /* pointer to cell info (PAG manager only) */
 };
 
+#define CONN_REPLICATED 0x1
+
 struct afs_conn {
     /* Per-connection block. */
     struct afs_conn *next;		/* Next dude same server. */
@@ -374,6 +378,7 @@ struct afs_conn {
     short refCount;		/* reference count for allocation */
     unsigned short port;	/* port associated with this connection */
     char forceConnectFS;	/* Should we try again with these tokens? */
+    int flags;
 };
 
 
@@ -886,7 +891,7 @@ struct vcache {
     afs_ucred_t *uncred;
     int asynchrony;		/* num kbytes to store behind */
 #ifdef AFS_SUN5_ENV
-    struct afs_q multiPage;	/* count of multi-page getpages in progress */
+    struct afs_q multiPage;	/* list of multiPage_range structs */
 #endif
     int protocol;               /* RX_FILESERVER, RX_OSD, ... */
 #if !defined(UKERNEL)

@@ -232,18 +232,18 @@ getRxosdConn(struct rxosd_Variables *v, struct osd_obj *o,
 	tu = afs_GetUser(v->areq->uid, v->avc->f.fid.Cell, SHARED_LOCK);
 	if (service)
             *conn = afs_ConnBySAsrv((*ts)->addr, port, service, v->avc->f.fid.Cell,
-	 		   tu, 1, 1, SHARED_LOCK, rxconn);
+	 		   tu, 1, 1, SHARED_LOCK, 0, rxconn);
 	else
             *conn = afs_ConnBySA((*ts)->addr, port, v->avc->f.fid.Cell,
-	 		   tu, 1, 1, SHARED_LOCK, rxconn);
+	 		   tu, 1, 1, SHARED_LOCK, 0, rxconn);
 	afs_PutUser(tu, SHARED_LOCK);
     } else {
 	if (service)
             *conn = afs_ConnBySAsrv((*ts)->addr, port, service, v->avc->f.fid.Cell,
-		    (struct unixuser *)&dummyuser, 1, 1, SHARED_LOCK, rxconn);
+		    (struct unixuser *)&dummyuser, 1, 1, SHARED_LOCK, 0, rxconn);
 	else
             *conn = afs_ConnBySA((*ts)->addr, port, v->avc->f.fid.Cell,
-		    (struct unixuser *)&dummyuser, 1, 1, SHARED_LOCK, rxconn);
+		    (struct unixuser *)&dummyuser, 1, 1, SHARED_LOCK, 0, rxconn);
     }
     if (*conn)
 	server14or16((*conn)->id, *ts);

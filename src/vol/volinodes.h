@@ -23,8 +23,10 @@ private struct VolumeHeader tempHeader;
 
 #ifdef AFS_NAMEI_ENV
 #define NO_LINK_TABLE 0
+#define NO_OSD_SUPPORT 0
 #else
 #define NO_LINK_TABLE 1
+#define NO_OSD_SUPPORT 1
 #endif
 AFS_UNUSED
 private struct stuff {
@@ -51,7 +53,7 @@ private struct stuff {
     ACLMAGIC, ACLVERSION}, VI_ACL, sizeof(struct versionStamp),
 	&tempHeader.volumeAcl, "access control list", 1}, { {
     OSDMETAMAGIC, OSDMETAVERSION}, VI_OSDMETADATA, sizeof(struct versionStamp),
-	&tempHeader.OsdMetadata, "OSD metadata", 0}, { {
+	&tempHeader.OsdMetadata, "OSD metadata", NO_OSD_SUPPORT}, { {
     LINKTABLEMAGIC, LINKTABLEVERSION}, VI_LINKTABLE,
 	sizeof(struct versionStamp), &tempHeader.linkTable, "link table",
 	NO_LINK_TABLE},};

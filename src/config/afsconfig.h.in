@@ -37,6 +37,9 @@
 /* define if you want to salvager to check bitmasks later */
 #undef BITMAP_LATER
 
+/* define if dentry.d_op->d_delete takes a const argument */
+#undef DOP_D_DELETE_TAKES_CONST
+
 /* define if your dops.d_revalidate takes a nameidata argument */
 #undef DOP_REVALIDATE_TAKES_NAMEIDATA
 
@@ -299,6 +302,9 @@
 /* Define if your kernel has linux/key-type.h */
 #undef HAVE_LINUX_KEY_TYPE_H
 
+/* Define if your kernel has the noop_fsync function */
+#undef HAVE_LINUX_NOOP_FSYNC
+
 /* Define if your kernel has the PageChecked function */
 #undef HAVE_LINUX_PAGECHECKED
 
@@ -325,6 +331,9 @@
 
 /* Define if your kernel has linux/seq_file.h */
 #undef HAVE_LINUX_SEQ_FILE_H
+
+/* Define if your kernel has the set_nlink function */
+#undef HAVE_LINUX_SET_NLINK
 
 /* Define if your kernel has the splice_direct_to_actor function */
 #undef HAVE_LINUX_SPLICE_DIRECT_TO_ACTOR
@@ -413,14 +422,14 @@
 /* define if keyctl has the KEYCTL_SESSION_TO_PARENT function */
 #undef HAVE_SESSION_TO_PARENT
 
+/* Define to 1 if you have the `setenv' function. */
+#undef HAVE_SETENV
+
 /* Define to 1 if you have the `setprogname' function. */
 #undef HAVE_SETPROGNAME
 
 /* Define to 1 if you have the `setvbuf' function. */
 #undef HAVE_SETVBUF
-
-/* define if set_nlink exists */
-#undef HAVE_SET_NLINK
 
 /* Define to 1 if you have the `sigaction' function. */
 #undef HAVE_SIGACTION
@@ -552,6 +561,9 @@
 
 /* Define to 1 if you have the <unistd.h> header file. */
 #undef HAVE_UNISTD_H
+
+/* Define to 1 if you have the `unsetenv' function. */
+#undef HAVE_UNSETENV
 
 /* define if you have old ndir.h */
 #undef HAVE_USR_OLD_USR_INCLUDE_NDIR_H
@@ -800,28 +812,6 @@
 /* define if your kernel has a usable symlink cache API */
 #undef USABLE_KERNEL_PAGE_SYMLINK_CACHE
 
-/* Enable extensions on AIX 3, Interix.  */
-#ifndef _ALL_SOURCE
-# undef _ALL_SOURCE
-#endif
-/* Enable GNU extensions on systems that have them.  */
-#ifndef _GNU_SOURCE
-# undef _GNU_SOURCE
-#endif
-/* Enable threading extensions on Solaris.  */
-#ifndef _POSIX_PTHREAD_SEMANTICS
-# undef _POSIX_PTHREAD_SEMANTICS
-#endif
-/* Enable extensions on HP NonStop.  */
-#ifndef _TANDEM_SOURCE
-# undef _TANDEM_SOURCE
-#endif
-/* Enable general extensions on Solaris.  */
-#ifndef __EXTENSIONS__
-# undef __EXTENSIONS__
-#endif
-
-
 /* define if you want to use UNIX sockets for fssync. */
 #undef USE_UNIX_SOCKETS
 
@@ -832,6 +822,18 @@
    `char[]'. */
 #undef YYTEXT_POINTER
 
+/* Define to 1 if on AIX 3.
+   System headers sometimes define this.
+   We just want to avoid a redefinition error message.  */
+#ifndef _ALL_SOURCE
+# undef _ALL_SOURCE
+#endif
+
+/* Enable GNU extensions on systems that have them.  */
+#ifndef _GNU_SOURCE
+# undef _GNU_SOURCE
+#endif
+
 /* Define to 1 if on MINIX. */
 #undef _MINIX
 
@@ -841,6 +843,17 @@
 
 /* Define to 1 if you need to in order for `stat' and other things to work. */
 #undef _POSIX_SOURCE
+
+/* Enable extensions on Solaris.  */
+#ifndef __EXTENSIONS__
+# undef __EXTENSIONS__
+#endif
+#ifndef _POSIX_PTHREAD_SEMANTICS
+# undef _POSIX_PTHREAD_SEMANTICS
+#endif
+#ifndef _TANDEM_SOURCE
+# undef _TANDEM_SOURCE
+#endif
 
 /* Define to the type of a signed integer type wide enough to hold a pointer,
    if such a type exists, and if the system does not define it. */

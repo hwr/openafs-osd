@@ -581,6 +581,7 @@ xstat: cmd comerr fsint viced
 	+${COMPILE_PART1} xstat ${COMPILE_PART2}
 
 afsmonitor: cmd comerr gtx xstat
+	+set -x; \
 	if test "@LIB_curses@"; then \
 		${COMPILE_PART1} afsmonitor ${COMPILE_PART2} ; \
 	else \
@@ -738,6 +739,7 @@ clean2:
 	-${COMPILE_PART1} config ${COMPILE_CLEAN}
 	-${COMPILE_PART1} procmgmt ${COMPILE_CLEAN}
 	-${COMPILE_PART1} util ${COMPILE_CLEAN}
+	-${COMPILE_PART1} libafscp ${COMPILE_CLEAN}
 	-${COMPILE_PART1} audit ${COMPILE_CLEAN}
 	-${COMPILE_PART1} comerr ${COMPILE_CLEAN}
 	-${COMPILE_PART1} cmd ${COMPILE_CLEAN}

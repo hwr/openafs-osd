@@ -2087,11 +2087,13 @@ DiskToVolumeHeader(VolumeHeader_t * h, VolumeDiskHeader_t * dh)
 					  largeVnodeIndex_hi << 32);
     h->OsdMetadata =
 	(Inode) dh->OsdMetadata_lo | ((Inode) dh->OsdMetadata_hi << 32);
-    if (!h->OsdMetadata) {
+#if 0			/* Try to allow normal volumes to co-exist with OSD-volumes */
+    if (osdvol && !h->OsdMetadata) {
 	Log("VAttachVolume: Volume %u seems not to belong to an OpenAFS+OSD fileserver. Check your server binaries!\n", h->id);
 	Log("VAttachVolume: To prevent damages we better give up!\n");
 	osi_Assert(h->OsdMetadata);
     }
+#endif
     h->linkTable =
 	(Inode) dh->linkTable_lo | ((Inode) dh->linkTable_hi << 32);
 #else
@@ -2947,11 +2949,12 @@ attach_volume_header(Error *ec, Volume *vp, struct DiskPartition64 *partp,
 	    header.smallVnodeIndex);
     IH_INIT(vp->diskDataHandle, partp->device, header.parent,
 	    header.volumeInfo);
-    if (osdvol) {
+    if (osdvol && header.OsdMetadata) {
         IH_INIT(vp->osdMetadataHandle, partp->device, header.parent,
 	    header.OsdMetadata);
         Lock_Init(&vp->lock);
-    }
+    } else
+	vp->osdMetadataHandle = NULL;
     IH_INIT(vp->linkHandle, partp->device, header.parent, header.linkTable);
 
     if (first_try) {
@@ -5678,6 +5681,10 @@ VScheduleSalvage_r(Volume * vp)
 	    case SYNC_DENIED:
 		Log("VScheduleSalvage_r: Salvage request for volume %lu "
 		    "denied\n", afs_printable_uint32_lu(vp->hashid));
+		break;
+	    case SYNC_FAILED:
+		Log("VScheduleSalvage_r: Salvage request for volume %lu "
+		    "failed\n", afs_printable_uint32_lu(vp->hashid));
 		break;
 	    default:
 		Log("VScheduleSalvage_r: Salvage request for volume %lu "

@@ -251,27 +251,27 @@ typedef struct Vnode {
 #ifdef AFS_NAMEI_ENV
 #define VN_GET_INO(V) ((Inode)(V)->disk.vn_ino_lo ? ((V)->disk.vn_ino_lo | \
 				(((Inode)(V)->disk.uniquifier)<<32)) : 0)
-#define VN_SET_INO(V, I) ((V)->disk.vn_ino_lo = (int)((I)&0xffffffff))
+
 #define VNDISK_GET_INO(V) ((Inode)(V)->vn_ino_lo ? ((V)->vn_ino_lo | \
 				(((Inode)(V)->uniquifier)<<32)) : 0)
-#define VNDISK_SET_INO(V, I) ((V)->vn_ino_lo = (int)((I)&0xffffffff))
+
 #else /* AFS_NAMEI_ENV */
 #define VN_GET_INO(V) ((Inode)((V)->disk.vn_ino_lo | \
 			       ((V)->disk.vn_ino_hi ? \
 				(((Inode)(V)->disk.vn_ino_hi)<<32) : 0)))
 
-#define VN_SET_INO(V, I) ((V)->disk.vn_ino_lo = (int)((I)&0xffffffff), \
-			   ((V)->disk.vn_ino_hi = (I) ? \
-			    (int)(((I)>>32)&0xffffffff) : 0))
-
 #define VNDISK_GET_INO(V) ((Inode)((V)->vn_ino_lo | \
 				   ((V)->vn_ino_hi ? \
 				    (((Inode)(V)->vn_ino_hi)<<32) : 0)))
 
+#endif /* AFS_NAMEI_ENV */
+#define VN_SET_INO(V, I) ((V)->disk.vn_ino_lo = (int)((I)&0xffffffff), \
+			   ((V)->disk.vn_ino_hi = (I) ? \
+			    (int)(((I)>>32)&0xffffffff) : 0))
+
 #define VNDISK_SET_INO(V, I) ((V)->vn_ino_lo = (int)(I&0xffffffff), \
 			      ((V)->vn_ino_hi = (I) ? \
 			       (int)(((I)>>32)&0xffffffff) : 0))
-#endif /* AFS_NAMEI_ENV */
 #else /* AFS_64BIT_IOPS_ENV */
 #define VN_GET_INO(V) ((V)->disk.vn_ino_lo)
 #define VN_SET_INO(V, I) ((V)->disk.vn_ino_lo = (I))
@@ -304,7 +304,8 @@ extern int VVnodeWriteToRead_r(Error * ec, Vnode * vnp);
 extern Vnode *VAllocVnode(Error * ec, struct Volume *vp, VnodeType type);
 extern Vnode *VAllocVnode_r(Error * ec, struct Volume *vp, VnodeType type);
 /*extern VFreeVnode();*/
-extern Vnode *VGetFreeVnode_r(struct VnodeClassInfo *vcp);
+extern Vnode *VGetFreeVnode_r(struct VnodeClassInfo *vcp, struct Volume *vp,
+			      VnodeId vnodeNumber);
 extern Vnode *VLookupVnode(struct Volume * vp, VnodeId vnodeId);
 extern int VSyncVnode(struct Volume *vp, VnodeDiskObject *vd, afs_uint32 vN,
 		      int newtime);

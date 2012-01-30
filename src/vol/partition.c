@@ -176,6 +176,7 @@
 #endif /* !O_LARGEFILE */
 
 extern int VInit;
+extern void *osdvol;
 int aixlow_water = 8;		/* default 8% */
 struct DiskPartition64 *DiskPartitionList;
 
@@ -239,7 +240,7 @@ VInitPartitionPackage(void)
     return 0;
 }
 
-#if defined(AFS_ENABLE_VICEP_ACCESS) && defined(AFS_NAMEI_ENV) && !defined(AFS_NT40_ENV)
+#if defined(AFS_NAMEI_ENV) && !defined(AFS_NT40_ENV)
 #define PARTIDMAGIC 0x25062006
 static void
 writePartIdFile(char *path)
@@ -333,9 +334,8 @@ VInitPartition_r(char *path, char *devname, Device dev)
 #if defined(AFS_NAMEI_ENV) && !defined(AFS_NT40_ENV)
     if (programType == fileServer) {
 	(void)namei_ViceREADME(VPartitionPath(dp));
-#ifdef AFS_ENABLE_VICEP_ACCESS
-	(void)writePartIdFile(VPartitionPath(dp));
-#endif
+	if (osdvol) /* Only if this server supports OSD and VICEP-ACCESS */
+		(void)writePartIdFile(VPartitionPath(dp));
     }
 #endif
     VSetPartitionDiskUsage_r(dp);

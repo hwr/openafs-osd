@@ -15,7 +15,7 @@
  * inside the library. So a version mismatch can easily be detected.
  */
  
-#define LIBAFSOSD_VERSION 11
+#define LIBAFSOSD_VERSION 12
 
 /*
  *	Unspecific operations used in general servers provided by AFS/OSD
@@ -144,7 +144,7 @@ struct viced_ops_v0 {
                                 afs_uint64 transid);
     void (*GetStatus) (struct Vnode * targetptr, struct AFSFetchStatus * status,
 		       afs_int32 rights, afs_int32 anyrights, Vnode * parentptr);
-    int (*GetVolumePackage) (struct rx_connection *tcon, AFSFid * Fid,
+    int (*GetVolumePackage) (struct rx_ccall *acll, AFSFid * Fid,
                              struct Volume ** volptr, Vnode ** targetptr,
                              int chkforDir, Vnode ** parent,
                              struct client **client, int locktype,
@@ -152,7 +152,8 @@ struct viced_ops_v0 {
     int (*PartialCopyOnWrite) (struct Vnode * targetptr, struct Volume *volptr,
                                afs_foff_t offset, afs_fsize_t length,
                                afs_fsize_t filelength);
-    void (*PutVolumePackage) (struct Vnode * parentwhentargetnotdir,
+    void (*PutVolumePackage) (struct rx_call *acall,
+			      struct Vnode * parentwhentargetnotdir,
                               struct Vnode * targetptr, struct Vnode * parentptr,
                               struct Volume * volptr, struct client **client);
     void (*SetCallBackStruct) (afs_uint32 CallBackTime, struct AFSCallBack *CallBack);

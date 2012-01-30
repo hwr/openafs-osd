@@ -23,7 +23,6 @@ NS_INCL =SRC/../afsweb/netscape_includes
 TOP_OBJ_FSINT = ${TOP_OBJDIR}/src/fsint
 TOP_OBJ_RXSTAT = ${TOP_OBJDIR}/src/rxstat
 TOP_OBJ_VLSERVER = ${TOP_OBJDIR}/src/vlserver
-TOP_OBJ_RXOSD = ${TOP_OBJDIR}/src/rxosd
 
 TOP_SRC_AFS = ${TOP_SRCDIR}/afs
 TOP_SRC_RXSTAT = ${TOP_SRCDIR}/rxstat
@@ -31,6 +30,7 @@ TOP_SRC_FSINT = ${TOP_SRCDIR}/fsint
 TOP_SRC_RX = ${TOP_SRCDIR}/rx
 TOP_SRC_VNOPS = ${TOP_SRCDIR}/afs/VNOPS
 TOP_SRC_RXKAD = ${TOP_SRCDIR}/rxkad
+TOP_OBJ_RXOSD = ${TOP_OBJDIR}/src/rxosd
 
 COMMON_INCLUDE = -I. -I.. -I../nfs \
         -I${TOP_SRCDIR} \
@@ -249,7 +249,6 @@ AFSWEBOBJ = \
 	$(WEBOBJ)/afs_fetchstore.o \
 	$(WEBOBJ)/afs_osidnlc.o \
 	$(WEBOBJ)/afs_osi_pag.o \
-	$(WEBOBJ)/afs_xosd.o \
 	$(WEBOBJ)/afs_segments.o \
 	$(WEBOBJ)/afs_server.o \
 	$(WEBOBJ)/afs_stat.o \
@@ -969,11 +968,11 @@ $(WEBOBJ)/afs_osi.o: $(TOP_SRC_AFS)/afs_osi.c
 $(WEBOBJ)/afs_osi_pag.o: $(TOP_SRC_AFS)/afs_osi_pag.c
 	$(CRULE2)
 $(WEBOBJ)/afs_rxosd.o: $(TOP_SRC_AFS)/afs_rxosd.c
-	$(CRULE1)
+	$(CRULE2)
 $(WEBOBJ)/rxosd.cs.o: $(TOP_OBJ_RXOSD)/rxosd.cs.c
-	$(CRULE1)
+	$(CRULE2)
 $(WEBOBJ)/rxosd.xdr.o: $(TOP_OBJ_RXOSD)/rxosd.xdr.c
-	$(CRULE1)
+	$(CRULE2)
 $(WEBOBJ)/afs_segments.o: $(TOP_SRC_AFS)/afs_segments.c
 	$(CRULE2)
 $(WEBOBJ)/afs_server.o: $(TOP_SRC_AFS)/afs_server.c
@@ -1516,9 +1515,8 @@ $(JUAFS)/xdr_len.o: $(TOP_SRC_RX)/xdr_len.c
 
 clean:
 	-$(RM) -rf UAFS* JUAFS* AFSWEB* nsapi des afs afsint config rx
-	-$(RM) -f  h
-	-${RM} linktest $(AFS_OS_CLEAN)
-
+	-$(RM) -rf h
+	-$(RM) -f linktest $(AFS_OS_CLEAN)
 
 install: UAFS/$(LIBUAFS) JUAFS/$(LIBJUAFS)
 	${INSTALL} -d ${DESTDIR}${libdir}
@@ -1562,11 +1560,13 @@ JUAFS:
 AFSWEB:
 	mkdir -p $@
 
-setup_common:
-	-$(RM) -f nsapi afsd
+h: $(TOP_SRC_AFS)/*.c $(TOP_SRC_VNOPS)/*.c $(TOP_SRC_RX)/*.c
 	-$(RM) -rf h
 	@TOP_SRCDIR@/libuafs/make_h_tree.pl $(TOP_SRC_AFS) $(TOP_SRC_VNOPS) \
 		$(TOP_SRC_RX)
+
+setup_common: h
+	-$(RM) -f nsapi afsd
 	-ln -s $(TOP_SRCDIR)/afsd afsd
 	-ln -s $(NS_INCL) nsapi
 

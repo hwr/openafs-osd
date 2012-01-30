@@ -448,13 +448,19 @@ VInitVnodes(VnodeClass class, int nVnodes)
  * allocate an unused vnode from the lru chain.
  *
  * @param[in] vcp  vnode class info object pointer
+ * @param[in] vp   volume ponter
+ * @param[in] vnodeNumber new vnode number that the vnode will be used for
  *
  * @pre VOL_LOCK is held
  *
- * @post vnode object is removed from lru, and vnode hash table.
- *       vnode is disassociated from volume object.
+ * @post vnode object is removed from lru
+ *       vnode is disassociated with its old volume, and associated with its
+ *         new volume
+ *       vnode is removed from its old vnode hash table, and for DAFS, it is
+ *         added to its new hash table
  *       state is set to VN_STATE_INVALID.
  *       inode handle is released.
+ *       a reservation is held on the vnode object
  *
  * @note we traverse backwards along the lru circlist.  It shouldn't 
  *       be necessary to specify that nUsers == 0 since if it is in the list, 
@@ -463,10 +469,14 @@ VInitVnodes(VnodeClass class, int nVnodes)
  *
  * @warning DAFS: VOL_LOCK is dropped while doing inode handle release
  *
+ * @warning for non-DAFS, the vnode is _not_ hashed on the vnode hash table;
+ *          non-DAFS must hash the vnode itself after loading data
+ *
  * @return vnode object pointer
  */
 Vnode *
-VGetFreeVnode_r(struct VnodeClassInfo * vcp)
+VGetFreeVnode_r(struct VnodeClassInfo * vcp, struct Volume *vp,
+		VnodeId vnodeNumber)
 {
     Vnode *vnp;
 
@@ -492,6 +502,16 @@ VGetFreeVnode_r(struct VnodeClassInfo * vcp)
     if (Vn_volume(vnp)) {
 	DeleteFromVVnList(vnp);
     }
+
+    /* we must re-hash the vnp _before_ we drop the glock again; otherwise,
+     * someone else might try to grab the same vnode id, and we'll both alloc
+     * a vnode object for the same vn id, bypassing vnode locking */
+    Vn_id(vnp) = vnodeNumber;
+    VnCreateReservation_r(vnp);
+    AddToVVnList(vp, vnp);
+#ifdef AFS_DEMAND_ATTACH_FS
+    AddToVnHash(vnp);
+#endif
 
     /* drop the file descriptor */
     if (vnp->handle) {
@@ -734,16 +754,7 @@ VAllocVnode_r(Error * ec, Volume * vp, VnodeType type)
     } else {
 	/* no such vnode in the cache */
 
-	vnp = VGetFreeVnode_r(vcp);
-
-	/* Initialize the header fields so noone allocates another
-	 * vnode with the same number */
-	Vn_id(vnp) = vnodeNumber;
-	VnCreateReservation_r(vnp);
-	AddToVVnList(vp, vnp);
-#ifdef AFS_DEMAND_ATTACH_FS
-	AddToVnHash(vnp);
-#endif
+	vnp = VGetFreeVnode_r(vcp, vp, vnodeNumber);
 
 	/* This will never block (guaranteed by check in VGetFreeVnode_r() */
 	VnLock(vnp, WRITE_LOCK, VOL_LOCK_HELD, WILL_NOT_DEADLOCK);
@@ -1243,17 +1254,11 @@ VGetVnode_r(Error * ec, Volume * vp, VnodeId vnodeNumber, int locktype)
 	/* Not in cache; tentatively grab most distantly used one from the LRU
 	 * chain */
 	vcp->reads++;
-	vnp = VGetFreeVnode_r(vcp);
+	vnp = VGetFreeVnode_r(vcp, vp, vnodeNumber);
 
 	/* Initialize */
 	vnp->changed_newTime = vnp->changed_oldTime = 0;
 	vnp->delete = 0;
-	Vn_id(vnp) = vnodeNumber;
-	VnCreateReservation_r(vnp);
-	AddToVVnList(vp, vnp);
-#ifdef AFS_DEMAND_ATTACH_FS
-	AddToVnHash(vnp);
-#endif
 
 	/*
 	 * XXX for non-DAFS, there is a serious
@@ -2015,7 +2020,7 @@ int ListDiskVnode(struct Volume *vp,  afs_uint32 vnodeNumber, afs_uint32 **ptr,
             *((*ptr)++) = vnp->disk.author;
             *((*ptr)++) = vnp->disk.owner;
             *((*ptr)++) = vnp->disk.group;
-	    if (osdvol)
+	    if (osdvol && vp->osdMetadataHandle)
                 *((*ptr)++) = vnp->disk.osdFileOnline;
 	    else
                 (*ptr)++;
@@ -2031,7 +2036,7 @@ int ListDiskVnode(struct Volume *vp,  afs_uint32 vnodeNumber, afs_uint32 **ptr,
             *((*ptr)++) = vnp->disk.vn_ino_hi;
 #endif
             *((*ptr)++) = vnp->disk.parent;
-	    if (osdvol)
+	    if (osdvol && vp->osdMetadataHandle)
                 *((*ptr)++) = vnp->disk.osdMetadataIndex;
 	    else
                 (*ptr)++;
