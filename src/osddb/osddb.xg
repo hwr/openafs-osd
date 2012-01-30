@@ -221,21 +221,21 @@ typedef Osd OsdList<>;
 struct osddb_osd_tab {
 	afs_uint32 id;
 	char name[OSDDB_MAXNAMELEN];
-	afs_uint32 minSize;	/* 1k blocks */
-	afs_uint32 maxSize;	/* 1k blocks */
-	afs_uint32 ip;
-	afs_uint32 lun;
+	afs_uint32 minSize;	/* mininal object size in 1k blocks */
+	afs_uint32 maxSize;	/* maximal object size in 1k blocks */
+	afs_uint32 ip;		/* IPv4 address of the OSD */
+	afs_uint32 lun;		/* partition number: /vicepa=0, /vivepb=1...*/
 	afs_uint32 alprior;	/* priority for allocation */
 	afs_uint32 rdprior;	/* priority for read */
 	afs_uint32 newestWiped;	/* access time of newest wiped file */
-	afs_uint32 flags;
-	afs_uint32 unavail;
-	afs_uint32 owner;
-	afs_uint32 location;
-	afs_uint32 highWaterMark;
-	afs_uint32 minWipeSize;
-	afs_uint32 type;   /* fully T10 or reduced protocol (Capabilities only)*/
-	afs_uint32 service_port;
+	afs_uint32 flags;	/* whether OSD is wipeable, archival ...*/
+	afs_uint32 unavail;	/* 0 if up, otherwise down or obsolete */
+	afs_uint32 owner;	/* whom the OSD is reserved for */
+	afs_uint32 location;	/* In case of geogr. wide spread cells */
+	afs_uint32 highWaterMark; /* per mille when wiping should start */
+	afs_uint32 minWipeSize; /* minimum object size for wiping */
+	afs_uint32 type;   	/* fully T10 or Capabilities only*/
+	afs_uint32 service_port; /* service id and port (900/7011) presently */
 	afs_uint32 spare4;
 };
 

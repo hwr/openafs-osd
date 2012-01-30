@@ -80,7 +80,7 @@ int rxJumbograms = 1;		/* default is to send and receive jumbo grams */
 int rxMaxMTU = -1;
 afs_int32 rxBind = 0;
 
-#define OSD_TIMEOUT	400
+#define OSD_TIMEOUT	300
 #define ADDRSPERSITE 16         /* Same global is in rx/rx_user.c */
 afs_uint32 SHostAddrs[ADDRSPERSITE];
 
