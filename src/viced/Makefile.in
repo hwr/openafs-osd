@@ -62,9 +62,13 @@ objects=viced.o		\
 	physio.o	\
 	callback.o
 
-all: cbd fsprobe check_sysid fileserver ${TOP_INCDIR}/afs/fs_stats.h
+all: cbd fsprobe check_sysid fileserver ${TOP_INCDIR}/afs/fs_stats.h \
+		${TOP_INCDIR}/afs/host.h
 
 ${TOP_INCDIR}/afs/fs_stats.h: fs_stats.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/afs/host.h: host.h
 	${INSTALL_DATA} $? $@
 
 ${objects}: ${headers}

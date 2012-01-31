@@ -6088,6 +6088,7 @@ restore_dec(Volume *vp, struct VnodeDiskObject *old, struct VnodeDiskObject *new
 
 /* this struct must be the same as in volint.xg !!! */
 
+#ifndef BUILD_SHLIBAFSOSD
 struct osd_info {
     afs_uint32 osdid;
     afs_uint32 fids;
@@ -6109,6 +6110,7 @@ struct sizerangeList {
     afs_int32 sizerangeList_len;
     struct sizerange *sizerangeList_val;
 };
+#endif
 
 afs_int32
 init_sizerangeList(struct sizerangeList *l)

@@ -64,12 +64,12 @@ SOBJS=volmain.o volprocs.o physio.o common.o voltrans.o volerr.o \
  vol_split.o volosdprocs.o libadsosd.o
 
 # remove "vos" from lower all:target
-all: restorevol voldump \
-	${TOP_INCDIR}/afs/volser.h \
+all:	${TOP_INCDIR}/afs/volser.h \
 	${TOP_INCDIR}/afs/vsutils_prototypes.h \
 	${TOP_INCDIR}/afs/volser_prototypes.h \
 	${TOP_INCDIR}/afs/volint.h \
-	${TOP_LIBDIR}/libvolser.a
+	${TOP_LIBDIR}/libvolser.a \
+	restorevol voldump
 
 generated: volser.h volerr.c volint.cs.c volint.ss.c volint.xdr.c volint.h
 

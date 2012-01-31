@@ -130,17 +130,20 @@ struct rxosd_conn {
  */
 
 #if defined(BUILD_SHLIBAFSOSD)
+#include <afs/ptint.h>
+#include <afs/host.h>
 /* Prototypes for routines which come from afsfileprocs.c */
-extern int CallPostamble(struct host *xhost, AFSFid * fid, int flag);
+extern int CallPostamble(struct rx_connection *aconn, afs_int32 ret,
+			 struct host *ahost);
 extern int CallPreamble(struct rx_call *acall, int activecall,
                         struct rx_connection **tconn, struct host **ahostp);
 extern int Check_PermissionRights(struct Vnode * targetptr, struct client *client,
                                   afs_int32 rights, int CallingRoutine,
                                   struct AFSStoreStatus * InStatus);
 extern int EndAsyncTransaction(struct rx_call *call, AFSFid *Fid, afs_uint64 transid);
-extern int GetStatus(struct Vnode * targetptr, struct AFSFetchStatus * status,
+extern void GetStatus(struct Vnode * targetptr, struct AFSFetchStatus * status,
                      afs_int32 rights, afs_int32 anyrights, Vnode * parentptr);
-extern int GetVolumePackage(struct rx_ccall *acll, AFSFid * Fid,
+extern int GetVolumePackage(struct rx_call *acall, AFSFid * Fid,
 			    struct Volume ** volptr, Vnode ** targetptr,
                             int chkforDir, Vnode ** parent,
                             struct client **client, int locktype,
@@ -186,7 +189,7 @@ struct viced_ops_v0 {
                                 afs_uint64 transid);
     void (*GetStatus) (struct Vnode * targetptr, struct AFSFetchStatus * status,
 		       afs_int32 rights, afs_int32 anyrights, Vnode * parentptr);
-    int (*GetVolumePackage) (struct rx_ccall *acll, AFSFid * Fid,
+    int (*GetVolumePackage) (struct rx_call *acall, AFSFid * Fid,
                              struct Volume ** volptr, Vnode ** targetptr,
                              int chkforDir, Vnode ** parent,
                              struct client **client, int locktype,
@@ -399,13 +402,14 @@ extern int init_viced_afsosd(char *afsversion, char** afsosdVersion, void *inroc
 #endif
 
 #if defined(_RXGEN_VOLINT_) || defined(BUILD_SHLIBAFSOSD)
+#include <afs/volint.h>
 struct volser_ops_v0 {
     int (*DeleteTrans) (struct volser_trans *atrans, afs_int32 lock);
     int (*NewTrans) (afs_uint32 avol, afs_int32 apart);
 };
 
 /* 
- *  Operations (hooks) used by the general fileserver provided by AFS/OSD
+ *  Operations (hooks) used by the general volserver provided by AFS/OSD
  */
 
 #ifndef BUILDING_VOLSERVER
