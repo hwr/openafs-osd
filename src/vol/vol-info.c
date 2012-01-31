@@ -67,6 +67,7 @@
 #endif /* !O_LARGEFILE */
 
 #include <afs/afsosd.h>
+int osdvolume = 0;
 struct osd_vol_ops_v0 *osdvol = NULL;
 
 int DumpVnodes = 0;		/* Dump everything, i.e. summary of all vnodes */
@@ -212,7 +213,7 @@ AttachVolume(struct DiskPartition64 * dp, char *volname,
         ec = ReadHdr1(vp->osdMetadataHandle, (char *)&iHead,
                       sizeof(iHead), OSDMETAMAGIC, OSDMETAVERSION);
 	if (!ec) /* seems to be an OSD volume */
-	    osdvol = 1;
+	    osdvolume = 1;
     }
 #ifdef AFS_NAMEI_ENV
     if (!ec) {
@@ -919,7 +920,7 @@ PrintVnode(afs_foff_t offset, VnodeDiskObject * vnode, VnodeId vnodeNumber,
 	printf(" ServerModTime: %s", date(vnode->serverModifyTime));
 #if defined(AFS_NAMEI_ENV)
     if (PrintFileNames) {
-        if (osdvol && vnode->osdMetadataIndex)
+        if (osdvolume && vnode->osdMetadataIndex)
             printf(" File in OSD, index: %u", vnode->osdMetadataIndex);
         if (ino) {
 	    IH_INIT(ihtmpp, V_device(vp), V_parentId(vp), ino);
