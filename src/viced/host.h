@@ -251,6 +251,7 @@ extern afs_int32 hpr_Initialize(struct ubik_client **);
 extern int hpr_End(struct ubik_client *);
 extern int hpr_IdToName(idlist *ids, namelist *names);
 extern int hpr_NameToId(namelist *names, idlist *ids);
+extern int evalclient(void *rock, afs_int32 user);
 
 #ifdef AFS_DEMAND_ATTACH_FS
 /*

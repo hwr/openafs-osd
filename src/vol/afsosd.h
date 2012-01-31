@@ -129,6 +129,48 @@ struct rxosd_conn {
  *	Operations used in AFS/OSD provided by the general fileserver
  */
 
+#if defined(BUILD_SHLIBAFSOSD)
+/* Prototypes for routines which come from afsfileprocs.c */
+extern int CallPostamble(struct host *xhost, AFSFid * fid, int flag);
+extern int CallPreamble(struct rx_call *acall, int activecall,
+                        struct rx_connection **tconn, struct host **ahostp);
+extern int Check_PermissionRights(struct Vnode * targetptr, struct client *client,
+                                  afs_int32 rights, int CallingRoutine,
+                                  struct AFSStoreStatus * InStatus);
+extern int EndAsyncTransaction(struct rx_call *call, AFSFid *Fid, afs_uint64 transid);
+extern int GetStatus(struct Vnode * targetptr, struct AFSFetchStatus * status,
+                     afs_int32 rights, afs_int32 anyrights, Vnode * parentptr);
+extern int GetVolumePackage(struct rx_ccall *acll, AFSFid * Fid,
+			    struct Volume ** volptr, Vnode ** targetptr,
+                            int chkforDir, Vnode ** parent,
+                            struct client **client, int locktype,
+                            afs_int32 * rights, afs_int32 * anyrights);
+extern int PartialCopyOnWrite(struct Vnode * targetptr, struct Volume *volptr,
+                              afs_foff_t offset, afs_fsize_t length,
+                              afs_fsize_t filelength);
+extern void PutVolumePackage(struct rx_call *acall,
+			     struct Vnode * parentwhentargetnotdir,
+                             struct Vnode * targetptr, struct Vnode * parentptr,
+                             struct Volume * volptr, struct client **client);
+extern void SetCallBackStruct(afs_uint32 CallBackTime, struct AFSCallBack *CallBack);
+extern void Update_TargetVnodeStatus(struct Vnode * targetptr, afs_uint32 Caller,
+                                     struct client *client, AFSStoreStatus * InStatus,
+                                     struct Vnode * parentptr, struct Volume * volptr,
+                                     afs_fsize_t length);
+extern int VanillaUser(struct client *client);
+extern int createAsyncTransaction(struct rx_call *call, AFSFid *Fid,
+                                  afs_int32 flag, afs_fsize_t offset,
+                                  afs_fsize_t length, afs_uint64 *transid,
+                                  afs_uint32 *expires);
+extern struct Volume * getAsyncVolptr(struct rx_call *call, AFSFid *Fid,
+				      afs_uint64 transid, afs_uint64 *offset,
+				      afs_uint64 *length);
+extern int setActive(struct rx_call *call, afs_uint32 num, AFSFid * fid,
+		     afs_int32 source);
+extern void setInActive(afs_int32 i);
+extern int setLegacyFetch(afs_int32 i);
+#endif /* BUILD_SHLIBAFSOSD */
+
 struct viced_ops_v0 {
     int (*AddCallBack1) (struct host *host, AFSFid *fid, afs_uint32 *thead,
                          int type, int locked);
