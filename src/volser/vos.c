@@ -6373,6 +6373,9 @@ ListObjects(struct cmd_syndesc *as, void *arock)
 	    }
 	}
     }
+    if (as->parms[8].items) 				/* -wiped */
+	flag |= ONLY_WIPED;
+
     osd = getOsdId(as->parms[0].items->data, cell, &code);
     if (!osd && !(flag & POL_INDICES)) {
 	fprintf(stderr, "Osd %s not found (error code %d)\n",
@@ -7550,6 +7553,7 @@ main(int argc, char **argv)
     cmd_AddParm(ts, "-policies", CMD_FLAG, CMD_OPTIONAL,
         "list policy references instead");
     cmd_AddParm(ts, "-minage", CMD_SINGLE, CMD_OPTIONAL, "minimum age (default 3600)");
+    cmd_AddParm(ts, "-wiped", CMD_FLAG, CMD_OPTIONAL, "only wiped files");
     COMMONPARMS;
 
 

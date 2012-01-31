@@ -30,6 +30,7 @@ prefix S
 %#define     EXTRACT_SIZE      2       /* for "vos listobjects" */
 %#define     ONLY_HERE         4       /* for "vos listobjects" */
 %#define     POL_INDICES       8       /* for "vos listobjects" */
+%#define     ONLY_WIPED       16       /* for "vos listobjects" */
 
 %#define     ONLY_BIGGER_MINWIPESIZE   1       /* for vos archvcand */
 %#define     FORCE_ARCHCAND            2       /* for vos archvcand */
