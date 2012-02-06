@@ -6374,6 +6374,7 @@ bad:
 #define SALVAGE_UPDATE 2
 #define SALVAGE_DECREM  4
 #define SALVAGE_NEWSYN  8
+#define SALVAGE_IGNORE_LINKCOUNTS 16
  
 void printsize(afs_uint64 s, char *str)
 {
@@ -6528,11 +6529,13 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 		    IH_INIT(ih, V_device(vol), V_parentId(vol), ino);
 		    namei_HandleToName(&name, ih);
 		    if (ih) {
+			afs_uint32 tag;
+			tag = (afs_uint32)((ino >> NAMEI_TAGSHIFT) & NAMEI_TAGMASK);
 			inodes++;
 		        code = afs_stat(name.n_path, &st);
 		        if (code) {
-	    		    sprintf(line, "Object %u.%u.%u doesn't exist on local disk", 
-				V_id(vol), vN, vd->uniquifier);
+	    		    sprintf(line, "Object %u.%u.%u.%u doesn't exist on local disk", 
+				V_id(vol), vN, vd->uniquifier, tag);
 			    if (flag & SALVAGE_UPDATE && vd->type == vFile
 			      && vd->osdMetadataIndex) {
 				VNDISK_SET_INO(vd, 0);
@@ -6550,15 +6553,20 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 		        } else {
 			    lc = namei_GetLinkCount(lhp, ino, 0, 0, 1);
 			    if (lc != localinst) {
-	    			sprintf(line, "Object %u.%u.%u: linkcount wrong (%u instead of %u)\n",
-				    V_id(vol), vN, vd->uniquifier,
+	    			sprintf(line, "Object %u.%u.%u.%u: linkcount wrong (%u instead of %u)",
+				    V_id(vol), vN, vd->uniquifier, tag,
 				    lc, localinst);
 	    		        rx_Write(call, line, strlen(line));
-			        errors++;
+				if (flag & SALVAGE_IGNORE_LINKCOUNTS ) {
+                                    strcat(line,", ignored.\n");
+                                } else {
+				    strcat(line, "\n");
+			            errors++;
+				}
 			    }
 			    if (size != st.st_size) {
-	    		        sprintf(line, "Object %u.%u.%u has wrong length %llu instead of %llu on local disk", 
-				    V_id(vol), vN, vd->uniquifier,
+	    		        sprintf(line, "Object %u.%u.%u.%u has wrong length %llu instead of %llu on local disk", 
+				    V_id(vol), vN, vd->uniquifier, tag,
 				    st.st_size, size);
 			        if (flag & SALVAGE_UPDATE) {
         			    afs_uint32 now = FT_ApproxTime();
@@ -6705,23 +6713,27 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 						    (afs_uint32) (o->obj_id >> 32), 
 						    (afs_uint32) ((o->obj_id >> NAMEI_TAGSHIFT) & NAMEI_TAGMASK), 
 						    o->osd_id, lc, instances);
-					        if (flag & SALVAGE_UPDATE) {
-						    while (!code && lc<instances) {
-						        code = rxosd_incdec(
-							    o->osd_id, p_id, 
-							    o->obj_id, 1); 
-							lc++;
-						        strcat(line, ", incr'ed");
+						if (flag & SALVAGE_IGNORE_LINKCOUNTS) {
+						    strcat(line, ", ignored");
+					        } else {
+						    if (flag & SALVAGE_UPDATE) {
+						        while (!code && lc<instances) {
+						            code = rxosd_incdec(
+							        o->osd_id, p_id, 
+							        o->obj_id, 1); 
+							    lc++;
+						            strcat(line, ", incr'ed");
+						        }
 						    }
-						}
-					        if (flag & SALVAGE_DECREM) {
-						    while (!code 
-						      && lc>instances) {
-						        code = rxosd_incdec(
-							    o->osd_id, p_id, 
-							    o->obj_id, -1); 
-							lc--;
-						        strcat(line, ", decr'ed");
+					            if (flag & SALVAGE_DECREM) {
+						        while (!code 
+						          && lc>instances) {
+						            code = rxosd_incdec(
+							        o->osd_id, p_id, 
+							        o->obj_id, -1); 
+							    lc--;
+						            strcat(line, ", decr'ed");
+						        }
 						    }
 						}
 						strcat(line, "\n");
