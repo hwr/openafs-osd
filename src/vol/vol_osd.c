@@ -5833,7 +5833,7 @@ clone_pre_loop(Volume *rwvp, Volume *clvp, struct VnodeDiskObject *rwvnode,
 	}
 	for (i=0; i<cllist.osdobjectList_len; i++) {
 	    if (cllist.osdobjectList_val[i].osd != 0) {
-		code = osd_AddIncDecItem(&cloneRock->osd_decHead, &cllist.osdobjectList_val[i], 1);
+		code = osd_AddIncDecItem(&cloneRock->osd_decHead, &cllist.osdobjectList_val[i], -1);
 		if (code)
 		    return ENOMEM;
 	    }
@@ -5941,6 +5941,7 @@ clone_clean_up(void **rock)
     struct cloneRock *cloneRock = (struct cloneRock *) *rock;
 
     if (cloneRock) {
+        DoOsdIncDec(cloneRock->osd_decHead);
 	osd_DestroyIncDec(cloneRock->osd_incHead);
 	osd_DestroyIncDec(cloneRock->osd_decHead);
         free(cloneRock);
@@ -6556,13 +6557,13 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 	    			sprintf(line, "Object %u.%u.%u.%u: linkcount wrong (%u instead of %u)",
 				    V_id(vol), vN, vd->uniquifier, tag,
 				    lc, localinst);
-	    		        rx_Write(call, line, strlen(line));
 				if (flag & SALVAGE_IGNORE_LINKCOUNTS ) {
                                     strcat(line,", ignored.\n");
                                 } else {
 				    strcat(line, "\n");
 			            errors++;
 				}
+	    		        rx_Write(call, line, strlen(line));
 			    }
 			    if (size != st.st_size) {
 	    		        sprintf(line, "Object %u.%u.%u.%u has wrong length %llu instead of %llu on local disk", 
@@ -6594,7 +6595,7 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 		    obj_data += size;
 		    code = read_osd_p_fileList(vol, vd, vN, &fl);
 		    if (code) {
-	    		sprintf(line, "Object %u.%u.%u: reading osd metadata failed.", 
+	    		sprintf(line, "File %u.%u.%u: reading osd metadata failed.", 
 				V_id(vol), vN, vd->uniquifier);
 	        	ino = VNDISK_GET_INO(vd);
 			if (ino && (flag & SALVAGE_UPDATE)) {
@@ -6625,7 +6626,7 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 			if (ino)
 			    single = 0;
 			if (!fl.osd_p_fileList_len) {
-	    		    sprintf(line, "Object %u.%u.%u: empty osd file list\n",
+	    		    sprintf(line, "File %u.%u.%u: empty osd file list\n",
 				V_id(vol), vN, vd->uniquifier);
 	    		    rx_Write(call, line, strlen(line));
 			    errors++;
@@ -6708,7 +6709,7 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 					    objsize = e.exam_u.e1.size;
 					    if (lc != instances) {
 	    				        sprintf(line, "Object %u.%u.%u.%u: linkcount wrong on %u (%u instead of %u)",
-						    V_id(vol), 
+						    (afs_uint32) (o->part_id & 0xffffffff),
 						    (afs_uint32) (o->obj_id & NAMEI_VNODEMASK), 
 						    (afs_uint32) (o->obj_id >> 32), 
 						    (afs_uint32) ((o->obj_id >> NAMEI_TAGSHIFT) & NAMEI_TAGMASK), 
@@ -6756,14 +6757,14 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 						    tlen = size;
 			      			if (f->flags & RESTORE_IN_PROGRESS) 
 	    				            sprintf(line, "Object %u.%u.%u.%u: being restored on %u (length %llu instead of %llu)",
-						    V_id(vol), 
+						    (afs_uint32) (o->part_id & 0xffffffff),
 						    (afs_uint32) (o->obj_id & NAMEI_VNODEMASK), 
 						    (afs_uint32) (o->obj_id >> 32), 
 						    (afs_uint32) ((o->obj_id >> NAMEI_TAGSHIFT) & NAMEI_TAGMASK), 
 						    o->osd_id, objsize, tlen);
 						else 
 	    				            sprintf(line, "Object %u.%u.%u.%u: has wrong length on %u (%llu instead of %llu)",
-						    V_id(vol), 
+						    (afs_uint32) (o->part_id & 0xffffffff),
 						    (afs_uint32) (o->obj_id & NAMEI_VNODEMASK), 
 						    (afs_uint32) (o->obj_id >> 32), 
 						    (afs_uint32) ((o->obj_id >> NAMEI_TAGSHIFT) & NAMEI_TAGMASK), 
