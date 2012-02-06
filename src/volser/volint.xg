@@ -68,6 +68,7 @@ statindex 16
 
 %#define     SALVAGE_UPDATE    2       /* for "vos salvage" */
 %#define     SALVAGE_DECREM    4       /* for "vos salvage" */
+%#define     SALVAGE_IGNORE_LINKCOUNTS 16 /* for "vos salvage" */
 
 %#define     EXTRACT_MD5       1       /* for "vos listobjects" */
 %#define     EXTRACT_SIZE      2       /* for "vos listobjects" */

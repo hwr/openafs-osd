@@ -6516,6 +6516,8 @@ SalvageOSD(struct cmd_syndesc *as, void *arock)
     afs_int32 instances = 0;
     afs_int32 localinst = 0;
     struct nvldbentry entry;
+    afs_int32 type[MAXTYPES] = {RWVOL, ROVOL, BACKVOL};
+    afs_int32 vtype;
 
     vid = vsu_GetVolumeID(as->parms[0].items->data, cstruct, &err);
     if (!vid) {
@@ -6528,11 +6530,38 @@ SalvageOSD(struct cmd_syndesc *as, void *arock)
 	flags |= SALVAGE_UPDATE;
     if (as->parms[3].items)  		/* decrement  */
 	flags |= SALVAGE_DECREM;
-    code = ubik_VL_SetLock(cstruct, 0, vid, RWVOL, VLOP_SALVAGE);
+    if (as->parms[4].items)             /* ignore linkcounts  */
+	flags |= SALVAGE_IGNORE_LINKCOUNTS;
+    if ((flags & SALVAGE_IGNORE_LINKCOUNTS) && (flags & SALVAGE_DECREM)) {
+        fprintf(stderr,"vos salvage: -decrement and -ignorelinkcounts are mutually exclusive.\n");
+        return (1);
+    }
+
+    code = VLDB_GetEntryByID(vid, -1, &entry);
+    if (code) {
+	fprintf(STDERR,
+	    "Could not fetch the entry for volume number %lu from VLDB \n",
+		(unsigned long)(vid));
+	return (code);
+    }
+    for (i=0; i<MAXTYPES; i++) {
+	vtype = type[i];
+	if (entry.volumeId[i] == vid)
+	    break;
+    }
+    if (i != 0)	{	/* Not RWVOL */
+	if (flags & (SALVAGE_UPDATE | SALVAGE_DECREM)) {
+	    fprintf(STDERR,
+            "Only RW-volumes can be salvaged with -update or -decr\n");
+            return EINVAL;
+	}
+    }
+	
+    code = ubik_VL_SetLock(cstruct, 0, vid, vtype, VLOP_SALVAGE);
     if (code) {
 	if (code == 363542) {
 	    /* Old vldebserver doesn't understand VLOP_SALVAGE, use VLOP_DUMP instead */
-    	    code = ubik_VL_SetLock(cstruct, 0, vid, RWVOL, VLOP_DUMP);
+    	    code = ubik_VL_SetLock(cstruct, 0, vid, vtype, VLOP_DUMP);
 	}
 	if (code) {
 	    fprintf(STDERR,
@@ -6540,14 +6569,6 @@ SalvageOSD(struct cmd_syndesc *as, void *arock)
 		    (unsigned long)(vid));
 	    return (code);
 	}
-    }
-	
-    code = VLDB_GetEntryByID(vid, -1, &entry);
-    if (code) {
-	fprintf(STDERR,
-	    "Could not fetch the entry for volume number %lu from VLDB \n",
-		(unsigned long)(vid));
-	return (code);
     }
 	
     for (j=0; j<entry.nServers; j++) {
@@ -6577,15 +6598,15 @@ SalvageOSD(struct cmd_syndesc *as, void *arock)
 		localinst++;
 	}
     }
-    if (as->parms[4].items) { 		/* instances  */
-        code = util_GetInt32(as->parms[4].items->data, &i);
+    if (as->parms[5].items) { 		/* instances  */
+        code = util_GetInt32(as->parms[5].items->data, &i);
 	if (i != instances) 
 	    fprintf(stderr,"Warning VLDB knows of %u global instances, not %u\n",
 		instances, i);
 	instances = i;
     } 
-    if (as->parms[5].items) {		/* localinst  */
-        code = util_GetInt32(as->parms[5].items->data, &i);
+    if (as->parms[6].items) {		/* localinst  */
+        code = util_GetInt32(as->parms[6].items->data, &i);
 	if (i != localinst) 
 	    fprintf(stderr,"Warning VLDB knows of %u local instances, not %u\n",
 		localinst, i);
@@ -7563,6 +7584,7 @@ main(int argc, char **argv)
     cmd_AddParm(ts, "-server", CMD_SINGLE, CMD_OPTIONAL, "machine name");
     cmd_AddParm(ts, "-update", CMD_FLAG, CMD_OPTIONAL, "allow volume update");
     cmd_AddParm(ts, "-decrement", CMD_FLAG, CMD_OPTIONAL, "allow decrement of too high link counts");
+    cmd_AddParm(ts, "-ignorelinkcounts", CMD_FLAG, CMD_OPTIONAL, "ignore linkcounts when updating the volume. Mutually exclusive with -decrement.");
     cmd_AddParm(ts, "-instances", CMD_SINGLE, CMD_OPTIONAL, "global number of volume instances");
     cmd_AddParm(ts, "-localinst", CMD_SINGLE, CMD_OPTIONAL, "number of volume instances in RW-partition");
     COMMONPARMS;
