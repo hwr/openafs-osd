@@ -122,6 +122,7 @@
 #include <afs/errors.h>
 #include <afs/ihandle.h>
 #include "rxosd.h"
+#include "rxosd_hsm.h"
 #include <afs/vnode.h>
 #include <afs/volume.h>
 #include <rx/rx.h>
@@ -247,17 +248,15 @@ int HSM = 1;
 int HSM = 0;
 #endif
 
-#ifdef AFS_HPSS_SUPPORT
-extern afs_int32 authenticate_for_hpss(char *principal, char *keytab);
-extern char *hpssPath;
-extern char *hpssMeta;
-extern afs_int32 hpssDev;
-extern struct ih_posix_ops ih_hpss_ops;
-extern struct ih_posix_ops ih_namei_ops;
+struct hsm_auth_ops *auth_ops = NULL;
+int withHPSS = 0;
+int dcache = 0;
+char *hsmPath = NULL;
+char *hsmMeta = NULL;
+extern afs_int32 hsmDev;
 char *principal = NULL;
 char *keytab = NULL;
 int dontTrustHPSS = 0;
-#endif
 
 struct MHhost {
     struct MHhost *next;
@@ -632,10 +631,7 @@ struct afsconf_dir *confDir = 0;
 #define	NOTACTIVECALL	0
 #define	ACTIVECALL	1
 
-#ifdef AFS_RXOSD_SPECIAL
 extern struct ih_posix_ops *ih_hsm_opsPtr;
-#endif /* AFS_RXOSD_SPECIAL */
-
 extern afs_int32 dataVersionHigh;
 static void     FiveMinuteCheckLWP();
 static void     CheckFetchProc();
@@ -1016,24 +1012,14 @@ afs_int32 CheckMount(char *partname)
     while ((mntent = getmntent(mfd))) {
 	if (strcmp(mntent->mnt_dir, partname) == 0) {
 	    endmntent(mfd);
-#ifdef AFS_HPSS_SUPPORT
-            if (hpssMeta && hpssDev == volutil_GetPartitionID(partname)) {
+            if (ih_hsm_opsPtr && hsmMeta 
+	      && hsmDev == volutil_GetPartitionID(partname)) {
                 struct afs_stat stat;
-                if (afs_stat(hpssMeta, &stat) <0) {
+                if (afs_stat(hsmMeta, &stat) <0)
                     return ENOENT;
-                }
-		if (hpssPath != hpssMeta) { /* temporarily for testing */
-                if ((ih_hpss_ops.stat64)(hpssPath, &stat) <0) {
-/*		    Log("HPSS path %s not found, proceeding with metadata partition %s also for data\n", 
-			hpssPath, hpssMeta);
-			hpssPath = hpssMeta;
-			ih_hsm_opsPtr = &ih_namei_ops; */
+                if ((ih_hsm_opsPtr->stat64)(hsmPath, &stat) <0) 
                     return ENOENT;
-                } else
-		    ih_hsm_opsPtr = &ih_hpss_ops;
-		}
             }
-#endif
 	    return 0;
 	}
     }
@@ -1185,25 +1171,22 @@ FiveMinuteCheckLWP()
 			char *p;
 			p = volutil_PartitionName_r(e->t.etype_u.osd.lun, 
 				partname, 16);
-#ifdef AFS_HPSS_SUPPORT
-			code = authenticate_for_hpss(principal, keytab);
-			if (code) {
-			    ViceLog(0,("authenticate_for_hpss returns %d\n", code));
+			if (auth_ops) {
+			    code = (auth_ops->authenticate)(principal, keytab);
+			    if (code)
+			        ViceLog(0,("authenticate_for_hpss returns %d\n", code));
 			}
-			if (hpssPath && e->t.etype_u.osd.flags & OSDDB_ARCHIVAL)
-			    hpssDev = e->t.etype_u.osd.lun;
-#endif
+			if (hsmPath && e->t.etype_u.osd.flags & OSDDB_ARCHIVAL)
+			    hsmDev = e->t.etype_u.osd.lun;
 			code = CheckMount(partname);
 			if (!code) { 
-#ifdef AFS_HPSS_SUPPORT
-                            if (hpssDev == e->t.etype_u.osd.lun)
+                            if (hsmDev == e->t.etype_u.osd.lun)
 #if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
-                                code = (ih_hsm_opsPtr->statvfs)(hpssPath, &statbuf);
+                                code = (ih_hsm_opsPtr->statvfs)(hsmPath, &statbuf);
 #else
-                                code = (ih_hsm_opsPtr->statfs)(hpssPath, &statbuf);
+                                code = (ih_hsm_opsPtr->statfs)(hsmPath, &statbuf);
 #endif
                             else
-#endif /* AFS_HPSS_SUPPORT */
 #if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
     			        code = afs_statvfs(p, &statbuf);
 #else
@@ -1326,16 +1309,15 @@ StartFetch()
                possible contention for any sockets being
                used.*/
             close(i);
-#ifdef AFS_HPSS_SUPPORT
-	(void) execlp(AFSDIR_SERVER_RECALL_MIGRATED_FILE_FILEPATH,
+	if (withHPSS)
+	    (void) execlp(AFSDIR_SERVER_RECALL_MIGRATED_FILE_FILEPATH,
 		      AFSDIR_RECALL_MIGRATED_FILE_FILE,
 		      "-h", principal, keytab,
                       name.n_path, (char *) 0);
-#else
-	(void) execlp(AFSDIR_SERVER_RECALL_MIGRATED_FILE_FILEPATH,
+	else
+	    (void) execlp(AFSDIR_SERVER_RECALL_MIGRATED_FILE_FILEPATH,
 		      AFSDIR_RECALL_MIGRATED_FILE_FILE,
                       name.n_path, (char *) 0);
-#endif
 	ViceLog(0,("StartFetch: execv failed\n"));
 	exit(-1);
     }   
@@ -1720,12 +1702,8 @@ restart:
 				namei_t name;
 				
 				namei_HandleToName(&name, f->oh->ih);
-#ifdef AFS_RXOSD_SPECIAL
 				tfd = (f->oh->ih->ih_ops->open)(name.n_path, 
-								O_RDONLY, 0666);
-#else
-				tfd = open(name.n_path, O_RDONLY, 0666);
-#endif
+								O_RDONLY, 0666, 0);
 				if (tfd >= 0) 
 				    fd = ih_fakeopen(f->oh->ih, tfd);
 			    }
@@ -2760,10 +2738,11 @@ SRXOSD_bulkincdec(struct rx_call *call, struct osd_incdecList *list)
 	    code = EINVAL;
 	    goto finis;
 	}
-	if (part_id != otP->part_id) {
+	if (part_id != otP->part_id) {	/* initialize part_id */
 	    if (lh)
 		oh_release(lh);
 	    part_id = otP->part_id;
+	    vid = (afs_uint32)(part_id & 0xffffffff);
 	    getlinkhandle(&lh, part_id);
             if (!lh) {
                 ViceLog(0,("bulkincdec: oh_init failed.\n"));
@@ -3090,11 +3069,7 @@ int examine(struct rx_call *call, t10rock *rock, struct oparmT10 *o,
     h.ih_dev = o->part_id >> RXOSD_LUNSHIFT;
     h.ih_ino = o->obj_id;
     namei_HandleToName(&name, &h);
-#ifdef AFS_RXOSD_SPECIAL
     result = h.ih_ops->stat64(name.n_path, &tstat);
-#else
-    result = afs_stat(name.n_path, &tstat);
-#endif
     if (result < 0) {
         ViceLog(0,("examine: stat64 failed for %s\n",
 		sprint_oparmT10(o, string, sizeof(string))));
@@ -3104,20 +3079,9 @@ int examine(struct rx_call *call, t10rock *rock, struct oparmT10 *o,
     if ((mask & WANTS_SIZE) && sizep)
         *sizep = tstat.st_size;
     if ((mask & WANTS_HSM_STATUS) && statusp) {
-#ifdef AFS_RXOSD_SPECIAL
 	if (h.ih_ops->stat_tapecopies) {
 	    result = h.ih_ops->stat_tapecopies(name.n_path, statusp, sizep);
-#ifdef AFS_HPSS_SUPPORT
-	    if (dontTrustHPSS) {
-		if (*statusp == 'p')
-		    *statusp = 'P';
-		if (*statusp == 'm')
-		    *statusp = 'M';
-	    }
-#endif
-	} else
-#endif
-	{
+	} else {
 	    char input[100];
 	    *statusp = 0;
 #ifdef AFS_TSM_HSM_ENV
@@ -4144,11 +4108,7 @@ readPS(struct rx_call *call, t10rock *rock, struct oparmT10 * o,
         inode = o->obj_id;
     }
     namei_HandleToName(&name, oh->ih);
-#ifdef AFS_RXOSD_SPECIAL
     if ((oh->ih->ih_ops->stat64)(name.n_path, &tstat) < 0) {
-#else
-    if (stat64(name.n_path, &tstat) < 0) {
-#endif
         ViceLog(0,("readPS: stat64 failed for %u.%u.%u tag %d\n",
                 vid, (afs_uint32)(o->obj_id & RXOSD_VNODEMASK),
                 (afs_uint32)(o->obj_id >> RXOSD_UNIQUESHIFT),
@@ -4203,20 +4163,12 @@ readPS(struct rx_call *call, t10rock *rock, struct oparmT10 * o,
 		mystripe, toffset, bytesToXfer));
     }
     if (bytesToXfer > 0) {
-#ifdef AFS_HPSS_SUPPORT
-	if (HSM || oh->ih->ih_dev == hpssDev) 
-#else
-	if (HSM)
-#endif
+	if (HSM || oh->ih->ih_dev == hsmDev) 
 	    fdP = IH_REOPEN(oh->ih);
 	else
             fdP = IH_OPEN(oh->ih);
         if (!fdP) {
-#ifdef AFS_HPSS_SUPPORT
-	    if (HSM || oh->ih->ih_dev == hpssDev) {
-#else
-	    if (HSM) {
-#endif
+	    if (HSM || oh->ih->ih_dev == hsmDev) {
 		afs_uint32 user = 1; /* assume it's admin */
 		struct osd_segm_descList list;
 		list.osd_segm_descList_val = 0;
@@ -4363,11 +4315,7 @@ readPS(struct rx_call *call, t10rock *rock, struct oparmT10 * o,
 finis:
     if (fdP) {
 	unlock_file(fdP, mystripe);
-#ifdef AFS_HPSS_SUPPORT
-	if (HSM || oh->ih->ih_dev == hpssDev) {
-#else
-	if (HSM) {
-#endif
+	if (HSM || oh->ih->ih_dev == hsmDev) {
             char cmd[100];
 	    FDH_REALLYCLOSE(fdP);
             ViceLog(0,("HSM migrate %s\n", name.n_path));
@@ -4981,11 +4929,7 @@ md5sum(struct rx_call *call, struct oparmT10 *o, struct osd_cksum *md5)
 	goto finis;
     }
     namei_HandleToName(&name, oh->ih);
-#ifdef AFS_RXOSD_SPECIAL
     if ((oh->ih->ih_ops->stat64)(name.n_path, &tstat) < 0) {
-#else
-    if (stat64(name.n_path, &tstat) < 0) {
-#endif
         ViceLog(0,("md5sum: stat64 failed for %s %s\n",
 		sprint_oparmT10(o, input, sizeof(input)),
 		name.n_path));
@@ -4998,12 +4942,10 @@ md5sum(struct rx_call *call, struct oparmT10 *o, struct osd_cksum *md5)
     md5->o.ometa_u.t.obj_id = o->obj_id;
     md5->o.ometa_u.t.part_id = o->part_id;
     md5->c.type = 1;
-#ifdef AFS_HPSS_SUPPORT
-    if (oh->ih->ih_dev == hpssDev) {
+    if (oh->ih->ih_dev == hsmDev) {
         sprintf(input, MD5SUM_HPSS, name.n_path);
     } else
-#endif
-    sprintf(input, MD5SUM, name.n_path);
+        sprintf(input, MD5SUM, name.n_path);
     oh_release(oh);
     code = Command(input, CHK_STDOUT | CHK_STDERR, check_md5sum,
 		   (void *)&md5->c.cksum_u.md5);
@@ -5167,13 +5109,12 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
 	code = EIO;
 	goto bad;
     }
-#ifdef AFS_HPSS_SUPPORT
     /* 
      * Before we start reading from other OSDs look whether this file
      * couldn't be archived directly into HPSS by the OSD it lives on.
      * This is possible only if the object on the OSD contains the whole file.
      */
-    if (oh->ih->ih_dev == hpssDev) {
+    if (oh->ih->ih_dev == hsmDev) {
 	/* Only possible if file is a single object (not segmented, not striped) */
 	if (list->osd_segm_descList_len == 1 
 	  && list->osd_segm_descList_val[0].objList.osd_obj_descList_len == 1) {
@@ -5210,7 +5151,6 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
 	    }
 	}
     }
-#endif /* AFS_HPSS_SUPPORT */    
     lock_file(fdP, LOCK_EX, 0);
     gettimeofday(&start, &tz);
     MD5_Init(&md5);
@@ -5376,11 +5316,7 @@ retry:
 	        output->c.cksum_u.md5[2], output->c.cksum_u.md5[3],
 		output->size, datarate));
 done:
-#ifdef AFS_HPSS_SUPPORT
-    if (HSM || oh->ih->ih_dev == hpssDev) {
-#else
-    if (HSM) {
-#endif
+    if (HSM || oh->ih->ih_dev == hsmDev) {
         namei_HandleToName(&name, oh->ih);
         ViceLog(0,("HSM migrate %s\n", name.n_path));
     }
@@ -5574,24 +5510,18 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
     vid = o->part_id & 0xffffffff;
     lun = (afs_uint64)(o->part_id >> 32);
     oh = oh_init(o->part_id, o->obj_id);
-#ifdef AFS_HPSS_SUPPORT
-    if (HSM || oh->ih->ih_dev == hpssDev) {
-#else
-    if (HSM) {
-#endif
+    if (HSM || oh->ih->ih_dev == hsmDev) {
 	if (!call) /* only try to open when restore_archive was called internally */
             fd = IH_REOPEN(oh->ih);
     } else
         fd = IH_OPEN(oh->ih);
     if (!fd) {
-	int hpssFile = 0;
-#ifdef AFS_HPSS_SUPPORT
-	if (oh->ih->ih_dev == hpssDev)
-	    hpssFile = 1;
-#endif
+	int hsmFile = 0;
+	if (oh->ih->ih_dev == hsmDev)
+	    hsmFile = 1;
 	oh_release(oh);
         oh = 0;
-        if (HSM || hpssFile)
+        if (HSM || hsmFile)
             code = FindInFetchqueue(call, o, user, list, flag);
         else {
             ViceLog(0,("restore_archive: couldn't open %s\n",
@@ -5609,13 +5539,12 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 	    goto bad;
 	}
     }
-#ifdef AFS_HPSS_SUPPORT
     /*
      * Before we start reading from other OSDs look whether this file
      * couldn't be archived directly into HPSS by the OSD it lives on.
      * This is possible only if the object on the OSD contains the whole file.
      */
-    if (oh->ih->ih_dev == hpssDev) {
+    if (oh->ih->ih_dev == hsmDev) {
 	/* Only possible if file is a single object (not segmented, not striped) */
 	if (list->osd_segm_descList_len == 1 
 	  && list->osd_segm_descList_val[0].objList.osd_obj_descList_len == 1) {
@@ -5645,7 +5574,6 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 	    }
 	}
     }
-#endif
     if (output && !(flag & NO_CHECKSUM))
         MD5_Init(&md5);
     for (i=0; i<list->osd_segm_descList_len; i++) {
@@ -5778,11 +5706,7 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
     }
 
 done:
-#ifdef AFS_HPSS_SUPPORT
-    if (call && (HSM || oh->ih->ih_dev == hpssDev))
-#else
-    if (HSM && call)
-#endif
+    if (call && (HSM || oh->ih->ih_dev == hsmDev))
 	DeleteFromFetchq(o);
 
 bad:
@@ -5797,11 +5721,7 @@ bad:
         FDH_REALLYCLOSE(fd);
     }
     if (oh)  {
-#ifdef AFS_HPSS_SUPPORT
-        if (HSM || oh->ih->ih_dev == hpssDev) {
-#else
-        if (HSM) {
-#endif
+        if (HSM || oh->ih->ih_dev == hsmDev) {
             namei_t name;
             char cmd[100];
             namei_HandleToName(&name, oh->ih);
@@ -6266,17 +6186,10 @@ Variable(struct rx_call *call, afs_int32 cmd, char *name,
 	} else if (!strcmp(name, "oldRxosds")) {
 	    *result = oldRxosds;
 	    code = 0;
-#ifdef AFS_HPSS_SUPPORT
-	} else if (!strcmp(name, "dontTrustHPSS")) {
-	    *result = dontTrustHPSS;
-	    code = 0;
-#endif
-#ifdef AFS_RXOSD_SPECIAL
 	} else if (!strcmp(name, "log_open_close")) {
 	    extern int log_open_close;
 	    *result = log_open_close;
 	    code = 0;
-#endif
 	} else
 	    code = ENOENT;
     } else if (cmd == 2) {					/* set */
@@ -6327,19 +6240,11 @@ Variable(struct rx_call *call, afs_int32 cmd, char *name,
 	    oldRxosds = value;
 	    *result = oldRxosds;
 	    code = 0;
-#ifdef AFS_HPSS_SUPPORT
-	} else if (!strcmp(name, "dontTrustHPSS")) {
-	    dontTrustHPSS = value;
-	    *result = dontTrustHPSS;
-	    code = 0;
-#endif
-#ifdef AFS_RXOSD_SPECIAL
 	} else if (!strcmp(name, "log_open_close")) {
 	    extern int log_open_close;
 	    log_open_close = value;
 	    *result = log_open_close;
 	    code = 0;
-#endif
 	} else
 	    code = ENOENT;
     }
@@ -6373,14 +6278,8 @@ char ExportedVariables[] =
     EXP_VAR_SEPARATOR
     "oldRxosds"
     EXP_VAR_SEPARATOR
-#ifdef AFS_HPSS_SUPPORT
-    "dontTrustHPSS"
-    EXP_VAR_SEPARATOR
-#endif
-#ifdef AFS_RXOSD_SPECIAL
     "log_open_close"
     EXP_VAR_SEPARATOR
-#endif
     "";
     
 /***************************************************************************
@@ -6635,7 +6534,6 @@ write_to_hpss(struct rx_call *call, struct oparmT10 *o,
 	      struct osd_segm_descList *list, struct osd_cksum *output)
 {
     afs_int32 code = EIO;
-#ifdef AFS_HPSS_SUPPORT
     struct o_handle *oh = 0;
     struct o_handle *ohin = 0;
     FdHandle_t *fd = 0;
@@ -6669,7 +6567,7 @@ write_to_hpss(struct rx_call *call, struct oparmT10 *o,
     oin.part_id = odsc->o.ometa_u.t.part_id;
     oin.obj_id = odsc->o.ometa_u.t.obj_id;
     vid = o->part_id & 0xffffffff;
-    tpart_id = ((afs_uint64)hpssDev << 32) | vid;
+    tpart_id = ((afs_uint64)hsmDev << 32) | vid;
     oh = oh_init(tpart_id, o->obj_id);
     if (oh == NULL) {
 	ViceLog(0,("write_to_hpss: oh_init failed for %s\n",
@@ -6783,7 +6681,6 @@ bad:
     }
     oh_release(ohin);
 finis:
-#endif
     return code;
 } /* SRXOSD_write_to_hpss */
 
@@ -6867,7 +6764,6 @@ read_from_hpss(struct rx_call *call, struct oparmT10 *o,
 	       struct osd_cksum *output)
 {
     afs_int32 code = EIO;
-#ifdef AFS_HPSS_SUPPORT
     struct o_handle *oh = 0, *ohout = 0;
     FdHandle_t *fd = 0, *fdout = 0;
     Inode inode = 0;
@@ -6898,7 +6794,7 @@ read_from_hpss(struct rx_call *call, struct oparmT10 *o,
     inode = o->obj_id;
     vid = o->part_id & 0xffffffff;
     lun = (afs_uint64)(o->part_id >> 32);
-    tpart_id = ((afs_uint64)hpssDev << 32) | vid;
+    tpart_id = ((afs_uint64)hsmDev << 32) | vid;
     if (list->osd_segm_descList_len > 1
       || list->osd_segm_descList_val[0].objList.osd_obj_descList_len != 1) {
         ViceLog(0,("read_from_hpss: output file %s has more than 1 object, aborting\n",
@@ -7019,7 +6915,6 @@ finis:
     end_sec = time(0);
     ViceLog(1,("read_from_hpss for %s returns %d after %d seconds\n", 
 	       sprint_oparmT10(o, string, sizeof(string)), code, end_sec - start_sec));
-#endif
     return code;
 } /* SRXOSD_read_from_hpss */
 
@@ -7336,6 +7231,7 @@ get_key(char *arock, afs_int32 akvno, char *akey)
 
 main(int argc, char *argv[]) 
 {
+    afs_int32 code;
     struct rx_securityClass *(sc[4]);
     struct rx_service *service;
     
@@ -7382,40 +7278,58 @@ main(int argc, char *argv[])
             else
                 udpBufSize = bufSize;
 	}
-#ifdef AFS_DCACHE_SUPPORT
-	else if (!strcmp(argv[i], "-dcache")) {
-	    dcache = 1;
-	    ih_hsm_opsPtr = &ih_dcache_ops;
-	}
 	else if (!strcmp(argv[i], "-dcap_url")) {
 	    ++i;
-	    dcap_url = malloc(strlen(argv[i]) + 10);
-	    sprintf(dcap_url, "dcap:///%s", argv[i]);
+	    hsmPath = malloc(strlen(argv[i]) + 10);
+	    sprintf(hsmPath, "dcap:///%s", argv[i]);
 	    dcache = 1;
 	}
-#endif
-#ifdef AFS_HPSS_SUPPORT
 	else if (!strcmp(argv[i], "-hpss_path")) {
 	    ++i;
-	    hpssPath = argv[i];
+	    hsmPath = argv[i];
+	    withHPSS = 1;
 	}
         else if (!strcmp(argv[i], "-hpss_meta")) {
             ++i;
-            hpssMeta = argv[i];
-	    hpssDev = volutil_GetPartitionID(hpssMeta);
-	    ih_hsm_opsPtr = &ih_hpss_ops;
+            hsmMeta = argv[i];
+	    hsmDev = volutil_GetPartitionID(hsmMeta);
+	    withHPSS = 1;
         }
 	else if (!strcmp(argv[i], "-hpss_principal")) {
 	    ++i;
 	    principal = argv[i];
+	    withHPSS = 1;
 	}
 	else if (!strcmp(argv[i], "-hpss_keytab")) {
 	    ++i;
 	    keytab = argv[i];
+	    withHPSS = 1;
 	}
-#endif
         else
             printf("Unsupported option: %s\n", argv[i]);
+    }
+    if (withHPSS || dcache) {		/* load support from shared library */
+	struct hsm_interface_input input;
+	struct hsm_interface_output output;
+	struct rxosd_var rxosd_var;
+	
+	rxosd_var.pathOrUrl = hsmPath;
+	rxosd_var.principal = principal;
+	rxosd_var.keytab = keytab;
+	rxosd_var.lastAuth = &hpssLastAuth;
+	input.var = &rxosd_var;
+	output.opsPtr = &ih_hsm_opsPtr;
+	output.authOps = &auth_ops;
+	    
+	if (withHPSS)
+	    code = load_libafshsm(HPSS_INTERFACE, "init_rxosd_hpss", &input, &output);
+	else
+	    code = load_libafshsm(DCACHE_INTERFACE, "init_rxosd_dcache", &input, &output);
+	if (code) {
+            ViceLog(0, ("Loading libafshpss.so failed with code %d, aborting\n",
+                    code));
+            return -1;
+        }
     }
 
     memset(IsActive, 0, sizeof(IsActive));
@@ -7444,12 +7358,12 @@ main(int argc, char *argv[])
     if (!service)
 	Quit("Failed to initialize RX");
 #ifdef notdef
-    /* Alternative port 7017 */
-#define OSD_SERVICE_ID_7017 901
-    service = rx_NewServiceHost(HostAddr_NBO, htons(7017), OSD_SERVICE_ID_7017,
-				 "OSD-7017", sc, 4, RXOSD_ExecuteRequest);
+    /* Alternative port 7006 */
+#define OSD_SERVICE_ID_7006 901
+    service = rx_NewServiceHost(HostAddr_NBO, htons(7006), OSD_SERVICE_ID_7006,
+				 "OSD-7006", sc, 4, RXOSD_ExecuteRequest);
     if (!service)
-	ViceLog(0,("Failed to initialize RX on port 7017"));
+	ViceLog(0,("Failed to initialize RX on port 7006"));
 #endif
 	
     rx_SetMinProcs(service, 2);

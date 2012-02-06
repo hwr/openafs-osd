@@ -856,8 +856,6 @@ enable_supergroups
 enable_bitmap_later
 enable_object_storage
 enable_vicep_access
-enable_dcache_hsm
-enable_hpss_hsm
 enable_unix_sockets
 enable_tivoli_tsm
 enable_pthreaded_ubik
@@ -1550,9 +1548,6 @@ Optional Features:
   --enable-object-storage enable use of object storage for AFS files
   --enable-vicep-access   enable direct client access to visible fileserver
                           partitions (experimental)
-  --enable-dcache-hsm     enable use of DCACHE as HSM system for object
-                          storage
-  --enable-hpss-hsm       enable use of HPSS as HSM system for object storage
   --disable-unix-sockets  disable use of unix domain sockets for fssync
                           (defaults to enabled)
   --enable-tivoli-tsm     enable use of the Tivoli TSM API libraries for butc
@@ -4797,20 +4792,6 @@ if test "${enable_vicep_access+set}" = set; then
   enableval=$enable_vicep_access;
 else
   enable_vicep_access="no"
-fi
-
-# Check whether --enable-dcache-hsm was given.
-if test "${enable_dcache_hsm+set}" = set; then
-  enableval=$enable_dcache_hsm;
-else
-  enable_dcache_hsm="no"
-fi
-
-# Check whether --enable-hpss-hsm was given.
-if test "${enable_hpss_hsm+set}" = set; then
-  enableval=$enable_hpss_hsm;
-else
-  enable_hpss_hsm="no"
 fi
 
 # Check whether --enable-unix-sockets was given.
@@ -20999,19 +20980,6 @@ _ACEOF
 
 fi
 
-if test "$enable_dcache_hsm" = "yes"; then
-
-cat >>confdefs.h <<\_ACEOF
-#define AFS_RXOSD_SPECIAL 1
-_ACEOF
-
-
-cat >>confdefs.h <<\_ACEOF
-#define AFS_DCACHE_SUPPORT 1
-_ACEOF
-
-fi
-
 if test "x${with_dcache_path}" != "x"; then
         HSM_LIB=${with_dcache_path}/libdcap.a
         HSM_INC=-I${with_dcache_path}
@@ -21022,19 +20990,6 @@ if test "x${with_hpss_path}" != "x"; then
 fi
 
 
-
-if test "$enable_hpss_hsm" = "yes"; then
-
-cat >>confdefs.h <<\_ACEOF
-#define AFS_RXOSD_SPECIAL 1
-_ACEOF
-
-
-cat >>confdefs.h <<\_ACEOF
-#define AFS_HPSS_SUPPORT 1
-_ACEOF
-
-fi
 
 if test "x${with_version_string}" != "x"; then
         VERSION=${with_version_string}

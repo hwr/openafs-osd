@@ -6,8 +6,6 @@
 #
 srcdir=@srcdir@
 include @TOP_OBJDIR@/src/config/Makefile.config
-HSM_LIB=@HSM_LIB@
-HSM_INC=@HSM_INC@
 INSTALL = @INSTALL@ 
 
 VICED=../viced
@@ -27,7 +25,7 @@ CCRULE=${CC} ${CFLAGS} -c $?
 
 CLIENTOBJS=osd.o
 
-OSDOBJS=rxosd.o rxosd.ss.o rxosd.cs.o rxosd.xdr.o rxosd_hpss.o rxosd_dcache.o	
+OSDOBJS=rxosd.o rxosd.ss.o rxosd.cs.o rxosd.xdr.o libafshsm.o	
 
 LWPOBJS=lock.o threadname.o
 
@@ -44,13 +42,17 @@ LIBS=${TOP_LIBDIR}/libafsauthent.a ${TOP_LIBDIR}/libafsrpc.a ${TOP_LIBDIR}/util.
 source: rxosd.h rxosd.cs.c rxosd.xdr.c Krxosd.cs.c Krxosd.xdr.c \
 	${TOP_INCDIR}/afs/rxosd.h rxosd.xdr.o rxosd.cs.o
 
-all: rxosd Krxosd.cs.c Krxosd.xdr.c rxosd.h osd readabyte \
-		${TOP_INCDIR}/afs/rxosd.h  ${TOP_LIBDIR}/librxosd.a
+all:	${TOP_INCDIR}/afs/rxosd.h  ${TOP_INCDIR}/afs/rxosd_hsm.h \
+		rxosd Krxosd.cs.c Krxosd.xdr.c rxosd.h osd readabyte \
+		${TOP_LIBDIR}/librxosd.a
 
 
 dest: all
 
 ${TOP_INCDIR}/afs/rxosd.h: rxosd.h
+	${INSTALL} $? $@
+
+${TOP_INCDIR}/afs/rxosd_hsm.h: rxosd_hsm.h
 	${INSTALL} $? $@
 
 osd: osd.o rxosd.cs.o osddbuser.o policy_parser.o
@@ -59,13 +61,10 @@ osd: osd.o rxosd.cs.o osddbuser.o policy_parser.o
 	
 
 rxosd.o: rxosd.c
-	${CCRULE} ${HSM_INC} ${PNFS_OPT} -DBUILDING_RXOSD
+	${CCRULE} -DBUILDING_RXOSD
 
-rxosd_hpss.o: rxosd_hpss.c
-	${CCRULE} ${HSM_INC} ${PNFS_OPT}
-
-rxosd_dcache.o: rxosd_dcache.c
-	${CCRULE} ${HSM_INC} ${PNFS_OPT}
+libafshsm.o: libafshsm.c
+	${CCRULE}
 
 policy_parser.o: policies.tab.c
 	${CCRULE} -o policy_parser.o
@@ -123,7 +122,7 @@ ihandle.o: ${VOL}/ihandle.c
 	${CCRULE} -DBUILDING_RXOSD
 
 namei_ops.o: ${VOL}/namei_ops.c
-	${CCRULE} ${DCACHE_INC} ${PNFS_OPT} -DBUILDING_RXOSD
+	${CCRULE} ${DCACHE_INC} -DBUILDING_RXOSD
 
 osddb.h: ${OSDDBSRC}/osddb.xg
 	${RXGEN} -x -h -o $@ ${OSDDBSRC}/osddb.xg
@@ -174,33 +173,14 @@ rxosd.h: rxosd.xg
 	${RXGEN} -x -h -o $@ ${srcdir}/rxosd.xg
 
 rxosd: rxosd.h ${objects} ${LIBS}
-	${CC} ${LDFLAGS} -ldl -o rxosd ${objects} ${LIBS} ${MT_LIBS} ${XLIBS} \
-			${HSM_LIB}
+	${CC} ${LDFLAGS} -ldl -o rxosd ${objects} ${LIBS} ${MT_LIBS} ${XLIBS}
 
-readabyte.o: readabyte.c
-	${CCRULE} ${HSM_INC}
+readabyte.o: readabyte.c 
+	${CCRULE} -DBUILDING_RXOSD
 
-readabyte: readabyte.o
-	${CC} ${LDFLAGS} -ldl -o readabyte readabyte.o rxosd_hpss.o rxosd_dcache.o \
-			${LIBS} ${MT_LIBS} ${HSM_LIB}
-
-hpss_read.o: ${srcdir}/hpss_read.c
-	${CCRULE} ${HSM_INC}
-
-hpss_read: hpss_read.o
-	${CC} ${LDFLAGS} -o hpss_read hpss_read.o ../rxkad/md5.o ${LIBS} ${HSM_LIB}
-
-hpss_write.o: ${srcdir}/hpss_write.c
-	${CCRULE} ${HSM_INC} 
-
-hpss_write: hpss_write.o
-	${CC} ${LDFLAGS} -o hpss_write hpss_write.o ../rxkad/md5.o ${LIBS} ${HSM_LIB}
-
-hpss_tapeinfo.o: ${srcdir}/hpss_tapeinfo.c
-	${CCRULE} ${HSM_INC}
-
-hpss_tapeinfo: hpss_tapeinfo.o
-	${CC} ${LDFLAGS} -o hpss_tapeinfo hpss_tapeinfo.o ${LIBS} ${HSM_LIB}
+readabyte: readabyte.o libafshsm.o
+	${CC} ${LDFLAGS} -ldl -o readabyte readabyte.o libafshsm.o \
+			${LIBS} ${MT_LIBS}
 
 ${DEST}/root.server/usr/afs/bin/rxosd: rxosd  
 	${INSTALL} $? $@

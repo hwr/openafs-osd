@@ -107,16 +107,6 @@ AC_ARG_ENABLE([vicep-access],
         [enable direct client access to visible fileserver partitions (experimental)])],
     ,
     [enable_vicep_access="no"])
-AC_ARG_ENABLE([dcache-hsm],
-    [AS_HELP_STRING([--enable-dcache-hsm],
-        [enable use of DCACHE as HSM system for object storage])],
-    ,
-    [enable_dcache_hsm="no"])
-AC_ARG_ENABLE([hpss-hsm],
-    [AS_HELP_STRING([--enable-hpss-hsm],
-        [enable use of HPSS as HSM system for object storage])],
-    ,
-    [enable_hpss_hsm="no"])
 AC_ARG_ENABLE([unix-sockets],
     [AS_HELP_STRING([--disable-unix-sockets],
         [disable use of unix domain sockets for fssync (defaults to enabled)])],
@@ -1215,11 +1205,6 @@ if test "$enable_vicep_access" = "yes"; then
         AC_DEFINE(AFS_ENABLE_VICEP_ACCESS, 1, [define if client may access visible fileserver partitions directly (experimental)])
 fi
 
-if test "$enable_dcache_hsm" = "yes"; then
-        AC_DEFINE(AFS_RXOSD_SPECIAL, 1, [define to use interface specific I/O routines])
-        AC_DEFINE(AFS_DCACHE_SUPPORT, 1, [define to allow use of DCACHE as HSM system for object storage])
-fi
-
 if test "x${with_dcache_path}" != "x"; then
         HSM_LIB=${with_dcache_path}/libdcap.a
         HSM_INC=-I${with_dcache_path}
@@ -1230,11 +1215,6 @@ if test "x${with_hpss_path}" != "x"; then
 fi
 AC_SUBST(HSM_LIB)
 AC_SUBST(HSM_INC)
-
-if test "$enable_hpss_hsm" = "yes"; then
-        AC_DEFINE(AFS_RXOSD_SPECIAL, 1, [define to use interface specific I/O routines])
-        AC_DEFINE(AFS_HPSS_SUPPORT, 1, [define to allow use of HPSS as HSM system for object storage])
-fi
 
 if test "x${with_version_string}" != "x"; then
         VERSION=${with_version_string}

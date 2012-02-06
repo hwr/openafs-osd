@@ -254,42 +254,8 @@ typedef struct ih_init_params
  */
 #define FD_MAX_CACHESIZE (2000 - FD_HANDLE_SETASIDE)
 
-#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
-#include <dirent.h>
-struct ih_posix_ops {
-    int         (*open)(const char *, int, ...);
-    int         (*close)(int);
-    int         (*read)(int, void *, size_t);
-    ssize_t     (*readv)(int, const struct iovec *, int);
-    ssize_t     (*write)(int, const void *, size_t);
-    ssize_t     (*writev)(int, const struct iovec *, int);
-    afs_int64   (*lseek)(int, afs_int64, int);
-    int         (*fsync)(int);
-    int         (*unlink)(const char *);
-    int         (*mkdir)(const char *, mode_t);
-    int         (*rmdir)(const char *);
-    int         (*chmod)(const char *, mode_t);
-    int         (*chown)(const char *, uid_t, gid_t);
-    int         (*stat64)(char *, struct afs_stat *);
-    int         (*fstat64)(int, struct afs_stat *);
-    int         (*rename)(const char *, const char *);
-    DIR *       (*opendir)(const char *);
-    struct dirent * (*readdir)(DIR *);
-    int         (*closedir)(DIR *);
-    int         (*hardlink)(const char*, const char*);
-#if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
-    int         (*statvfs)(const char *, struct afs_statvfs *);
-#else
-    int         (*statfs)(const char *, struct afs_statfs *);
-#endif
-    int		(*ftruncate)(int, afs_int64);
-    ssize_t     (*pread)(int, void *, size_t, afs_foff_t);
-    ssize_t     (*pwrite)(int, const void *, size_t, afs_foff_t);
-    ssize_t     (*preadv)(int, const struct iovec *, int, afs_foff_t);
-    ssize_t     (*pwritev)(int, const struct iovec *, int, afs_foff_t);
-    int		(*stat_tapecopies)(const char *path, afs_int32 *level,
-				   afs_sfsize_t *size);
-};
+#if defined(BUILDING_RXOSD)
+#include "ihandle_rxosd.h"
 #endif
 
 /* On modern platforms, this is sized higher than the note implies.
@@ -315,7 +281,7 @@ typedef struct IHandle_s {
     struct FdHandle_s *ih_fdtail;
     struct IHandle_s *ih_next;	/* Links for avail list/hash chains */
     struct IHandle_s *ih_prev;
-#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+#if defined(BUILDING_RXOSD)
     struct ih_posix_ops *ih_ops;
 #endif
 } IHandle_t;
@@ -326,9 +292,6 @@ typedef struct IHandle_s {
 #define IH_LINKTABLE_V1                 0x100
 #define IH_LINKTABLE_V2                 0x200
 #define IH_LINKTABLE_VERSIONS           0x300
-#ifdef AFS_DCACHE_SUPPORT
-#define IH_DCACHE_FILE                  0x800
-#endif
 
 /* Hash function for inode handles */
 #define I_HANDLE_HASH_SIZE	2048	/* power of 2 */
@@ -592,7 +555,7 @@ extern Inode ih_icreate(IHandle_t * ih, int dev, char *part, Inode nI, int p1,
 #define OS_SIZE(FD) ih_size(FD)
 extern afs_sfsize_t ih_size(FD_t);
 
-#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+#if defined(BUILDING_RXOSD)
 #define FDH_READ(H, B, S) ((H)->fd_ih->ih_ops->read)((H)->fd_fd, B, S)
 #define FDH_READV(H, I, N) ((H)->fd_ih->ih_ops->readv)((H)->fd_fd, I, N)
 #define FDH_WRITE(H, B, S) ((H)->fd_ih->ih_ops->write)((H)->fd_fd, B, S)
@@ -608,7 +571,7 @@ extern afs_sfsize_t ih_size(FD_t);
 #define FDH_PREADV(H, I, N, O) ((H)->fd_ih->ih_ops->preadv)((H)->fd_fd, I, N, O)
 #define FDH_PWRITEV(H, I, N, O) ((H)->fd_ih->ih_ops->pwritev)((H)->fd_fd, I, N, O)
 #endif
-#else /* defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL) */
+#else /* BUILDING_RXOSD */
 #ifndef AFS_NT40_ENV
 #define FDH_READV(H, I, N) readv((H)->fd_fd, I, N)
 #define FDH_WRITEV(H, I, N) writev((H)->fd_fd, I, N)
@@ -633,10 +596,11 @@ extern afs_sfsize_t ih_size(FD_t);
 #define IH_READDIR(D, H) readdir(D)
 #define IH_CLOSEDIR(D, H) closedir(D)
 #define FDH_TRUNC(H, L) OS_TRUNC((H)->fd_fd, L)
-#endif /* defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL) */
+#endif /* BUILDING_RXOSD */
 
 #define FDH_SYNC(H) ((H->fd_ih!=NULL) ? ( H->fd_ih->ih_synced = 1) - 1 : 1)
 #define FDH_SIZE(H) OS_SIZE((H)->fd_fd)
+
 #if defined(BUILDING_RXOSD)
 #define FDH_LOCKFILE(H, O) rxosdlock(H, LOCK_EX)
 #define FDH_UNLOCKFILE(H, O) rxosdlock(H, LOCK_UN)

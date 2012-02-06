@@ -650,6 +650,14 @@ shlibafsosd: osddb vol volser fsint viced
 		echo Not building shared libafsosd for ${SYS_NAME} ;; \
 	esac
 
+shlibafshpss:  vol rxosd util
+	+case ${SYS_NAME} in \
+	*linux*) \
+	${COMPILE_PART1} shlibafshpss ${COMPILE_PART2} ;; \
+	*) \
+		echo Not building shared libafshpss for ${SYS_NAME} ;; \
+	esac
+
 kopenafs: config sys
 	+${COMPILE_PART1} kopenafs ${COMPILE_PART2}
 
@@ -805,6 +813,7 @@ clean2:
 	-${COMPILE_PART1} rxdebug ${COMPILE_CLEAN}
 	-${COMPILE_PART1} libafsrpc ${COMPILE_CLEAN}
 	-${COMPILE_PART1} libafsauthent ${COMPILE_CLEAN}
+	-${COMPILE_PART1} shlibafshpss ${COMPILE_CLEAN}
 	-${COMPILE_PART1} shlibafsosd ${COMPILE_CLEAN}
 	-${COMPILE_PART1} shlibdafsosd ${COMPILE_CLEAN}
 	-${COMPILE_PART1} shlibafsrpc ${COMPILE_CLEAN}

@@ -7,7 +7,6 @@
 #include "afsconfig.h"
 #include <afs/param.h>
 
-#ifdef AFS_DCACHE_SUPPORT
 #include <stdio.h>
 #include <errno.h>
 #include <dcap.h>
@@ -71,6 +70,9 @@ extern struct dirent *dc_readddir(DIR *dir);
 
 extern afs_int32 dcache;
 extern char *dcap_url;
+char *ourPath = NULL;
+char ourPrincipal[64];
+char ourKeytab[128];
 
 #include "rxosd_hsm.h"
 
@@ -79,28 +81,10 @@ int real_path(char *path, char *real, int size)
     char *p;
     int i;
 
-#ifdef DCACHE_USE_PNFS
-    p = strstr(path, "DCACHEd");
-    if (!p)
-        return 0;
-    memset(real, 0, size);
-    p += 7;
-    if (dcap_url) {
-        if (strlen(dcap_url) + strlen(p) +1 >= size)
-            return -1;
-        sprintf(real, "%s%s", dcap_url, p);
-    } else {
-        *p = 0;
-        i = readlink(path, real, size);
-        *p = '/';
-        if (strlen(p) + i >= size)
-            return -1;
-        strcat(real, p);
-    }
-#else
-    strcpy(real, path);
-#endif
-    return 1;
+    if (ourPath)
+        return snprintf(real, size, "%s/%s", ourPath, path);
+    else
+        return snprintf(real, size, "%s", path);
 }
 
 int mydc_stat64(char *path, struct afs_stat *stat)
@@ -109,32 +93,21 @@ int mydc_stat64(char *path, struct afs_stat *stat)
     int code;
 
     code = real_path(path, &real, 256);
-    if (code < 0)
-        return code;
     if (code)
-        code = dc_stat64(real, stat);
-    else
-        code = stat64(path, stat);
+        return EIO;
+    code = dc_stat64(real, stat);
     return code;
 }
 
-int mydc_open(char *path, int flag, int mode)
+int mydc_open(char *path, int flag, int mode, afs_uint64 size)
 {
     char real[256];
     int code;
     int fd;
-
-#ifdef DCACHE_USE_PNFS
-    fd = dc_open(path, flag, mode);
-#else
     code = real_path(path, &real, 256);
-    if (code < 0)
-        return NULL;
     if (code)
-        fd = dc_open(real, flag, mode);
-    else
-        fd = open(real, flag, mode);
-#endif
+        return 0;
+    fd = dc_open(real, flag, mode);
     return fd;
 }
 
@@ -144,17 +117,10 @@ DIR * mydc_opendir(char *path)
     int code;
     DIR *dir;
 
-#ifdef DCACHE_USE_PNFS
-    dir = opendir(path);
-#else
     code = real_path(path, &real, 256);
-    if (code < 0)
-        return NULL;
     if (code)
-        dir = dc_opendir(real);
-    else
-        dir = opendir(real);
-#endif
+        return NULL;
+    dir = dc_opendir(real);
     return dir;
 }
 
@@ -168,27 +134,16 @@ struct ih_posix_ops ih_dcache_ops = {
     dc_lseek64,
     dc_fsync,
     dc_unlink,
-#ifdef DCACHE_USE_PNFS
-    mkdir,
-    rmdir,
-#else
     dc_mkdir,
     dc_rmdir,
-#endif
     dc_chmod,
     dc_chown,
     mydc_stat64,
     dc_fstat64,
     dc_rename,
-#ifdef DCACHE_USE_PNFS
-    opendir,
-    readdir,
-    closedir,
-#else
     mydc_opendir,
     dc_readdir,
     dc_closedir,
-#endif
     NULL,
     NULL,
     NULL,
@@ -198,4 +153,32 @@ struct ih_posix_ops ih_dcache_ops = {
     NULL
 };
 
-#endif
+afs_int32
+init_rxosd_dcache(char *AFSVersion, char **versionstring, void *inrock,
+                void *outrock, void *libafshsmrock, afs_int32 version)
+{
+    afs_int32 code;
+    struct hsm_interface_input *input = (struct hsm_interface_input *)inrock;
+    struct hsm_interface_output *output = (struct hsm_interface_output *)outrock;
+
+    rxosd_var = input->var;
+
+    if (rxosd_var->principal) {
+        strncpy(&ourPrincipal, rxosd_var->principal, sizeof(ourPrincipal));
+        ourPrincipal[sizeof(ourPrincipal) -1] = 0; /*just in case */
+    }
+    if (rxosd_var->keytab) {
+        strncpy(&ourKeytab, rxosd_var->keytab, sizeof(ourKeytab));
+        ourKeytab[sizeof(ourKeytab) -1] = 0; /*just in case */
+    }
+    if (rxosd_var->pathOrUrl) {
+        strncpy(&ourPath, rxosd_var->pathOrUrl, sizeof(ourPath));
+        ourPath[sizeof(ourPath) -1] = 0; /*just in case */
+    }
+
+    *(output->opsPtr) = &ih_dcache_ops;
+    *(output->authOps) = &auth_ops;
+
+    code = libafshsm_init(libafshsmrock, version);
+    return code;
+}

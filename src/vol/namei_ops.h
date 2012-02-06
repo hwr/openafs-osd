@@ -67,13 +67,8 @@ typedef struct {
 } namei_t;
 #else
 #define NAMEI_SCOMP_LEN 12
-#define NAMEI_URL_LEN 64
 typedef struct {
-#if defined BUILDING_RXOSD && (defined(AFS_HPSS_SUPPORT) || defined(AFS_DCACHE_SUPPORT))
-    char n_base[NAMEI_URL_LEN];
-#else
     char n_base[NAMEI_LCOMP_LEN];
-#endif
     char n_voldir1[NAMEI_SCOMP_LEN];
     char n_voldir2[NAMEI_LCOMP_LEN];
     char n_dir1[NAMEI_SCOMP_LEN];

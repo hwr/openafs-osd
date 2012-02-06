@@ -41,7 +41,7 @@
 #include "afs/afs_assert.h"
 #include <limits.h>
 #include <afs/afsosd.h>
-#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+#if defined(BUILDING_RXOSD)
 #include "afs/afsutil.h"
 #endif
 
@@ -78,13 +78,10 @@ FdHandle_t *fdLruTail;
 
 int ih_Inited = 0;
 int ih_PkgDefaultsSet = 0;
-#ifdef AFS_RXOSD_SPECIAL
-int log_open_close = 1;
-#endif
 
-#ifdef AFS_DCACHE_SUPPORT
+#ifdef BUILDING_RXOSD
+int log_open_close = 0;
 extern afs_int32 dcache;
-extern struct dcache_ops *dc_ops;
 #endif
 
 /* Most of the servers use fopen/fdopen. Since the FILE structure
@@ -185,7 +182,7 @@ ih_Initialize(void)
 #endif
     fdCacheSize = MIN(fdMaxCacheSize, vol_io_params.fd_initial_cachesize);
 
-#ifdef AFS_DCACHE_SUPPORT
+#ifdef BUILDING_RXOSD
     if (!dcache)
 #endif
     {
@@ -356,7 +353,7 @@ ih_open(IHandle_t * ihP)
     FdHandle_t *fdP;
     FD_t fd;
     FD_t closeFd;
-#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+#if defined(BUILDING_RXOSD)
     struct ih_posix_ops *ops;
 #endif
 
@@ -410,13 +407,9 @@ ih_open(IHandle_t * ihP)
 ih_open_retry:
 #if defined(BUILDING_RXOSD)
     if (open_fd >= 0) {
-#if defined(AFS_NAMEI_ENV)
-#if defined(AFS_RXOSD_SPECIAL)
 	/* make sure ihp->ih_ops get filled correctly */
         namei_t name;
         namei_HandleToName(&name, ihP);
-#endif
-#endif
         fd = open_fd;
     } else
 #endif
@@ -439,7 +432,7 @@ ih_open_retry:
 	DLL_DELETE(fdP, fdP->fd_ih->ih_fdhead, fdP->fd_ih->ih_fdtail,
 		   fd_ihnext, fd_ihprev);
 	closeFd = fdP->fd_fd;
-#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+#if defined(BUILDING_RXOSD)
         ops = fdP->fd_ih->ih_ops;
 #endif
 	if (fd == INVALID_FD) {
@@ -449,7 +442,7 @@ ih_open_retry:
 	    fdP->fd_ih = NULL;
 	    fdP->fd_fd = INVALID_FD;
 	    IH_UNLOCK;
-#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+#if defined(BUILDING_RXOSD)
             (*ops->close)(closeFd);
 #else
 	    OS_CLOSE(closeFd);
@@ -479,7 +472,7 @@ ih_open_retry:
 
     if (closeFd != INVALID_FD) {
 	IH_UNLOCK;
-#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+#if defined(BUILDING_RXOSD)
         (*ops->close)(closeFd);
 #else
 	OS_CLOSE(closeFd);
@@ -622,7 +615,7 @@ fd_reallyclose(FdHandle_t * fdP)
 
     if (fdP->fd_refcnt == 0) {
         IH_UNLOCK;
-#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+#if defined(BUILDING_RXOSD)
         if (log_open_close) {
 	    if (ihP->ih_ops->fstat64) {
 	        struct afs_stat tstat;
@@ -953,7 +946,7 @@ ih_fdclose(IHandle_t * ihP)
      */
     closeCount = 0;
     for (fdP = head; fdP != NULL; fdP = fdP->fd_next) {
-#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+#if defined(BUILDING_RXOSD)
 	(ihP->ih_ops->close)(fdP->fd_fd);
 #else
 	OS_CLOSE(fdP->fd_fd);

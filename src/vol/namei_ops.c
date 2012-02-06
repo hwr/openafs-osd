@@ -82,11 +82,7 @@
 afs_int32 defaultLinkCount = 5;
 extern int log_open_close;
 
-#ifdef AFS_HPSS_SUPPORT
-char *hpssPath = NULL;
-char *hpssMeta = NULL;
-afs_int32 hpssDev = -1;
-#endif
+afs_int32 hsmDev = -1;
 
 /*@+fcnmacros +macrofcndecl@*/
 #ifdef O_LARGEFILE
@@ -132,9 +128,19 @@ afs_int32 hpssDev = -1;
 #endif /* !O_LARGEFILE */
 /*@=fcnmacros =macrofcndecl@*/
 
-#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+#if defined(BUILDING_RXOSD)
+extern int dcache;
+/*
+ * HPSS needs to know the size of a file to be created in order to choose
+ * the best ClassOfService. For other filesystems we don't need the size.
+ */
+int myOpen(const char *path, int flags, mode_t mode, afs_uint64 size)
+{
+    return open(path, flags, mode);
+}
+
 struct ih_posix_ops ih_namei_ops = {
-    open,
+    myOpen,
     close,
     read,
     readv,
@@ -171,12 +177,8 @@ struct ih_posix_ops ih_namei_ops = {
 #endif
     NULL
 };
-#ifdef AFS_DCACHE_SUPPORT
-afs_int32 dcache = 0;
-char *dcap_url = 0;
-#endif
 struct ih_posix_ops *ih_hsm_opsPtr = &ih_namei_ops;
-#endif /* AFS_RXOSD_SPECIAL */
+#endif /* BUILDING_RXOSD */
 
 #ifndef LOCK_SH
 #define   LOCK_SH   1    /* shared lock */
@@ -362,23 +364,14 @@ namei_HandleToInodeDir(namei_t * name, IHandle_t * ih)
      */
     volutil_PartitionName_r(ih->ih_dev, name->n_base, sizeof(name->n_base));
     offset = VICE_PREFIX_SIZE + (ih->ih_dev > 25 ? 2 : 1);
-#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+#if defined(BUILDING_RXOSD)
     ih->ih_ops = &ih_namei_ops;
     vno = (int)(ih->ih_ino & NAMEI_VNODEMASK);
-#if defined(AFS_HPSS_SUPPORT)
-    if (hpssPath && ih->ih_dev == hpssDev && vno != NAMEI_VNODESPECIAL) {
-        offset = strlen(hpssPath);
-        (void)strlcpy(name->n_base, hpssPath, sizeof(name->n_base));
+    if (ih->ih_dev == hsmDev && vno != NAMEI_VNODESPECIAL) {
+        offset = 0;	/* Path will be prefixed ilater in interface routines */
         ih->ih_ops = ih_hsm_opsPtr;
     }
-#elif defined(AFS_DCACHE_SUPPORT)
-    if (dcache && vno != NAMEI_VNODESPECIAL) {
-        offset = strlen(dcap_url);
-        (void)strlcpy(name->n_base, dcap_url, sizeof(name->n_base));
-        ih->ih_ops = ih_hsm_opsPtr;
-    }
-#endif /* AFS_DCACHE_SUPPORT */
-#endif /* AFS_RXOSD_SPECIAL */
+#endif /* BUILDING_RXOSD */
     name->n_base[offset] = OS_DIRSEPC;
     offset++;
     strlcpy(name->n_base + offset, INODEDIR, sizeof(name->n_base) - offset);
@@ -561,7 +554,7 @@ namei_CreateDataDirectories(namei_t * name, int *created)
     return 0;
 }
 #else
-#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+#if defined(BUILDING_RXOSD)
 #define create_dir(h) \
 do { \
     if ((h->ih_ops->mkdir)(tmp, 0700)<0) { \
@@ -577,7 +570,7 @@ do { \
 do { \
          strcat(tmp, "/"); strcat(tmp, A); create_dir(h);  \
 } while(0)
-#else /* AFS_RXOSD_SPECIAL */
+#else /* BUILDING_RXOSD */
 #define create_dir() \
 do { \
     if (mkdir(tmp, 0700)<0) { \
@@ -593,10 +586,10 @@ do { \
 do { \
          strcat(tmp, "/"); strcat(tmp, A); create_dir();  \
 } while(0)
-#endif /* AFS_RXOSD_SPECIAL */
+#endif /* BUILDING_RXOSD */
 
 static int
-#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+#if defined(BUILDING_RXOSD)
 namei_CreateDataDirectories(namei_t * name, int *created, IHandle_t *h)
 #else
 namei_CreateDataDirectories(namei_t * name, int *created)
@@ -607,7 +600,7 @@ namei_CreateDataDirectories(namei_t * name, int *created)
     *created = 0;
 
     strlcpy(tmp, name->n_base, sizeof(tmp));
-#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+#if defined(BUILDING_RXOSD)
     create_dir(h);
 
     create_nextdir(name->n_voldir1, h);
@@ -874,10 +867,9 @@ SetOGM(FD_t fd, int parm, int tag, int special)
     group = (parm >> 15) & 0x7fff;
 #ifdef BUILDING_RXOSD
     if (!special) {
-#ifdef AFS_HPSS_SUPPORT
-	/* We don't change owner and group for files in HPSS */
-	return 0;
-#endif
+        if (fd >= 10000) /* in rxosd_hpss.c increased by 10000 */
+	    /* We don't change owner and group for files in HPSS */
+	    return 0;
         owner = 0;
         group = 0;
     }
@@ -1124,35 +1116,29 @@ namei_icreate_open(IHandle_t * lh, char *part, afs_uint32 p1, afs_uint32 p2,
     }
 
     namei_HandleToName(&name, &tmp);
-#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+#if defined(BUILDING_RXOSD)
     mode = 0;
-#if defined(AFS_DCACHE_SUPPORT)
-    if (dcache && p2 != -1)
-        mode = 0600 | S_IWUSR;
-#endif /* AFS_DCACHE_SUPPORT */
-#if defined(AFS_HPSS_SUPPORT)
-    if (p2 != -1)
+    if (p2 != -1 && tmp.ih_dev == hsmDev)
 	mode = 0600;
+    if (dcache && p2 != -1)
+        mode |= S_IWUSR;
     fd = tmp.ih_ops->open(name.n_path, O_CREAT | O_EXCL | O_TRUNC | O_RDWR,
 				  mode, size);
-#else /* AFS_HSPSS_SUPPORT */
-    fd = tmp.ih_ops->open(name.n_path, O_CREAT | O_EXCL | O_TRUNC | O_RDWR, mode);
-#endif /* AFS_HSPSS_SUPPORT */
-#else /* defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL) */
+#else /* BUILDING_RXOSD */
     fd = afs_open(name.n_path, O_CREAT | O_EXCL | O_TRUNC | O_RDWR, 0);
-#endif /* defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL) */
+#endif /* BUILDING_RXOSD */
     if (fd < 0) {
         if (errno == ENOTDIR
-#if defined(BUILDING_RXOSD) && defined(AFS_DCACHE_SUPPORT)
+#if defined(BUILDING_RXOSD)
           || errno == 10001
           || errno == EIO
 #endif
           || errno == ENOENT) {
-#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+#if defined(BUILDING_RXOSD)
             if (namei_CreateDataDirectories(&name, &created_dir, &tmp) < 0)
                 goto bad;
-            fd = tmp.ih_ops->open(name.n_path, O_CREAT | O_EXCL | O_TRUNC
-                                        | O_RDWR, mode);
+            fd = tmp.ih_ops->open(name.n_path, O_CREAT | O_EXCL | O_TRUNC | O_RDWR,
+				  mode, size);
 #else
 	    if (namei_CreateDataDirectories(&name, &created_dir) < 0)
 		goto bad;
@@ -1165,14 +1151,12 @@ namei_icreate_open(IHandle_t * lh, char *part, afs_uint32 p1, afs_uint32 p2,
 	    goto bad;
 	}
     }
-#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+#if defined(BUILDING_RXOSD)
     if (log_open_close) {
         ViceLog(0, ("namei_icreate: opened %s as fd %d\n", name.n_path, fd));
     }
+    if (p2 == -1)
 #endif
-#if defined(BUILDING_RXOSD) && defined(AFS_DCACHE_SUPPORT)
-    if (!dcache || p2 == -1)
-#endif /* AFS_DCACHE_SUPPORT */
     {
         if (SetOGM(fd, ogm_parm, tag, p2 == -1) < 0) {
             close(fd);
@@ -1194,7 +1178,7 @@ namei_icreate_open(IHandle_t * lh, char *part, afs_uint32 p1, afs_uint32 p2,
         if (open_fd)
             *open_fd = fd;
         else {
-#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+#if defined(BUILDING_RXOSD)
 	    if (log_open_close) {
     	        ViceLog(0, ("namei_icreate: fd %d closed\n", fd));
 	    }
@@ -1224,7 +1208,7 @@ namei_icreate(IHandle_t * lh, char *part, afs_uint32 p1, afs_uint32 p2, afs_uint
     ino = namei_icreate_open(lh, part, p1, p2, p3, p4, 0, NULL);
     return ino;
 }
-#endif
+#endif /* !AFS_NT40_ENV */
 
 /* namei_iopen */
 FD_t
@@ -1235,8 +1219,8 @@ namei_iopen(IHandle_t * h)
 
     /* Convert handle to file name. */
     namei_HandleToName(&name, h);
-#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
-    fd = (h->ih_ops->open)((char *)name.n_path, O_RDWR, 0666);
+#if defined(BUILDING_RXOSD)
+    fd = (h->ih_ops->open)((char *)name.n_path, O_RDWR, 0666, 0);
     if (log_open_close && fd >= 0) {
 	if (h->ih_ops->fstat64) {
 	    struct afs_stat tstat;
@@ -1361,57 +1345,49 @@ namei_dec(IHandle_t * ih, Inode ino, int p1)
 	}
 	if (count == 0) {
 	    IHandle_t *th;
-#if defined(BUILDING_RXOSD) && (defined(AFS_AIX53_ENV) || defined(AFS_DCACHE_SUPPORT) || defined(AFS_HPSS_SUPPORT))
-#define RENAME_INSTEAD_OF_UNLINK        1
-#endif
-#ifdef RENAME_INSTEAD_OF_UNLINK
+	    FdHandle_t *tfdP = NULL;
+#ifdef BUILDING_RXOSD
+	    int do_unlink = 1;
             struct afs_stat st;
             char unlinkname[128];
             time_t t;
             struct timeval now;
             struct tm *TimeFields;
+
             gettimeofday(&now, 0);
             t = now.tv_sec;
             TimeFields = localtime(&t);
-	    int do_unlink = 0;
 #endif
 	    IH_INIT(th, ih->ih_dev, ih->ih_vid, ino);
+	    tfdP = IH_OPEN(th);
 
 	    namei_HandleToName(&name, th);
-#ifdef RENAME_INSTEAD_OF_UNLINK
-#ifdef AFS_HPSS_SUPPORT
-	    if (th->ih_dev != hpssDev)
-		do_unlink = 1;
+#if defined(BUILDING_RXOSD)
+	    if (th->ih_ops->open != myOpen) /* true for HPSS and DCACHE */
+		do_unlink = 0;
+#ifdef AFS_AIX53_ENV
+		do_unlink = 0;	/* hack to identify our TSM/HSM system */
 #endif
-            sprintf((char *)&unlinkname, "%s-unlinked-%d%02d%02d",
-                        (char *)&name.n_path, TimeFields->tm_year + 1900,
-                        TimeFields->tm_mon + 1, TimeFields->tm_mday);
-#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
-            if (th->ih_ops->stat64(name.n_path, &st) == 0) {
-		if (do_unlink || st.st_size == 0)
+	    if (do_unlink)
+                code = th->ih_ops->unlink(name.n_path);
+	    else if (th->ih_ops->stat64(name.n_path, &st) == 0) {
+		if (st.st_size == 0) /* don't bother with empty file */
                     code = th->ih_ops->unlink(name.n_path);
                 else {
+            	    sprintf((char *)&unlinkname, "%s-unlinked-%d%02d%02d",
+                        (char *)&name.n_path, TimeFields->tm_year + 1900,
+                        TimeFields->tm_mon + 1, TimeFields->tm_mday);
                     code = th->ih_ops->rename(name.n_path, &unlinkname);
                     ViceLog(0,("SOFT_DELETED: %s\n", unlinkname));
 		}
             } else {
 		ViceLog(0,("namei_dec: file doesn't exist %s\n", name.n_path));
 	    } 
-#else 
-            if (afs_stat(name.n_path, &st) == 0 && st.st_size == 0)
-                code = unlink(name.n_path);
-            else {
-                code = rename(name.n_path, &unlinkname);
-                ViceLog(0,("SOFT_DELETED: %s\n", unlinkname));
-            }
-#endif
-#else /* RENAME_INSTEAD_OF_UNLINK */
-#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
-            code = th->ih_ops->unlink(name.n_path);
-#else
+#else /* BUILDING_RXOSD */
 	    code = OS_UNLINK(name.n_path);
 #endif
-#endif /* RENAME_INSTEAD_OF_UNLINK */
+	    if (tfdP)
+	        FDH_REALLYCLOSE(tfdP);
 	    IH_RELEASE(th);
 	}
 	FDH_CLOSE(fdP);
@@ -1472,7 +1448,7 @@ namei_replace_file_by_hardlink(IHandle_t *hLink, IHandle_t *hTarget)
     namei_HandleToName(&nameLink, hLink);
     namei_HandleToName(&nameTarget, hTarget);
 
-#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+#if defined(BUILDING_RXOSD)
     (hLink->ih_ops->unlink)(nameLink.n_path);
     if (hTarget->ih_ops->hardlink)
         code = (hTarget->ih_ops->hardlink)(nameTarget.n_path, nameLink.n_path);
@@ -1495,7 +1471,7 @@ namei_copy_on_write(IHandle_t *h)
     afs_foff_t offset;
 
     namei_HandleToName(&name, h);
-#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+#if defined(BUILDING_RXOSD)
     if ((h->ih_ops->stat64)(name.n_path, &tstat) < 0)
 #else
     if (afs_stat(name.n_path, &tstat) < 0)
@@ -1510,9 +1486,10 @@ namei_copy_on_write(IHandle_t *h)
 	fdP = IH_OPEN(h);
 	if (!fdP)
 	    return EIO;
+	size = tstat.st_size;
 	afs_snprintf(path, sizeof(path), "%s-tmp", name.n_path);
-#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
-	fd = (h->ih_ops->open)(path, O_CREAT | O_EXCL | O_TRUNC | O_RDWR, 0);
+#if defined(BUILDING_RXOSD)
+	fd = (h->ih_ops->open)(path, O_CREAT | O_EXCL | O_TRUNC | O_RDWR, 0, size);
 #else
 	fd = afs_open(path, O_CREAT | O_EXCL | O_TRUNC | O_RDWR, 0);
 #endif
@@ -1527,13 +1504,12 @@ namei_copy_on_write(IHandle_t *h)
 	    FDH_CLOSE(fdP);
 	    return ENOMEM;
 	}
-	size = tstat.st_size;
 	offset = 0;
 	while (size) {
 	    tlen = size > 8192 ? 8192 : size;
 	    if (FDH_PREAD(fdP, buf, tlen, offset) != tlen)
 		break;
-#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+#if defined(BUILDING_RXOSD)
 	    if ((h->ih_ops->write)(fd, buf, tlen) != tlen)
 #else
 	    if (write(fd, buf, tlen) != tlen)
@@ -1542,7 +1518,7 @@ namei_copy_on_write(IHandle_t *h)
 	    size -= tlen;
 	    offset += tlen;
 	}
-#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+#if defined(BUILDING_RXOSD)
 	(h->ih_ops->close)(fd);
 #else
 	close(fd);
@@ -1552,7 +1528,7 @@ namei_copy_on_write(IHandle_t *h)
 	if (size)
 	    code = EIO;
 	else {
-#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+#if defined(BUILDING_RXOSD)
             (h->ih_ops->unlink)(name.n_path);
             code = (h->ih_ops->rename)(path, name.n_path);
 #else
@@ -2406,7 +2382,7 @@ namei_ListAFSFiles(char *dev,
 #else
     ih.ih_dev = volutil_GetPartitionID(dev);
 #endif
-#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+#if defined(BUILDING_RXOSD)
     ih.ih_ops = &ih_namei_ops;
 #endif
     ih.ih_ino = namei_MakeSpecIno(ih.ih_vid, VI_LINKTABLE);
@@ -3021,22 +2997,13 @@ namei_ListAFSSubDirs(IHandle_t * dirIH,
 #endif
 
 #if defined(BUILDING_RXOSD)
-#if defined(AFS_DCACHE_SUPPORT)
-    /* link table under AFSIDat not under DCACHEd */
-    if (dcache)
+    /* link table in local partition not in HPSS or DCACHE */
+    if (dirIH->ih_dev == hsmDev)
         myIH.ih_ino = NAMEI_VNODESPECIAL;
-#endif
-#ifdef AFS_HPSS_SUPPORT
-    /* link table in local partition not in HPSS */
-    if (dirIH->ih_dev == hpssDev)
-        myIH.ih_ino = NAMEI_VNODESPECIAL;
-#endif
 #endif
     namei_HandleToVolDir(&name, &myIH);
 #if defined(BUILDING_RXOSD)
-#if defined(AFS_DCACHE_SUPPORT) || defined(AFS_HPSS_SUPPORT)
-     myIH.ih_ino = 0;
-#endif
+     myIH.ih_ino = 0;	/* we put in before NAMEI_VNODESPECIAL, just clear it */
 #endif
     strlcpy(path1, name.n_path, sizeof(path1));
 
@@ -3050,7 +3017,7 @@ namei_ListAFSSubDirs(IHandle_t * dirIH,
     lth.ih_dev = myIH.ih_dev;
     lth.ih_vid = myIH.ih_vid;
     lth.ih_ino = namei_MakeSpecIno(lth.ih_vid, VI_LINKTABLE);
-#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+#if defined(BUILDING_RXOSD)
     lth.ih_ops = &ih_namei_ops;
 #endif
     linkHandle.fd_fd = INVALID_FD;
@@ -3376,7 +3343,7 @@ DecodeInode(char *dpath, char *name, struct ViceInodeInfo *info, IHandle_t *ih)
 
     afs_snprintf(fpath, sizeof(fpath), "%s" OS_DIRSEP "%s", dpath, name);
 
-#if defined(BUILDING_RXOSD) && defined(AFS_RXOSD_SPECIAL)
+#if defined(BUILDING_RXOSD)
     if ((ih->ih_ops->stat64)(fpath, &status) < 0) {
 #else
     if (afs_stat(fpath, &status) < 0) {

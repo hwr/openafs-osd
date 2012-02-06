@@ -3,28 +3,114 @@
  */
 #include <afsconfig.h>
 #include <afs/param.h>
-
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/errno.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
+#include <errno.h>
+#ifdef  AFS_SGI_ENV
+#undef SHARED                   /* XXX */
+#endif
+#ifdef AFS_NT40_ENV
+#include <fcntl.h>
+#else
+#include <sys/param.h>
+#ifdef AFS_DARWIN_ENV
+#include <sys/mount.h>
+#endif
+#include <sys/file.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <sys/wait.h>
+#include <signal.h>
 #include <dirent.h>
 #include <sys/time.h>
-#ifdef AFS_AIX_ENV
-#include <fcntl.h>
-#else /* AFS_AIX_ENV */
-#include <sys/fcntl.h>
-#endif /* AFS_AIX_ENV */
+#include <utime.h>
+#if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
+#include <sys/statvfs.h>
+#endif /* AFS_HAVE_STATVFS */
+#ifdef AFS_SUN5_ENV
+#include <unistd.h>
+#include <sys/mnttab.h>
+#include <sys/mntent.h>
+#else
+#ifdef AFS_LINUX22_ENV
+#include <mntent.h>
+#include <sys/statfs.h>
+#else
+#include <fstab.h>
+#endif
+#endif
 
-#define AVOID_OPTIONS 1
+#ifdef HAVE_STRING_H
+#include <string.h>
+#else
+#ifdef HAVE_STRINGS_H
+#include <strings.h>
+#endif
+#endif
 
-#include "rxosd_hsm.h"
+#ifndef AFS_LINUX20_ENV
+#include <net/if.h>
+#include <netinet/if_ether.h>
+#endif
+#endif
+#ifdef AFS_HPUX_ENV
+/* included early because of name conflict on IOPEN */
+#include <sys/inode.h>
+#ifdef IOPEN
+#undef IOPEN
+#endif
+#endif /* AFS_HPUX_ENV */
+#if ! defined(AFS_SGI_ENV) && ! defined(AFS_AIX32_ENV) && ! defined(AFS_NT40_ENV) && ! defined(AFS_LINUX20_ENV) && !defined(AFS_DARWIN_ENV) && !defined(AFS_XBSD_ENV)
+#include <sys/map.h>
+#endif
+#if !defined(AFS_NT40_ENV)
+#include <unistd.h>
+#endif
+#if !defined(AFS_SGI_ENV) && !defined(AFS_NT40_ENV)
+#ifdef  AFS_AIX_ENV
+#include <sys/statfs.h>
+#include <sys/lockf.h>
+#else
+#if !defined(AFS_SUN5_ENV) && !defined(AFS_LINUX20_ENV) && !defined(AFS_DARWIN_ENV) && !defined(AFS_XBSD_ENV)
+#include <sys/dk.h>
+#endif
+#endif
+#endif
+
+/*@+fcnmacros +macrofcndecl@*/
+#ifdef O_LARGEFILE
+#ifdef S_SPLINT_S
+extern off64_t afs_lseek(int FD, off64_t O, int F);
+#endif /*S_SPLINT_S */
+#define afs_lseek(FD, O, F)     lseek64(FD, (off64_t)(O), F)
+#define afs_stat                stat64
+#define afs_fstat               fstat64
+#define afs_open                open64
+#define afs_fopen               fopen64
+#else /* !O_LARGEFILE */
+#ifdef S_SPLINT_S
+extern off_t afs_lseek(int FD, off_t O, int F);
+#endif /*S_SPLINT_S */
+#define afs_lseek(FD, O, F)     lseek(FD, (off_t)(O), F)
+#define afs_stat                stat
+#define afs_fstat               fstat
+#define afs_open                open
+#define afs_fopen               fopen
+#endif /* !O_LARGEFILE */
+/*@=fcnmacros =macrofcndecl@*/
+
+#include <afs/stds.h>
+#include <afs/afs_assert.h>
+#include <afs/fileutil.h>
+#include <afs/unified_afs.h>
+#include <afs/afsutil.h>
+#include <afs/rxosd_hsm.h>
+#include <afs/ihandle_rxosd.h>
 
 char *whoami;
 
-extern struct ih_posix_ops ih_hpss_ops;
 extern struct ih_posix_ops ih_dcache_ops;
 time_t hpssLastAuth = 0;
 
@@ -55,6 +141,8 @@ struct ih_posix_ops clib_ops = {
 
 struct ih_posix_ops *myops = &clib_ops;
 
+afs_int32 (*authenticate_for_hpss)(char *principal, char *keytab) = NULL;
+
 main(argc, argv)
 int argc;
 char **argv;
@@ -62,7 +150,7 @@ char **argv;
     char filename[256];
     char buffer;
     char *whoami;
-    struct stat64 status;
+    struct afs_stat status;
     int fd, verbose = 1;
     struct timeval starttime, endtime;
     struct timezone timezone;
@@ -72,6 +160,9 @@ char **argv;
     FILE *log;
     char *principal = NULL;
     char *keytab = NULL;
+    char *hpssPath = "";
+    int withHPSS = 0;
+    afs_int32 code;
     
     log = fopen("/tmp/readabyte.log", "a+");
 
@@ -86,12 +177,11 @@ char **argv;
 #endif
 #ifdef AFS_HPSS_SUPPORT
 	case	'h' :
-		myops = &ih_hpss_ops;
                 argc--; argv++;
 		principal = argv[0];
                 argc--; argv++;
 		keytab = argv[0];
-		authenticate_for_hpss(principal, keytab);
+		withHPSS = 1;
 		break;
 #endif
         case    'v' :
@@ -104,14 +194,40 @@ char **argv;
 
     if (argc < 1) usage();
 
-#ifdef AVOID_OPTIONS
-#ifdef AFS_DCACHE_SUPPORT
+#ifdef AFS_HPSS_SUPPORT
+    if (withHPSS) {         /* load HPSS support from shared library */
+        struct hsm_interface_input input;
+        struct hsm_interface_output output;
+        struct rxosd_var rxosd_var;
+	struct hsm_auth_ops *auth_ops;
+
+        rxosd_var.pathOrUrl = hpssPath;
+        rxosd_var.principal = principal;
+        rxosd_var.keytab = keytab;
+        rxosd_var.lastAuth = &hpssLastAuth;
+        input.var = &rxosd_var;
+        output.opsPtr = &myops;
+        output.authOps = &auth_ops;
+
+        code = load_libafshpss(HPSS_INTERFACE, "init_rxosd_hpss", &input, &output);
+        if (code) {
+            fprintf(stderr, "Loading libafshpss.so failed with code %d, aborting\n",
+                    code);
+            return -1;
+        }
+	if (!(auth_ops->authenticate) (principal, keytab)) {
+            fprintf(stderr, "Authentication to HPSS for %s with keytab %s failed, aborting\n",
+				principal, keytab);
+            return -1;
+        }
+	
+    }
+#endif
+
+#if defined(AFS_DCACHE_SUPPORT)
     myops = &ih_dcache_ops;
 #endif
-#ifdef AFS_HPSS_SUPPORT
-    myops = &ih_hpss_ops;
-#endif
-#endif
+
     sprintf(filename,"%s", argv[0]);
 
     if (sleeptime) {
@@ -124,7 +240,7 @@ char **argv;
        fprintf(log, "for %s\n", filename);
        exit(1);
     }
-    fd = myops->open(filename, O_RDONLY);
+    fd = myops->open(filename, O_RDONLY, 0, 0);
     if (fd < 0) {
        perror("open");
        fprintf(log, "for %s\n", filename);

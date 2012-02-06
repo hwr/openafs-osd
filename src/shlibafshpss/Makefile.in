@@ -1,0 +1,105 @@
+# API version. When something changes, increment as appropriate. 
+# Ignore at your own risk.
+LIBMAJOR=0
+
+# Copyright 2000, International Business Machines Corporation and others.
+# All Rights Reserved.
+# 
+# This software has been released under the terms of the IBM Public
+# License.  For details, see the LICENSE file in the top-level source
+# directory or online at http://www.openafs.org/dl/license10.html
+#
+# Portions Copyright (c) 2003 Apple Computer, Inc.
+
+# This is a pthread safe library containing rx, rxkad and des.
+
+srcdir=@srcdir@
+include @TOP_OBJDIR@/src/config/Makefile.config
+HSM_LIB=@HSM_LIB@
+HSM_INC=@HSM_INC@
+INSTALL = @INSTALL@
+INSTALL_DATA = @INSTALL_DATA@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_SCRIPT = @INSTALL_SCRIPT@
+
+LIBMINOR=`grep LIBAFSHPSS_VERSION ${TOP_INCDIR}/afs/rxosd_hsm.h | /usr/bin/awk '{print$$3}'`
+
+CC=${MT_CC}
+CFLAGS = ${COMMON_CFLAGS} -DRXDEBUG ${MT_CFLAGS} ${SHLIB_CFLAGS}
+SFLAGS=-P -I${TOP_INCDIR}
+
+CCRULE = ${CC} ${CFLAGS} -DBUILD_SHLIBAFSHSM -c $?
+CCRULE2 = ${CC} ${CFLAGS} -DBUILD_SHLIBAFSHSM -c $<
+
+RXOSD = ${srcdir}/../rxosd
+
+RXOSDOBJS = \
+	rxosd_hpss.o \
+	libafshsm.o
+
+
+LIBOBJS = \
+	${RXOSDOBJS}
+
+LIBAFSHPSS = libafshpss.${SHLIB_SUFFIX}.${LIBMAJOR}.${LIBMINOR}
+
+all: ${TOP_LIBDIR}/${LIBAFSHPSS} ${TOP_LIBDIR}/libafshpss_pic.a \
+		hpss_read hpss_write hpss_tapeinfo
+
+${TOP_LIBDIR}/${LIBAFSHPSS}: ${LIBAFSHPSS}
+	../config/shlib-install -d ${TOP_LIBDIR} \
+		-l libafshpss -M ${LIBMAJOR} -m ${LIBMINOR}
+
+${TOP_LIBDIR}/libafshpss_pic.a: libafshpss_pic.a
+	${INSTALL_DATA} libafshpss_pic.a $@
+
+install: ${LIBAFSHPSS} libafshpss_pic.a
+	../config/shlib-install -d ${DESTDIR}${libdir} \
+		-l libafshpss -M ${LIBMAJOR} -m ${LIBMINOR}
+	${INSTALL_DATA} libafshpss_pic.a ${DESTDIR}${libdir}/libafshpss_pic.a
+
+dest: ${LIBAFSHPSS} libafshpss_pic.a
+	../config/shlib-install -d ${DEST}/lib \
+		-l libafshpss -M ${LIBMAJOR} -m ${LIBMINOR}
+	${INSTALL_DATA} libafshpss_pic.a ${DEST}/lib/libafshpss_pic.a
+
+${LIBAFSHPSS}: ${LIBOBJS} libafshpss.map
+	../config/shlib-build -d $(srcdir) -l libafshpss \
+		-M ${LIBMAJOR} -m ${LIBMINOR} -- \
+		${LIBOBJS} ${MT_LIBS} ${HSM_LIB}
+
+libafshpss_pic.a: ${LIBOBJS}
+	$(RM) -f $@
+	$(AR) crv $@ ${LIBOBJS}
+	$(RANLIB) $@
+
+# rxosd stuff
+
+rxosd_hpss.o: ${RXOSD}/rxosd_hpss.c ${RXOSD}/rxosd_hsm.h
+	${CCRULE2} -DBUILDING_RXOSD ${HSM_INC}
+
+libafshsm.o: ${RXOSD}/libafshsm.c ${RXOSD}/rxosd_hsm.h
+	${CCRULE2} 
+
+hpss_read.o: ${srcdir}/hpss_read.c
+	${CCRULE} ${HSM_INC}
+
+hpss_read: hpss_read.o
+	${CC} ${LDFLAGS} -o hpss_read hpss_read.o ../rxkad/md5.o ${LIBS} ${HSM_LIB}
+
+hpss_write.o: ${srcdir}/hpss_write.c
+	${CCRULE} ${HSM_INC}
+
+hpss_write: hpss_write.o
+	${CC} ${LDFLAGS} -o hpss_write hpss_write.o ../rxkad/md5.o ${LIBS} ${HSM_LIB}
+
+hpss_tapeinfo.o: ${srcdir}/hpss_tapeinfo.c
+	${CCRULE} ${HSM_INC}
+
+hpss_tapeinfo: hpss_tapeinfo.o
+	${CC} ${LDFLAGS} -o hpss_tapeinfo hpss_tapeinfo.o ${LIBS} ${HSM_LIB}
+
+clean:
+	$(RM) -f *.o libafshpss.so* \
+		 *.c *.h *.gch \
+		libafshpss_pic.a libafshpss.dylib.* libafshpss.exp
