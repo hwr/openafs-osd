@@ -40,12 +40,13 @@ extern int errno;
 #endif
 #define BUFSIZE 32*1024*1024
 
-char buffer[BUFSIZE];
-time_t hpssLastAuth = 0;
+#include "hpss_inline.h"
 
-main(argc,argv)
-int argc;
-char **argv;
+char buffer[BUFSIZE];
+
+char *whoami;
+
+main(int argc, char **argv)
 {
     float seconds, datarate;
     int fd, count, l, code;
@@ -80,11 +81,35 @@ char **argv;
     afs_uint64 size = 0;
     char level[2] = {0, 0};
     int cksum[4];
+    int useFID = 0;
+    int noprefix = 0;
 
-    code = hpss_SetLoginCred("afsipp", hpss_authn_mech_krb5,
+    whoami = argv[0];
+    argv++; argc--;
+    while (argc > 0 && argv[0][0] == '-') {
+	switch (argv[0][1]) {
+        case   'f' :
+	    useFID = 1;
+	    break;
+	case   'n' :
+	    noprefix = 1;
+	    break;
+        default: usage();
+	}
+        argc--; argv++;
+    }
+    if (argc < 1) usage();
+ 
+    code = readHPSSconf();
+    if (code) {
+	fprintf(stderr, "Couldn't read HPSS.conf, aborting\n");
+	exit (1);
+    }
+    
+    code = hpss_SetLoginCred(ourPrincipal, hpss_authn_mech_krb5,
 				hpss_rpc_cred_client,
 				hpss_rpc_auth_type_keytab,
-				"/usr/afs/etc/afsipp.keytab");
+				ourKeytab);
     if (code) {
 	fprintf(stderr, "hpss_SetLoginCred failed with %d retrying in 5 seconds\n", code);
 	sleep(5);
@@ -97,10 +122,13 @@ char **argv;
 	    exit(1);
 	}
     }
-    argv++; argc--;
-    if (argc < 1) usage();
- 
-    sprintf(filename,"%s", argv[0]);
+    
+    if (useFID)
+	sprintf(filename, "%s/%s", ourPath, translate(argv[0]));
+    else if (noprefix)
+	sprintf(filename, "%s", argv[0]);
+    else
+        sprintf(filename, "%s/%s", ourPath, argv[0]);
 
     code = hpss_FileGetXAttributes(filename, Flags, StorageLevel, &AttrOut);
     for(i=0; i<HPSS_MAX_STORAGE_LEVELS; i++) {
@@ -125,11 +153,16 @@ char **argv;
 
     printf("%s has length %llu and tape status %s\n", filename, size, level);
    
+    hpss_ClientAPIReset();
+    hpss_PurgeLoginCred();
+
     exit(0);
 }
 
 usage()
 {
-    fprintf(stderr,"usage: hpss_tapeinfo filename\n");
+    fprintf(stderr,"usage: hpss_tapeinfo [-f] [-n] filename\n");
+    fprintf(stderr,"\t-f\tfid: interpret filename as a fid\n");
+    fprintf(stderr,"\t-n\tno prefix (otherwise PATH from HPSS.conf is prefixed)\n");
     exit(1);
 }

@@ -28,6 +28,8 @@ CC=${MT_CC}
 CFLAGS = ${COMMON_CFLAGS} -DRXDEBUG ${MT_CFLAGS} ${SHLIB_CFLAGS}
 SFLAGS=-P -I${TOP_INCDIR}
 
+LIBS = ${TOP_LIBDIR}/util.a
+
 CCRULE = ${CC} ${CFLAGS} -DBUILD_SHLIBAFSHSM -c $?
 CCRULE2 = ${CC} ${CFLAGS} -DBUILD_SHLIBAFSHSM -c $<
 
@@ -81,19 +83,19 @@ rxosd_hpss.o: ${RXOSD}/rxosd_hpss.c ${RXOSD}/rxosd_hsm.h
 libafshsm.o: ${RXOSD}/libafshsm.c ${RXOSD}/rxosd_hsm.h
 	${CCRULE2} 
 
-hpss_read.o: ${srcdir}/hpss_read.c
+hpss_read.o: ${srcdir}/hpss_read.c hpss_inline.h
 	${CCRULE} ${HSM_INC}
 
 hpss_read: hpss_read.o
 	${CC} ${LDFLAGS} -o hpss_read hpss_read.o ../rxkad/md5.o ${LIBS} ${HSM_LIB}
 
-hpss_write.o: ${srcdir}/hpss_write.c
+hpss_write.o: ${srcdir}/hpss_write.c hpss_inline.h
 	${CCRULE} ${HSM_INC}
 
 hpss_write: hpss_write.o
 	${CC} ${LDFLAGS} -o hpss_write hpss_write.o ../rxkad/md5.o ${LIBS} ${HSM_LIB}
 
-hpss_tapeinfo.o: ${srcdir}/hpss_tapeinfo.c
+hpss_tapeinfo.o: ${srcdir}/hpss_tapeinfo.c hpss_inline.h
 	${CCRULE} ${HSM_INC}
 
 hpss_tapeinfo: hpss_tapeinfo.o

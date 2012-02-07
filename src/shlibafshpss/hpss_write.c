@@ -41,11 +41,12 @@ extern int errno;
 #define BUFSIZE 32*1024*1024
 
 char buffer[BUFSIZE];
-time_t hpssLastAuth = 0;
 
 #define AFS_SMALL_COS 21
 #define AFS_LARGE_COS 23
 #define SIZE_THRESHOLD 64*1024*1024*1024LL
+
+#include "hpss_inline.h"
 
 main(argc,argv)
 int argc;
@@ -77,10 +78,16 @@ char **argv;
     MD5_CTX md5;
     int cksum[4];
 
-    code = hpss_SetLoginCred("afsipp", hpss_authn_mech_krb5,
-				hpss_rpc_cred_client,
-				hpss_rpc_auth_type_keytab,
-				"/usr/afs/etc/afsipp.keytab");
+    code = readHPSSconf();
+    if (code) {
+        fprintf(stderr, "Couldn't read HPSS.conf, aborting\n");
+        exit (1);
+    }
+
+    code = hpss_SetLoginCred(ourPrincipal, hpss_authn_mech_krb5,
+                                hpss_rpc_cred_client,
+                                hpss_rpc_auth_type_keytab,
+                                ourKeytab);
     if (code) {
 	fprintf(stderr, "hpss_SetLoginCred failed with %d\n", code);
 	exit(1);
@@ -108,6 +115,11 @@ char **argv;
     }
     if (argc < 3) usage();
  
+    /*
+     * For write it seems me too dangerous to prefix with our path and to 
+     * use any names used by AFS. If it should be necassary just copy the
+     * code from hpss_read.c
+     */
     sprintf(filename,"%s", argv[0]);
 
     code = 1; count = 2;
@@ -256,6 +268,9 @@ char **argv;
     } else
     printf("Total data rate = %.0f Kbytes/sec. for write\n", datarate);
    
+    hpss_ClientAPIReset();
+    hpss_PurgeLoginCred();
+
     exit(0);
 }
 
