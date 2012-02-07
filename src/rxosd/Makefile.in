@@ -21,7 +21,8 @@ FSINT=../fsint
 CC=${MT_CC}
 CFLAGS=${COMMON_CFLAGS} -I.. -I${UTIL}/ ${MT_CFLAGS}
 
-CCRULE=${CC} ${CFLAGS} -c $?
+CCRULE=${CC} ${CFLAGS} -DBUILDING_RXOSD -c $?
+CCRULE2=${CC} ${CFLAGS} -DBUILDING_RXOSD -c $<
 
 CLIENTOBJS=osd.o
 
@@ -61,10 +62,10 @@ osd: osd.o rxosd.cs.o osddbuser.o policy_parser.o
 	
 
 rxosd.o: rxosd.c
-	${CCRULE} -DBUILDING_RXOSD
+	${CCRULE} 
 
 libafshsm.o: libafshsm.c rxosd_hsm.h
-	${CCRULE}
+	${CCRULE2}
 
 policy_parser.o: policies.tab.c
 	${CCRULE} -o policy_parser.o
@@ -119,10 +120,10 @@ common.o: ${VOL}/common.c
 	${CCRULE}
 
 ihandle.o: ${VOL}/ihandle.c
-	${CCRULE} -DBUILDING_RXOSD
+	${CCRULE}
 
 namei_ops.o: ${VOL}/namei_ops.c
-	${CCRULE} ${DCACHE_INC} -DBUILDING_RXOSD
+	${CCRULE} ${DCACHE_INC}
 
 osddb.h: ${OSDDBSRC}/osddb.xg
 	${RXGEN} -x -h -o $@ ${OSDDBSRC}/osddb.xg
@@ -175,8 +176,8 @@ rxosd.h: rxosd.xg
 rxosd: rxosd.h ${objects} ${LIBS}
 	${CC} ${LDFLAGS} -ldl -o rxosd ${objects} ${LIBS} ${MT_LIBS} ${XLIBS}
 
-readabyte.o: readabyte.c 
-	${CCRULE} -DBUILDING_RXOSD
+readabyte.o: readabyte.c rxosd_hsm.h
+	${CCRULE2}
 
 readabyte: readabyte.o libafshsm.o
 	${CC} ${LDFLAGS} -ldl -o readabyte readabyte.o libafshsm.o \
