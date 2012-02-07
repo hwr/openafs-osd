@@ -720,6 +720,6 @@ init_rxosd_hpss(char *AFSVersion, char **versionstring, void *inrock,
     *(output->opsPtr) = &ih_hpss_ops;
     *(output->authOps) = &auth_ops;
 
-    code = libafshpss_init(libafshsmrock, version);
+    code = libafshsm_init(libafshsmrock, version);
     return code;
 }
