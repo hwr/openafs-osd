@@ -1172,7 +1172,7 @@ FiveMinuteCheckLWP()
 			p = volutil_PartitionName_r(e->t.etype_u.osd.lun, 
 				partname, 16);
 			if (auth_ops) {
-			    code = (auth_ops->authenticate)(principal, keytab);
+			    code = (auth_ops->authenticate)();
 			    if (code)
 			        ViceLog(0,("authenticate_for_hpss returns %d\n", code));
 			}

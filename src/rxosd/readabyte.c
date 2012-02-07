@@ -211,9 +211,10 @@ char **argv;
             return -1;
         }
 	if (auth_ops && auth_ops->authenticate) {
-	    if (!(auth_ops->authenticate) (principal, keytab)) {
-                fprintf(log, "Authentication to HPSS for %s with keytab %s failed, aborting\n",
-				principal, keytab);
+	    code = (auth_ops->authenticate)();
+	    if (code) {
+                fprintf(log, "Authentication to HPSS failed with %d, aborting\n",
+				code);
                 return -1;
             }
 	}
