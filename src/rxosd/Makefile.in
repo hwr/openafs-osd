@@ -63,7 +63,7 @@ osd: osd.o rxosd.cs.o osddbuser.o policy_parser.o
 rxosd.o: rxosd.c
 	${CCRULE} -DBUILDING_RXOSD
 
-libafshsm.o: libafshsm.c
+libafshsm.o: libafshsm.c rxosd_hsm.h
 	${CCRULE}
 
 policy_parser.o: policies.tab.c
