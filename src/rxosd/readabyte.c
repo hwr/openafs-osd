@@ -111,6 +111,9 @@ extern off_t afs_lseek(int FD, off_t O, int F);
 
 char *whoami;
 
+char *iname[3] = {"C-library", "HPSS", "DCACHE"};
+char *initname[3] = {"nothing", "init_rxosd_hpss", "init_rxosd_dcache"};
+
 extern struct ih_posix_ops ih_dcache_ops;
 time_t hpssLastAuth = 0;
 
@@ -141,8 +144,6 @@ struct ih_posix_ops clib_ops = {
 
 struct ih_posix_ops *myops = &clib_ops;
 
-afs_int32 (*authenticate_for_hpss)(char *principal, char *keytab) = NULL;
-
 main(argc, argv)
 int argc;
 char **argv;
@@ -161,8 +162,12 @@ char **argv;
     char *principal = NULL;
     char *keytab = NULL;
     char *hpssPath = "";
-    int withHPSS = 0;
+    afs_int32 interface = 0;
     afs_int32 code;
+    struct hsm_interface_input input;
+    struct hsm_interface_output output;
+    struct rxosd_var rxosd_var;
+    struct hsm_auth_ops *auth_ops;
     
     log = fopen("/tmp/readabyte.log", "a+");
 
@@ -170,20 +175,16 @@ char **argv;
     argc--; argv++;
     while (argc > 0 && argv[0][0] == '-') {
         switch (argv[0][1]) {
-#ifdef AFS_DCACHE_SUPPORT
 	case	'd' :
-		myops = &ih_dcache_ops;
+		interface =  DCACHE_INTERFACE;
 		break;
-#endif
-#ifdef AFS_HPSS_SUPPORT
 	case	'h' :
                 argc--; argv++;
 		principal = argv[0];
                 argc--; argv++;
 		keytab = argv[0];
-		withHPSS = 1;
+		interface = HPSS_INTERFACE;
 		break;
-#endif
         case    'v' :
                 verbose = 1;
                 break;
@@ -194,13 +195,7 @@ char **argv;
 
     if (argc < 1) usage();
 
-#ifdef AFS_HPSS_SUPPORT
-    if (withHPSS) {         /* load HPSS support from shared library */
-        struct hsm_interface_input input;
-        struct hsm_interface_output output;
-        struct rxosd_var rxosd_var;
-	struct hsm_auth_ops *auth_ops;
-
+    if (interface) {         /* load HPSS support from shared library */
         rxosd_var.pathOrUrl = hpssPath;
         rxosd_var.principal = principal;
         rxosd_var.keytab = keytab;
@@ -209,24 +204,21 @@ char **argv;
         output.opsPtr = &myops;
         output.authOps = &auth_ops;
 
-        code = load_libafshpss(HPSS_INTERFACE, "init_rxosd_hpss", &input, &output);
+        code = load_libafshsm(interface, initname[interface], &input, &output);
         if (code) {
-            fprintf(stderr, "Loading libafshpss.so failed with code %d, aborting\n",
-                    code);
+            fprintf(log, "Loading shared library for %s failed with code %d, aborting\n",
+                    iname[interface], code);
             return -1;
         }
-	if (!(auth_ops->authenticate) (principal, keytab)) {
-            fprintf(stderr, "Authentication to HPSS for %s with keytab %s failed, aborting\n",
+	if (auth_ops && auth_ops->authenticate) {
+	    if (!(auth_ops->authenticate) (principal, keytab)) {
+                fprintf(log, "Authentication to HPSS for %s with keytab %s failed, aborting\n",
 				principal, keytab);
-            return -1;
-        }
+                return -1;
+            }
+	}
 	
     }
-#endif
-
-#if defined(AFS_DCACHE_SUPPORT)
-    myops = &ih_dcache_ops;
-#endif
 
     sprintf(filename,"%s", argv[0]);
 
@@ -255,6 +247,9 @@ char **argv;
 	exit(4);
     }
     myops->close(fd);
+
+    if (auth_ops && auth_ops->unauthenticate)
+	(auth_ops->unauthenticate)();
 
     if (verbose) {
         gettimeofday(&endtime, &timezone);

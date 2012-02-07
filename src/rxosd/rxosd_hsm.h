@@ -1,7 +1,7 @@
 #ifndef RXOSD_HSM_H
 #define RXOSD_HSM_H
 
-#define LIBAFSHPSS_VERSION 1
+#define LIBAFSHPSS_VERSION 2
 #define LIBAFSDCACHE_VERSION 1
 
 #include <afs/fileutil.h>
@@ -27,6 +27,7 @@ struct hsm_interface_input {
 
 struct hsm_auth_ops {
     afs_int32 (*authenticate)(char *principal, char *keytab);
+    void (*unauthenticate)();
 };
 
 struct hsm_interface_output {

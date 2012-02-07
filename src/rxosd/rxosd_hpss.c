@@ -314,6 +314,13 @@ authenticate_for_hpss(void)
     return code;
 }
 
+void
+unauthenticate_for_hpss()
+{
+    hpss_ClientAPIReset();
+    hpss_PurgeLoginCred();
+}
+
 int myhpss_Open(const char *path, int flags, mode_t mode, afs_uint64 size)
 {
     int fd, myfd, i;
@@ -683,7 +690,8 @@ struct ih_posix_ops ih_hpss_ops = {
 };
 
 struct hsm_auth_ops auth_ops = {
-    authenticate_for_hpss
+    authenticate_for_hpss,
+    unauthenticate_for_hpss
 };
 
 afs_int32
