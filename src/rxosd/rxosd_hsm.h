@@ -1,7 +1,7 @@
 #ifndef RXOSD_HSM_H
 #define RXOSD_HSM_H
 
-#define LIBAFSHPSS_VERSION 2
+#define LIBAFSHPSS_VERSION 3
 #define LIBAFSDCACHE_VERSION 1
 
 #include <afs/fileutil.h>
