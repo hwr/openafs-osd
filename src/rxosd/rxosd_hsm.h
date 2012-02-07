@@ -8,7 +8,7 @@
 #include <afs/ihandle_rxosd.h>
 
 extern afs_int32 
-load_libafshpss(afs_int32 interface, char *initroutine, void *inrock, void *outrock);
+load_libafshsm(afs_int32 interface, char *initroutine, void *inrock, void *outrock);
 
 
 #define HPSS_INTERFACE		1
