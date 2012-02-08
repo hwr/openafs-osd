@@ -283,6 +283,8 @@ authenticate_for_hpss(void)
     afs_int32 code = 0, i;
     time_t now = time(0);
     static int authenticated = 0;
+    char *principal;
+    char *keytab;
 
     code = readHPSSconf();
     if (code)
@@ -298,9 +300,11 @@ authenticate_for_hpss(void)
 	    hpss_PurgeLoginCred();
 	    authenticated = 0;
 	}
-        code = hpss_SetLoginCred(ourPrincipal, hpss_authn_mech_krb5,
+	principal = &ourPrincipal;
+	keytab = &ourKeytab;
+        code = hpss_SetLoginCred(principal, hpss_authn_mech_krb5,
                              hpss_rpc_cred_client,
-                             hpss_rpc_auth_type_keytab, ourKeytab);
+                             hpss_rpc_auth_type_keytab, keytab);
         if (!code) {
 	    authenticated = 1;
 	    *(rxosd_var->lastAuth) = now;
