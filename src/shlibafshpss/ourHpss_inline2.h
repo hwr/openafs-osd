@@ -31,12 +31,13 @@ static struct ourHpss ourHpss;
 int
 fill_ourHpss(struct ourInitParms *p)
 {
-        int i, error;
+        int i, j, error;
 	void *handle[MAX_HPSS_LIBS];
 	void (*init)(void);
 	for (i=0; i<MAX_HPSS_LIBS; i++) {
 	    if (p->ourLibs[i] == NULL)
 		break;
+	    j = i;
 	    handle[i] = dlopen(p->ourLibs[i], RTLD_LAZY | RTLD_GLOBAL);
 	    if (!handle[i]) {
                 fprintf(stderr, "dlopen of %s failed: %s\n", p->ourLibs[i], dlerror());
@@ -44,6 +45,7 @@ fill_ourHpss(struct ourInitParms *p)
 	    }
             dlerror();      /* Clear any existing error */
         }
+	i = j; 	/* last !=NULL entry: should be libhpss.so */
         ourHpss.hpss_SetLoginCred = dlsym(handle[i], "hpss_SetLoginCred");
         if ((error = dlerror()) != NULL)  {
             fprintf(stderr, "dlsym for hpss_SetLoginCred failed: %s\n", dlerror());
