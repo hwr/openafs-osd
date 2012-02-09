@@ -102,6 +102,6 @@ hpss_tapeinfo: hpss_tapeinfo.o
 	${CC} ${LDFLAGS} -o hpss_tapeinfo hpss_tapeinfo.o ${LIBS} ${HSM_LIB}
 
 clean:
-	$(RM) -f *.o libafshpss.so* \
+	$(RM) -f *.o libafshpss.so* hpss_read hpss_write hpss_tapeinfo \
 		 *.c *.h *.gch \
 		libafshpss_pic.a libafshpss.dylib.* libafshpss.exp
