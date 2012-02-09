@@ -32,8 +32,11 @@
 #include <dirent.h>
 #include <stdio.h>
 #include <errno.h>
+
 #include "hpss_api.h"
 #include "hpss_stat.h"
+#include "ourHpss_inline.h"
+
 #include <afs/dirpath.h>
 #include <afs/fileutil.h>
 #include <afs/cellconfig.h>
@@ -112,6 +115,8 @@ static int initialized = 0;
 int HPSStransactions = 0;
 static int waiting = 0; 
 static int waiters = 0;
+
+struct ourInitParms parms;
 char ourPath[128];
 char ourPrincipal[64];
 char ourKeytab[128];
@@ -221,7 +226,16 @@ readHPSSconf()
 			break;
 		    j = sscanf(tbuffer, "COS %u min %s max %s",
 				 &cos, &minstr, &maxstr);
-		    if (j != 3) {
+		    if (j == 3) {
+		        for (i=0; i<MAXCOS; i++) {
+			    if (cos == info[i].cosId)
+			        break;
+			    if (info[i].cosId == 0)
+			        break;
+		        }
+		        if (i<MAXCOS) 
+			    code = fillInfo(&info[i], cos, minstr, maxstr);
+		    } else {
 		        j = sscanf(tbuffer, "PRINCIPAL %s", &tmpstr);
 			if (j == 1) {
 			    strncpy(ourPrincipal, tmpstr, sizeof(ourPrincipal));
@@ -240,16 +254,26 @@ readHPSSconf()
 			    ourPath[sizeof(ourPath) -1] = 0; /*just in case */
 			    continue;
 			}
+		        j = sscanf(tbuffer, "LIB %s", &tmpstr);
+			if (j == 1) {
+			    int k;
+			    for (k=0; k<MAX_HPSS_LIBS; k++) {
+				if (parms.ourLibs[k] == NULL)
+				    break;
+				if (strcmp(parms.ourLibs[k], tmpstr) == 0)
+				    goto found;
+			    }
+			    for (k=0; k<MAX_HPSS_LIBS; k++) { 
+				if (parms.ourLibs[k] == NULL) {
+				    parms.ourLibs[k] = malloc(strlen(tmpstr) + 1);
+				    sprintf(parms.ourLibs[k], "%s", tmpstr);
+				    break;
+				}
+			    }
+			found:
+			    continue;
+			}
 		    }
-		    
-		    for (i=0; i<MAXCOS; i++) {
-			if (cos == info[i].cosId)
-			    break;
-			if (info[i].cosId == 0)
-			    break;
-		    }
-		    if (i<MAXCOS) 
-			code = fillInfo(&info[i], cos, minstr, maxstr);
 		}
 		BufioClose(bp);
 	    }
@@ -312,8 +336,6 @@ authenticate_for_hpss(void)
 	waiting = 0;
         if (waiters)
 	    assert(pthread_cond_broadcast(&auth_cond) == 0);
-	if (authenticated)
-	    return authenticated;
     }
     return code;
 }
@@ -702,7 +724,7 @@ afs_int32
 init_rxosd_hpss(char *AFSVersion, char **versionstring, void *inrock, 
 		void *outrock, void *libafshsmrock, afs_int32 version)
 {
-    afs_int32 code;
+    afs_int32 code, i;
     struct hsm_interface_input *input = (struct hsm_interface_input *)inrock;
     struct hsm_interface_output *output = (struct hsm_interface_output *)outrock;
 
@@ -724,6 +746,20 @@ init_rxosd_hpss(char *AFSVersion, char **versionstring, void *inrock,
     *(output->opsPtr) = &ih_hpss_ops;
     *(output->authOps) = &auth_ops;
 
-    code = libafshsm_init(libafshsmrock, version);
+    for (i=0; i<MAX_HPSS_LIBS; i++)
+        parms.ourLibs[i] = NULL;
+    parms.outrock = &ourHpss;
+    
+    /* 1st call to get afs_ops filled */
+    code = libafshsm_init(HPSS_INTERFACE, libafshsmrock, NULL, version);
+    if (code)
+        return code;
+
+    code = readHPSSconf();
+    if (code)
+	return code;
+
+    /* 2nd call to get HPSS libraries loaded and initialized */
+    code = libafshsm_init(HPSS_INTERFACE, libafshsmrock, (void *)&parms, version);
     return code;
 }

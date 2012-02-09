@@ -77,7 +77,7 @@ int load_libafshsm(afs_int32 interface, char *initroutine, void *inrock, void *o
         sprintf(libname, "%s/%s.%d.%d",
 		AFSDIR_SERVER_BIN_DIRPATH,
 		"libafshpss.so", 0, version);
-		break;
+	break;
     case DCACHE_INTERFACE:
 	version = LIBAFSDCACHE_VERSION;     /* compiled in server binary */
         sprintf(libname, "%s/%s.%d.%d",
@@ -165,15 +165,22 @@ void AssertionFailed(char *file, int line)
     (afs_ops->AssertionFailed)(file, line);
 }
 
+#include "ourHpss_inline2.h"
+
 afs_int32
-libafshsm_init(void *inrock, afs_int32 interfaceVersion) 
+libafshsm_init(afs_int32 interface, void *inrock, void **outrock, afs_int32 interfaceVersion) 
 {
     afs_int32 version = LIBAFSHPSS_VERSION;	/* compiled in shared library */
     struct ops_ptr *in = (struct ops_ptr *)inrock;
+    void *libhpssHandle;
+    afs_int32 code = 0;
 
     if (interfaceVersion != version)
 	return EINVAL;
+    if (interface == HPSS_INTERFACE && outrock) {
+	code = fill_ourHpss(outrock);
+    }
     afs_ops = in->afs_ops;
-    return 0;
+    return code;
 };
 #endif /* BUILD_SHLIBAFSOSD */
