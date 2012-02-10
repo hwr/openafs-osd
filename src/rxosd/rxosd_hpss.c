@@ -354,7 +354,10 @@ int myhpss_Open(const char *path, int flags, mode_t mode, afs_uint64 size)
     hpss_cos_priorities_t cos_pri;
     char myPath[HPSS_MAX_AFS_PATH_NAME];
 
-    sprintf(myPath, "%s%s", ourPath, path);
+    if (path[0] == '/') 		/* absolute path */
+	sprintf(myPath, "%s", path);
+    else
+       sprintf(myPath, "%s/%s", ourPath, path);
     memset(&cos_hints, 0 , sizeof(cos_hints));
     memset(&cos_pri, 0 , sizeof(cos_pri));
     for (i=0; i<MAXCOS; i++) {
@@ -403,8 +406,14 @@ DIR* myhpss_opendir(const char* path)
     struct myDIR *mydir = 0;
     char myPath[HPSS_MAX_AFS_PATH_NAME];
     
-    sprintf(myPath, "%s%s", ourPath, path);
+    if (path[0] == '/') 		/* absolute path */
+	sprintf(myPath, "%s", path);
+    else
+       sprintf(myPath, "%s/%s", ourPath, path);
     addHPSStransaction();
+#ifdef FAKE_HPSS
+    mydir = opendir(myPath);
+#else
     dir_handle = hpss_Opendir(myPath);
     if (dir_handle < 0) {
 	removeHPSStransaction();
@@ -413,11 +422,15 @@ DIR* myhpss_opendir(const char* path)
     mydir = (struct myDIR*) malloc(sizeof(struct myDIR));
     memset(mydir, 0, sizeof(struct myDIR));
     mydir->dir_handle = dir_handle;
+#endif
     return (DIR*) mydir;
 }
 
 struct dirent *myhpss_readdir(DIR *dir)
 {
+#ifdef FAKE_HPSS
+    return readdir(dir);
+#else
 #ifndef AFS_AIX53_ENV
     struct hpss_dirent ent;
     struct myDIR *mydir = (struct myDIR *)dir;
@@ -436,10 +449,14 @@ struct dirent *myhpss_readdir(DIR *dir)
     mydir->dirent.d_reclen = ent.d_reclen;
     return &mydir->dirent;
 #endif
+#endif /* FAKE_HPSS */
 }
 
 int myhpss_closedir(DIR* dir)
 {
+#ifdef FAKE_HPSS
+    return closedir(dir);
+#else
     struct myDIR *mydir = (struct myDIR *)dir;
     
     if (mydir) {
@@ -448,21 +465,32 @@ int myhpss_closedir(DIR* dir)
 	removeHPSStransaction();
     }
     return 0;
+#endif
 }
     
 int myhpss_stat64(const char *path, struct stat64 *buf)
 {
+#ifdef FAKE_HPSS
+    struct stat64 hs;
+#else
     hpss_stat_t hs;
+#endif
     int code;
     char myPath[HPSS_MAX_AFS_PATH_NAME];
     
+    if (path[0] == '/') 		/* absolute path */
+	sprintf(myPath, "%s", path);
+    else
+       sprintf(myPath, "%s/%s", ourPath, path);
     addHPSStransaction();
-    sprintf(myPath, "%s%s", ourPath, path);
     code = hpss_Stat(myPath, &hs);
     removeHPSStransaction();
     checkCode(code);
     if (code)
 	return code;
+#ifdef FAKE_HPSS
+    memcpy(buf, &hs, sizeof(struct stat64));
+#else /* FAKE_HPSS */
     memset(buf, 0, sizeof(struct stat64));
     buf->st_dev = hs.st_dev;
 #if !defined(_LP64)
@@ -485,12 +513,17 @@ int myhpss_stat64(const char *path, struct stat64 *buf)
     buf->st_atime = hs.hpss_st_atime;    
     buf->st_mtime = hs.hpss_st_mtime;    
     buf->st_ctime = hs.hpss_st_ctime;    
+#endif /* FAKE_HPSS */
     return 0;
 }
 
 int myhpss_fstat64(int fd, struct stat64 *buf)
 {
+#ifdef FAKE_HPSS
+    struct stat64 hs;
+#else
     hpss_stat_t hs;
+#endif
     int myfd = fd - FDOFFSET;
     int code;
 
@@ -500,6 +533,9 @@ int myhpss_fstat64(int fd, struct stat64 *buf)
     checkCode(code);
     if (code)
 	return code;
+#ifdef FAKE_HPSS
+    memcpy(buf, &hs, sizeof(struct stat64));
+#else /* FAKE_HPSS */
     memset(buf, 0, sizeof(struct stat64));
     buf->st_dev = hs.st_dev;
 #if !defined(_LP64)
@@ -522,11 +558,13 @@ int myhpss_fstat64(int fd, struct stat64 *buf)
     buf->st_atime = hs.hpss_st_atime;    
     buf->st_mtime = hs.hpss_st_mtime;    
     buf->st_ctime = hs.hpss_st_ctime;    
+#endif /* FAKE_HPSS */
     return 0;
 }
 
 int myhpss_stat_tapecopies(const char *path, afs_int32 *level, afs_sfsize_t *size)
 {
+#ifndef AFS_AIX53_ENV
     afs_int32 code, i;
     int on_disk = 0;
     int on_tape = 0;
@@ -539,8 +577,10 @@ int myhpss_stat_tapecopies(const char *path, afs_int32 *level, afs_sfsize_t *siz
     *level = 0;
     char myPath[HPSS_MAX_AFS_PATH_NAME];
     
-    sprintf(myPath, "%s%s", ourPath, path);
-#ifndef AFS_AIX53_ENV
+    if (path[0] == '/') 		/* absolute path */
+	sprintf(myPath, "%s", path);
+    else
+       sprintf(myPath, "%s/%s", ourPath, path);
     addHPSStransaction();
     code = hpss_FileGetXAttributes(myPath, Flags, StorageLevel, &AttrOut);
     removeHPSStransaction();
@@ -580,6 +620,19 @@ int myhpss_statvfs(const char *path, struct afs_statvfs *buf)
 int myhpss_statfs(const char *path, struct afs_statfs *buf)
 #endif
 {
+#ifdef FAKE_HPSS
+    char myPath[HPSS_MAX_AFS_PATH_NAME];
+    char *p;
+    sprintf(myPath, "%s", ourPath);
+    p = strchr(&myPath[1], '/');		/* end at 2nd slash  */
+    if (p)
+	*p = 0;
+#if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
+    return statvfs(myPath, buf);
+#else
+    return statfs(myPath, buf);
+#endif
+#else /* FAKE_HPSS */
     int code, i;
     hpss_statfs_t hb;
 
@@ -620,6 +673,7 @@ int myhpss_statfs(const char *path, struct afs_statfs *buf)
     if (code)
 	return -1;
     return 0;
+#endif /* FAKE_HPSS */
 }
 
 ssize_t
@@ -681,6 +735,124 @@ myhpss_pwrite(int fd, void *buf, size_t len, afs_foff_t pos)
     return bytes;	
 }
 
+hpss_off_t
+myhpss_lseek(int fd, hpss_off_t Offset, int whence)
+{
+    hpss_off_t offset;
+    int myfd = fd - FDOFFSET;
+
+    offset = hpss_Lseek(myfd, Offset, whence);
+    return offset;
+}
+
+afs_int32
+myhpss_unlink(char *path)
+{
+    afs_int32 code;
+    char myPath[HPSS_MAX_AFS_PATH_NAME];
+    
+    if (path[0] == '/') 		/* absolute path */
+	sprintf(myPath, "%s", path);
+    else
+       sprintf(myPath, "%s/%s", ourPath, path);
+    code = hpss_Unlink(myPath);
+    return code;
+}
+
+afs_int32
+myhpss_mkdir(char *path, mode_t Mode)
+{
+    afs_int32 code;
+    char myPath[HPSS_MAX_AFS_PATH_NAME];
+    
+    if (path[0] == '/') 		/* absolute path */
+	sprintf(myPath, "%s", path);
+    else
+       sprintf(myPath, "%s/%s", ourPath, path);
+    code = hpss_Mkdir(myPath, Mode);
+    return code;
+}
+
+afs_int32
+myhpss_rmdir(char *path)
+{
+    afs_int32 code;
+    char myPath[HPSS_MAX_AFS_PATH_NAME];
+    
+    if (path[0] == '/') 		/* absolute path */
+	sprintf(myPath, "%s", path);
+    else
+       sprintf(myPath, "%s/%s", ourPath, path);
+    code = hpss_Rmdir(myPath);
+    return code;
+}
+
+afs_int32
+myhpss_chmod(char *path, mode_t Mode)
+{
+    afs_int32 code;
+    char myPath[HPSS_MAX_AFS_PATH_NAME];
+    
+    if (path[0] == '/') 		/* absolute path */
+	sprintf(myPath, "%s", path);
+    else
+       sprintf(myPath, "%s/%s", ourPath, path);
+    code = hpss_Chmode(myPath, Mode);
+    return code;
+}
+
+afs_int32
+myhpss_chown(char *path, uid_t Owner, gid_t Group)
+{
+    afs_int32 code;
+    char myPath[HPSS_MAX_AFS_PATH_NAME];
+    
+    if (path[0] == '/') 		/* absolute path */
+	sprintf(myPath, "%s", path);
+    else
+       sprintf(myPath, "%s/%s", ourPath, path);
+    code = hpss_Chown(myPath, Owner, Group);
+    return code;
+}
+
+afs_int32
+myhpss_rename(char *old, char *new)
+{
+    afs_int32 code;
+    char myOld[HPSS_MAX_AFS_PATH_NAME];
+    char myNew[HPSS_MAX_AFS_PATH_NAME];
+
+    if (old[0] == '/') 		/* absolute path */
+	sprintf(myOld, "%s", old);
+    else
+       sprintf(myOld, "%s/%s", ourPath, old);
+    if (new[0] == '/') 		/* absolute path */
+	sprintf(myNew, "%s", new);
+    else
+       sprintf(myNew, "%s/%s", ourPath, new);
+    code = hpss_Rename(myOld, myNew);
+    return code;
+}
+
+afs_int32
+myhpss_link(char *old, char *new)
+{
+    afs_int32 code;
+    char myOld[HPSS_MAX_AFS_PATH_NAME];
+    char myNew[HPSS_MAX_AFS_PATH_NAME];
+
+    if (old[0] == '/') 		/* absolute path */
+	sprintf(myOld, "%s", old);
+    else
+       sprintf(myOld, "%s/%s", ourPath, old);
+    if (new[0] == '/') 		/* absolute path */
+	sprintf(myNew, "%s", new);
+    else
+       sprintf(myNew, "%s/%s", ourPath, new);
+    code = hpss_Link(myOld, myNew);
+    return code;
+}
+
 struct ih_posix_ops ih_hpss_ops = {
     myhpss_Open,
     myhpss_Close,
@@ -688,20 +860,20 @@ struct ih_posix_ops ih_hpss_ops = {
     NULL,
     myhpss_Write,
     NULL,
-    hpss_Lseek,
+    myhpss_lseek,
     NULL,
-    hpss_Unlink,
-    hpss_Mkdir,
-    hpss_Rmdir,
-    hpss_Chmod,
-    hpss_Chown,
+    myhpss_unlink,
+    myhpss_mkdir,
+    myhpss_rmdir,
+    myhpss_chmod,
+    myhpss_chown,
     myhpss_stat64,
     myhpss_fstat64,
-    hpss_Rename,
+    myhpss_rename,
     myhpss_opendir,
     myhpss_readdir,
     myhpss_closedir,
-    hpss_Link,
+    myhpss_link,
 #if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
     myhpss_statvfs,
 #else

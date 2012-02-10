@@ -368,12 +368,14 @@ namei_HandleToInodeDir(namei_t * name, IHandle_t * ih)
     ih->ih_ops = &ih_namei_ops;
     vno = (int)(ih->ih_ino & NAMEI_VNODEMASK);
     if (ih->ih_dev == hsmDev && vno != NAMEI_VNODESPECIAL) {
-        offset = 0;	/* Path will be prefixed ilater in interface routines */
+        offset = 0;	/* Path will be prefixed later in interface routines */
         ih->ih_ops = ih_hsm_opsPtr;
-    }
+    } else
 #endif /* BUILDING_RXOSD */
-    name->n_base[offset] = OS_DIRSEPC;
-    offset++;
+    {
+        name->n_base[offset] = OS_DIRSEPC;
+        offset++;
+    }
     strlcpy(name->n_base + offset, INODEDIR, sizeof(name->n_base) - offset);
     strlcpy(name->n_path, name->n_base, sizeof(name->n_path));
 }

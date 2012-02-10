@@ -203,7 +203,7 @@
 #define READ_OBJ   2
 
 #define MD5SUM "/usr/bin/env md5sum %s"
-#define MD5SUM_HPSS "/usr/afs/bin/md5sum-wrapper %s"
+#define MD5SUM_HPSS "/usr/afs/bin/md5sum-wrapper %s/%s"
 #define DSMLS "/usr/afs/bin/dsmls-wrapper %s"
 #define SLSCMD "/usr/afs/bin/sls-wrapper %s"
 
@@ -251,6 +251,7 @@ int HSM = 0;
 struct hsm_auth_ops *auth_ops = NULL;
 int withHPSS = 0;
 int dcache = 0;
+char hpssPath[256];
 char *hsmPath = NULL;
 char *hsmMeta = NULL;
 extern afs_int32 hsmDev;
@@ -4943,7 +4944,7 @@ md5sum(struct rx_call *call, struct oparmT10 *o, struct osd_cksum *md5)
     md5->o.ometa_u.t.part_id = o->part_id;
     md5->c.type = 1;
     if (oh->ih->ih_dev == hsmDev) {
-        sprintf(input, MD5SUM_HPSS, name.n_path);
+        sprintf(input, MD5SUM_HPSS, hsmPath, name.n_path);
     } else
         sprintf(input, MD5SUM, name.n_path);
     oh_release(oh);
@@ -7313,6 +7314,26 @@ main(int argc, char *argv[])
 	struct hsm_interface_output output;
 	struct rxosd_var rxosd_var;
 	
+	if (withHPSS && !hsmPath) {
+	    int j;
+	    char tbuffer[256];
+	    struct stat64 tstat;
+	    sprintf(tbuffer, "%s/HPSS.conf", AFSDIR_SERVER_BIN_DIRPATH);
+	    if (stat64(tbuffer, &tstat) == 0) {
+		bufio_p bp = BufioOpen(tbuffer, O_RDONLY, 0);
+		if (bp) {
+		    while (1) {
+			j = BufioGets(bp, tbuffer, sizeof(tbuffer));
+			j = sscanf(tbuffer, "PATH %s", &hpssPath);
+			if (j == 1) {
+			    hsmPath = &hpssPath;
+			    break;
+			}
+		    }
+		}
+	        BufioClose(bp);
+	    }
+	}
 	rxosd_var.pathOrUrl = hsmPath;
 	rxosd_var.principal = principal;
 	rxosd_var.keytab = keytab;

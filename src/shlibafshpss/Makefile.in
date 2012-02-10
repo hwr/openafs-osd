@@ -1,18 +1,4 @@
-# API version. When something changes, increment as appropriate. 
-# Ignore at your own risk.
 LIBMAJOR=0
-
-# Copyright 2000, International Business Machines Corporation and others.
-# All Rights Reserved.
-# 
-# This software has been released under the terms of the IBM Public
-# License.  For details, see the LICENSE file in the top-level source
-# directory or online at http://www.openafs.org/dl/license10.html
-#
-# Portions Copyright (c) 2003 Apple Computer, Inc.
-
-# This is a pthread safe library containing rx, rxkad and des.
-
 srcdir=@srcdir@
 include @TOP_OBJDIR@/src/config/Makefile.config
 HSM_LIB=@HSM_LIB@
@@ -80,7 +66,7 @@ libafshpss_pic.a: ${LIBOBJS}
 rxosd_hpss.o: ${RXOSD}/rxosd_hpss.c ${RXOSD}/rxosd_hsm.h
 	${CCRULE2} -DBUILDING_RXOSD ${HSM_INC}
 
-libafshsm.o: ${RXOSD}/libafshsm.c ${RXOSD}/rxosd_hsm.h ourHpss_inline2.h ourHpss_inline3.h
+libafshsm.o: ${RXOSD}/libafshsm.c ${RXOSD}/rxosd_hsm.h ourHpss_inline2.h ourHpss.h
 	${CCRULE2} 
 
 hpss_read.o: ${srcdir}/hpss_read.c hpss_inline.h

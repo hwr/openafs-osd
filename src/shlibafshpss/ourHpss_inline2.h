@@ -1,4 +1,4 @@
-#include "ourHpss_inline3.h"
+#include "ourHpss.h"
 
 struct ourHpss {
     void *hpss_SetLoginCred;
@@ -17,14 +17,13 @@ struct ourHpss {
     void *hpss_Write;
     void *hpss_Ftruncate;
     void *hpss_Lseek;
-    void *hpss_Unlink;
     void *hpss_Mkdir;
     void *hpss_Rmdir;
     void *hpss_Chmod;
     void *hpss_Chown;
     void *hpss_Rename;
     void *hpss_Link;
-    void *hpss_Unink;
+    void *hpss_Unlink;
 };
 static struct ourHpss ourHpss;
 
