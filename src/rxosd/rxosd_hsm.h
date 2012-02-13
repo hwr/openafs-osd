@@ -15,9 +15,9 @@ load_libafshsm(afs_int32 interface, char *initroutine, void *inrock, void *outro
 #define DCACHE_INTERFACE	2
 
 struct rxosd_var {
-    char *pathOrUrl;
-    char *principal;
-    char *keytab;
+    char **pathOrUrl;
+    char **principal;
+    char **keytab;
     time_t *lastAuth;
 };
 

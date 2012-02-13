@@ -7314,29 +7314,9 @@ main(int argc, char *argv[])
 	struct hsm_interface_output output;
 	struct rxosd_var rxosd_var;
 	
-	if (withHPSS && !hsmPath) {
-	    int j;
-	    char tbuffer[256];
-	    struct stat64 tstat;
-	    sprintf(tbuffer, "%s/HPSS.conf", AFSDIR_SERVER_BIN_DIRPATH);
-	    if (stat64(tbuffer, &tstat) == 0) {
-		bufio_p bp = BufioOpen(tbuffer, O_RDONLY, 0);
-		if (bp) {
-		    while (1) {
-			j = BufioGets(bp, tbuffer, sizeof(tbuffer));
-			j = sscanf(tbuffer, "PATH %s", &hpssPath);
-			if (j == 1) {
-			    hsmPath = &hpssPath;
-			    break;
-			}
-		    }
-		}
-	        BufioClose(bp);
-	    }
-	}
-	rxosd_var.pathOrUrl = hsmPath;
-	rxosd_var.principal = principal;
-	rxosd_var.keytab = keytab;
+	rxosd_var.pathOrUrl = &hsmPath;
+	rxosd_var.principal = &principal;
+	rxosd_var.keytab = &keytab;
 	rxosd_var.lastAuth = &hpssLastAuth;
 	input.var = &rxosd_var;
 	output.opsPtr = &ih_hsm_opsPtr;

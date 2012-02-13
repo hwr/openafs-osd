@@ -196,9 +196,9 @@ char **argv;
     if (argc < 1) usage();
 
     if (interface) {         /* load HPSS support from shared library */
-        rxosd_var.pathOrUrl = hpssPath;
-        rxosd_var.principal = principal;
-        rxosd_var.keytab = keytab;
+        rxosd_var.pathOrUrl = &hpssPath;
+        rxosd_var.principal = &principal;
+        rxosd_var.keytab = &keytab;
         rxosd_var.lastAuth = &hpssLastAuth;
         input.var = &rxosd_var;
         output.opsPtr = &myops;

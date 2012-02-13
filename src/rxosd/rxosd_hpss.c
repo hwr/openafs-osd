@@ -903,15 +903,15 @@ init_rxosd_hpss(char *AFSVersion, char **versionstring, void *inrock,
     rxosd_var = input->var;
     
     if (rxosd_var->principal) {
-	strncpy(&ourPrincipal, rxosd_var->principal, sizeof(ourPrincipal));
+	strncpy(&ourPrincipal, *(rxosd_var->principal), sizeof(ourPrincipal));
 	ourPrincipal[sizeof(ourPrincipal) -1] = 0; /*just in case */
     }
     if (rxosd_var->keytab) {
-	strncpy(&ourKeytab, rxosd_var->keytab, sizeof(ourKeytab));
+	strncpy(&ourKeytab, *(rxosd_var->keytab), sizeof(ourKeytab));
 	ourKeytab[sizeof(ourKeytab) -1] = 0; /*just in case */
     }
     if (rxosd_var->pathOrUrl) {
-	strncpy(&ourPath, rxosd_var->pathOrUrl, sizeof(ourPath));
+	strncpy(&ourPath, *(rxosd_var->pathOrUrl), sizeof(ourPath));
 	ourPath[sizeof(ourPath) -1] = 0; /*just in case */
     }
 
@@ -933,5 +933,10 @@ init_rxosd_hpss(char *AFSVersion, char **versionstring, void *inrock,
 
     /* 2nd call to get HPSS libraries loaded and initialized */
     code = libafshsm_init(HPSS_INTERFACE, libafshsmrock, (void *)&parms, version);
+
+    /* Give back to caller what we read from HPSS.conf */
+    *(rxosd_var->pathOrUrl) = &ourPath;
+    *(rxosd_var->principal) = &ourPrincipal;
+    *(rxosd_var->keytab) = &ourKeytab;
     return code;
 }
