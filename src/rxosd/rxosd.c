@@ -1313,8 +1313,7 @@ StartFetch()
 	if (withHPSS)
 	    (void) execlp(AFSDIR_SERVER_RECALL_MIGRATED_FILE_FILEPATH,
 		      AFSDIR_RECALL_MIGRATED_FILE_FILE,
-		      "-h", principal, keytab,
-                      name.n_path, (char *) 0);
+		      "-h", name.n_path, (char *) 0);
 	else
 	    (void) execlp(AFSDIR_SERVER_RECALL_MIGRATED_FILE_FILEPATH,
 		      AFSDIR_RECALL_MIGRATED_FILE_FILE,

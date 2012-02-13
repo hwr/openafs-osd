@@ -179,10 +179,12 @@ char **argv;
 		interface =  DCACHE_INTERFACE;
 		break;
 	case	'h' :
-                argc--; argv++;
-		principal = argv[0];
-                argc--; argv++;
-		keytab = argv[0];
+		if (argc == 4) {	/* backward compatibility */
+                    argc--; argv++;
+		    principal = argv[0];
+                    argc--; argv++;
+		    keytab = argv[0];
+		}
 		interface = HPSS_INTERFACE;
 		break;
         case    'v' :
