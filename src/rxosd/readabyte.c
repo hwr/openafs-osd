@@ -223,7 +223,7 @@ char **argv;
 	
     }
 
-    sprintf(filename,"%s", argv[0]);
+    sprintf(filename,"%s/%s", hpssPath, argv[0]);
 
     if (sleeptime) {
 	if (verbose) fprintf(log, "Now sleeping %u seconds\n", sleeptime);
