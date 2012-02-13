@@ -1501,8 +1501,13 @@ namei_copy_on_write(IHandle_t *h)
 	}
 	buf = malloc(8192);
 	if (!buf) {
+#if defined(BUILDING_RXOSD)
+	    (h->ih_ops->close)(fd);
+	    (h->ih_ops->unlink)(path);
+#else
 	    close(fd);
 	    OS_UNLINK(path);
+#endif
 	    FDH_CLOSE(fdP);
 	    return ENOMEM;
 	}
