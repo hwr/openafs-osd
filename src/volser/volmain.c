@@ -67,7 +67,7 @@
 /*@printflike@*/ extern void Abort(const char *format, ...);
 
 #include <afs/afsosd.h>
-int convertToOsd = 0;
+afs_int32 convertToOsd = 0;
 #ifdef AFS_PTHREAD_ENV
 int libafsosd = 0;
 #endif
@@ -430,8 +430,10 @@ main(int argc, char **argv)
 		   "[-syslog[=FACILITY]] -mbpersleep <MB / 1 sec sleep>"
 		   "%s"
 		   "[-enable_peer_stats] [-enable_process_stats] "
+#ifdef AFS_PTHREAD_ENV
+		   "[-libafsosd] [-convert]"
+#endif
 		   "[-help]\n",
-		   libafsosd ?  "[-convert] ":"");
 #else
 	    printf("Usage: volserver [-log] [-p <number of processes>] "
 		   "[-auditlog <log path>] [-d <debug level>] "
