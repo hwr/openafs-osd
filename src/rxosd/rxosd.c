@@ -3080,7 +3080,12 @@ int examine(struct rx_call *call, t10rock *rock, struct oparmT10 *o,
         *sizep = tstat.st_size;
     if ((mask & WANTS_HSM_STATUS) && statusp) {
 	if (h.ih_ops->stat_tapecopies) {
+	    time_t before = time(0), after;
 	    result = h.ih_ops->stat_tapecopies(name.n_path, statusp, sizep);
+	    after = time(0);
+	    ViceLog(1, ("stat_tapecopies for %s took %d seconds\n",
+				sprint_oparmT10(o, string, sizeof(string)),
+				after - before));
 	} else {
 	    char input[100];
 	    *statusp = 0;
