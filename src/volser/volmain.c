@@ -433,7 +433,7 @@ main(int argc, char **argv)
 #ifdef AFS_PTHREAD_ENV
 		   "[-libafsosd] [-convert]"
 #endif
-		   "[-help]\n",
+		   "[-help]\n");
 #else
 	    printf("Usage: volserver [-log] [-p <number of processes>] "
 		   "[-auditlog <log path>] [-d <debug level>] "
