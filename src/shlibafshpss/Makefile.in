@@ -32,7 +32,7 @@ LIBOBJS = \
 LIBAFSHPSS = libafshpss.${SHLIB_SUFFIX}.${LIBMAJOR}.${LIBMINOR}
 
 all: ${TOP_LIBDIR}/${LIBAFSHPSS} ${TOP_LIBDIR}/libafshpss_pic.a \
-		hpss_read hpss_write hpss_tapeinfo
+		hpss_read hpss_write hpss_tapeinfo hpss_restore
 
 ${TOP_LIBDIR}/${LIBAFSHPSS}: ${LIBAFSHPSS}
 	../config/shlib-install -d ${TOP_LIBDIR} \
@@ -75,6 +75,12 @@ hpss_read.o: ${srcdir}/hpss_read.c hpss_inline.h
 hpss_read: hpss_read.o
 	${CC} ${LDFLAGS} -o hpss_read hpss_read.o ../rxkad/md5.o ${LIBS} ${HSM_LIB}
 
+hpss_restore.o: ${srcdir}/hpss_restore.c hpss_inline.h
+	${CCRULE} ${HSM_INC}
+
+hpss_restore: hpss_restore.o
+	${CC} ${LDFLAGS} -o hpss_restore hpss_restore.o ${LIBS} ${HSM_LIB}
+
 hpss_write.o: ${srcdir}/hpss_write.c hpss_inline.h
 	${CCRULE} ${HSM_INC}
 
@@ -88,6 +94,6 @@ hpss_tapeinfo: hpss_tapeinfo.o
 	${CC} ${LDFLAGS} -o hpss_tapeinfo hpss_tapeinfo.o ${LIBS} ${HSM_LIB}
 
 clean:
-	$(RM) -f *.o libafshpss.so* hpss_read hpss_write hpss_tapeinfo \
+	$(RM) -f *.o libafshpss.so* hpss_read hpss_restore hpss_write hpss_tapeinfo \
 		 *.c *.h *.gch \
 		libafshpss_pic.a libafshpss.dylib.* libafshpss.exp
