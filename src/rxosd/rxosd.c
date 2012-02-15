@@ -2524,7 +2524,7 @@ create(struct rx_call *call, afs_uint64 part_id, afs_uint64 from_id,
     unique = (from_id >> RXOSD_UNIQUESHIFT);
     volutil_PartitionName_r(lun, (char *)&partition, PARTNAMELEN); 
     inode = IH_CREATE(lh->ih, lun, (char *)&partition, 0, vid, vnode, unique, 1);
-    if (!VALID_INO(inode)) {
+    if (!(VALID_INO(inode))) {
 	code = create_volume(call, part_id);
 	if (code) {
     	    oh_release(lh);
@@ -2533,7 +2533,7 @@ create(struct rx_call *call, afs_uint64 part_id, afs_uint64 from_id,
 	}
         inode = IH_CREATE(lh->ih, lun, (char *)&partition, 0, vid, vnode, 
 			  unique, 1);
-	if (!VALID_INO(inode)) {
+	if (!(VALID_INO(inode))) {
     	    oh_release(lh);
 	    code = ENOSPC;
 	    goto finis;
@@ -3735,7 +3735,7 @@ int CopyOnWrite(struct rx_call *call, struct oparmT10 *o, afs_uint64 offs,
     }
     volutil_PartitionName_r(lun, (char *)&partition, PARTNAMELEN);
     newinode = IH_CREATE(lh->ih, lun, (char *)&partition, 0, vid, vnode, unique, 1);
-    if (!VALID_INO(newinode)) {
+    if (!(VALID_INO(newinode))) {
         code = ENOSPC;
         goto bad;
     }
@@ -5095,7 +5095,7 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
     volutil_PartitionName_r(lun, (char *)&partition, PARTNAMELEN); 
     inode = namei_icreate_open(lh->ih, (char *)&partition, vid, vnode, 
 				unique, 1, length, &open_fd);
-    if (!VALID_INO(inode)) {
+    if (!(VALID_INO(inode))) {
 	code = create_volume(call, o->part_id);
 	if (code) {
     	    oh_release(lh);
@@ -5107,7 +5107,7 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
 	}
         inode = namei_icreate_open(lh->ih, (char *)&partition,  vid, 
 			vnode, unique, 1, length, &open_fd);
-	if (!VALID_INO(inode)) {
+	if (!(VALID_INO(inode))) {
     	    oh_release(lh);
             ViceLog(0,("create_archive: namei_icreate_open failed (invalid inode).\n"));
 	    code = ENOSPC;
