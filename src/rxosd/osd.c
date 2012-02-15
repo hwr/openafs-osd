@@ -326,7 +326,7 @@ static int incrlc_obj(struct cmd_syndesc *as, void *rock)
     }
     code = RXOSD_incdec(Conn, &Oprm, 1);
     if (!code) {
-        printf("Link count of following object object incremented:%u.%u.%u.%u", 
+        printf("Link count incremented of %u.%u.%u.%u", 
 		Oprm.ometa_u.f.rwvol,
 		Oprm.ometa_u.f.vN,
 		Oprm.ometa_u.f.unique,
@@ -394,7 +394,7 @@ static int decrlc_obj(struct cmd_syndesc *as, void *rock)
     }
     code = RXOSD_incdec(Conn, &Oprm, -1);
     if (!code) {
-        printf("Link count of following object object decremented:%u.%u.%u.%u", 
+        printf("Link count decremented of %u.%u.%u.%u", 
 		Oprm.ometa_u.f.rwvol,
 		Oprm.ometa_u.f.vN,
 		Oprm.ometa_u.f.unique,
@@ -1389,9 +1389,11 @@ int objects(struct cmd_syndesc *as, void *rock)
     afs_uint64 inode;
     afs_uint64 length;
     afs_uint64 totalLength = 0;
-    afs_uint32 vid, vnode, unique, tag, linkCount, nObjects = 0;
+    afs_uint32 vid, vnode, unique, tag, nObjects = 0;
+    afs_int32 linkCount;
     afs_uint32 high, stripe, stripes, stripesize, stripespower, stripesizepower;
     int error, code, i;
+    int unlinked = 0;
     XDR xdr;
 
     thost = as->parms[0].items->data;
@@ -1412,9 +1414,11 @@ int objects(struct cmd_syndesc *as, void *rock)
         }
 	Oprm.ometa_u.f.lun = lun;
     }
-    if (as->parms[3].items)   		/* -cell   */
-        cellp = as->parms[3].items->data;
-    if (as->parms[4].items)   		/* -localauth   */
+    if (as->parms[3].items)   		/* -unlinked   */
+        unlinked = 1;
+    if (as->parms[4].items)   		/* -cell   */
+        cellp = as->parms[4].items->data;
+    if (as->parms[5].items)   		/* -localauth   */
         localauth = 1;
 
     scan_osd_or_host();
@@ -1436,8 +1440,10 @@ int objects(struct cmd_syndesc *as, void *rock)
 		error = rx_Error(Call);
 	    while (code && Oprm.ometa_u.f.rwvol) {
 	        xdr_afs_uint64(&xdr, &length);
-	        xdr_afs_uint32(&xdr, &linkCount);
+	        xdr_afs_int32(&xdr, &linkCount);
 		if (Oprm.ometa_u.f.vN == VOLUME_SPECIAL) {
+		    if (unlinked)
+			goto skip;
         	    printf("%u.%u.%u.%u ", 
 			Oprm.ometa_u.f.rwvol,
 			Oprm.ometa_u.f.vN,
@@ -1459,22 +1465,43 @@ int objects(struct cmd_syndesc *as, void *rock)
 		        printf("Link Table   for %u with RW %u  length %llu\n",
 				Oprm.ometa_u.f.rwvol, Oprm.ometa_u.f.unique, length);
 		} else {
-        	    printf("%u.%u.%u.%u lng %llu lc %u", 
-			Oprm.ometa_u.f.rwvol,
-			Oprm.ometa_u.f.vN,
-			Oprm.ometa_u.f.unique,
-			Oprm.ometa_u.f.tag,
-			length, linkCount); 
-		    if (Oprm.ometa_u.f.nStripes < 2)
-	    	        printf(" not striped\n");
-		    else
-            	        printf(" stripe %u of %u, stripe size %u\n", 
-			    Oprm.ometa_u.f.myStripe,
-			    Oprm.ometa_u.f.nStripes,
-			    Oprm.ometa_u.f.stripeSize);
+		    if (linkCount >= 0 && unlinked)
+			goto skip;
+		    if (linkCount < 0) {
+			if (!unlinked)
+			    goto skip;
+        	        printf("%u.%u.%u.%u (from ", 
+			    Oprm.ometa_u.f.rwvol,
+			    Oprm.ometa_u.f.vN,
+			    Oprm.ometa_u.f.unique,
+			    Oprm.ometa_u.f.tag);
+			PrintTime(&Oprm.ometa_u.f.spare[2]);
+        	        printf(" lng %llu) unlinked %04d%02d%02d\n", 
+			    length,
+			    Oprm.ometa_u.f.spare[1] >> 9,
+			    (Oprm.ometa_u.f.spare[1] >> 5) & 15,
+			    Oprm.ometa_u.f.spare[1] & 31); 
+		    } else {
+			if (unlinked)
+			    goto skip;
+        	        printf("%u.%u.%u.%u lng %llu lc %u", 
+			    Oprm.ometa_u.f.rwvol,
+			    Oprm.ometa_u.f.vN,
+			    Oprm.ometa_u.f.unique,
+			    Oprm.ometa_u.f.tag,
+			    length, linkCount); 
+		        if (Oprm.ometa_u.f.nStripes < 2)
+	    	            printf(" not striped\n");
+		        else
+            	            printf(" stripe %u of %u, stripe size %u\n", 
+			        Oprm.ometa_u.f.myStripe,
+			        Oprm.ometa_u.f.nStripes,
+			        Oprm.ometa_u.f.stripeSize);
+		    }
 		}
 		totalLength += length;
 		nObjects++;
+	skip:
 	        code = xdr_oparmFree(&xdr, &Oprm.ometa_u.f);
 	    }
 	    if (!error) {
@@ -1568,7 +1595,7 @@ static int examine(struct cmd_syndesc *as, void *rock)
 	    return EINVAL;     
         }
     }
-    if (as->parms[3].items)   		/* -dsmls   */
+    if (as->parms[3].items)   		/* -hsmstatus   */
         mask |= WANTS_HSM_STATUS;
     if (as->parms[4].items)   		/* -atime   */
         mask |= WANTS_ATIME;		
@@ -3945,6 +3972,7 @@ int main (int argc, char **argv)
     cmd_AddParm(ts, "-volume", CMD_SINGLE, CMD_REQUIRED, "volume-id");
     cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL,
 	        "0 for /vicepa, 1 for /vicepb ...");
+    cmd_AddParm(ts, "-unlinked", CMD_FLAG, CMD_OPTIONAL, "get only unlinked objects");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
     cmd_AddParm(ts, "-localauth", CMD_FLAG, CMD_OPTIONAL,
 	        "get ticket from server key-file ");
@@ -4013,7 +4041,8 @@ int main (int argc, char **argv)
 	        "file-id: volume.vnode.uniquifier[.tag]");
     cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL,
 	        "0 for /vicepa, 1 for /vicepb ...");
-    cmd_AddParm(ts, "-dsmls", CMD_FLAG, CMD_OPTIONAL, "do dsmls to get status");
+    cmd_AddParm(ts, "-hsmstatus", CMD_FLAG, CMD_OPTIONAL,
+		"'r' regular, 'p' premigrated, 'm' migrated");
     cmd_AddParm(ts, "-atime", CMD_FLAG, CMD_OPTIONAL, "show atime instead of mtime");
     cmd_AddParm(ts, "-ctime", CMD_FLAG, CMD_OPTIONAL, "show ctime instead of mtime");
     cmd_AddParm(ts, "-path", CMD_FLAG, CMD_OPTIONAL, "show path in OSD partition");

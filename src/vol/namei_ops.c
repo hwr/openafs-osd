@@ -2595,6 +2595,9 @@ _namei_examine_reg(char * path3,
 	goto error;
     }
 
+#ifdef BUILDING_RXOSD
+  if (!info.linkCount) {	/* Only if it's not a xxx-unlinked-yyyymmdd file */
+#endif
     info.linkCount =
 	namei_GetLinkCount(linkHandle,
 			    info.inodeNumber, 0, 1, Testing);
@@ -2614,6 +2617,9 @@ _namei_examine_reg(char * path3,
 #endif
 	goto error;
     }
+#ifdef BUILDING_RXOSD
+  }
+#endif
 
     if (!judgeFun ||
 	(*judgeFun) (&info, singleVolumeNumber, rock)) {
@@ -3347,6 +3353,10 @@ DecodeInode(char *dpath, char *name, struct ViceInodeInfo *info, IHandle_t *ih)
     int parm, tag;
     lb64_string_t check;
     afs_uint32 volid = ih->ih_vid;
+#if defined(BUILDING_RXOSD)
+    afs_int32 i, year, month, day;
+    char *p;
+#endif
 
     afs_snprintf(fpath, sizeof(fpath), "%s" OS_DIRSEP "%s", dpath, name);
 
@@ -3359,11 +3369,31 @@ DecodeInode(char *dpath, char *name, struct ViceInodeInfo *info, IHandle_t *ih)
     }
 
     info->byteCount = status.st_size;
+#ifdef BUILDING_RXOSD
+    info->linkCount = 0;
+    p = strstr(name, "-unlinked-");
+    if (p) {
+	i = sscanf(p, "-unlinked-%4d%2d%2d", &year, &month, &day);
+	if (i == 3) {
+	    info->u.param[0] = volid;
+	    info->u.param[1] = (year << 9) + (month << 5) + day;
+	    info->u.param[2] = status.st_mtime;
+	    info->u.param[3] = status.st_ctime;
+	    info->linkCount = -1;
+	    *p = 0;
+	}
+    }
+#endif
     info->inodeNumber = (Inode) flipbase64_to_int64(name);
 
     int64_to_flipbase64(check, info->inodeNumber);
     if (strcmp(name, check))
 	return -1;
+
+#ifdef BUILDING_RXOSD
+    if (info->linkCount < 0)
+	return 0;
+#endif
 
     GetOGMFromStat(&status, &parm, &tag);
     if ((info->inodeNumber & NAMEI_INODESPECIAL) == NAMEI_INODESPECIAL) {
