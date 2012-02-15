@@ -1379,7 +1379,7 @@ FindInFetchqueue(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
             RemoveFromFetchq(f);
             return code;
         }
-    } else {
+    } else if (list) {		/* create new entry in the fetch queue */
 	struct fetch_entry *f2;
 	afs_uint32 now = time(0);
 	f = (struct fetch_entry *) malloc(sizeof(struct fetch_entry));
@@ -1409,6 +1409,9 @@ FindInFetchqueue(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 	WriteFetchQueue();
         QUEUE_UNLOCK;
         StartFetch();
+    } else {	/* caller just wanted to know whether object is in fetch queue */
+        QUEUE_UNLOCK;
+	return ENOENT;
     }
     return OSD_WAIT_FOR_TAPE;
 }
@@ -2870,12 +2873,16 @@ int ListSingleObjectOparm2(struct ViceInodeInfo * info, int vid, XDR *xdr) {
     struct oparmFree o2;
     struct oparmT10 o1;
 
-    o1.part_id = info->u.vnode.volumeId;
+    memset(&o2, 0, sizeof(o2));
+    o1.part_id = info->u.vnode.volumeId; /* identical with info->param[0] */
     o1.obj_id = info->inodeNumber;
     convert_ometa_1_2(&o1, &o2);
+    o2.spare[1] = info->u.param[1];
+    o2.spare[2] = info->u.param[2];
+    o2.spare[3] = info->u.param[3];
     xdr_oparmFree(xdr, &o2);
     xdr_afs_uint64(xdr, &info->byteCount);
-    xdr_afs_uint32(xdr, &info->linkCount);
+    xdr_afs_int32(xdr, &info->linkCount);
     return 0;
 }
 
@@ -3079,24 +3086,29 @@ int examine(struct rx_call *call, t10rock *rock, struct oparmT10 *o,
     if ((mask & WANTS_SIZE) && sizep)
         *sizep = tstat.st_size;
     if ((mask & WANTS_HSM_STATUS) && statusp) {
-	if (h.ih_ops->stat_tapecopies) {
+	result = FindInFetchqueue(call, o, 0, NULL, 0);
+	if (result == OSD_WAIT_FOR_TAPE)  /* don't bother HSM system, we know it's 'm' */
+	    *statusp = 'm';
+	else if (h.ih_ops->stat_tapecopies) { /* hpss or dcache */
 	    time_t before = time(0), after;
+	    char what[2];
 	    result = h.ih_ops->stat_tapecopies(name.n_path, statusp, sizep);
 	    after = time(0);
-	    ViceLog(1, ("stat_tapecopies for %s took %d seconds\n",
+	    what[0] = *statusp;
+	    what[1] = 0;
+	    ViceLog(1, ("stat_tapecopies for %s took %d seconds to find %s\n",
 				sprint_oparmT10(o, string, sizeof(string)),
-				after - before));
+				after - before, what));
 	} else {
 	    char input[100];
 	    *statusp = 0;
 #ifdef AFS_TSM_HSM_ENV
     	    sprintf(input, DSMLS, name.n_path);
-    	    code = Command(input, CHK_STDOUT, check_dsmls, statusp);
 #endif /* AFS_TSM_HSM_ENV */
 #ifdef AFS_SUN510_ENV
     	    sprintf(input, SLSCMD, name.n_path);
-    	    code = Command(input, CHK_STDOUT, check_dsmls, statusp);
 #endif 
+    	    code = Command(input, CHK_STDOUT, check_dsmls, statusp);
 	}
     }
 #ifdef AFS_TSM_HSM_ENV
@@ -4323,7 +4335,10 @@ finis:
 	if (HSM || oh->ih->ih_dev == hsmDev) {
             char cmd[100];
 	    FDH_REALLYCLOSE(fdP);
-            ViceLog(0,("HSM migrate %s\n", name.n_path));
+            if (oh->ih->ih_dev == hsmDev && hsmPath) 
+                ViceLog(0,("HSM migrate %s\%s\n", hsmPath, name.n_path));
+	    else
+                ViceLog(0,("HSM migrate %s\n", name.n_path));
 	} else
             FDH_CLOSE(fdP);
     }
@@ -5084,6 +5099,9 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
 	code = create_volume(call, o->part_id);
 	if (code) {
     	    oh_release(lh);
+	    ViceLog(0,("create_archive: create_volume returns %d for %s\n",
+				    code,
+				    sprint_oparmT10(o, string, sizeof(string))));
 	    code =  ENOSPC;
 	    goto finis;
 	}
@@ -5146,7 +5164,7 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
 				    obj->o.ometa_u.t.osd_id, code));
 	                fdP = IH_OPEN(oh->ih);
 		        if (!fdP) {
-			    ViceLog(0,("create_archive: couldn't reopen output file for %u.%u.%u.%u\n",
+			    ViceLog(0,("create_archive: couldn't reopen output file for %s\n",
 				    sprint_oparmT10(o, string, sizeof(string))));
 			    code = EIO;
 			    goto bad;
@@ -5323,7 +5341,10 @@ retry:
 done:
     if (HSM || oh->ih->ih_dev == hsmDev) {
         namei_HandleToName(&name, oh->ih);
-        ViceLog(0,("HSM migrate %s\n", name.n_path));
+        if (oh->ih->ih_dev == hsmDev && hsmPath) 
+            ViceLog(0,("HSM migrate %s\%s\n", hsmPath, name.n_path));
+	else
+            ViceLog(0,("HSM migrate %s\n", name.n_path));
     }
 bad:
     for (j=0; j<MAXOSDSTRIPES; j++) {
@@ -5730,7 +5751,10 @@ bad:
             namei_t name;
             char cmd[100];
             namei_HandleToName(&name, oh->ih);
-            ViceLog(0,("HSM migrate %s\n", name.n_path));
+            if (oh->ih->ih_dev == hsmDev && hsmPath) 
+                ViceLog(0,("HSM migrate %s\%s\n", hsmPath, name.n_path));
+	    else
+                ViceLog(0,("HSM migrate %s\n", name.n_path));
         }
         oh_release(oh);
     }
