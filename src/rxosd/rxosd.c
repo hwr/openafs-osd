@@ -4336,7 +4336,7 @@ finis:
             char cmd[100];
 	    FDH_REALLYCLOSE(fdP);
             if (oh->ih->ih_dev == hsmDev && hsmPath) 
-                ViceLog(0,("HSM migrate %s\%s\n", hsmPath, name.n_path));
+                ViceLog(0,("HSM migrate %s/%s\n", hsmPath, name.n_path));
 	    else
                 ViceLog(0,("HSM migrate %s\n", name.n_path));
 	} else
@@ -5342,7 +5342,7 @@ done:
     if (HSM || oh->ih->ih_dev == hsmDev) {
         namei_HandleToName(&name, oh->ih);
         if (oh->ih->ih_dev == hsmDev && hsmPath) 
-            ViceLog(0,("HSM migrate %s\%s\n", hsmPath, name.n_path));
+            ViceLog(0,("HSM migrate %s/%s\n", hsmPath, name.n_path));
 	else
             ViceLog(0,("HSM migrate %s\n", name.n_path));
     }
@@ -5752,7 +5752,7 @@ bad:
             char cmd[100];
             namei_HandleToName(&name, oh->ih);
             if (oh->ih->ih_dev == hsmDev && hsmPath) 
-                ViceLog(0,("HSM migrate %s\%s\n", hsmPath, name.n_path));
+                ViceLog(0,("HSM migrate %s/%s\n", hsmPath, name.n_path));
 	    else
                 ViceLog(0,("HSM migrate %s\n", name.n_path));
         }
