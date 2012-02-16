@@ -1389,11 +1389,15 @@ int objects(struct cmd_syndesc *as, void *rock)
     afs_uint64 inode;
     afs_uint64 length;
     afs_uint64 totalLength = 0;
-    afs_uint32 vid, vnode, unique, tag, nObjects = 0;
+    afs_uint64 goodTotalLength = 0;
+    afs_uint64 unlinkedTotalLength = 0;
+    afs_uint32 vid, vnode, unique, tag;
+    afs_uint32 nObjects = 0, nGoodObjects = 0, nUnlinkedObjects = 0;
     afs_int32 linkCount;
     afs_uint32 high, stripe, stripes, stripesize, stripespower, stripesizepower;
     int error, code, i;
     int unlinked = 0;
+    int all = 0;
     XDR xdr;
 
     thost = as->parms[0].items->data;
@@ -1416,9 +1420,11 @@ int objects(struct cmd_syndesc *as, void *rock)
     }
     if (as->parms[3].items)   		/* -unlinked   */
         unlinked = 1;
-    if (as->parms[4].items)   		/* -cell   */
-        cellp = as->parms[4].items->data;
-    if (as->parms[5].items)   		/* -localauth   */
+    if (as->parms[4].items)   		/* -all   */
+        all = 1;
+    if (as->parms[5].items)   		/* -cell   */
+        cellp = as->parms[5].items->data;
+    if (as->parms[6].items)   		/* -localauth   */
         localauth = 1;
 
     scan_osd_or_host();
@@ -1442,6 +1448,8 @@ int objects(struct cmd_syndesc *as, void *rock)
 	        xdr_afs_uint64(&xdr, &length);
 	        xdr_afs_int32(&xdr, &linkCount);
 		if (Oprm.ometa_u.f.vN == VOLUME_SPECIAL) {
+		    goodTotalLength += length;
+		    nGoodObjects++;
 		    if (unlinked)
 			goto skip;
         	    printf("%u.%u.%u.%u ", 
@@ -1465,10 +1473,15 @@ int objects(struct cmd_syndesc *as, void *rock)
 		        printf("Link Table   for %u with RW %u  length %llu\n",
 				Oprm.ometa_u.f.rwvol, Oprm.ometa_u.f.unique, length);
 		} else {
-		    if (linkCount >= 0 && unlinked)
+		    if (linkCount >= 0 && unlinked) {
+			goodTotalLength += length;
+			nGoodObjects++;
 			goto skip;
+		    }
 		    if (linkCount < 0) {
-			if (!unlinked)
+			unlinkedTotalLength += length;
+			nUnlinkedObjects++;
+			if (!unlinked && !all)
 			    goto skip;
         	        printf("%u.%u.%u.%u (from ", 
 			    Oprm.ometa_u.f.rwvol,
@@ -1482,6 +1495,8 @@ int objects(struct cmd_syndesc *as, void *rock)
 			    (Oprm.ometa_u.f.spare[1] >> 5) & 15,
 			    Oprm.ometa_u.f.spare[1] & 31); 
 		    } else {
+			goodTotalLength += length;
+			nGoodObjects++;
 			if (unlinked)
 			    goto skip;
         	        printf("%u.%u.%u.%u lng %llu lc %u", 
@@ -1506,8 +1521,24 @@ int objects(struct cmd_syndesc *as, void *rock)
 	    }
 	    if (!error) {
             	EndRXOSD_listobjects(Call);
-            	printf("%d object(s) with totally %llu bytes for volume %u found\n", 
-			nObjects, totalLength, vid);
+		if (all) {
+            	   printf("%d object(s) with totally %llu bytes for volume %u found\n", 
+			   nObjects, totalLength, vid);
+            	   printf("\tthereof %d good object(s) with totally %llu bytes\n", 
+			   nGoodObjects, goodTotalLength);
+            	   printf("\tand%d unlinked object(s) with totally %llu bytes\n", 
+			   nUnlinkedObjects, unlinkedTotalLength);
+		} else if (unlinked) {
+            	   printf("%d unlinked object(s) with totally %llu bytes for volume %u found\n", 
+			   nUnlinkedObjects, unlinkedTotalLength, vid);
+            	   printf("\tthere are also %d good object(s) with totally %llu bytes\n", 
+			   nGoodObjects, goodTotalLength);
+		} else {
+            	   printf("%d good object(s) with totally %llu bytes for volume %u found\n", 
+			   nGoodObjects, goodTotalLength, vid);
+            	   printf("\tthere are also %d unlinked object(s) with totally %llu bytes\n", 
+			   nUnlinkedObjects, unlinkedTotalLength);
+		}
 	    }
     	    rx_EndCall(Call, error);
 	}
@@ -3973,6 +4004,7 @@ int main (int argc, char **argv)
     cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL,
 	        "0 for /vicepa, 1 for /vicepb ...");
     cmd_AddParm(ts, "-unlinked", CMD_FLAG, CMD_OPTIONAL, "get only unlinked objects");
+    cmd_AddParm(ts, "-all", CMD_FLAG, CMD_OPTIONAL, "get actual and unlinked objects");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
     cmd_AddParm(ts, "-localauth", CMD_FLAG, CMD_OPTIONAL,
 	        "get ticket from server key-file ");
