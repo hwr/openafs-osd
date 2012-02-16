@@ -6219,6 +6219,14 @@ Variable(struct rx_call *call, afs_int32 cmd, char *name,
 	    extern int log_open_close;
 	    *result = log_open_close;
 	    code = 0;
+	} else if (!strcmp(name, "fdInUseCount")) {
+	    extern int fdInUseCount;
+	    *result = fdInUseCount;
+	    code = 0;
+	} else if (!strcmp(name, "fdCacheSize")) {
+	    extern int fdCacheSize;
+	    *result = fdCacheSize;
+	    code = 0;
 	} else
 	    code = ENOENT;
     } else if (cmd == 2) {					/* set */
@@ -6308,6 +6316,10 @@ char ExportedVariables[] =
     "oldRxosds"
     EXP_VAR_SEPARATOR
     "log_open_close"
+    EXP_VAR_SEPARATOR
+    "fdInUseCount"
+    EXP_VAR_SEPARATOR
+    "fdCacheSize"
     EXP_VAR_SEPARATOR
     "";
     
