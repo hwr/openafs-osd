@@ -1526,7 +1526,7 @@ int objects(struct cmd_syndesc *as, void *rock)
 			   nObjects, totalLength, vid);
             	   printf("\tthereof %d good object(s) with totally %llu bytes\n", 
 			   nGoodObjects, goodTotalLength);
-            	   printf("\tand%d unlinked object(s) with totally %llu bytes\n", 
+            	   printf("\tand %d unlinked object(s) with totally %llu bytes\n", 
 			   nUnlinkedObjects, unlinkedTotalLength);
 		} else if (unlinked) {
             	   printf("%d unlinked object(s) with totally %llu bytes for volume %u found\n", 
