@@ -770,8 +770,6 @@ myhpss_mkdir(char *path, mode_t Mode)
     else
        sprintf(myPath, "%s/%s", ourPath, path);
     code = hpss_Mkdir(myPath, Mode);
-    if (code)
-	errno = code;
     return code;
 }
 
