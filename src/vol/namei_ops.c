@@ -1445,11 +1445,14 @@ namei_replace_file_by_hardlink(IHandle_t *hLink, IHandle_t *hTarget)
     afs_int32 code;
     namei_t nameLink;
     namei_t nameTarget;
+    FdHandle_t *fdP;
 
     /* Convert handle to file name. */
     namei_HandleToName(&nameLink, hLink);
     namei_HandleToName(&nameTarget, hTarget);
-
+    fdP =IH_OPEN(hLink);
+    if (fdP)
+	FDH_REALLYCLOSE(fdP);
 #if defined(BUILDING_RXOSD)
     (hLink->ih_ops->unlink)(nameLink.n_path);
     if (hTarget->ih_ops->hardlink)
