@@ -145,6 +145,27 @@ fill_ometa(char *s)
     return code;
 }
 
+fill_ometa_volume(char *s)
+{
+    afs_int32 fields, code = 0;
+    struct ometa *o = &Oprm;
+
+    memset(o, 0, sizeof(o));
+    o->vsn = 2;
+    fields = sscanf(s, "%llu.%llu.%llu.%u-%u.%u.%u",
+			&o->ometa_u.f.rwvol,
+			&o->ometa_u.f.vN,
+			&o->ometa_u.f.unique,
+			&o->ometa_u.f.tag, 
+			&o->ometa_u.f.myStripe,
+			&o->ometa_u.f.nStripes,
+			&o->ometa_u.f.stripeSize);
+			
+    if (fields != 1)
+	code = EINVAL;
+    return code;
+}
+
 static void 
 scan_osd_or_host()
 {
@@ -3811,6 +3832,103 @@ DeletePolicy(struct cmd_syndesc *as, void *rock)
     return code;
 }
 
+afs_int32
+hard_delete(struct cmd_syndesc *as, void *rock)
+{
+    afs_int32 code, fields;
+    afs_int32 flag = 0;
+    afs_uint32 year, month, day, packed;
+    char junk[80];
+
+    if (as->parms[5].items) 					/* -localauth */
+	localauth = 1;
+    if (as->parms[6].items) 					/* -cell */
+        cellp = as->parms[6].items->data;
+
+    thost = as->parms[0].items->data;
+
+    if (as->parms[1].items) {					/* -fid */
+	if (as->parms[2].items) {
+            fprintf(stderr, "invalid paramenters: -fid and -volume are mutual exclusive\n");
+	    return EINVAL;
+	}
+        if (fill_ometa(as->parms[1].items->data))  {
+            fprintf(stderr, "Invalid fid: %s\n", 
+		        as->parms[1].items->data);
+	    return EINVAL;     
+        }
+	flag |= HARD_DELETE_EXACT;
+    } else{
+	if (!(as->parms[2].items)) {				/* -volume */
+            fprintf(stderr, "invalid paramenters: -fid or -volume required\n");
+	    return EINVAL;
+	}
+        if (fill_ometa_volume(as->parms[2].items->data))  {
+            fprintf(stderr, "Invalid volume-id: %s\n", 
+		        as->parms[2].items->data);
+	    return EINVAL;     
+        }
+	flag |= WHOLE_VOLUME;
+    }
+    fields = sscanf(as->parms[3].items->data, "%04u%02u%02u%s",
+			&year, &month, &day, &junk);
+    if (fields != 3 ||
+      year < 2005 || month == 0 || month > 12 || day == 0 || day > 31) {
+        fprintf(stderr, "Invalid unlinkdate: %s, format is 'yyyymmdd'\n", 
+		    as->parms[3].items->data);
+	return EINVAL;     
+    }
+    packed = (year << 9) + (month << 5) + day;	
+
+    if (as->parms[4].items) {					/* -before */
+	if (!(as->parms[4].items)) {
+            fprintf(stderr, "-before only possible with -volume\n");
+	    return EINVAL;     
+        }
+	flag |= HARD_DELETE_OLDER;
+    }
+    scan_osd_or_host();
+    GetConnection();
+    code = RXOSD_hard_delete(Conn, &Oprm, packed, flag);
+    if (code)
+	fprintf(stderr, "RXOSD_hard_delete returns %d\n", code);
+    else
+	fprintf(stderr, "done.\n");
+    return code;
+}
+
+afs_int32
+remove_fetch(struct cmd_syndesc *as, void *rock)
+{
+    afs_int32 code, what, result;
+
+    what = REMOVE_FROM_FETCHQUEUE;			/* For now the only use */
+
+    if (as->parms[2].items) 					/* -localauth */
+	localauth = 1;
+    if (as->parms[3].items) 					/* -cell */
+        cellp = as->parms[3].items->data;
+
+    thost = as->parms[0].items->data;
+
+    if (fill_ometa(as->parms[1].items->data))  {
+        fprintf(stderr, "Invalid fid: %s\n", 
+	        as->parms[1].items->data);
+   	return EINVAL;     
+    }
+    scan_osd_or_host();
+    GetConnection();
+    code = RXOSD_modify_fetchq(Conn, &Oprm, what, &result);
+    if (code)
+	fprintf(stderr, "RXOSD_modify_fetchq returns %d\n", code);
+    else if (result)
+	fprintf(stderr, "Done. Error code in fetch queue entry was %d.\n",
+		result);
+    else
+	fprintf(stderr, "Done.\n");
+    return code;
+}
+
 static
 int GetConnection()
 {
@@ -4240,28 +4358,57 @@ int main (int argc, char **argv)
     cmd_AddParm(ts, "-localauth", CMD_FLAG, CMD_OPTIONAL,
 	        "get ticket from server key-file ");
 
-    ts = cmd_CreateSyntax("wipecandidates", WipeCand, NULL, "get candidates for wipeing");
-    cmd_AddParm(ts, "-osd", CMD_SINGLE, CMD_REQUIRED, "osd or name or IP-address of server");
-    cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL, "0 for /vicepa, 1 for /vicepb ...");
-    cmd_AddParm(ts, "-max", CMD_SINGLE, CMD_OPTIONAL, "number of candidates, default 100 ");
+    ts = cmd_CreateSyntax("wipecandidates", WipeCand, NULL,
+		"get candidates for wipeing");
+    cmd_AddParm(ts, "-osd", CMD_SINGLE, CMD_REQUIRED,
+		"osd or name or IP-address of server");
+    cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL,
+		"0 for /vicepa, 1 for /vicepb ...");
+    cmd_AddParm(ts, "-max", CMD_SINGLE, CMD_OPTIONAL,
+		"number of candidates, default 100 ");
     cmd_AddParm(ts, "-criteria", CMD_SINGLE, CMD_OPTIONAL, "0:age, 1:size, 2:age*size");
     cmd_AddParm(ts, "-minMB", CMD_SINGLE, CMD_OPTIONAL, "minimum file size in MB");
-    cmd_AddParm(ts, "-seconds", CMD_FLAG, CMD_OPTIONAL, "for -crit 0 give atime in seconds since 1970");
+    cmd_AddParm(ts, "-seconds", CMD_FLAG, CMD_OPTIONAL,
+		"for -crit 0 give atime in seconds since 1970");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
 
 
     ts = cmd_CreateSyntax("statistic", Statistic, NULL, "get rpc statistic");
-    cmd_AddParm(ts, "-osd", CMD_SINGLE, CMD_REQUIRED, "osd or name or IP-address of server");
+    cmd_AddParm(ts, "-osd", CMD_SINGLE, CMD_REQUIRED,
+		"osd or name or IP-address of server");
     cmd_AddParm(ts, "-reset", CMD_FLAG, CMD_OPTIONAL, "all counters to 0");
     cmd_AddParm(ts, "-localauth", CMD_FLAG, CMD_OPTIONAL, "");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
     cmd_AddParm(ts, "-verbose", CMD_FLAG, CMD_OPTIONAL, 
 				"show tranfer rates around the clock");
 
-    ts = cmd_CreateSyntax("osddbstatistic", OsddbStatistic, NULL, "get rpc statistic for osddb");
+    ts = cmd_CreateSyntax("osddbstatistic", OsddbStatistic, NULL,
+		"get rpc statistic for osddb");
     cmd_AddParm(ts, "-server", CMD_SINGLE, CMD_REQUIRED, "name or IP-address of server");
     cmd_AddParm(ts, "-reset", CMD_FLAG, CMD_OPTIONAL, "all counters to 0");
     cmd_AddParm(ts, "-localauth", CMD_FLAG, CMD_OPTIONAL, "");
+    cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
+
+    ts = cmd_CreateSyntax("harddelete", hard_delete, NULL, "delete old unlinked files");
+    cmd_AddParm(ts, "-osd", CMD_SINGLE, CMD_REQUIRED,
+	        "osd or server name or IP-address");
+    cmd_AddParm(ts, "-fid", CMD_SINGLE, CMD_OPTIONAL,
+	        "file-id: volume.vnode.uniquifier[.tag]");
+    cmd_AddParm(ts, "-volume", CMD_SINGLE, CMD_OPTIONAL, "volume id");
+    cmd_AddParm(ts, "-unlinkdate", CMD_SINGLE, CMD_REQUIRED, "as yyyymmdd");
+    cmd_AddParm(ts, "-before", CMD_FLAG, CMD_OPTIONAL,
+		"delete all files unlinked before unlinkdate");
+    cmd_AddParm(ts, "-localauth", CMD_FLAG, CMD_OPTIONAL,
+	        "get ticket from server key-file ");
+    cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
+
+    ts = cmd_CreateSyntax("rmfetchentry", remove_fetch, NULL, "remove entry from fetch queue");
+    cmd_AddParm(ts, "-osd", CMD_SINGLE, CMD_REQUIRED,
+	        "osd or server name or IP-address");
+    cmd_AddParm(ts, "-fid", CMD_SINGLE, CMD_REQUIRED,
+	        "file-id: volume.vnode.uniquifier[.tag]");
+    cmd_AddParm(ts, "-localauth", CMD_FLAG, CMD_OPTIONAL,
+	        "get ticket from server key-file ");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
 
     code = cmd_Dispatch(argc, argv);

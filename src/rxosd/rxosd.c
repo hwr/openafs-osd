@@ -932,7 +932,7 @@ struct fetch_entry {
     struct rxosd_fetch_entry d;
 };
 
-void RemoveFromFetchq(struct fetch_entry *f);
+afs_int32 RemoveFromFetchq(struct fetch_entry *f);
 
 static afs_int32 sleep_time = 5;
  
@@ -1363,7 +1363,8 @@ GetFetchEntry(struct oparmT10 *o)
 
 afs_int32
 FindInFetchqueue(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
-		 struct osd_segm_descList *list, afs_int32 flag)
+		 struct osd_segm_descList *list, afs_int32 flag,
+		 struct fetch_entry **ptr)
 {
     struct fetch_entry *f;
     
@@ -1376,7 +1377,10 @@ FindInFetchqueue(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
         QUEUE_UNLOCK;
         if (f->error) {
             afs_int32 code = f->error;
-            RemoveFromFetchq(f);
+	    if (ptr)
+		*ptr = f;
+	    else
+                RemoveFromFetchq(f);
             return code;
         }
     } else if (list) {		/* create new entry in the fetch queue */
@@ -1413,6 +1417,8 @@ FindInFetchqueue(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
         QUEUE_UNLOCK;
 	return ENOENT;
     }
+    if (ptr)
+	*ptr = f;
     return OSD_WAIT_FOR_TAPE;
 }
 
@@ -1431,20 +1437,13 @@ DeleteFromFetchq(struct oparmT10 *o)
 	RemoveFromFetchq(f);
 }
 
-void
+afs_int32
 RemoveFromFetchq(struct fetch_entry *f)
 {
     struct fetch_entry *f2, *f3, *f4, *f5;
     afs_int32 i;
 
-    if (f->refcnt)
-	return;
     QUEUE_LOCK;
-    /* This loop normally shouldn't find any matching entry */
-    for (i=0; i<MAXPARALLELFETCHES; i++) {
-        if (FetchProc[i].request == f)
-            FetchProc[i].request = 0;
-    }
     /* Find the entry in the fetch queue */
     for (f2=(struct fetch_entry *)&rxosd_fetchq; f2->next; f2=f2->next) {
         if (f2->next == f)
@@ -1457,7 +1456,16 @@ RemoveFromFetchq(struct fetch_entry *f)
                         (afs_uint32)(f->d.o.obj_id >> 32) & UNIQUEMASK,
                         f->d.user, f->error));
         QUEUE_UNLOCK;
-        return;
+        return ENOENT;
+    }
+    if (f->refcnt) {
+        QUEUE_UNLOCK;
+	return EBUSY;
+    }
+    /* This loop normally shouldn't find any matching entry */
+    for (i=0; i<MAXPARALLELFETCHES; i++) {
+        if (FetchProc[i].request == f)
+            FetchProc[i].request = 0;
     }
     f2->next = f->next;
     /* decrease ranking of following requests of same user and reorder queue */
@@ -1494,6 +1502,7 @@ RemoveFromFetchq(struct fetch_entry *f)
     oh_release(f->oh);
     free(f->d.list.osd_segm_descList_val);
     free(f);
+    return 0;
 }
 
 static bool_t
@@ -3086,7 +3095,7 @@ int examine(struct rx_call *call, t10rock *rock, struct oparmT10 *o,
     if ((mask & WANTS_SIZE) && sizep)
         *sizep = tstat.st_size;
     if ((mask & WANTS_HSM_STATUS) && statusp) {
-	result = FindInFetchqueue(call, o, 0, NULL, 0);
+	result = FindInFetchqueue(call, o, 0, NULL, 0, NULL);
 	if (result == OSD_WAIT_FOR_TAPE)  /* don't bother HSM system, we know it's 'm' */
 	    *statusp = 'm';
 	else if (h.ih_ops->stat_tapecopies) { /* hpss or dcache */
@@ -4190,7 +4199,7 @@ readPS(struct rx_call *call, t10rock *rock, struct oparmT10 * o,
 		struct osd_segm_descList list;
 		list.osd_segm_descList_val = 0;
 		list.osd_segm_descList_len = 0;
-		code = FindInFetchqueue(call, o, user, &list, 0);
+		code = FindInFetchqueue(call, o, user, &list, 0, NULL);
 	    } else {
                 ViceLog(0,("readPS: IH_OPEN failed for %u.%u.%u tag %d\n",
                     vid, (afs_uint32)(o->obj_id & RXOSD_VNODEMASK),
@@ -5548,7 +5557,7 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 	oh_release(oh);
         oh = 0;
         if (HSM || hsmFile)
-            code = FindInFetchqueue(call, o, user, list, flag);
+            code = FindInFetchqueue(call, o, user, list, flag, NULL);
         else {
             ViceLog(0,("restore_archive: couldn't open %s\n",
 				sprint_oparmT10(o, string, sizeof(string))));
@@ -5847,6 +5856,10 @@ struct w_obj {
 	afs_uint32 atime;
 };
 
+/*
+ * in wipe_candidates it's correct/safe to use C-library calls instead
+ * of going through ih_ops because wipeable osds use normal file systems.
+ */
 static afs_int32
 wipe_candidates(struct rx_call *call, afs_uint32 lun, afs_uint32 maxcand,
 				afs_uint32 criteria, afs_uint32 minMB,
@@ -6164,9 +6177,38 @@ afs_int32
 SRXOSD_modify_fetchq(struct rx_call *call, struct ometa *o, afs_int32 what,
 		     afs_int32 *result)
 {
+    afs_int32 code = EINVAL;
+    struct fetch_entry *f = NULL;
+
     SETTHREADACTIVE(21, call, o);
+    *result = 0;
+    if (!afsconf_SuperUser(confDir, call, (char *)0)) {
+        code = EACCES;
+        goto finis;
+    }
+    if (what == REMOVE_FROM_FETCHQUEUE) {
+	if (o->vsn == 1)
+            code = FindInFetchqueue(call, &o->ometa_u.t, 0, NULL, 0, &f);
+	else {
+	    struct oparmT10 o1;
+	    code = convert_ometa_2_1(&o->ometa_u.f, &o1);
+	    if (code)
+		goto finis;
+            code = FindInFetchqueue(call, &o1, 0, NULL, 0, &f);
+	}
+        if (f) {				/* still in fetch queue */
+	    /*
+	     *  We should not try to dereference f because we are bot
+	     *  protected by a lock. RemoveFromFetchqueue first checks
+	     *  f is still in the queue before doing anything.
+	     */
+	    *result = code;			/* == f->error */
+	    code = RemoveFromFetchq(f);
+        }
+    }
+finis:
     SETTHREADINACTIVE();
-    return EINVAL;
+    return code;
 }
 
 afs_int32
@@ -7044,7 +7086,7 @@ SRXOSD_online(struct rx_call *call, struct ometa *o, afs_int32 flag, struct exam
 	    struct osd_segm_descList list;
 	    list.osd_segm_descList_val = 0;
 	    list.osd_segm_descList_len = 0;
-	    code = FindInFetchqueue(call, o, user, &list, 0);
+	    code = FindInFetchqueue(call, o, user, &list, 0, NULL);
 	} else { 	/* object presumably on-line */
 	    struct o_handle *oh = oh_init_oparmT10(&o->ometa_u.t);
 	    struct FdHandle_t *fdP;
@@ -7081,7 +7123,7 @@ SRXOSD_online317(struct rx_call *call, afs_uint64 part_id, afs_uint64 obj_id,
 	struct osd_segm_descList list;
 	list.osd_segm_descList_val = 0;
 	list.osd_segm_descList_len = 0;
-	code = FindInFetchqueue(call, &o, user, &list, 0);
+	code = FindInFetchqueue(call, &o, user, &list, 0, NULL);
     } else { 	/* object presumably on-line */
 	struct o_handle *oh = oh_init_oparmT10(&o.ometa_u.t);
 	struct FdHandle_t *fdP;
@@ -7094,6 +7136,143 @@ finis:
     SETTHREADINACTIVE();
     *size = e.exam_u.e4.size;
     *status = e.exam_u.e4.status;
+    return code;
+}
+
+struct unlinkParms {
+    afs_uint32 packed;
+    afs_uint32 year;
+    afs_uint32 month;
+    afs_uint32 day;
+    afs_int32 flag;
+    afs_uint32 dev;
+};
+
+int
+DeleteSingleUnlinked(struct ViceInodeInfo * info, int vid, struct unlinkParms *u)
+{
+    afs_int32 code;
+    afs_uint32 year, month, day;
+    IHandle_t *ih = NULL;
+    namei_t n;
+    struct afs_stat tstat;
+    char name[128];
+
+    if (vid != info->u.vnode.volumeId)		/* just a little redundancy */
+	goto skip;
+    if (info->linkCount != -1)
+	goto skip;
+    year = info->u.param[1] >> 9;
+    month = (info->u.param[1] >> 5) & 15;
+    day = info->u.param[1] & 31;
+
+    if (!(u->flag & HARD_DELETE_EXACT) && !(u->flag & HARD_DELETE_OLDER)) {
+	ViceLog(0, ("DeleteSingleUnlinked: invalid flag 0x%x\n", u->flag));
+	goto skip;
+    }
+    if ((u->flag & HARD_DELETE_EXACT) && info->u.param[1] != u->packed)
+        goto skip;
+
+    /* check that values are reasonable */
+    if (year < 2005 || year > u->year)
+        goto skip;
+    if (month == 0 || month > 12)
+        goto skip;
+    if (year == u->year && month > u->month)
+        goto skip;
+    if (day == 0)
+        goto skip;
+    if (year == u->year && month == u->month && day > u->day)
+        goto skip;
+
+    /* skip to young files */
+    if ((u->flag & HARD_DELETE_OLDER) && info->u.param[1] >= u->packed)
+        goto skip;
+    IH_INIT(ih, u->dev, vid, info->inodeNumber);
+    namei_HandleToName(&n, ih);
+    sprintf(&name, "%s-unlinked-%04u%02u%02u", n.n_path, year, month, day);
+    code = (ih->ih_ops->stat64)(name, &tstat);
+    if (code) {
+	ViceLog(0, ("DeleteSingleUnlinked: stat64 %s returns %d\n", name, code));
+	goto skip;
+    }
+
+    code = (ih->ih_ops->unlink)(name);
+    if (code) 
+	ViceLog(0, ("DeleteSingleUnlinked: unlink %s returns %d\n", name, code));
+	
+skip:	    
+    if (ih)
+	IH_RELEASE(ih);
+    return 0;
+}
+ 
+afs_int32
+SRXOSD_hard_delete(struct rx_call *call, struct ometa *o, afs_uint32 packed_unlinkdata,
+		   afs_int32 flag)
+{
+    afs_int32 code;
+    afs_uint32 year, month, day;
+    struct o_handle *oh = NULL;
+    struct unlinkParms u;
+
+    SETTHREADACTIVE(29, call, o);
+    if (call && !afsconf_SuperUser(confDir, call, (char *)0)) {
+        code = EACCES;
+	goto finis;
+    }
+    u.year = packed_unlinkdata >> 9;
+    u.month = (packed_unlinkdata >> 5) & 15;
+    u.day = packed_unlinkdata & 31;
+    u.flag = flag;
+    if (flag & WHOLE_VOLUME) {
+        afs_uint32 vid, lun;
+	char tmp[NAMEI_LCOMP_LEN];
+	afs_int32 nObjects;
+
+        if (o->vsn == 2) {
+            vid = o->ometa_u.f.rwvol;
+            lun = o->ometa_u.f.lun;
+        } else if (o->vsn == 1) {
+            vid = o->ometa_u.t.part_id & 0xffffffff;
+            lun = o->ometa_u.t.part_id >> 32;
+        } else
+            return EINVAL;
+	(void) volutil_PartitionName_r(lun, (char *) &tmp, NAMEI_LCOMP_LEN);
+	u.dev = lun;
+	nObjects = namei_ListObjects(&tmp, &DeleteSingleUnlinked, vid, &u);
+    } else {
+        namei_t n;
+        struct afs_stat tstat;
+        char name[128];
+
+	if (o->vsn == 1) 
+            oh = oh_init_oparmT10(&o->ometa_u.f);
+	else if (o->vsn == 2) {
+	    struct oparmT10 o1;
+	    code = convert_ometa_2_1(&o->ometa_u.f, &o1);
+            oh = oh_init_oparmT10(&o1);
+	} else {
+	    code = EINVAL;
+	    goto finis;
+	}
+	if (!oh) {
+	    code = EIO;
+	    goto finis;
+	}
+	namei_HandleToName(&n, oh->ih);
+	sprintf(&name, "%s-unlinked-%04u%02u%02u", n.n_path, u.year, u.month, u.day);
+	code = (oh->ih->ih_ops->stat64)(name, &tstat);
+	if (code) {
+	    code = ENOENT;
+	    goto finis;
+	}
+	code = (oh->ih->ih_ops->unlink)(name);
+    }
+finis:
+    if (oh)
+	oh_release(oh);
+    SETTHREADINACTIVE();
     return code;
 }
 
