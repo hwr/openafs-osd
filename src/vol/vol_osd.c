@@ -4246,8 +4246,11 @@ replace_osd(struct Vnode *vn, afs_uint32 old, afs_int32 new, afs_int32 *result)
 			if (code) 
 			    goto bad;
         		vn->changed_newTime = 1;
-		        if (tf) /* Removed a whole file copy, that's enough */ 
+		        if (tf) { /* Removed a whole file copy, that's enough */ 
+			    if (!tf->archiveTime) /* on-line version removed */
+				vd->osdFileOnline = 0;
 			    goto done;
+			}
 			if (frl.osd_p_objList_val) {
             		    for (l=0; l<frl.osd_p_objList_len; l++) {
                 	        struct osd_p_obj *o = &frl.osd_p_objList_val[l];
