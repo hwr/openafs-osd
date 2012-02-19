@@ -2991,21 +2991,21 @@ printfetchq(struct FetchEntryList *q, struct Osd *o)
     if (o)
         printf("Fetch queue for %s:\n", o->name);
     for (i=0; i<q->FetchEntryList_len; i++) {
+	char tstr[64];
 	struct FetchEntry *f = &q->FetchEntryList_val[i];
         if (f->Requestor)
             pr_SIdToName(f->Requestor,userid);
         else
             strcpy((char *)&userid,"<root>");
-	if (f->f.vsn == 1) 
-            printf("%4u %s\t%u.%u.%u\t",
-                   i+1, userid, f->f.afsfid_u.f32.Volume,
+	if (f->f.vsn == 1)
+	    sprintf(tstr, "%u.%u.%u", f->f.afsfid_u.f32.Volume,
 	           f->f.afsfid_u.f32.Vnode, f->f.afsfid_u.f32.Unique);
 	else if (f->f.vsn == 2) 
-            printf("%4u %s\t%llu.%llu.%llu\t",
-                   i+1, userid, f->f.afsfid_u.f64.Volume,
+	    sprintf(tstr, "%llu.%llu.%llu", f->f.afsfid_u.f64.Volume,
 	           f->f.afsfid_u.f64.Vnode, f->f.afsfid_u.f64.Unique);
 	else 
 	    fprintf(stderr, "Invalid vsn %d in afsfid found\n", f->f.vsn);
+        printf("%4u %-9s %-26s", i+1, userid, tstr);
 	if (f->TimeStamp.type == 1)
 	    seconds = f->TimeStamp.afstm_u.sec;
 	else if (f->TimeStamp.type == 2)
@@ -3013,7 +3013,7 @@ printfetchq(struct FetchEntryList *q, struct Osd *o)
 	else 
 	    fprintf(stderr, "Invalid type %d in afstm found\n", f->TimeStamp.type);
         PrintTime(&seconds);
-        printf(" %4u ", f->rank);
+        printf(" %3u ", f->rank);
         if (f->error) 
 	    printf("in error: %d\n", f->error);
         else {
@@ -3022,7 +3022,7 @@ printfetchq(struct FetchEntryList *q, struct Osd *o)
                 printf("queued\n");
                 break;
             case TAPE_FETCH:
-                printf("waiting for tape\n");
+                printf("waits for tape\n");
                 break;
             case XFERING:
                 printf("Xfer to server\n");
@@ -3050,17 +3050,18 @@ printfetchq0(struct FetchEntry0List *q, struct Osd *o)
     if (o)
         printf("Fetch queue for %s:\n", o->name);
     for (i=0; i<q->FetchEntry0List_len; i++) {
+	char tstr[64];
 	struct FetchEntry0 *f = &q->FetchEntry0List_val[i];
         if (f->Requestor)
             pr_SIdToName(f->Requestor,userid);
         else
             strcpy((char *)&userid,"<root>");
-        printf("%4u %s\t%u.%u.%u\t",
-                i+1, userid,
-                f->Volume, f->Vnode, f->Uniquifier);
+	sprintf(tstr, "%u.%u.%u", f->Volume, f->Vnode, f->Uniquifier);
+        printf("%4u %-9s %-26s",
+                i+1, userid, tstr);
 	seconds = f->TimeStamp;
         PrintTime(&seconds);
-        printf(" %4u ", f->rank);
+        printf(" %3u ", f->rank);
         if (f->caller) 
 	    printf("in error: %d\n", f->caller);
         else {
@@ -3069,7 +3070,7 @@ printfetchq0(struct FetchEntry0List *q, struct Osd *o)
                 printf("queued\n");
                 break;
             case TAPE_FETCH:
-                printf("waiting for tape\n");
+                printf("waits for tape\n");
                 break;
             case XFERING:
                 printf("Xfer to server\n");
@@ -3558,8 +3559,8 @@ Statistic(struct cmd_syndesc *as, void *rock)
 
     for (i=0; i < l.rxosd_statList_len; i++) {
 	char *opname = RXOSD_TranslateOpCode(l.rxosd_statList_val[i].rpc);
-	printf("rpc %u %-20s %12llu\n", l.rxosd_statList_val[i].rpc,
-				opname ? opname+6 : "unknown",
+	printf("rpc %3u %-24s %12llu\n", l.rxosd_statList_val[i].rpc,
+				opname ? opname : "unknown",
 				l.rxosd_statList_val[i].cnt);
     }
     return code;
