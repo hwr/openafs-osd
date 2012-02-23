@@ -655,6 +655,11 @@ loop2:
 		    ReleaseWriteLock(&afs_xcbhash);
 		    if ((tvc->f.fid.Fid.Vnode & 1 || (vType(tvc) == VDIR)))
 			osi_dnlc_purgedp(tvc);
+		    /* wake up who waits for this file to come back from tape */
+		    if (tvc->protocol & RX_OSD_TAPE_FETCH) {
+			tvc->protocol &= ~RX_OSD_TAPE_FETCH;
+		        afs_osi_Wakeup(&tvc->protocol);
+		    }
 		    afs_Trace3(afs_iclSetp, CM_TRACE_CALLBACK,
 			       ICL_TYPE_POINTER, tvc, ICL_TYPE_INT32,
 			       tvc->f.states, ICL_TYPE_LONG, 0);

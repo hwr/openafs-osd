@@ -908,6 +908,7 @@ struct vcache {
 					   before storing data */
 #define RX_OSD_NOT_ONLINE       0x1000000
 #endif
+#define RX_OSD_TAPE_FETCH       0x2000000
 #define NO_HSM_RECALL     	0x20000
 #define VICEP_NOSYNC      	0x40000
 #define RX_ENABLE_IDLEDEAD      0x80000
