@@ -341,8 +341,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 	        break;
 	    }
 
-    	    if ((code = CallPreamble(acall, ACTIVECALL,
-							    &tcon, &thost)))
+    	    if ((code = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
 		goto Bad_OSD_Archive;
 
     	    if ((code =
@@ -394,8 +393,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 	        break;
 	    }
 
-    	    if ((code = CallPreamble(acall, ACTIVECALL,
-							    &tcon, &thost)))
+    	    if ((code = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
 		goto Bad_OSD_Wipe;
 
     	    if ((code =
@@ -444,8 +442,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 	    struct client *client = 0;
 	    struct AFSStoreStatus InStatus;
 
-    	    if ((code = CallPreamble(acall, ACTIVECALL,
-							    &tcon, &thost)))
+    	    if ((code = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
 		goto Bad_StripedOsdFile;
 
     	    if ((code =
@@ -491,8 +488,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 	        break;
 	    }
 
-    	    if ((code = CallPreamble(acall, ACTIVECALL,
-							    &tcon, &thost)))
+    	    if ((code = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
 		goto Bad_ReplaceOSD;
 
     	    if ((code =
@@ -537,8 +533,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 	    afs_uint32 rights, anyrights;
 	    struct client *client = 0;
 
-    	    if ((code = CallPreamble(acall, ACTIVECALL,
-							    &tcon, &thost)))
+    	    if ((code = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
 		goto Bad_Get_Arch_Osds;
 
     	    if ((code =
@@ -571,8 +566,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 	    struct client *client = 0;
 	    struct AFSStoreStatus InStatus;
 
-    	    if ((code = CallPreamble(acall, ACTIVECALL,
-							    &tcon, &thost)))
+    	    if ((code = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
 		goto Bad_List_Osds;
 
     	    if ((code =
@@ -611,8 +605,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 	    afs_uint64 transid = 0;
 	    afs_uint32 policy = Inputs->int32s[0];
 
-    	    if ((code = CallPreamble(acall, ACTIVECALL,
-							    &tcon, &thost)))
+    	    if ((code = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
 		goto Bad_SetPolicy;
 
 	    if (!(Fid->Vnode & 1)) {	/* Must be a directory */
@@ -657,8 +650,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
             struct client *client = 0;
             struct AFSStoreStatus InStatus;
  
-    	    if ((code = CallPreamble(acall, ACTIVECALL,
-							    &tcon, &thost)))
+    	    if ((code = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
                 goto Bad_Get_Policies;
  
             if ((code =
@@ -735,22 +727,9 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 }
 
 afs_int32
-SRXAFSOSD_FsCmd(struct rx_call * acall, struct AFSFid * Fid,
-		    struct FsCmdInputs * Inputs,
-		    struct FsCmdOutputs * Outputs)
-{
-    afs_int32 errorCode;
-    SETTHREADACTIVE(acall, 220, Fid);
-
-    errorCode = FsCmd(acall, Fid, Inputs, Outputs);
-    SETTHREADINACTIVE();
-    return errorCode;
-}
-    
-afs_int32
 SRXAFSOSD_CheckOSDconns(struct rx_call *acall)
 {
-    SETTHREADACTIVE(acall, 65559, (AFSFid *)0);
+    SETTHREADACTIVE(acall, 1, (AFSFid *)0);
     ViceLog(1,("SRXAFSOSD_CheckOSDconns called from %u.%u.%u.%u\n",
 			(ntohl(acall->conn->peer->host) >> 24) & 0xff,
 			(ntohl(acall->conn->peer->host) >> 16) & 0xff,
@@ -1270,8 +1249,7 @@ GetOSDlocation(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
         file->segmList.osd_segm2List_val = 0; 
     } else
 	return EINVAL;
-    if ((errorCode = CallPreamble(acall, ACTIVECALL,
-							 &tcon, &thost)))
+    if ((errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
         goto Bad_GetOSDloc;
     /* Get ptr to client data for user Id for logging */
     t_client = (struct client *) rx_GetSpecific(tcon, rxcon_client_key);
@@ -1419,8 +1397,7 @@ ApplyOsdPolicy(struct rx_call *acall, AFSFid *Fid, afs_uint64 length,
 			Fid->Volume, Fid->Vnode, Fid->Unique, length));
     *protocol = 1; /* default: store in local partition */
 
-    if ((errorCode = CallPreamble(acall, ACTIVECALL,
-							 &tcon, &thost)))
+    if ((errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
         goto Bad_ApplyOsdPolicy;
 
     thost->hostFlags |= CLIENT_CALLED_OSDPOLICY;
@@ -1494,7 +1471,7 @@ SRXAFSOSD_ApplyOsdPolicy(struct rx_call *acall, AFSFid *Fid, afs_uint64 length,
 {
     Error errorCode;
 
-    SETTHREADACTIVE(acall, 65560, Fid);
+    SETTHREADACTIVE(acall, 2, Fid);
     errorCode = ApplyOsdPolicy(acall, Fid, length, protocol);
     SETTHREADINACTIVE();
     return errorCode;
@@ -1535,6 +1512,8 @@ Bad_SetOsdFileReady:
     if (volptr)
         VPutVolume(volptr);
 
+    BreakCallBack(NULL, Fid, 1);
+
     ViceLog(1,("SetOsdFileReady returns %d\n", errorCode));
 
     if (errorCode < 0)
@@ -1546,7 +1525,7 @@ afs_int32
 SRXAFSOSD_SetOsdFileReady(struct rx_call *acall, AFSFid *Fid, struct cksum *checksum)
 {
     Error errorCode = RXGEN_OPCODE;
-    SETTHREADACTIVE(acall, 65588, Fid);
+    SETTHREADACTIVE(acall, 6, Fid);
     errorCode = SetOsdFileReady(acall, Fid, checksum);
     SETTHREADINACTIVE();
     return errorCode;
@@ -1573,8 +1552,7 @@ GetOsdMetadata(struct rx_call *acall, AFSFid *Fid)
     char *rock = 0;
     char *data = 0;
 
-    if ((errorCode = CallPreamble(acall, ACTIVECALL,
-							 &tcon, &thost)))
+    if ((errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
         goto Bad_GetOsdMetadata;
 
     /* Get ptr to client data for user Id for logging */
@@ -1628,7 +1606,7 @@ SRXAFSOSD_GetOsdMetadata(struct rx_call *acall, AFSFid *Fid)
 {
     Error errorCode;
 
-    SETTHREADACTIVE(acall, 65562, Fid);
+    SETTHREADACTIVE(acall, 3, Fid);
     errorCode = GetOsdMetadata(acall, Fid);
     SETTHREADINACTIVE();
     return errorCode;
@@ -1685,7 +1663,7 @@ SRXAFSOSD_UpdateOSDmetadata(struct rx_call *acall, struct ometa *old, struct ome
     Error errorCode = 0;
     AFSFid Fid = {0, 0, 0};
 
-    SETTHREADACTIVE(acall, 65586, &Fid);
+    SETTHREADACTIVE(acall, 5, &Fid);
     errorCode = UpdateOSDmetadata(acall, old, new);
     SETTHREADINACTIVE();
     return errorCode;
@@ -1880,8 +1858,75 @@ afs_int32
 SRXAFSOSD_GetPath(struct rx_call *acall, AFSFid *Fid, struct async *a)
 {
     afs_int32 errorCode = RXGEN_OPCODE;
-    SETTHREADACTIVE(acall, 65589, Fid);
+    SETTHREADACTIVE(acall, 4, Fid);
     errorCode = common_GetPath(acall, Fid, a);
+    SETTHREADINACTIVE();
+    return errorCode;
+}
+
+afs_int32
+SRXAFSOSD_BringOnline(struct rx_call *acall, AFSFid *Fid, 
+                      AFSFetchStatus *OutStatus, AFSCallBack *CallBack)
+{
+    afs_int32 errorCode;
+    Vnode *targetptr = NULL;       		/* pointer to input fid */
+    Vnode *parentwhentargetnotdir = NULL;  	/* parent of Fid to get ACL */
+    Vnode tparentwhentargetnotdir;      	/* parent vnode for GetStatus */
+    Volume *volptr = NULL;         		/* pointer to the volume header */
+    struct client *client = NULL;  		/* pointer to client structure */
+    afs_int32 rights, anyrights;        	/* rights for this and any user */
+    struct rx_connection *tcon;
+    struct host *thost;
+    afs_uint64 maxlen;
+    afsUUID *tuuid;
+    struct async a;
+
+    SETTHREADACTIVE(acall, 7, Fid);
+    if ((errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
+        goto Bad_BringOnline;
+
+    if ((errorCode =
+         GetVolumePackage(acall, Fid, &volptr, &targetptr, MustNOTBeDIR,
+                          &parentwhentargetnotdir, &client, WRITE_LOCK,
+                          &rights, &anyrights)))
+        goto Bad_BringOnline;
+
+    if (errorCode = Check_PermissionRights(targetptr, client, rights,
+                        CHK_FETCHDATA, NULL)) {
+	if (VanillaUser(client))
+            goto Bad_BringOnline;
+    }
+
+    if (!targetptr->disk.osdFileOnline) {
+	afs_uint32 fileno;
+        if (!(VolumeWriteable(volptr))) {    /* No way to bring the file on-line */
+	    errorCode = EIO;
+	    goto Bad_BringOnline;
+	}
+	errorCode = fill_osd_file(targetptr, NULL, 0, &fileno, client->ViceId);
+    }
+
+Bad_BringOnline:
+    if (!errorCode || errorCode == OSD_WAIT_FOR_TAPE) {
+	afs_int32 cb;
+
+        GetStatus(targetptr, OutStatus, rights, anyrights,
+              &tparentwhentargetnotdir);
+        /* if a r/w volume, promise a callback to the caller */
+        if (VolumeWriteable(volptr)) {
+	    cb = AddCallBack1(client->host, Fid, 0, 1, 0);
+            SetCallBackStruct(cb, CallBack);
+        } else {
+            struct AFSFid myFid;
+            bzero(&myFid, sizeof(struct AFSFid));
+            myFid.Volume = Fid->Volume;
+	    cb = AddCallBack1(client->host, &myFid, 0, 3, 0);
+            SetCallBackStruct(cb, CallBack);
+        }
+    }
+    (void)PutVolumePackage(acall, parentwhentargetnotdir, targetptr, (Vnode *) 0,
+                           volptr, &client);
+    errorCode = CallPostamble(tcon, errorCode, thost);
     SETTHREADINACTIVE();
     return errorCode;
 }
@@ -2171,28 +2216,6 @@ finis:
  * clients at the cell ipp-garching.mpg.de. The RPCs which should go into
  * OpenAFS 1.9 (or whatever) are all upwards.
  */
-
-afs_int32
-SRXAFSOSD_GetOSDlocation(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
-                        afs_uint64 length, afs_uint64 filelength,
-                        afs_int32 flag,
-                        AFSFetchStatus *OutStatus,
-                        struct osd_file2List *list)
-{
-    afs_int32 code;
-    struct async a;
-    SETTHREADACTIVE(acall, 65580, Fid);
-    
-    a.type = 2;
-    a.async_u.l2.osd_file2List_val = list->osd_file2List_val;
-    a.async_u.l2.osd_file2List_len = list->osd_file2List_len;
-    code = GetOSDlocation(acall, Fid, offset, length, filelength, flag,
-                        OutStatus, 0, &a);
-    list->osd_file2List_val = a.async_u.l2.osd_file2List_val;
-    list->osd_file2List_len = a.async_u.l2.osd_file2List_len;
-    SETTHREADINACTIVE();
-    return code;
-}
 
 void 
 remove_if_osd_file(Vnode **targetptr)
@@ -2846,7 +2869,7 @@ ServerPath(struct rx_call * acall, AFSFid *Fid, afs_int32 writing,
 
     if ((errorCode =
          Check_PermissionRights(targetptr, client, rights,
-                        writing ? CHK_STOREDATA : CHK_FETCHDATA, 0)))
+                        writing ? CHK_STOREDATA : CHK_FETCHDATA, NULL)))
         goto Bad_ServerPath;
 
     if (!VN_GET_INO(targetptr)) {
