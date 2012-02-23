@@ -428,10 +428,10 @@ MainCommand(struct cmd_syndesc *as, void *arock)
 		printf(", ");
 	    }
 	    printf("security index %d, ", tconn.securityIndex);
-	    if (tconn.type == RX_CLIENT_CONNECTION)
-		printf("client conn\n");
+	    if (tconn.type == RX_CLIENT_CONNECTION) 
+		printf("client conn to service %d\n", tconn.sparel[0]);
 	    else
-		printf("server conn\n");
+		printf("server conn for service %d\n", tconn.sparel[0]);
 
 	    if (withSecStats) {
 		switch ((int)tconn.secStats.type) {
