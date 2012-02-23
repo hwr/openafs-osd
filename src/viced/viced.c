@@ -2239,13 +2239,12 @@ main(int argc, char *argv[])
 	    ViceLog(0, ("Failed to initialize afsosd rpc service.\n"));
 	    exit(-1);
         }
+        rx_SetMinProcs(tservice, 3);
+        rx_SetMaxProcs(tservice, (lwps>>1));
+        rx_SetCheckReach(tservice, 1);
+        rx_SetServerIdleDeadErr(tservice, VNOSERVICE);
     }
 #endif
-
-    rx_SetMinProcs(tservice, 2);
-    rx_SetMaxProcs(tservice, lwps - 5);
-    rx_SetCheckReach(tservice, 1);
-    rx_SetServerIdleDeadErr(tservice, VNOSERVICE);
 
     /*
      * Enable RX hot threads, which allows the listener thread to trade
