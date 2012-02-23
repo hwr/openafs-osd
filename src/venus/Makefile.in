@@ -17,7 +17,8 @@ KRB5LIBS = @KRB5_LIBS@
 RXOSDOBJS= ../rxosd/rxosd.cs.o ../rxosd/rxosd.xdr.o
 OSDDBOBJS= ../osddb/osddbuser.o ../osddb/osddb.cs.o ../osddb/osddb.xdr.o
 VOLOBJS= ../vol/vol_osdutil.o ../vol/vol_osd.xdr.o
-FSINTOBJS= ../fsint/afsint.cs.o ../fsint/afsint.xdr.o
+FSINTOBJS= ../fsint/afsint.cs.o ../fsint/afsint.xdr.o \
+	   ../fsint/afsosdint.cs.o ../fsint/afsosdint.xdr.o
 OSDOBJS= ${RXOSDOBJS} ${OSDDBOBJS} ${VOLOBJS}
 
 INCLS=${TOP_INCDIR}/afs/afsint.h \
@@ -93,7 +94,7 @@ fs.o: fs.c ${INCLS} AFS_component_version_number.c
 
 fs: fs.o ${OSDOBJS} $(LIBS)
 	${CC} ${CFLAGS} -o fs fs.o ${OSDOBJS} ${TOP_LIBDIR}/libprot.a \
-		${TOP_LIBDIR}/libafsint.a $(LIBS) ${XLIBS}
+		${TOP_LIBDIR}/libafsint.a ${TOP_LIBDIR}/libafsosdint.a $(LIBS) ${XLIBS}
 
 afsio.o: afsio.c ${INCLS} AFS_component_version_number.c
 

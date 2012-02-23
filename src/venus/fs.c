@@ -44,6 +44,7 @@
 #undef VICE
 #include "afs/prs_fs.h"
 #include <afs/afsint.h>
+#include <afs/afsosdint.h>
 #include <afs/auth.h>
 #include <afs/cellconfig.h>
 #include <ubik.h>
@@ -5969,12 +5970,14 @@ struct cmd_syndesc *as;
 	if (!code) {
 	    char name[20];
 	    for (i=0; i<list.activecallList_len; i++) {
+                char *opname;
                 struct activecall *w = &list.activecallList_val[i];
-                char *opname = RXAFS_TranslateOpCode(w->num & 0x7fffffff);
+		if (w->num & 0x80000000) 
+		    opname = RXAFSOSD_TranslateOpCode(w->num & 0x7fffffff);
+		else
+                    opname = RXAFS_TranslateOpCode(w->num & 0x7fffffff);
 		if (!opname)
 		    sprintf(name, "%s", "unknown");
-		else if (w->num & 0x80000000)
-		    sprintf(name, "RXAFSOSD_%s", opname+6);
 		else 
 		    sprintf(name, "%s", opname);
 		printf("rpc %5u %20s for %u.%u.%u since ",
@@ -6169,13 +6172,14 @@ Statistic(struct cmd_syndesc *as, char *rock)
         for (i=0; i < l.viced_statList_len; i++) {
 	    char name[32];
 	    char *opname = NULL;
-	    opname = RXAFS_TranslateOpCode(l.viced_statList_val[i].rpc & 0x7fffffff);
-	    if (opname) {
-	        if (l.viced_statList_val[i].rpc & 0x80000000)
-		    sprintf(name, "RXAFSOSD_%s", opname+6);
-		else
-		    sprintf(name, "%s", opname);
-	    }
+	    if (l.viced_statList_val[i].rpc & 0x80000000)
+	        opname = RXAFSOSD_TranslateOpCode(
+			l.viced_statList_val[i].rpc & 0x7fffffff);
+	    else
+	        opname = RXAFS_TranslateOpCode(
+			l.viced_statList_val[i].rpc & 0x7fffffff);
+	    if (opname) 
+		sprintf(name, "%s", opname);
 	    else
 		sprintf(name, "%s", "unknown"); 
             printf("rpc %5u %-30s %12llu\n", 
