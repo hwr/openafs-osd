@@ -35,6 +35,7 @@
 #if defined(AFS_CACHE_BYPASS) && defined(AFS_LINUX24_ENV)
 #include "afs_bypasscache.h"
 #endif
+#include "afs/afsosdint.h"
 
 /* conditional GLOCK macros */
 #define COND_GLOCK(var) \
@@ -116,7 +117,7 @@ extern afs_int32 vicep_fastread;
 /* common layout and methods for RXOSD */
 
 static void
-dummyInit()
+dummyInit(void)
 {
     static int initdummyuser = 1;
     if (initdummyuser) {
@@ -1214,7 +1215,7 @@ rxosd_storeInit(struct vcache *avc, struct afs_conn *tc,
 	    AsyncParams apin, apout;
 	    XDR xdr;
 
-	    apin.AsyncParams_val = &space;
+	    apin.AsyncParams_val = (void *)&space;
 	    apin.AsyncParams_len = 12;
 	    apout.AsyncParams_val = NULL;
 	    apout.AsyncParams_len = 0;
@@ -2122,7 +2123,7 @@ rxosd_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
 	    AsyncParams apin, apout;
 	    XDR xdr;
 
-	    apin.AsyncParams_val = &space;
+	    apin.AsyncParams_val = (void *)&space;
 	    apin.AsyncParams_len = 12;
 	    apout.AsyncParams_val = NULL;
 	    apout.AsyncParams_len = 0;
@@ -2320,10 +2321,30 @@ bad:
     return 0;
 }
 
+void
+fillVcacheProtocol(struct vcache *avc, struct AFSFetchStatus *astat)
+{
+    if (astat->FetchStatusProtocol & ~1) { /* Anything other than RX_FILESERVER */
+        int tapeFetch = 0;
+        if (avc->protocol & RX_OSD_TAPE_FETCH)
+	    tapeFetch = 1;
+	avc->protocol = astat->FetchStatusProtocol;
+	if (!(avc->protocol & PROTOCOL_MASK))
+	    avc->protocol |= RX_FILESERVER;
+	if (tapeFetch)
+	    avc->protocol |= RX_OSD_TAPE_FETCH;
+    }
+}
+
+/*
+ *  At entry:
+ *	No locks held except GLOBAL_LOCK
+ *
+ */
 afs_int32
 rxosd_bringOnline(struct vcache *avc, struct vrequest *areq, afs_int32 dontWait)
 {
-    afs_int32 code;
+    afs_int32 code = 0;
     struct rxosd_Variables *v;
     struct afs_conn *tc;
     afs_int32 waitcount = 0;
@@ -2331,35 +2352,78 @@ rxosd_bringOnline(struct vcache *avc, struct vrequest *areq, afs_int32 dontWait)
 
     if (afs_dontRecallFromHSM)
 	return ENODEV;
-    tc = afs_Conn(&avc->f.fid, areq, SHARED_LOCK, &rxconn);
-    if (!tc) 
-	return -1;
     ALLOC_RXOSD(v, struct rxosd_Variables);
     if (!v)
         osi_Panic("rxosd_bringOnline: ALLOC_RXOSD returned NULL\n");
     memset(v, 0, sizeof(struct rxosd_Variables));
-    while (1) {
+    while (avc->protocol & RX_OSD_NOT_ONLINE) {
+        tc = afs_ConnSrv(&avc->f.fid, areq, 2 /* RXAFSOSD service id*/,
+		         SHARED_LOCK, &rxconn);
+        if (!tc) 
+	    return -1;
+        RX_AFS_GUNLOCK();
+	code = RXAFSOSD_BringOnline(rxconn, (struct AFSFid *) &avc->f.fid.Fid,
+				&v->OutStatus, &v->CallBack);
+	RX_AFS_GLOCK();
+	if (!code || code == OSD_WAIT_FOR_TAPE) {
+	    if (v->CallBack.ExpirationTime) {
+    	        struct volume *tvp;
+		afs_int32 now = osi_Time();
+                tvp = afs_GetVolume(&avc->f.fid, areq, READ_LOCK);
+	        ObtainWriteLock(&afs_xcbhash, 1003);
+		ObtainWriteLock(&avc->lock, 1004);
+	        avc->callback = tc->srvr->server;
+	        avc->cbExpires = v->CallBack.ExpirationTime + now;
+	        afs_QueueCallback(avc, CBHash(v->CallBack.ExpirationTime), tvp);
+	        if (code == OSD_WAIT_FOR_TAPE && !dontWait)
+		    avc->protocol |= RX_OSD_TAPE_FETCH;
+	        ReleaseWriteLock(&avc->lock);
+	        ReleaseWriteLock(&afs_xcbhash);
+	        afs_PutVolume(tvp, READ_LOCK);
+	        if (!code) {
+		    afs_ProcessFS(avc, &v->OutStatus, areq);
+		    break;
+	        }
+	        if (code == OSD_WAIT_FOR_TAPE) {
+		    if (dontWait)
+			break;
+	            afs_osi_Sleep(&avc->protocol);
+		    continue;
+	        }
+	    }
+	    if (code == OSD_WAIT_FOR_TAPE && dontWait)
+		break;
+	}
 #ifdef NEW_OSD_FILE
 	v->a.type = 1;
 #else
 	v->a.type = 2;
 #endif
-        RX_AFS_GUNLOCK();
-        code = RXAFS_GetPath(rxconn, (struct AFSFid *) &avc->f.fid.Fid,
+	if (code == RXGEN_OPCODE) {
+    	    afs_PutConn(tc, rxconn, SHARED_LOCK);
+            tc = afs_Conn(&avc->f.fid, areq, SHARED_LOCK, &rxconn);
+            if (!tc) 
+	        return -1;
+	    RX_AFS_GUNLOCK();
+            code = RXAFS_GetPath(rxconn, (struct AFSFid *) &avc->f.fid.Fid,
 				&v->a);
+            RX_AFS_GLOCK();
+ 	}
         if (code == RXGEN_OPCODE) {
+	    RX_AFS_GUNLOCK();
 	    code = RXAFS_GetOSDlocation(tc->id, (struct AFSFid *) &avc->f.fid.Fid,
 					v->resid, v->resid, 0, 0, /* all zero */
 					&v->OutStatus, &v->a.async_u.l2);
+            RX_AFS_GLOCK();
         }
-        RX_AFS_GLOCK();
+    	afs_PutConn(tc, rxconn, SHARED_LOCK);
 	if (code != OSD_WAIT_FOR_TAPE && code != VBUSY && code != VRESTARTING) 
 	    break;
         if (code == OSD_WAIT_FOR_TAPE && afs_asyncRecallFromHSM) {
             code = EAGAIN;
 	    break;
 	}
-	if (code == OSD_WAIT_FOR_TAPE & dontWait)
+	if (code == OSD_WAIT_FOR_TAPE && dontWait)
 	    break;
 	if (waitcount == 0) {
 	    if (code == VBUSY)
@@ -2380,11 +2444,6 @@ rxosd_bringOnline(struct vcache *avc, struct vrequest *areq, afs_int32 dontWait)
         afs_osi_Wait(5000,0,0);
 	waitcount--;
     }
-#ifdef NEW_OSD_FILE
-    v->osd_file = v->a.async_u.l1.osd_file1List_val;
-#else
-    v->osd_file = v->a.async_u.l2.osd_file2List_val;
-#endif
     rxosd_Destroy((void**)&v, code);
     if (!code)
 	avc->protocol &= ~RX_OSD_NOT_ONLINE;

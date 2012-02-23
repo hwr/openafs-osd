@@ -220,7 +220,9 @@ UAFSOBJ = \
 	$(UOBJ)/xdr_mem.o \
 	$(UOBJ)/xdr_len.o \
 	$(UOBJ)/rxosd.cs.o \
-	$(UOBJ)/rxosd.xdr.o
+	$(UOBJ)/rxosd.xdr.o \
+	$(UOBJ)/afsosdint.cs.o \
+	$(UOBJ)/afsosdint.xdr.o
 
 AFSWEBOBJ = \
 	$(WEBOBJ)/afs_atomlist.o \
@@ -361,7 +363,9 @@ AFSWEBOBJ = \
 	$(WEBOBJ)/xdr_mem.o \
 	$(WEBOBJ)/xdr_len.o \
 	$(WEBOBJ)/rxosd.cs.o \
-	$(WEBOBJ)/rxosd.xdr.o
+	$(WEBOBJ)/rxosd.xdr.o \
+	$(WEBOBJ)/afsosdint.cs.o \
+	$(WEBOBJ)/afsosdint.xdr.o
 
 AFSWEBOBJKRB = \
 	$(WEBOBJ)/afs_atomlist.o \
@@ -496,7 +500,9 @@ AFSWEBOBJKRB = \
 	$(WEBOBJ)/xdr_mem.o \
 	$(WEBOBJ)/xdr_len.o \
 	$(WEBOBJ)/rxosd.cs.o \
-	$(WEBOBJ)/rxosd.xdr.o
+	$(WEBOBJ)/rxosd.xdr.o \
+	$(WEBOBJ)/afsosdint.cs.o \
+	$(WEBOBJ)/afsosdint.xdr.o
 
 JUAFSOBJ = \
 	$(JUAFS)/afs_atomlist.o \
@@ -636,7 +642,9 @@ JUAFSOBJ = \
 	$(JUAFS)/xdr_mem.o \
 	$(JUAFS)/xdr_len.o \
 	$(JUAFS)/rxosd.cs.o \
-	$(JUAFS)/rxosd.xdr.o
+	$(JUAFS)/rxosd.xdr.o \
+	$(JUAFS)/afsosdint.cs.o \
+	$(JUAFS)/afsosdint.xdr.o
 
 # Compilation rules
 
@@ -682,6 +690,10 @@ $(UOBJ)/rxosd.cs.o: $(TOP_OBJ_RXOSD)/rxosd.cs.c
 	$(CRULE1)
 $(UOBJ)/rxosd.xdr.o: $(TOP_OBJ_RXOSD)/rxosd.xdr.c
 	$(CRULE1)
+$(UOBJ)/afsosdint.cs.o: $(TOP_OBJ_FSINT)/afsosdint.cs.c
+	$(CRULE2)
+$(UOBJ)/afsosdint.xdr.o: $(TOP_OBJ_FSINT)/afsosdint.xdr.c
+	$(CRULE2)
 $(UOBJ)/afs_segments.o: $(TOP_SRC_AFS)/afs_segments.c
 	$(CRULE1)
 $(UOBJ)/afs_server.o: $(TOP_SRC_AFS)/afs_server.c
@@ -972,6 +984,10 @@ $(WEBOBJ)/afs_rxosd.o: $(TOP_SRC_AFS)/afs_rxosd.c
 $(WEBOBJ)/rxosd.cs.o: $(TOP_OBJ_RXOSD)/rxosd.cs.c
 	$(CRULE2)
 $(WEBOBJ)/rxosd.xdr.o: $(TOP_OBJ_RXOSD)/rxosd.xdr.c
+	$(CRULE2)
+$(WEBOBJ)/afsosdint.cs.o: $(TOP_OBJ_FSINT)/afsosdint.cs.c
+	$(CRULE2)
+$(WEBOBJ)/afsosdint.xdr.o: $(TOP_OBJ_FSINT)/afsosdint.xdr.c
 	$(CRULE2)
 $(WEBOBJ)/afs_segments.o: $(TOP_SRC_AFS)/afs_segments.c
 	$(CRULE2)
@@ -1268,6 +1284,10 @@ $(JUAFS)/rxosd.cs.o: $(TOP_OBJ_RXOSD)/rxosd.cs.c
 	$(CRULE1)
 $(JUAFS)/rxosd.xdr.o: $(TOP_OBJ_RXOSD)/rxosd.xdr.c
 	$(CRULE1)
+$(JUAFS)/afsosdint.cs.o: $(TOP_OBJ_FSINT)/afsosdint.cs.c
+	$(CRULE2)
+$(JUAFS)/afsosdint.xdr.o: $(TOP_OBJ_FSINT)/afsosdint.xdr.c
+	$(CRULE2)
 $(JUAFS)/afs_segments.o: $(TOP_SRC_AFS)/afs_segments.c
 	$(CRULE1)
 $(JUAFS)/afs_server.o: $(TOP_SRC_AFS)/afs_server.c

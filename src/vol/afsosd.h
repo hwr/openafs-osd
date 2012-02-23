@@ -15,7 +15,7 @@
  * inside the library. So a version mismatch can easily be detected.
  */
  
-#define LIBAFSOSD_VERSION 12
+#define LIBAFSOSD_VERSION 13
 
 /*
  *	Unspecific operations used in general servers provided by AFS/OSD

@@ -1894,14 +1894,16 @@ fill_osd_file(Vnode *vn, struct async *a,
     rlist.osd_segm_descList_val = NULL;
 
     *fileno = -1;
-    if (a->type == 1) {
-	a->async_u.l1.osd_file1List_val[0].segmList.osd_segm1List_len = 0;
-	a->async_u.l1.osd_file1List_val[0].segmList.osd_segm1List_val = 0;
-    } else if (a->type == 2) {
-	a->async_u.l2.osd_file2List_val[0].segmList.osd_segm2List_len = 0;
-	a->async_u.l2.osd_file2List_val[0].segmList.osd_segm2List_val = 0;
-    } else
-	return EINVAL;
+    if (a) {		/* RXAFSOSD_BringOnline doesn't provide a */
+        if (a->type == 1) {
+	    a->async_u.l1.osd_file1List_val[0].segmList.osd_segm1List_len = 0;
+	    a->async_u.l1.osd_file1List_val[0].segmList.osd_segm1List_val = 0;
+        } else if (a->type == 2) {
+	    a->async_u.l2.osd_file2List_val[0].segmList.osd_segm2List_len = 0;
+	    a->async_u.l2.osd_file2List_val[0].segmList.osd_segm2List_val = 0;
+        } else
+	    return EINVAL;
+    }
 
     code = read_osd_p_fileList(vn->volumePtr, &vn->disk, vn->vnodeNumber, &list);
     if (code)
@@ -2120,6 +2122,8 @@ retry:
 	    }
 	}
     }
+    if (!a)			/* called from RXAFSOSD_BringOnline */
+	goto bad;		/* we are already done */
     if (a->type == 1) {
         struct osd_file1 *file = a->async_u.l1.osd_file1List_val;; 
         for (i=0; i<list.osd_p_fileList_len; i++) {

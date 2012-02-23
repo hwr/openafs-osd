@@ -171,7 +171,9 @@ AFSAOBJS = \
 # These next two are needed for access to object storage (rxosd).
 AFSRXOSDOBJS = \
 	Krxosd.cs.o \
-	Krxosd.xdr.o
+	Krxosd.xdr.o \
+	Kviceosd.cs.o \
+	Kviceosd.xdr.o 
 
 # These next two allow nfs and nonfs builds to occur in the same directory.
 AFSNFSOBJS = \
@@ -464,6 +466,12 @@ Krxosd.xdr.o: $(TOP_OBJDIR)/src/rxosd/Krxosd.xdr.c
 	$(CRULE_NOOPT)
 rxosd.h: $(TOP_OBJDIR)/src/rxosd/rxosd.h
 	$(CP) -p $(TOP_OBJDIR)/src/rxosd/rxosd.h ./
+Kviceosd.cs.o: $(TOP_OBJDIR)/src/fsint/Kviceosd.cs.c
+	$(CRULE_NOOPT)
+Kviceosd.xdr.o: $(TOP_OBJDIR)/src/fsint/Kviceosd.xdr.c
+	$(CRULE_NOOPT)
+afsosdint.h: $(TOP_OBJDIR)/src/fsint/afsosdint.h
+	$(CP) -p $(TOP_OBJDIR)/src/fsint/afsosdint.h ./
 
 # Files which do not contain NFS translator code.
 CFLAGS-afs_call.o= -DAFS_NONFSTRANS

@@ -86,6 +86,7 @@ private struct fsint_ops_v0 {
     bool_t (*xdr_async) (XDR *xdrs, struct async *objp);
     bool_t (*xdr_asyncError) (XDR *xdrs, struct asyncError *objp);
     bool_t (*xdr_osd_file2List) (XDR *xdrs, struct osd_file2List *objp);
+    bool_t (*xdr_AFSCallBack) (XDR *xdrs, AFSCallBack *objp);
 } fsint_ops_v0;
 static struct fsint_ops_v0 *fsint;
 #endif /* BUILDING_FILESERVER */
@@ -327,6 +328,7 @@ fill_ops(struct ops_ptr *opsptr)
     fsint->xdr_async = xdr_async;
     fsint->xdr_asyncError = xdr_asyncError;
     fsint->xdr_osd_file2List = xdr_osd_file2List;
+    fsint->xdr_AFSCallBack = xdr_AFSCallBack;
     opsptr->fsint = fsint;
 #endif
 
@@ -676,6 +678,11 @@ bool_t
 xdr_osd_file2List(XDR *xdrs, struct osd_file2List *objp)
 {
     return (fsint->xdr_osd_file2List)(xdrs, objp);
+}
+
+bool_t xdr_AFSCallBack(XDR *xdrs, AFSCallBack *objp)
+{
+    return (fsint->xdr_AFSCallBack)(xdrs, objp);
 }
 
 /* 

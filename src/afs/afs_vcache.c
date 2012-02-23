@@ -1221,14 +1221,7 @@ afs_SimpleVStat(struct vcache *avc,
     avc->f.m.Mode = astat->UnixModeBits;
     if (vType(avc) == VREG) {
 	avc->f.m.Mode |= S_IFREG;
-        if ((afs_protocols & RX_OSD) && (astat->FetchStatusProtocol & ~1)) {
-            avc->protocol = astat->FetchStatusProtocol;
-           if (!(avc->protocol & PROTOCOL_MASK))
-               avc->protocol |= RX_FILESERVER;
-            afs_Trace3(afs_iclSetp, CM_TRACE_WASHERE,
-                       ICL_TYPE_STRING, __FILE__,
-                       ICL_TYPE_INT32, __LINE__, ICL_TYPE_INT32, avc->protocol);
-        }
+	fillVcacheProtocol(avc, astat);
     } else if (vType(avc) == VDIR) {
 	avc->f.m.Mode |= S_IFDIR;
     } else if (vType(avc) == VLNK) {
@@ -1505,14 +1498,7 @@ afs_ProcessFS(struct vcache *avc,
 	printf("found mistyped vnode!\n");
 #endif
     avc->f.anyAccess = astat->AnonymousAccess;
-    if ((afs_protocols & RX_OSD) && (astat->FetchStatusProtocol & ~1)) {
-        avc->protocol = astat->FetchStatusProtocol & ~1;
-       if (!(avc->protocol & PROTOCOL_MASK))
-           avc->protocol |= RX_FILESERVER;
-        afs_Trace3(afs_iclSetp, CM_TRACE_WASHERE,
-                   ICL_TYPE_STRING, __FILE__,
-                   ICL_TYPE_INT32, __LINE__, ICL_TYPE_INT32, avc->protocol);
-    }
+    fillVcacheProtocol(avc, astat);
 #ifdef badidea
     if ((astat->CallerAccess & ~astat->AnonymousAccess))
 	/*   USED TO SAY :

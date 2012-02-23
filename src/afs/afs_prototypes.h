@@ -358,6 +358,7 @@ extern int afs_UFSCacheStoreProc(struct rx_call *, struct osi_file *,
                                  afs_size_t *);
 extern int rxosd_bringOnline(struct vcache *avc, struct vrequest *areq,
 			     afs_int32 dontWait);
+extern void fillVcacheProtocol(struct vcache *avc, struct AFSFetchStatus *astat);
 
 /* afs_icl.c */
 extern struct afs_icl_set *afs_icl_allSets;
