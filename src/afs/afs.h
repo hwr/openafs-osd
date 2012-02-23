@@ -377,6 +377,7 @@ struct afs_conn {
     struct srvAddr *srvr;	/* server associated with this conn */
     short refCount;		/* reference count for allocation */
     unsigned short port;	/* port associated with this connection */
+    unsigned short serviceId;   /* serviceId associated with this connection */
     char forceConnectFS;	/* Should we try again with these tokens? */
     int flags;
 };

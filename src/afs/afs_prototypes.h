@@ -174,6 +174,10 @@ extern struct cell *afs_GetRealCellByIndex(afs_int32 cellindex,
 extern afs_int32 cryptall;
 extern afs_rwlock_t afs_xinterface;
 extern afs_rwlock_t afs_xconn;
+extern struct afs_conn *afs_ConnSrv(struct VenusFid *afid,
+			     struct vrequest *areq, afs_int32 service,
+			     afs_int32 locktype,
+			     struct rx_connection **rxconn);
 extern struct afs_conn *afs_Conn(struct VenusFid *afid,
 			     struct vrequest *areq,
 			     afs_int32 locktype,

@@ -114,7 +114,7 @@ afs_pickSecurityObject(struct afs_conn *conn, int *secLevel)
  * @return The conn struct, or NULL.
  */
 struct afs_conn *
-afs_Conn(struct VenusFid *afid, struct vrequest *areq,
+afs_ConnSrv(struct VenusFid *afid, struct vrequest *areq, afs_int32 service,
 	 afs_int32 locktype, struct rx_connection **rxconn)
 {
     u_short fsport = AFS_FSPORT;
@@ -197,8 +197,9 @@ afs_Conn(struct VenusFid *afid, struct vrequest *areq,
 
     if (lowp) {
 	tu = afs_GetUser(areq->uid, afid->Cell, SHARED_LOCK);
-	tconn = afs_ConnBySA(lowp, fsport, afid->Cell, tu, 0 /*!force */ ,
-			     1 /*create */ , locktype, replicated, rxconn);
+	tconn = afs_ConnBySAsrv(lowp, fsport, service, afid->Cell, tu,
+				0 /*!force */, 1 /*create */ , locktype,
+			        replicated, rxconn);
 
 	afs_PutUser(tu, SHARED_LOCK);
     }
@@ -206,6 +207,13 @@ afs_Conn(struct VenusFid *afid, struct vrequest *areq,
     return tconn;
 }				/*afs_Conn */
 
+
+struct afs_conn *
+afs_Conn(struct VenusFid *afid, struct vrequest *areq,
+	 afs_int32 locktype, struct rx_connection **rxconn)
+{
+    return afs_ConnSrv(afid, areq, 1 /* service id */, locktype, rxconn);
+}
 
 /**
  * Connects to a server by it's server address.
@@ -242,7 +250,7 @@ afs_ConnBySAsrv(struct srvAddr *sap, unsigned short aport, afs_int32 service,
     ObtainSharedLock(&afs_xconn, 15);
     /* Get conn by port and user. */
     for (tc = sap->conns; tc; tc = tc->next) {
-	if (tc->user == tu && tc->port == aport &&
+	if (tc->user == tu && tc->port == aport && tc->serviceId == service &&
 	    (isrep == (tc->flags & CONN_REPLICATED))) {
 	    afs_int32 i, free = 0;
 	    if (aport != AFS_RXOSDPORT)
@@ -285,6 +293,7 @@ afs_ConnBySAsrv(struct srvAddr *sap, unsigned short aport, afs_int32 service,
 
 	tc->user = tu;
 	tc->port = aport;
+	tc->serviceId = service;
 	tc->srvr = sap;
 	tc->refCount = 0;	/* bumped below */
 	tc->forceConnectFS = 1;
