@@ -2229,20 +2229,21 @@ remove_if_osd_file(Vnode **targetptr)
 void
 fill_status(Vnode *targetptr, afs_fsize_t targetLen, AFSFetchStatus *status)
 {
-    if (targetptr->disk.type == vFile) {
-	if (!(targetptr->volumePtr->osdMetadataHandle)) { /* traditional AFS volume */
+    if (!(targetptr->volumePtr->osdMetadataHandle)) { /* traditional AFS volume */
+	status->FetchStatusProtocol = 1;
+    } else {
+        if (isOsdFile(V_osdPolicy(targetptr->volumePtr), V_id(targetptr->volumePtr),
+		      &targetptr->disk, targetptr->vnodeNumber)) {
+	    status->FetchStatusProtocol = RX_OSD;
+	    if (!targetptr->disk.osdFileOnline)
+	        status->FetchStatusProtocol |= RX_OSD_NOT_ONLINE;
+        } else {
 	    status->FetchStatusProtocol = 1;
-	} else {
-            if (targetptr->disk.osdMetadataIndex) {
-                status->FetchStatusProtocol = RX_OSD;
-                if (!targetptr->disk.osdFileOnline) {
-                    status->FetchStatusProtocol |= RX_OSD_NOT_ONLINE;
-                }
-            } else if (V_osdPolicy(targetptr->volumePtr)
-                     && targetLen <= max_move_osd_size) {
+	    if (V_osdPolicy(targetptr->volumePtr)
+	      && targetptr->disk.type == vFile
+              && targetLen <= max_move_osd_size)
                 status->FetchStatusProtocol |= POSSIBLY_OSD;
-            }
-	}
+        }
     }
     if (ClientsWithAccessToFileserverPartitions && VN_GET_INO(targetptr)) {
         namei_t name;

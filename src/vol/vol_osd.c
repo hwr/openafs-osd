@@ -975,10 +975,12 @@ GetOsdEntryLength(FdHandle_t *fd, void **rock)
     *rock = entry;
     return tentry->length;
 }
-   
-private int
+#ifdef BUILD_SALVAGER
+private   
+#endif /* BUILD_SALVAGER */
+afs_int32
 isOsdFile(afs_int32 osdPolicy, afs_uint32 vid, struct VnodeDiskObject *vd, 
-	      afs_uint32 vN)
+	  afs_uint32 vN)
 {
     Inode ino = VNDISK_GET_INO(vd);
 
