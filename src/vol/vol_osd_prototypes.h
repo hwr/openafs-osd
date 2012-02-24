@@ -101,3 +101,5 @@ extern afs_int32 actual_length(Volume *vol, struct VnodeDiskObject *vd,
 extern afs_int32 recover_store(Vnode *vn, struct asyncError *ae);
 extern afs_int32 rxosd_updatecounters(afs_uint32 osd, afs_uint64 bytes_rcvd,
 				afs_uint64 bytes_sent);
+extern afs_int32 isOsdFile(afs_int32 osdPolicy, afs_uint32 vid,
+			   struct VnodeDiskObject *vd, afs_uint32 vN);
