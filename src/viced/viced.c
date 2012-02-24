@@ -2198,7 +2198,7 @@ main(int argc, char *argv[])
                                     (void *)RXS_CONFIG_FLAGS_DISABLE_DOTCHECK);
     }
     rx_SetMinProcs(tservice, 3);
-    rx_SetMaxProcs(tservice, lwps);
+    rx_SetMaxProcs(tservice, lwps - (lwps >> 1));
     rx_SetCheckReach(tservice, 1);
     rx_SetServerIdleDeadErr(tservice, VNOSERVICE);
 

@@ -67,7 +67,7 @@
 /*@printflike@*/ extern void Abort(const char *format, ...);
 
 #include <afs/afsosd.h>
-afs_int32 convertToOsd = 0;
+int convertToOsd = 0;
 #ifdef AFS_PTHREAD_ENV
 int libafsosd = 0;
 #endif
@@ -430,10 +430,8 @@ main(int argc, char **argv)
 		   "[-syslog[=FACILITY]] -mbpersleep <MB / 1 sec sleep>"
 		   "%s"
 		   "[-enable_peer_stats] [-enable_process_stats] "
-#ifdef AFS_PTHREAD_ENV
-		   "[-libafsosd] [-convert]"
-#endif
-		   "[-help]\n");
+		   "[-help]\n",
+		   libafsosd ?  "[-convert] ":"");
 #else
 	    printf("Usage: volserver [-log] [-p <number of processes>] "
 		   "[-auditlog <log path>] [-d <debug level>] "
@@ -617,8 +615,22 @@ main(int argc, char **argv)
             ViceLog(0, ("Failed to initialize afsosd rpc service.\n"));
             exit(-1);
         }
-    }
+        rx_SetBeforeProc(service, MyBeforeProc);
+        rx_SetAfterProc(service, MyAfterProc);
+        rx_SetIdleDeadTime(service, 0);	/* never timeout */
+        rx_SetMinProcs(service, 2);
+        if (lwps < 4)
+	    lwps = 4;
+        rx_SetMaxProcs(service, lwps);
+#if defined(AFS_XBSD_ENV)
+        rx_SetStackSize(service, (128 * 1024));
+#elif defined(AFS_SGI_ENV)
+        rx_SetStackSize(service, (48 * 1024));
+#else
+        rx_SetStackSize(service, (32 * 1024));
 #endif
+    }
+#endif /* AFS_PTHREAD_ENV */
 
     LogCommandLine(argc, argv, "Volserver", VolserVersion, "Starting AFS",
 		   Log);
