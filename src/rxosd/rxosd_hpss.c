@@ -902,15 +902,15 @@ init_rxosd_hpss(char *AFSVersion, char **versionstring, void *inrock,
 
     rxosd_var = input->var;
     
-    if (*(rxosd_var->principal)) {
+    if (*(rxosd_var->principal) && **(rxosd_var->principal)) {
 	strncpy(&ourPrincipal, *(rxosd_var->principal), sizeof(ourPrincipal));
 	ourPrincipal[sizeof(ourPrincipal) -1] = 0; /*just in case */
     }
-    if (*(rxosd_var->keytab)) {
+    if (*(rxosd_var->keytab) && **(rxosd_var->keytab)) {
 	strncpy(&ourKeytab, *(rxosd_var->keytab), sizeof(ourKeytab));
 	ourKeytab[sizeof(ourKeytab) -1] = 0; /*just in case */
     }
-    if (*(rxosd_var->pathOrUrl)) {
+    if (*(rxosd_var->pathOrUrl) && **(rxosd_var->pathOrUrl)) {
 	strncpy(&ourPath, *(rxosd_var->pathOrUrl), sizeof(ourPath));
 	ourPath[sizeof(ourPath) -1] = 0; /*just in case */
     }
