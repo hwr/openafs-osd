@@ -254,6 +254,8 @@ char ExportedVariables[] =
     EXP_VAR_SEPARATOR
     "maxActiveTransactions"
     EXP_VAR_SEPARATOR
+    "maxWaiters"
+    EXP_VAR_SEPARATOR
     "md5flag"
     EXP_VAR_SEPARATOR
     "max_move_osd_size"
@@ -491,6 +493,7 @@ afs_uint32 activeTransactions = 0;
 afs_uint32 activeFiles = 0;
 afs_uint32 maxActiveFiles = 0;
 afs_uint32 maxActiveTransactions = 0;
+afs_uint32 maxWaiters = 0;
 
 static afs_int32
 createAsyncTransaction(struct rx_call *call, AFSFid *Fid, afs_int32 flag, 
@@ -612,6 +615,8 @@ createAsyncTransaction(struct rx_call *call, AFSFid *Fid, afs_int32 flag,
 	}
 	if (a->readers || a->writer) { /* Have to wait for transactions to end */
 	    a->waiters++;
+	    if (a->waiters > maxWaiters)
+		maxWaiters = a->waiters;
 	    while (a->readers || a->writer) {
 #ifdef AFS_PTHREAD_ENV
 	        CV_WAIT(&a->cond, &async_glock_mutex);
@@ -626,6 +631,8 @@ createAsyncTransaction(struct rx_call *call, AFSFid *Fid, afs_int32 flag,
     } else {
 	if (a->writer) { /* Have to wait for write transaction to end */
 	    a->waiters++;
+	    if (a->waiters > maxWaiters)
+		maxWaiters = a->waiters;
 	    while (a->writer) {
 #ifdef AFS_PTHREAD_ENV
 	        CV_WAIT(&a->cond, &async_glock_mutex);
@@ -9627,6 +9634,9 @@ Variable(struct rx_call *acall, afs_int32 cmd, char *name,
 	    code = 0;
 	} else if (!strcmp(name, "maxActiveFiles")) {
 	    *result = maxActiveFiles;
+	    code = 0;
+	} else if (!strcmp(name, "maxWaiters")) {
+	    *result = maxWaiters;
 	    code = 0;
 	} else if (!strcmp(name, "maxActiveTransactions")) {
 	    *result = maxActiveTransactions;
