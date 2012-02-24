@@ -175,6 +175,10 @@ afs_int32 synthesize = 0;
 #define BUFFLEN 65536
 #define WRITEBUFFLEN 1024*1024*64
 
+AFSFid callback_fid;
+#ifdef AFS_PTHREAD_ENV
+pthread_cond_t  callback_cond;
+#endif
 afsUUID uuid;
 MD5_CTX md5;
 int md5sum = 0;
@@ -507,9 +511,23 @@ StartAFS_StoreData64(struct rx_call *call, AFSFid *fid, AFSStoreStatus *status,
 }
 
 afs_int32
-SRXAFSCB_CallBack(struct rx_call *rxcall, AFSCBFids *Fids_Array,
-                  AFSCBs *CallBack_Array)
+SRXAFSCB_CallBack(struct rx_call *rxcall, struct AFSCBFids *a_fids,
+                  struct AFSCBs *a_callbacks)
 {
+    int i;
+    struct AFSFid *tfid;
+    tfid = (struct AFSFid *)a_fids->AFSCBFids_val;
+    for (i = 0; i < a_fids->AFSCBFids_len; i++) {
+	if (tfid[i].Volume == callback_fid.Volume 
+	&& tfid[i].Vnode == callback_fid.Vnode
+	&& tfid[i].Unique == callback_fid.Unique) {
+#ifdef AFS_PTHREAD_ENV
+        pthread_cond_broadcast(&callback_cond);
+#else
+        LWP_NoYieldSignal(&callback_fid);
+#endif
+	}
+    }
     return 0;
 }
 
@@ -1510,6 +1528,21 @@ readAFSFile(AFSFid *Fid, afs_int32 *hosts, afs_int32 fd,
 		    " file %s, code was %d\n",
                     useHost, fname, code);
 	    continue;
+	}
+	if (OutStatus.FetchStatusProtocol & RX_OSD_NOT_ONLINE) {
+	    struct rx_connection *RXConn2;
+            RXConn2 = FindRXConnection(useHost, htons(AFSCONF_FILEPORT), 2, 
+				       cl->sc[cl->scIndex], cl->scIndex);
+	    code = RXAFSOSD_BringOnline(RXConn2, Fid, &OutStatus, &CallBack);
+	    while (code == OSD_WAIT_FOR_TAPE) {
+		callback_fid = *Fid;
+#ifdef AFS_PTHREAD_ENV
+                CV_WAIT(&callback_cond, &async_glock_mutex);
+#else
+                LWP_WaitProcess(&callback_fid);
+#endif
+	        code = RXAFSOSD_BringOnline(RXConn2, Fid, &OutStatus, &CallBack);
+	    }
 	}
         gettimeofday(&opentime, &Timezone);
 	if (verbose) {
