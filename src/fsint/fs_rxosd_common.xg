@@ -279,11 +279,10 @@ struct rxosd_fetch_entry {
 	struct osd_segm_descList list;
 };
 typedef struct rxosd_fetch_entry rxosd_fetch_entryList<>;
-%#define NO_CHECKSUM	1
 
-%#define TAPE_FETCH  	1
-%#define XFERING     	2
-%#define SET_FILE_READY 3
+/* bits for flag */
+%#define NO_CHECKSUM	1
+%#define USE_RXAFSOSD   2
 
 struct FetchEntry {
     afs_uint32 Requestor;
@@ -294,6 +293,12 @@ struct FetchEntry {
     afs_uint32 error;
 };
 typedef FetchEntry FetchEntryList<>;
+
+/* values for state */
+%#define TAPE_FETCH  	1
+%#define XFERING     	2
+%#define SET_FILE_READY 3
+
 
 struct FetchEntry0 {
     afs_uint32 Requestor;

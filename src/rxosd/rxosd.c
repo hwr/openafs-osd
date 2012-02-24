@@ -1571,10 +1571,14 @@ XferData(struct fetch_entry *f)
 	    f->state = SET_FILE_READY;
 	    oh_release(f->oh);
 	    f->oh = 0;
-	    conn = GetConnection(htonl(f->d.fileserver), 1, htons(7000), 1);
-	    code = RXAFS_SetOsdFileReady(conn, &fid, &new_md5.c);
-	    if (code == RXGEN_OPCODE) {
-	        code = RXAFS_SetOsdFileReady0(conn, &fid, &new_md5.c.cksum_u.md5);
+	    if (f->d.flag & USE_RXAFSOSD) {
+		conn = GetConnection(htonl(f->d.fileserver), 1, htons(7000), 2);
+	        code = RXAFSOSD_SetOsdFileReady(conn, &fid, &new_md5.c);
+	    } else {
+	        conn = GetConnection(htonl(f->d.fileserver), 1, htons(7000), 1);
+	        code = RXAFS_SetOsdFileReady(conn, &fid, &new_md5.c);
+	        if (code == RXGEN_OPCODE)
+	            code = RXAFS_SetOsdFileReady0(conn, &fid, &new_md5.c.cksum_u.md5);
 	    }
 	    if (code)
 	        f->error = code;

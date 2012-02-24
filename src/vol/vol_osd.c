@@ -2061,7 +2061,7 @@ retry:
                         struct osd_p_meta *meta = 0;
 			struct ometa om;
                         afs_int32 mi;
-			afs_int32 flag = NO_CHECKSUM;
+			afs_int32 flag = USE_RXAFSOSD | NO_CHECKSUM;
 
 	    	        p_id = lun;
 	    	        p_id = (p_id << 32) | po->part_id;

@@ -38,7 +38,9 @@ OSDDBOBJS=osddb.cs.o osddb.xdr.o osddbuser.o
 
 objects= ${OSDOBJS} ${LWPOBJS} ${UTILOBJS} ${VOLOBJS} ${OSDDBOBJS}
 
-LIBS=${TOP_LIBDIR}/libafsauthent.a ${TOP_LIBDIR}/libafsrpc.a ${TOP_LIBDIR}/util.a ${TOP_LIBDIR}/libcmd.a
+LIBS=${TOP_LIBDIR}/libafsauthent.a ${TOP_LIBDIR}/libafsrpc.a \
+		${TOP_LIBDIR}/libafsosdint.a ${TOP_LIBDIR}/util.a \
+		${TOP_LIBDIR}/libcmd.a
 
 source: rxosd.h rxosd.cs.c rxosd.xdr.c Krxosd.cs.c Krxosd.xdr.c \
 	${TOP_INCDIR}/afs/rxosd.h rxosd.xdr.o rxosd.cs.o
