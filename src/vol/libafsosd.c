@@ -124,6 +124,7 @@ private struct rx_ops_v0 {
     bool_t (*afs_xdr_vector) (XDR * xdrs, char *basep, u_int nelem, u_int elemsize,
                               xdrproc_t xdr_elem);
     void (*afs_xdrmem_create) (XDR *xdrs, caddr_t addr, u_int size, enum xdr_op op);
+    int (*hton_syserr_conv) (afs_int32 code);
     void (*osi_AssertFailU) (const char *expr, const char *file, int line)
                                  AFS_NORETURN;
     char *(*osi_alloc) (afs_int32 x);
@@ -356,6 +357,7 @@ fill_ops(struct ops_ptr *opsptr)
     rx->afs_xdr_uint64 = afs_xdr_uint64;
     rx->afs_xdr_vector = afs_xdr_vector;
     rx->afs_xdrmem_create = afs_xdrmem_create;
+    rx->hton_syserr_conv = hton_syserr_conv;
     rx->osi_AssertFailU = osi_AssertFailU;
     rx->osi_alloc = osi_alloc;
     rx->osi_free = osi_free;
@@ -796,6 +798,12 @@ void
 afs_xdrmem_create(XDR *xdrs, caddr_t addr, u_int size, enum xdr_op op)
 {
     (rx->afs_xdrmem_create)(xdrs, addr, size, op);
+}
+
+int
+hton_syserr_conv(afs_int32 code)
+{
+    return (rx->hton_syserr_conv)(code);
 }
 
 void
