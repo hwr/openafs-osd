@@ -3209,6 +3209,8 @@ WipeCand(struct cmd_syndesc *as, void *rock)
     }
     if (as->parms[6].items) 					/* -cell */
         cellp = as->parms[6].items->data;
+    if (as->parms[7].items) 					/* -localauth */
+        localaauth = 1;
     scan_osd_or_host();
     GetConnection();
     q.WipeCandidateList_len = 0;
@@ -4372,6 +4374,7 @@ int main (int argc, char **argv)
     cmd_AddParm(ts, "-seconds", CMD_FLAG, CMD_OPTIONAL,
 		"for -crit 0 give atime in seconds since 1970");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
+    cmd_AddParm(ts, "-localauth", CMD_FLAG, CMD_OPTIONAL, "get ticket from server key-file");
 
 
     ts = cmd_CreateSyntax("statistic", Statistic, NULL, "get rpc statistic");
