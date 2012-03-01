@@ -389,7 +389,7 @@ ViceCreateRoot(Volume *vp)
     vnode->author = 0;
     vnode->owner = 0;
     vnode->parent = 0;
-    if (!osdvol)
+    if (!osdvol /* || !(vp->osdPolicy) */ )
         vnode->vnodeMagic = vcp->magic;
 
     IH_INIT(h, vp->device, V_parentId(vp),
