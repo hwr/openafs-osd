@@ -1165,14 +1165,21 @@ cm_CheckDirOpForSingleChange(cm_dirOp_t * op)
     code = cm_DirCheckStatus(op, 1);
 
     if (code == 0 &&
-        op->dataVersion == op->scp->dataVersion - 1) {
-        /* only one set of changes happened between cm_BeginDirOp()
-           and this function.  It is safe for us to perform local
-           changes. */
+        op->dataVersion == op->scp->dataVersion - 1)
+    {
+        /*
+         * only one set of changes happened between cm_BeginDirOp()
+         * and this function.  It is safe for us to perform local
+         * changes. */
         op->newDataVersion = op->scp->dataVersion;
         op->newLength = op->scp->serverLength;
 
         rc = 1;
+    } else {
+        /*
+         * The directory buffers are no longer up to date.
+         */
+        rc = 0;
     }
     lock_ReleaseWrite(&op->scp->rw);
 
@@ -1414,7 +1421,7 @@ cm_DirOpDelBuffer(cm_dirOp_t * op, cm_buf_t * bufferp, int flags)
                          (op->lockType == CM_DIRLOCK_WRITE ? CM_SCACHESYNC_WRITE : CM_SCACHESYNC_READ));
 
 #ifdef DEBUG
-            osi_assert(bufferp->dataVersion == op->dataVersion);
+            osi_assert(bufferp->dataVersion == op->dataVersion || bufferp->dataVersion == CM_BUF_VERSION_BAD);
 #endif
 
             lock_ReleaseWrite(&op->scp->rw);

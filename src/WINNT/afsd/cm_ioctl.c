@@ -422,7 +422,7 @@ cm_IoctlGetACL(cm_ioctl_t *ioctlp, cm_user_t *userp, cm_scache_t *scp, cm_req_t 
             code = RXAFS_FetchACL(rxconnp, &afid, &acl, &fileStatus, &volSync);
             rx_PutConnection(rxconnp);
 
-        } while (cm_Analyze(connp, userp, reqp, &scp->fid, &volSync, NULL, NULL, code));
+        } while (cm_Analyze(connp, userp, reqp, &scp->fid, 0, &volSync, NULL, NULL, code));
         code = cm_MapRPCError(code, reqp);
 
         if (code)
@@ -520,7 +520,7 @@ cm_IoctlSetACL(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_scache_t *scp,
             code = RXAFS_StoreACL(rxconnp, &fid, &acl, &fileStatus, &volSync);
             rx_PutConnection(rxconnp);
 
-        } while (cm_Analyze(connp, userp, reqp, &scp->fid, &volSync, NULL, NULL, code));
+        } while (cm_Analyze(connp, userp, reqp, &scp->fid, 1, &volSync, NULL, NULL, code));
         code = cm_MapRPCError(code, reqp);
 
         /* invalidate cache info, since we just trashed the ACL cache */
@@ -689,7 +689,7 @@ cm_IoctlSetVolumeStatus(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_scach
                                          &storeStat, volName, offLineMsg, motd);
             rx_PutConnection(rxconnp);
 
-        } while (cm_Analyze(tcp, userp, reqp, &scp->fid, NULL, NULL, NULL, code));
+        } while (cm_Analyze(tcp, userp, reqp, &scp->fid, 1, NULL, NULL, NULL, code));
         code = cm_MapRPCError(code, reqp);
     }
 
@@ -765,7 +765,7 @@ cm_IoctlGetVolumeStatus(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_scach
 					 &volStat, &Name, &OfflineMsg, &MOTD);
 	    rx_PutConnection(rxconnp);
 
-	} while (cm_Analyze(connp, userp, reqp, &scp->fid, NULL, NULL, NULL, code));
+	} while (cm_Analyze(connp, userp, reqp, &scp->fid, 0, NULL, NULL, NULL, code));
 	code = cm_MapRPCError(code, reqp);
     }
 
@@ -3262,7 +3262,6 @@ cm_CheckServersStatus(cm_serverRef_t *serversp)
             continue;
         if (tsp = tsrp->server) {
             cm_GetServerNoLock(tsp);
-            lock_ReleaseRead(&cm_serverLock);
             if (!(tsp->flags & CM_SERVERFLAG_DOWN)) {
                 allDown = 0;
                 if (tsrp->status == srv_busy) {
@@ -3274,11 +3273,10 @@ cm_CheckServersStatus(cm_serverRef_t *serversp)
                 } else {
                     allOffline = 0;
                     allBusy = 0;
-                    cm_PutServer(tsp);
+                    cm_PutServerNoLock(tsp);
                     goto done;
                 }
             }
-            lock_ObtainRead(&cm_serverLock);
             cm_PutServerNoLock(tsp);
         }
     }

@@ -260,7 +260,7 @@ Severity=Informational
 Facility=System
 SymbolicName=MSG_SERVICE_START_PENDING
 Language=English
-OpenAFS Start Pending.
+OpenAFS Start Pending.  Version %1.
 .
 
 MessageId=
@@ -276,7 +276,7 @@ Severity=Informational
 Facility=System
 SymbolicName=MSG_SERVICE_RUNNING
 Language=English
-OpenAFS Running.
+OpenAFS Running. %1
 .
 
 MessageId=
@@ -444,6 +444,14 @@ Facility=System
 SymbolicName=MSG_SERVICE_STOPPED
 Language=English
 OpenAFS Shutdown Complete.
+.
+
+MessageId=
+Severity=Warning
+Facility=System
+SymbolicName=MSG_RX_IDLE_DEAD_TIMEOUT
+Language=English
+Idle dead timeout when communicating with server %1.
 .
 
 ;#endif /* __AFSD_EVENTMESSAGES_H_ 1 */

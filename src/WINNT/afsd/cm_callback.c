@@ -1136,15 +1136,21 @@ GetCellCommon(afs_int32 a_cellnum, char **a_name, serverList *a_hosts)
     afs_int32 sn;
     cm_cell_t * cellp;
     cm_serverRef_t * serverRefp;
+    size_t len;
 
     cellp = cm_FindCellByID(a_cellnum, CM_FLAG_NOPROBE);
     if (!cellp) {
-        *a_name = strdup("");
+        *a_name = (char *)xdr_alloc(sizeof(char));
+        if (*a_name)
+            *a_name = '\0';
         return 0;
     }
 
     lock_ObtainRead(&cm_serverLock);
-    *a_name = strdup(cellp->name);
+    len = strlen(cellp->name)+1;
+    *a_name = (char *)xdr_alloc(len);
+    if (*a_name)
+        memcpy(*a_name, cellp->name, len);
 
     for ( sn = 0, serverRefp = cellp->vlServersp;
           sn < AFSMAXCELLHOSTS && serverRefp;
@@ -1387,6 +1393,7 @@ int SRXAFSCB_GetLocalCell(struct rx_call *callp, char **a_name)
     struct rx_peer *peerp;
     unsigned long host = 0;
     unsigned short port = 0;
+    size_t len;
 
     if (cm_shutdown)
         return 1;
@@ -1400,7 +1407,10 @@ int SRXAFSCB_GetLocalCell(struct rx_call *callp, char **a_name)
              ntohl(host), ntohs(port));
 
     if (cm_data.rootCellp) {
-        t_name = strdup(cm_data.rootCellp->name);
+        len = strlen(cm_data.rootCellp->name) + 1;
+        t_name = (char *)xdr_alloc(len);
+        if (t_name)
+            memcpy(t_name, cm_data.rootCellp->name, len);
     } else {
 	t_name = (char *)xdr_alloc(1);
 	t_name[0] = '\0';
@@ -1814,7 +1824,7 @@ long cm_GetCallback(cm_scache_t *scp, struct cm_user *userp,
                                      &afsStatus, &callback, &volSync);
             rx_PutConnection(rxconnp);
 
-        } while (cm_Analyze(connp, userp, reqp, &sfid, &volSync, NULL,
+        } while (cm_Analyze(connp, userp, reqp, &sfid, 0, &volSync, NULL,
                             &cbr, code));
         code = cm_MapRPCError(code, reqp);
         if (code)
@@ -2023,7 +2033,7 @@ cm_GiveUpAllCallbacks(cm_server_t *tsp, afs_int32 markDown)
 
     if ((tsp->type == CM_SERVER_FILE) && !(tsp->flags & CM_SERVERFLAG_DOWN))
     {
-        code = cm_ConnByServer(tsp, cm_rootUserp, &connp);
+        code = cm_ConnByServer(tsp, cm_rootUserp, FALSE, &connp);
         if (code == 0) {
             rxconnp = cm_GetRxConn(connp);
             rx_SetConnDeadTime(rxconnp, 10);
@@ -2075,15 +2085,15 @@ cm_GiveUpAllCallbacksAllServers(afs_int32 markDown)
     if (!cm_giveUpAllCBs)
         return;
 
-    lock_ObtainWrite(&cm_serverLock);
+    lock_ObtainRead(&cm_serverLock);
     for (tsp = cm_allServersp; tsp; tsp = tsp->allNextp) {
         cm_GetServerNoLock(tsp);
-        lock_ReleaseWrite(&cm_serverLock);
+        lock_ReleaseRead(&cm_serverLock);
         cm_GiveUpAllCallbacks(tsp, markDown);
-        lock_ObtainWrite(&cm_serverLock);
+        lock_ObtainRead(&cm_serverLock);
         cm_PutServerNoLock(tsp);
     }
-    lock_ReleaseWrite(&cm_serverLock);
+    lock_ReleaseRead(&cm_serverLock);
 }
 
 void
@@ -2118,7 +2128,7 @@ cm_GiveUpAllCallbacksAllServersMulti(afs_int32 markDown)
         lock_ReleaseRead(&cm_serverLock);
 
         serversp[nconns] = tsp;
-        code = cm_ConnByServer(tsp, cm_rootUserp, &conns[nconns]);
+        code = cm_ConnByServer(tsp, cm_rootUserp, FALSE, &conns[nconns]);
         if (code) {
             lock_ObtainRead(&cm_serverLock);
             cm_PutServerNoLock(tsp);

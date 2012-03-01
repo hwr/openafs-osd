@@ -688,7 +688,6 @@ long cm_GetSCache(cm_fid_t *fidp, cm_scache_t **outScpp, cm_user_t *userp,
             scp = cm_GetNewSCache();    /* returns scp->rw held */
             if (scp == NULL) {
                 osi_Log0(afsd_logp,"cm_GetSCache unable to obtain *new* scache entry");
-                lock_ReleaseWrite(&cm_scacheLock);
                 return CM_ERROR_WOULDBLOCK;
             }
         } else {
@@ -1679,10 +1678,13 @@ void cm_MergeStatus(cm_scache_t *dscp,
      * object during an uncontested storeData operation.  As a result this
      * merge status no longer has performance characteristics derived from
      * the size of the file.
+     *
+     * For directory buffers, only current dataVersion values are up to date.
      */
     if (((flags & CM_MERGEFLAG_STOREDATA) && dataVersion - scp->dataVersion > activeRPCs) ||
          (!(flags & CM_MERGEFLAG_STOREDATA) && scp->dataVersion != dataVersion) ||
-         scp->bufDataVersionLow == 0)
+         scp->bufDataVersionLow == 0 ||
+         scp->fileType == CM_SCACHETYPE_DIRECTORY)
         scp->bufDataVersionLow = dataVersion;
 
     scp->dataVersion = dataVersion;

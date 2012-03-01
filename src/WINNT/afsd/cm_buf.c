@@ -179,33 +179,9 @@ void buf_ReleaseDbg(cm_buf_t *bp, char *file, long line)
 void buf_Release(cm_buf_t *bp)
 #endif
 {
-    afs_int32 refCount;
-
-    /* ensure that we're in the LRU queue if our ref count is 0 */
-    osi_assertx(bp->magic == CM_BUF_MAGIC,"incorrect cm_buf_t magic");
-
-    refCount = InterlockedDecrement(&bp->refCount);
-#ifdef DEBUG_REFCOUNT
-    osi_Log2(afsd_logp,"buf_Release bp 0x%p ref %d", bp, refCount);
-    afsi_log("%s:%d buf_ReleaseLocked bp 0x%p, ref %d", file, line, bp, refCount);
-#endif
-#ifdef DEBUG
-    if (refCount < 0)
-	osi_panic("buf refcount 0",__FILE__,__LINE__);;
-#else
-    osi_assertx(refCount >= 0, "cm_buf_t refCount == 0");
-#endif
-    if (refCount == 0) {
-        lock_ObtainWrite(&buf_globalLock);
-        if (bp->refCount == 0 &&
-            !(bp->qFlags & CM_BUF_QINLRU)) {
-            osi_QAddH( (osi_queue_t **) &cm_data.buf_freeListp,
-                       (osi_queue_t **) &cm_data.buf_freeListEndp,
-                       &bp->q);
-            _InterlockedOr(&bp->qFlags, CM_BUF_QINLRU);
-        }
-        lock_ReleaseWrite(&buf_globalLock);
-    }
+    lock_ObtainRead(&buf_globalLock);
+    buf_ReleaseLocked(bp, FALSE);
+    lock_ReleaseRead(&buf_globalLock);
 }
 
 long
@@ -244,7 +220,7 @@ buf_Sync(int quitOnShutdown)
             case vl_unknown:
                 cm_InitReq(&req);
                 req.flags |= CM_REQ_NORETRY;
-                buf_CleanAsyncLocked(NULL, bp, &req, 0, &dirty);
+                buf_CleanLocked(NULL, bp, &req, 0, &dirty);
                 wasDirty |= dirty;
             }
             cm_PutVolume(volp);
@@ -643,16 +619,16 @@ void buf_WaitIO(cm_scache_t * scp, cm_buf_t *bp)
 /* find a buffer, if any, for a particular file ID and offset.  Assumes
  * that buf_globalLock is write locked when called.
  */
-cm_buf_t *buf_FindLocked(struct cm_scache *scp, osi_hyper_t *offsetp)
+cm_buf_t *buf_FindLocked(struct cm_fid *fidp, osi_hyper_t *offsetp)
 {
     afs_uint32 i;
     cm_buf_t *bp;
 
     lock_AssertAny(&buf_globalLock);
 
-    i = BUF_HASH(&scp->fid, offsetp);
+    i = BUF_HASH(fidp, offsetp);
     for(bp = cm_data.buf_scacheHashTablepp[i]; bp; bp=bp->hashp) {
-        if (cm_FidCmp(&scp->fid, &bp->fid) == 0
+        if (cm_FidCmp(fidp, &bp->fid) == 0
              && offsetp->LowPart == bp->offset.LowPart
              && offsetp->HighPart == bp->offset.HighPart) {
             buf_HoldLocked(bp);
@@ -667,12 +643,12 @@ cm_buf_t *buf_FindLocked(struct cm_scache *scp, osi_hyper_t *offsetp)
 /* find a buffer with offset *offsetp for vnode *scp.  Called
  * with no locks held.
  */
-cm_buf_t *buf_Find(struct cm_scache *scp, osi_hyper_t *offsetp)
+cm_buf_t *buf_Find(struct cm_fid *fidp, osi_hyper_t *offsetp)
 {
     cm_buf_t *bp;
 
     lock_ObtainRead(&buf_globalLock);
-    bp = buf_FindLocked(scp, offsetp);
+    bp = buf_FindLocked(fidp, offsetp);
     lock_ReleaseRead(&buf_globalLock);
 
     return bp;
@@ -682,13 +658,13 @@ cm_buf_t *buf_Find(struct cm_scache *scp, osi_hyper_t *offsetp)
  * that buf_globalLock is write locked when called.  Uses the all buffer
  * list.
  */
-cm_buf_t *buf_FindAllLocked(struct cm_scache *scp, osi_hyper_t *offsetp, afs_uint32 flags)
+cm_buf_t *buf_FindAllLocked(struct cm_fid *fidp, osi_hyper_t *offsetp, afs_uint32 flags)
 {
     cm_buf_t *bp;
 
     if (flags == 0) {
         for(bp = cm_data.buf_allp; bp; bp=bp->allp) {
-            if (cm_FidCmp(&scp->fid, &bp->fid) == 0
+            if (cm_FidCmp(fidp, &bp->fid) == 0
                  && offsetp->LowPart == bp->offset.LowPart
                  && offsetp->HighPart == bp->offset.HighPart) {
                 buf_HoldLocked(bp);
@@ -697,7 +673,7 @@ cm_buf_t *buf_FindAllLocked(struct cm_scache *scp, osi_hyper_t *offsetp, afs_uin
         }
     } else {
         for(bp = cm_data.buf_allp; bp; bp=bp->allp) {
-            if (cm_FidCmp(&scp->fid, &bp->fid) == 0) {
+            if (cm_FidCmp(fidp, &bp->fid) == 0) {
                 char * fileOffset;
 
                 fileOffset = offsetp->QuadPart + cm_data.baseAddress;
@@ -715,12 +691,12 @@ cm_buf_t *buf_FindAllLocked(struct cm_scache *scp, osi_hyper_t *offsetp, afs_uin
 /* find a buffer with offset *offsetp for vnode *scp.  Called
  * with no locks held.  Use the all buffer list.
  */
-cm_buf_t *buf_FindAll(struct cm_scache *scp, osi_hyper_t *offsetp, afs_uint32 flags)
+cm_buf_t *buf_FindAll(struct cm_fid *fidp, osi_hyper_t *offsetp, afs_uint32 flags)
 {
     cm_buf_t *bp;
 
     lock_ObtainRead(&buf_globalLock);
-    bp = buf_FindAllLocked(scp, offsetp, flags);
+    bp = buf_FindAllLocked(fidp, offsetp, flags);
     lock_ReleaseRead(&buf_globalLock);
 
     return bp;
@@ -738,7 +714,7 @@ cm_buf_t *buf_FindAll(struct cm_scache *scp, osi_hyper_t *offsetp, afs_uint32 fl
  * 'scp' may or may not be NULL.  If it is not NULL, the FID for both cm_scache_t
  * and cm_buf_t must match.
  */
-afs_uint32 buf_CleanAsyncLocked(cm_scache_t *scp, cm_buf_t *bp, cm_req_t *reqp,
+afs_uint32 buf_CleanLocked(cm_scache_t *scp, cm_buf_t *bp, cm_req_t *reqp,
                                 afs_uint32 flags, afs_uint32 *pisdirty)
 {
     afs_uint32 code = 0;
@@ -776,24 +752,23 @@ afs_uint32 buf_CleanAsyncLocked(cm_scache_t *scp, cm_buf_t *bp, cm_req_t *reqp,
              * in fact be the case but we don't know that until we attempt
              * a FetchStatus on the FID.
              */
-            osi_Log1(buf_logp, "buf_CleanAsyncLocked unable to start I/O - scp not found buf 0x%p", bp);
+            osi_Log1(buf_logp, "buf_CleanLocked unable to start I/O - scp not found buf 0x%p", bp);
             code = CM_ERROR_NOSUCHFILE;
         } else {
-            osi_Log2(buf_logp, "buf_CleanAsyncLocked starts I/O on scp 0x%p buf 0x%p", scp, bp);
+            osi_Log2(buf_logp, "buf_CleanLocked starts I/O on scp 0x%p buf 0x%p", scp, bp);
 
             offset = bp->offset;
             LargeIntegerAdd(offset, ConvertLongToLargeInteger(bp->dirty_offset));
+            /*
+             * Only specify the dirty length of the current buffer in the call
+             * to cm_BufWrite().  It is the responsibility of cm_BufWrite()
+             * to determine if it is appropriate to fill a full chunk of data
+             * when storing to the file server.
+             */
             code = (*cm_buf_opsp->Writep)(scp, &offset,
-#if 1
-                                          /* we might as well try to write all of the contiguous
-                                           * dirty buffers in one RPC
-                                           */
-                                          cm_chunkSize,
-#else
                                           bp->dirty_length,
-#endif
                                           flags, bp->userp, reqp);
-            osi_Log3(buf_logp, "buf_CleanAsyncLocked I/O on scp 0x%p buf 0x%p, done=%d", scp, bp, code);
+            osi_Log3(buf_logp, "buf_CleanLocked I/O on scp 0x%p buf 0x%p, done=%d", scp, bp, code);
         }
         lock_ObtainMutex(&bp->mx);
 	/* if the Write routine returns No Such File, clear the dirty flag
@@ -853,7 +828,7 @@ afs_uint32 buf_CleanAsyncLocked(cm_scache_t *scp, cm_buf_t *bp, cm_req_t *reqp,
 }
 
 /* Called with a zero-ref count buffer and with the buf_globalLock write locked.
- * recycles the buffer, and leaves it ready for reuse with a ref count of 1.
+ * recycles the buffer, and leaves it ready for reuse with a ref count of 0.
  * The buffer must already be clean, and no I/O should be happening to it.
  */
 void buf_Recycle(cm_buf_t *bp)
@@ -948,7 +923,7 @@ long buf_GetNewLocked(struct cm_scache *scp, osi_hyper_t *offsetp, cm_req_t *req
         lock_ObtainWrite(&buf_globalLock);
         /* check to see if we lost the race */
         if (scp) {
-            if (bp = buf_FindLocked(scp, offsetp)) {
+            if (bp = buf_FindLocked(&scp->fid, offsetp)) {
 		/* Do not call buf_ReleaseLocked() because we
 		 * do not want to allow the buffer to be added
 		 * to the free list.
@@ -1033,16 +1008,18 @@ long buf_GetNewLocked(struct cm_scache *scp, osi_hyper_t *offsetp, cm_req_t *req
                 lock_ReleaseWrite(&buf_globalLock);
                 lock_ReleaseRead(&scp->bufCreateLock);
 
-                /* grab required lock and clean; this only
-                 * starts the I/O.  By the time we're back,
-                 * it'll still be marked dirty, but it will also
-                 * have the WRITING flag set, so we won't get
-                 * back here.
+                /*
+                 * grab required lock and clean.
+                 * previously the claim was that the cleaning
+                 * operation was async which it is not.  It would
+                 * be a good idea to use an async mechanism here
+                 * but there is none at the moment other than
+                 * the buf_IncrSyncer() thread.
                  */
                 if (cm_FidCmp(&scp->fid, &bp->fid) == 0)
-                    buf_CleanAsync(scp, bp, reqp, 0, NULL);
+                    buf_Clean(scp, bp, reqp, 0, NULL);
                 else
-                    buf_CleanAsync(NULL, bp, reqp, 0, NULL);
+                    buf_Clean(NULL, bp, reqp, 0, NULL);
 
                 /* now put it back and go around again */
                 buf_Release(bp);
@@ -1154,7 +1131,7 @@ long buf_Get(struct cm_scache *scp, osi_hyper_t *offsetp, cm_req_t *reqp, cm_buf
         buf_ValidateBufQueues();
 #endif /* TESTING */
 
-        bp = buf_Find(scp, &pageOffset);
+        bp = buf_Find(&scp->fid, &pageOffset);
         if (bp) {
             /* lock it and break out */
             lock_ObtainMutex(&bp->mx);
@@ -1304,14 +1281,14 @@ long buf_CountFreeList(void)
 }
 
 /* clean a buffer synchronously */
-afs_uint32 buf_CleanAsync(cm_scache_t *scp, cm_buf_t *bp, cm_req_t *reqp, afs_uint32 flags, afs_uint32 *pisdirty)
+afs_uint32 buf_Clean(cm_scache_t *scp, cm_buf_t *bp, cm_req_t *reqp, afs_uint32 flags, afs_uint32 *pisdirty)
 {
     long code;
     osi_assertx(bp->magic == CM_BUF_MAGIC, "invalid cm_buf_t magic");
     osi_assertx(!(flags & CM_BUF_WRITE_SCP_LOCKED), "scp->rw must not be held when calling buf_CleanAsync");
 
     lock_ObtainMutex(&bp->mx);
-    code = buf_CleanAsyncLocked(scp, bp, reqp, flags, pisdirty);
+    code = buf_CleanLocked(scp, bp, reqp, flags, pisdirty);
     lock_ReleaseMutex(&bp->mx);
 
     return code;
@@ -1445,7 +1422,7 @@ long buf_CleanAndReset(void)
                 cm_InitReq(&req);
 		req.flags |= CM_REQ_NORETRY;
 
-		buf_CleanAsync(NULL, bp, &req, 0, NULL);
+		buf_Clean(NULL, bp, &req, 0, NULL);
 		buf_CleanWait(NULL, bp, FALSE);
 
                 /* relock and release buffer */
@@ -1691,7 +1668,7 @@ long buf_FlushCleanPages(cm_scache_t *scp, cm_user_t *userp, cm_req_t *reqp)
                 lock_ObtainMutex(&bp->mx);
 
                 /* start cleaning the buffer, and wait for it to finish */
-                buf_CleanAsyncLocked(scp, bp, reqp, 0, NULL);
+                buf_CleanLocked(scp, bp, reqp, 0, NULL);
                 buf_WaitIO(scp, bp);
 
                 lock_ReleaseMutex(&bp->mx);
@@ -1824,7 +1801,7 @@ long buf_CleanVnode(struct cm_scache *scp, cm_user_t *userp, cm_req_t *reqp)
                      */
                     break;
                 default:
-                    code = buf_CleanAsyncLocked(scp, bp, reqp, 0, &wasDirty);
+                    code = buf_CleanLocked(scp, bp, reqp, 0, &wasDirty);
                     if (bp->flags & CM_BUF_ERROR) {
                         code = bp->error;
                         if (code == 0)

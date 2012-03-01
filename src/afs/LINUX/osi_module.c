@@ -80,11 +80,7 @@ afs_init(void)
 #endif
     osi_proc_init();
     osi_ioctl_init();
-#if defined(AFS_CACHE_BYPASS)
-    afs_warn("libafs with 'cache bypass' 'xosd support' 'vicep access'.\n");
-#else
     afs_warn("libafs with 'xosd support' 'vicep access'.\n");
-#endif
     afs_init_pagecopy();
 
     return 0;
@@ -93,11 +89,7 @@ afs_init(void)
 void __exit
 afs_cleanup(void)
 {
-#if defined(AFS_CACHE_BYPASS)
-    afs_warn("libafs with 'cache bypass' 'xosd support' 'vicep access' cleaning up.\n");
-#else
     afs_warn("libafs with 'xosd support' 'vicep access' cleaning up.\n");
-#endif
 
     afs_shutdown_pagecopy();
 

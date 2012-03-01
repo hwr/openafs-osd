@@ -14,6 +14,8 @@
 #include <WINNT/afsreg.h>
 #include "afsd.h"
 #include "afsd_eventlog.h"
+#define AFS_VERSION_STRINGS
+#include "afs_component_version_number.h"
 
 static BOOL	GetServicePath(LPTSTR lpPathBuf, PDWORD pdwPathBufSize);
 static BOOL	AddEventSource(void);
@@ -197,15 +199,21 @@ LogEvent(WORD wEventType, DWORD dwEventID, ...)
     case MSG_FLUSH_UNEXPECTED_EVENT:
     case MSG_UNHANDLED_EXCEPTION:
     case MSG_SMB_ZERO_TRANSACTION_COUNT:
-    case MSG_SERVICE_START_PENDING:
     case MSG_SERVICE_INCORRECT_VERSIONS:
-    case MSG_SERVICE_RUNNING:
     case MSG_SERVICE_STOPPING:
     case MSG_SERVICE_STOPPED:
     case MSG_SERVICE_ERROR_STOP:
     case MSG_CRYPT_OFF:
     case MSG_CRYPT_ON:
 	break;
+    case MSG_SERVICE_START_PENDING:
+        wNumArgs = 1;
+        lpArgs[0] = AFSVersion;
+        break;
+    case MSG_SERVICE_RUNNING:
+        wNumArgs = 1;
+        lpArgs[0] = "SMB interface";
+        break;
     case MSG_FLUSH_BAD_SHARE_NAME:
     case MSG_FLUSH_OPEN_ENUM_ERROR:
     case MSG_FLUSH_ENUM_ERROR:
@@ -244,6 +252,7 @@ LogEvent(WORD wEventType, DWORD dwEventID, ...)
     case MSG_ALL_SERVERS_BUSY:
     case MSG_ALL_SERVERS_OFFLINE:
     case MSG_ALL_SERVERS_DOWN:
+    case MSG_RX_IDLE_DEAD_TIMEOUT:
 	wNumArgs = 2;
 	lpArgs[0] = va_arg(listArgs, LPTSTR);
 	StringCbPrintf(lpStrings[1],STRLEN,"%d",va_arg(listArgs,afs_int32));

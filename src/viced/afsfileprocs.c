@@ -3096,6 +3096,7 @@ GetStatus(Vnode * targetptr, AFSFetchStatus * status, afs_int32 rights,
 	  afs_int32 anyrights, Vnode * parentptr)
 {
     afs_fsize_t targetLen;
+    int Time =FT_ApproxTime();
     VN_GET_LEN(targetLen, targetptr);
 
     /* initialize return status from a vnode  */
@@ -3133,7 +3134,7 @@ GetStatus(Vnode * targetptr, AFSFetchStatus * status, afs_int32 rights,
 		(parentptr ? parentptr->disk.uniquifier : 0));
     status->ServerModTime = targetptr->disk.serverModifyTime;
     status->Group = targetptr->disk.group;
-    status->lockCount = targetptr->disk.lock.lockCount;
+    status->lockCount = Time > targetptr->disk.lock.lockTime ? targetptr->disk.lock.lockCount : 0;
     status->errorCode = 0;
 
 }				/*GetStatus */

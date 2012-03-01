@@ -6,30 +6,30 @@
  * may copy or modify Sun RPC without charge, but are not authorized
  * to license or distribute it to anyone else except as part of a product or
  * program developed by the user.
- * 
+ *
  * SUN RPC IS PROVIDED AS IS WITH NO WARRANTIES OF ANY KIND INCLUDING THE
  * WARRANTIES OF DESIGN, MERCHANTIBILITY AND FITNESS FOR A PARTICULAR
  * PURPOSE, OR ARISING FROM A COURSE OF DEALING, USAGE OR TRADE PRACTICE.
- * 
+ *
  * Sun RPC is provided with no support and without any obligation on the
  * part of Sun Microsystems, Inc. to assist in its use, correction,
  * modification or enhancement.
- * 
+ *
  * SUN MICROSYSTEMS, INC. SHALL HAVE NO LIABILITY WITH RESPECT TO THE
  * INFRINGEMENT OF COPYRIGHTS, TRADE SECRETS OR ANY PATENTS BY SUN RPC
  * OR ANY PART THEREOF.
- * 
+ *
  * In no event will Sun Microsystems, Inc. be liable for any lost revenue
  * or profits or other special, indirect and consequential damages, even if
  * Sun has been advised of the possibility of such damages.
- * 
+ *
  * Sun Microsystems, Inc.
  * 2550 Garcia Avenue
  * Mountain View, California  94043
  */
 
 /*
- * rpc_parse.c, Parser for the RPC protocol compiler 
+ * rpc_parse.c, Parser for the RPC protocol compiler
  * Copyright (C) 1987 Sun Microsystems, Inc.
  */
 #include <afsconfig.h>
@@ -927,7 +927,7 @@ generate_code(definition * defp, int proc_split_flag, int multi_flag)
 	if (Sflag || cflag)
 	    ss_Proc_CodeGeneration(defp);
     }
-    if (Sflag || (cflag && xflag && !(multi_flag && proc_split_flag)))
+    if (Sflag || (cflag && xflag && !proc_split_flag))
 	STOREVAL(&proc_defined[PackageIndex], defp);
 }
 
@@ -1154,7 +1154,7 @@ cs_ProcName_setup(definition * defp, char *procheader, int split_flag)
 				plist->pl.param_name);
 		    }
 		} else {
-		    f_print(fout, ", %s", plist->pl.param_name);    
+		    f_print(fout, ", %s", plist->pl.param_name);
 		    plist->pl.param_flag &= ~PROCESSED_PARAM;
 		}
 	    }
@@ -1527,14 +1527,14 @@ ss_ProcSpecial_setup(definition * defp, int *somefrees)
 		    *somefrees = 1;
 		    switch (defp1->pc.rel) {
 		    case REL_ARRAY:
-                        plist->pl.string_name = alloc(40);
-                        if (brief_flag) {
-                            f_print(fout, "\n\t%s.val = 0;",
-                                    plist->pl.param_name);
-                            f_print(fout, "\n\t%s.len = 0;",
-                                    plist->pl.param_name);
-                            s_print(plist->pl.string_name, "val");
-                        } else {
+			plist->pl.string_name = alloc(40);
+			if (brief_flag) {
+			    f_print(fout, "\n\t%s.val = 0;",
+				    plist->pl.param_name);
+			    f_print(fout, "\n\t%s.len = 0;",
+				    plist->pl.param_name);
+			    s_print(plist->pl.string_name, "val");
+			} else {
 			    f_print(fout, "\n\t%s.%s_val = 0;",
 				    plist->pl.param_name, defp1->def_name);
 			    f_print(fout, "\n\t%s.%s_len = 0;",
@@ -1950,7 +1950,7 @@ ucs_ProcTail_setup(definition * defp, int split_flag)
     f_print(fout, "\t\tif ((pass == 0) && (aclient->states[_ucount] & CFLastFailed)) {\n");
     f_print(fout, "\t\t\tcontinue;       /* this guy's down */\n");
     f_print(fout, "\t\t}\n");
-    
+
     f_print(fout, "\t\trcode = %s%s%s(tc\n", prefix, PackagePrefix[PackageIndex], defp->pc.proc_name);
     for (plist = defp->pc.plists; plist; plist = plist->next) {
 	if (plist->component_kind == DEF_PARAM) {
@@ -2044,8 +2044,8 @@ er_ProcDeclExterns_setup(void)
     list *listp;
     definition *defp;
 
-    if ( !Sflag )        /* not needed for opcode translation */
-        return;
+    if ( !Sflag )
+	return;
 
     f_print(fout, "\n");
     for (listp = proc_defined[PackageIndex]; listp != NULL;
@@ -2066,37 +2066,37 @@ er_ProcProcsArray_setup(void)
 
     if ((listp = proc_defined[PackageIndex])) {
 	defp = (definition *) listp->val;
-        if ( cflag )  { /* generate translator functions */
-            f_print(fout, "\nstatic char *opnames%d[] = {\"%s%s\"",
-                        PackageIndex, defp->pc.proc_prefix, defp->pc.proc_name);
-        }
-        else {
+	if ( cflag )  {
+	    f_print(fout, "\nstatic char *opnames%d[] = {\"%s%s\"",
+			PackageIndex, defp->pc.proc_prefix, defp->pc.proc_name);
+	}
+	else {
 	    if (defp->pc.proc_serverstub) {
-	        f_print(fout, "\nstatic afs_int32 (*StubProcsArray%d[])() = {%s",
-		        PackageIndex, defp->pc.proc_serverstub);
+		f_print(fout, "\nstatic afs_int32 (*StubProcsArray%d[])() = {%s",
+			PackageIndex, defp->pc.proc_serverstub);
 	    } else {
-	        f_print(fout,
-	    	        "\nstatic afs_int32 (*StubProcsArray%d[])(struct rx_call *z_call, XDR *z_xdrs) = {_%s%s%s",
-		        PackageIndex, prefix, defp->pc.proc_prefix,
-		        ((definition *) listp->val)->pc.proc_name);
-	        defp = (definition *) listp->val;
+		f_print(fout,
+			"\nstatic afs_int32 (*StubProcsArray%d[])(struct rx_call *z_call, XDR *z_xdrs) = {_%s%s%s",
+			PackageIndex, prefix, defp->pc.proc_prefix,
+			((definition *) listp->val)->pc.proc_name);
+		defp = (definition *) listp->val;
 	    }
 	}
 	listp = listp->next;
     }
     for (; listp != NULL; listp = listp->next) {
 	defp = (definition *) listp->val;
-        if ( cflag ) {  /* translator */
-            f_print(fout, ", \"%s%s\"",defp->pc.proc_prefix,defp->pc.proc_name);
-        }
-        else {          /* Execute_Request */
+	if ( cflag ) {
+	    f_print(fout, ", \"%s%s\"",defp->pc.proc_prefix,defp->pc.proc_name);
+	}
+	else {
 	    if (defp->pc.proc_serverstub) {
-	        f_print(fout, ",%s", defp->pc.proc_serverstub);
+		f_print(fout, ",%s", defp->pc.proc_serverstub);
 	    } else {
-	        f_print(fout, ", _%s%s%s", prefix, defp->pc.proc_prefix,
-		        defp->pc.proc_name);
+		f_print(fout, ", _%s%s%s", prefix, defp->pc.proc_prefix,
+			defp->pc.proc_name);
 	    }
-        }
+	}
     }
     f_print(fout, "};\n\n");
 }
@@ -2106,14 +2106,13 @@ static void
 er_ProcMainBody_setup(void)
 {
     if ( cflag ) {
-        f_print(fout, "char *%sTranslateOpCode(int op)\n{\n",
-                PackagePrefix[PackageIndex]);
-        f_print(fout, "\tif (op < %sLOWEST_OPCODE || op > %sHIGHEST_OPCODE)\n"
-                        "\t\treturn NULL;\n",
-                PackagePrefix[PackageIndex], PackagePrefix[PackageIndex]);
-        f_print(fout, "\treturn opnames%d[op - %sLOWEST_OPCODE];\n}\n",
-                PackageIndex, PackagePrefix[PackageIndex]);
-        return;
+	f_print(fout, "char *%sTranslateOpCode(int op)\n{\n",
+		PackagePrefix[PackageIndex]);
+	f_print(fout, "\tif (op < %sLOWEST_OPCODE || op > %sHIGHEST_OPCODE)\n\t\treturn NULL;\n",
+		PackagePrefix[PackageIndex], PackagePrefix[PackageIndex]);
+	f_print(fout, "\treturn opnames%d[op - %sLOWEST_OPCODE];\n}\n",
+		PackageIndex, PackagePrefix[PackageIndex]);
+	return;
     }
     f_print(fout, "int %s%sExecuteRequest(struct rx_call *z_call)\n",
 	    prefix, PackagePrefix[PackageIndex]);
@@ -2137,21 +2136,21 @@ static void
 er_HeadofOldStyleProc_setup(void)
 {
     if ( cflag ) {
-        f_print(fout, "char *%sTranslateOpCode(int op)\n{\n",
-            (combinepackages ? MasterPrefix : PackagePrefix[PackageIndex]));
+	f_print(fout, "char *%sTranslateOpCode(int op)\n{\n",
+	    (combinepackages ? MasterPrefix : PackagePrefix[PackageIndex]));
     }
     else {
-        f_print(fout,
-	        "\nint %s%sExecuteRequest (struct rx_call *z_call)\n",
-	        prefix,
-	        (combinepackages ? MasterPrefix : PackagePrefix[PackageIndex]));
-        f_print(fout, "{\n");
-        f_print(fout, "\tint op;\n");
-        f_print(fout, "\tXDR z_xdrs;\n");
-        f_print(fout, "\t" "afs_int32 z_result;\n\n");
-        f_print(fout, "\txdrrx_create(&z_xdrs, z_call, XDR_DECODE);\n");
-        f_print(fout, "\tz_result = RXGEN_DECODE;\n");
-        f_print(fout, "\tif (!xdr_int(&z_xdrs, &op)) goto fail;\n");
+	f_print(fout,
+		"\nint %s%sExecuteRequest (struct rx_call *z_call)\n",
+		prefix,
+		(combinepackages ? MasterPrefix : PackagePrefix[PackageIndex]));
+	f_print(fout, "{\n");
+	f_print(fout, "\tint op;\n");
+	f_print(fout, "\tXDR z_xdrs;\n");
+	f_print(fout, "\t" "afs_int32 z_result;\n\n");
+	f_print(fout, "\txdrrx_create(&z_xdrs, z_call, XDR_DECODE);\n");
+	f_print(fout, "\tz_result = RXGEN_DECODE;\n");
+	f_print(fout, "\tif (!xdr_int(&z_xdrs, &op)) goto fail;\n");
     }
     f_print(fout, "\tswitch (op) {\n");
 }
@@ -2181,20 +2180,15 @@ static void
 proc_er_case(definition * defp)
 {
     if ( cflag ) {
-        f_print(fout, "\t\tcase %d:", defp->pc.proc_opcodenum);
-        f_print(fout, "\treturn \"%s%s\";\n",
-                defp->pc.proc_prefix, defp->pc.proc_name);
-        return;
+	f_print(fout, "\t\tcase %d:", defp->pc.proc_opcodenum);
+	f_print(fout, "\treturn \"%s%s\";\n",
+		defp->pc.proc_prefix, defp->pc.proc_name);
+	return;
     }
     if (opcodesnotallowed[PackageIndex]) {
 	f_print(fout, "\t\tcase %d:\n", defp->pc.proc_opcodenum);
     } else {
 	f_print(fout, "\t\tcase %s:\n", defp->pc.proc_opcodename);
-    }
-    if ( cflag ) {
-        f_print(fout, "\t\t\treturn \"%s%s\";\n",
-                defp->pc.proc_prefix, defp->pc.proc_name);
-        return;
     }
     if (defp->pc.proc_serverstub) {
 	f_print(fout, "\t\t\tz_result = %s(z_call, &z_xdrs);\n",
@@ -2212,8 +2206,8 @@ er_TailofOldStyleProc_setup(void)
 {
     f_print(fout, "\t\tdefault:\n");
     if ( cflag ) {
-        f_print(fout, "\t\t\treturn NULL;\n\t}\n}\n");
-        return;
+	f_print(fout, "\t\t\treturn NULL;\n\t}\n}\n");
+	return;
     }
     f_print(fout, "\t\t\tz_result = RXGEN_OPCODE;\n");
     f_print(fout, "\t\t\tbreak;\n\t}\n");
@@ -2273,7 +2267,6 @@ h_opcode_stats(void)
 	    f_print(fout, "AFS_RXGEN_EXPORT\n");
 	    f_print(fout, "extern const char *%sfunction_names[];\n\n",
 		    MasterPrefix);
-	    f_print(fout, "char *%sTranslateOpCode(int);\n", MasterPrefix);
 	}
     } else {
 	int i;
@@ -2293,8 +2286,6 @@ h_opcode_stats(void)
 		f_print(fout, "AFS_RXGEN_EXPORT\n");
 		f_print(fout, "extern const char *%sfunction_names[];\n\n",
 			PackagePrefix[i]);
-		f_print(fout, "char *%sTranslateOpCode(int);\n",
-                        PackagePrefix[i]);
 	    }
 	}
     }
