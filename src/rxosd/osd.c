@@ -3210,7 +3210,7 @@ WipeCand(struct cmd_syndesc *as, void *rock)
     if (as->parms[6].items) 					/* -cell */
         cellp = as->parms[6].items->data;
     if (as->parms[7].items) 					/* -localauth */
-        localaauth = 1;
+        localauth = 1;
     scan_osd_or_host();
     GetConnection();
     q.WipeCandidateList_len = 0;
