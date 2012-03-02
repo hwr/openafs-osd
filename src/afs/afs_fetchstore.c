@@ -786,7 +786,9 @@ afs_CacheStoreVCache(struct dcache **dcList, struct vcache *avc,
 		    goto restart;
 		}
 #endif /* AFS_64BIT_CLIENT */
-                if (code && afs_soft_mounted) {
+                if (code && afs_soft_mounted 
+		  && (avc->protocol & PROTOCOL_MASK) != RX_FILESERVER
+		  && code != RX_CALL_BUSY) {
                     printf("Leaving analyze_loop with code %d\n", code);
                     areq->permWriteError = 1;
 		    code = EIO;
