@@ -2711,7 +2711,7 @@ Alloc_NewVnode(Vnode * parentptr, DirHandle * dir, Volume * volptr,
 	IH_CREATE(V_linkHandle(volptr), V_device(volptr),
 		  VPartitionPath(V_partition(volptr)), nearInode,
 		  V_id(volptr), (*targetptr)->vnodeNumber,
-		  (*targetptr)->disk.uniquifier, 1);
+		  (*targetptr)->disk.uniquifier, FileType == vSymlink ? 0 : 1);
 
     /* error in creating inode */
     if (!VALID_INO(inode)) {
