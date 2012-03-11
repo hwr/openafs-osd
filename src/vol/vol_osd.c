@@ -1158,8 +1158,9 @@ FillMetadataBuffer(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN,
 	    goto bad;
         }
 	if (entry->vnode != vN || entry->unique != vd->uniquifier) {
-	    ViceLog(0, ("FillMetadataBuffer: metadata entry %u doesn't belong to %u.%u.%u\n",
-			index, V_id(vol), vN, vd->uniquifier));
+	    ViceLog(0, ("FillMetadataBuffer: metadata entry %u doesn't belong to %u.%u.%u (instead to %u.%u.%u)\n",
+			index, V_id(vol), vN, vd->uniquifier,
+			V_id(vol), entry->vnode, entry->unique));
 	    mh->length = 0;
 	    goto bad;
 	}
@@ -2707,7 +2708,7 @@ update_osd_metadata(Volume *vol, Vnode *vn, struct ometa *old, struct ometa *new
 	return code;
     for (i=0; i<list.osd_p_fileList_len; i++) {
 	struct osd_p_file *f = &list.osd_p_fileList_val[i];
-	for (j=0; f->segmList.osd_p_segmList_len; j++) {
+	for (j=0; j<f->segmList.osd_p_segmList_len; j++) {
 	    struct osd_p_segm *s = &f->segmList.osd_p_segmList_val[j];
 	    for (k=0; k<s->objList.osd_p_objList_len; k++) {
 		struct osd_p_obj *o = &s->objList.osd_p_objList_val[k];
