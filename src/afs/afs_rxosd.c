@@ -108,7 +108,7 @@ static afs_int32 stamp = 0;
 
 afs_uint32 fakeStripes = 1;
 afs_uint32 logFakeStripes = 0;
-afs_int32 afs_soft_mounted = 1;
+afs_int32 afs_soft_mounted = 0;
 
 #if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
 extern afs_int32 vicep_fastread;
