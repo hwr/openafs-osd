@@ -1158,6 +1158,8 @@ FiveMinuteCheckLWP()
 		for (i=0; i<l.OsdList_len; i++) {
 		    int found = 0;
 		    struct Osd *e = &l.OsdList_val[i];
+		    if (e->t.etype_u.osd.unavail & OSDDB_OSD_OBSOLETE)
+			continue;
 		    if (e->t.etype_u.osd.ip == HostAddr_HBO) 
 			found = 1;
 		    else if (HostAddr_cnt > 1) {
@@ -3382,9 +3384,9 @@ int writePS(struct rx_call *call, t10rock *rock,
             ViceLog(0,("writePS: link count was %d.\n", linkCount));
 	    if (!code) {
 		struct rx_connection *conn;
-	        conn = GetConnection(fs_host, 1, fs_port, 1);
+	        conn = GetConnection(htonl(fs_host), 1, fs_port, 2);
 		if (conn) {
-		    code = RXAFS_UpdateOSDmetadata(conn, &old, &new);
+		    code = RXAFSOSD_UpdateOSDmetadata(conn, &old, &new);
 		    if (code)
             		ViceLog(0,("RXAFS_UpdateOSDmetadata returned %d.\n", code));
 		} else 
@@ -4016,9 +4018,6 @@ Truncate(struct rx_call *call, struct oparmT10 *o, afs_uint64 length,
     }
     lock_file(fdP, LOCK_EX, 0);
     code = FDH_TRUNC(fdP, length);
-    ViceLog(0,("truncate of %s on lun %llu to length %llu filedesc %d\n",
-		sprint_oparmT10(o, string, sizeof(string)),
-                o->part_id >> 32, length, fdP->fd_fd));
     ViceLog(1,("truncate of %s to length %llu returns %d\n",
 		sprint_oparmT10(o, string, sizeof(string)),
                 length, code));
