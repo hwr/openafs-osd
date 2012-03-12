@@ -103,8 +103,7 @@ struct osdMetadataHandle dummymh;
 time_t now;
 
 int 
-printentry(afs_int32 fd, afs_int32 index, afs_uint32 entrylength, 
-	afs_uint32 *objects)
+printentry(afs_int32 fd, afs_int32 index, afs_uint32 entrylength) 
 {
     struct osd_p_fileList mylist, *list;
     struct osdMetadaEntry *entry;
@@ -159,7 +158,6 @@ handleit(struct cmd_syndesc *as)
     int fd, bytes;
     int num, count;
     int vnodes = 0;
-    int objects = 0;
     int highest = 0;
     int highesttag = 0;
     int highestcount = 0;
@@ -277,7 +275,7 @@ handleit(struct cmd_syndesc *as)
 				entry->next, entry->prev);
 		PrintTime(&entry->timestamp);
 		if (verbose && entry->unique && !entry->prev) 
-		    printentry(fd, base, entrylength, &objects);
+		    printentry(fd, base, entrylength);
 		else 
 		   printf("\n");
    	    } else {	
@@ -289,7 +287,7 @@ handleit(struct cmd_syndesc *as)
 		    PrintTime(&entry->timestamp);
 		    printf("\n");
 		    if (verbose && entry->unique && !entry->prev) 
-		        printentry(fd, base, entrylength, &objects);
+		        printentry(fd, base, entrylength);
 		    else 
 		       printf("\n");
 	    	}
@@ -299,17 +297,13 @@ handleit(struct cmd_syndesc *as)
 	    int o = base >> 3;
 	    int mask = (1 << (base & 0x7));
 	    if (alloctable[o] & mask) 
-		fprintf(stderr, "*** non-exsitent entry %u is allocated!\n",
+		fprintf(stderr, "*** non-existent entry %u is allocated!\n",
 				base);
 	}
 done:
 	close(fd);
     }
-    if (verbose) 
-	printf("Total: %u entries in use %u for alloc tables, %u for files with %u objects\n",
-		usedentries, usedentries - vnodes, vnodes, objects);
-    else
-	printf("Total: %u entries in use, %u for alloc tables, %u for files\n",
+    printf("Total: %u entries in use, %u for alloc tables, %u for files\n",
 		usedentries, usedentries - vnodes, vnodes);
     printf("max entry length = %u\n", maxentrylength);
     return 0;
