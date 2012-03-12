@@ -927,7 +927,7 @@ generate_code(definition * defp, int proc_split_flag, int multi_flag)
 	if (Sflag || cflag)
 	    ss_Proc_CodeGeneration(defp);
     }
-    if (Sflag || (cflag && xflag && !proc_split_flag))
+    if (Sflag || (cflag && xflag && !(multi_flag && proc_split_flag)))
 	STOREVAL(&proc_defined[PackageIndex], defp);
 }
 
