@@ -544,8 +544,10 @@ DoLockWarning(afs_ucred_t * acred)
 	lastWarnTime = now;
 	lastWarnPid = pid;
 #ifdef AFS_LINUX26_ENV
+#if 0
 	afs_warnuser
 	    ("afs: byte-range locks only enforced for processes on this machine (pid %d (%s), user %ld).\n", pid, procname, (long)afs_cr_uid(acred));
+#endif
 #else
 	afs_warnuser
 	    ("afs: byte-range lock/unlock ignored; make sure no one else is running this program (pid %d (%s), user %ld).\n", pid, procname, afs_cr_uid(acred));
