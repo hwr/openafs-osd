@@ -5984,7 +5984,11 @@ struct cmd_syndesc *as;
 		    	w->num & 0x7fffffff,
 			name, w->volume, w->vnode, w->unique);
 		PrintTime(&w->timeStamp);
-		printf("\n");
+		printf(" from %u.%u.%u.%u\n",
+			(w->ip >> 24) & 255,
+			(w->ip >> 16) & 255,
+			(w->ip >> 8) & 255,
+			 w->ip & 255);
 	    }
 	    return 0;
 	}
