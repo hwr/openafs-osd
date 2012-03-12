@@ -637,6 +637,8 @@ start_store(struct rxosd_Variables *v, afs_uint64 offset)
 		ometa.vsn = 1;
 		ometa.ometa_u.t.part_id = segm->objList.osd_objList_val[j].part_id;
 		ometa.ometa_u.t.obj_id = segm->objList.osd_objList_val[j].obj_id;
+		ometa.ometa_u.t.osd_id = segm->objList.osd_objList_val[j].osd_id;
+		ometa.ometa_u.t.stripe = segm->objList.osd_objList_val[j].stripe;
 	        if (v->doFakeStriping) {
 		    p.type = 2;
 		    p.RWparm_u.p2.offset = stripeoffset[k];
@@ -1560,6 +1562,8 @@ retry:
 		ometa.vsn = 1;
 		ometa.ometa_u.t.part_id = segm->objList.osd_objList_val[j].part_id;
 		ometa.ometa_u.t.obj_id = segm->objList.osd_objList_val[j].obj_id;
+		ometa.ometa_u.t.osd_id = segm->objList.osd_objList_val[j].osd_id;
+		ometa.ometa_u.t.stripe = segm->objList.osd_objList_val[j].stripe;
 	        if (v->doFakeStriping) {
 		    p.type = 2;
 		    p.RWparm_u.p2.offset = stripeoffset[k];
@@ -1626,6 +1630,11 @@ retry:
                    	ICL_TYPE_INT32, __LINE__, ICL_TYPE_INT32, code);
 		    v->call[k] = 0;
 		    if (code < 0) {
+			if (code == RX_CALL_BUSY) {
+		    	    afs_warn("rxosd start_fetch: busy call to x%x\n",
+				     tc->id->peer->host);
+			    goto retry;
+			}
 			afs_ServerDown(ts->addr);
 		   	if (!afs_soft_mounted)
 		    	    sawDown = 1;
