@@ -4909,7 +4909,7 @@ afs_int32 Archive(struct cmd_syndesc *as, void *arock)
     if (as->parms[3].items) 
 	wait = strtol(as->parms[3].items->data, &t, 10);
     if (as->parms[4].items) 
-	cell = as->parms[2].items->data;
+	cell = as->parms[4].items->data;
 
     InitPioctlParams(Inputs, Outputs, CMD_OSD_ARCHIVE);
     Inputs->int32s[0] = osd;
