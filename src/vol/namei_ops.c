@@ -1361,7 +1361,11 @@ namei_dec(IHandle_t * ih, Inode ino, int p1)
             TimeFields = localtime(&t);
 #endif
 	    IH_INIT(th, ih->ih_dev, ih->ih_vid, ino);
+#if defined(BUILDING_RXOSD)
+	    tfdP = IH_REOPEN(th);	/* Avoid tape fetch for the file */
+#else
 	    tfdP = IH_OPEN(th);
+#endif
 
 	    namei_HandleToName(&name, th);
 #if defined(BUILDING_RXOSD)
