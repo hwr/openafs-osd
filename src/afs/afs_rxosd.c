@@ -138,6 +138,7 @@ struct rxosd_Variables {
     struct afs_conn *fs_conn;
     struct vcache *avc;
     struct rx_call *call[MAXOSDSTRIPES];
+    struct afs_conn *tc[MAXOSDSTRIPES];
     char oldRPC[MAXOSDSTRIPES];
     afs_uint32 osd[MAXOSDSTRIPES];
     struct ometa *ometaP[MAXOSDSTRIPES];
@@ -677,14 +678,18 @@ start_store(struct rxosd_Variables *v, afs_uint64 offset)
                    ICL_TYPE_STRING, __FILE__,
                    ICL_TYPE_INT32, __LINE__, ICL_TYPE_INT32, code);
 	    afs_PutServer(ts, WRITE_LOCK);
+#if 0
 	    afs_PutConn(tc, rxconn, SHARED_LOCK);
+#endif
             if (code) {
     	        afs_warn("RX StartRXOSD_write error\n");
 	        rx_EndCall(v->call[lc], 0);
 	        v->call[lc] = NULL;
+	        afs_PutConn(tc, rxconn, SHARED_LOCK);
 	        code = EIO;
 		goto bad;
             }
+	    v->tc[lc] = tc;
 	    k++;
 	    if (k >= v->stripes)
 	        k = 0;
@@ -1048,11 +1053,13 @@ rxosd_storeClose(void *r, struct AFSFetchStatus *OutStatus, int *doProcessFS)
 	    struct ometa out;
 	    int k = i + j * v->stripes;
 	    if (v->call[k]) {
+		struct rx_connection *rxconn;
     	        afs_Trace3(afs_iclSetp, CM_TRACE_WASHERE,
                        ICL_TYPE_STRING, __FILE__,
                        ICL_TYPE_INT32, __LINE__, ICL_TYPE_INT32, i);
 		if (!v->ometaP[k])
 		    v->ometaP[k] = &out;
+		rxconn = rx_ConnectionOf(v->call[k]);
     	        RX_AFS_GUNLOCK();
 		if (v->oldRPC[k])
 		    code = EndRXOSD_write121(v->call[k]);
@@ -1068,6 +1075,7 @@ rxosd_storeClose(void *r, struct AFSFetchStatus *OutStatus, int *doProcessFS)
     	        if (!worstcode)
 		    worstcode = code2;
     	        v->call[k] = NULL;
+		afs_PutConn(v->tc[k], rxconn, SHARED_LOCK);
     	        RX_AFS_GLOCK();
     	        afs_Trace3(afs_iclSetp, CM_TRACE_WASHERE,
                        ICL_TYPE_STRING, __FILE__,
@@ -1504,6 +1512,7 @@ start_fetch(struct rxosd_Variables *v, afs_uint64 offset)
 		}
 	    }
 	}
+retry:
 	if (tc) {
 	    v->call[k] = rx_NewCall(rxconn);
 	    if (!v->call[k])
@@ -1512,7 +1521,6 @@ start_fetch(struct rxosd_Variables *v, afs_uint64 offset)
 		v->oldRPC[k] = 1;
 
             RX_AFS_GUNLOCK();
-retry:
 #ifdef NEW_OSD_FILE
 	    if (!v->oldRPC[k]) {
 		struct RWparm p;
@@ -1603,6 +1611,7 @@ retry:
 		afs_warn("rxosd start_fetch: StartRXOSD_readPS to x%x failed\n",
 			tc->id->peer->host);
 		v->call[k] = 0;
+	        afs_PutConn(tc, rxconn, SHARED_LOCK);
 	    } else {
 		afs_int32 alive;
                 RX_AFS_GUNLOCK();
@@ -1619,6 +1628,7 @@ retry:
 			else
 			    ts->flags |= SRVR_USEOLDRPCS;
 			ReleaseWriteLock(&afs_xserver);
+                        RX_AFS_GLOCK();
 			goto retry;
 		    }
 		    code = rx_EndCall(v->call[k], 0);
@@ -1643,6 +1653,7 @@ retry:
 		    if (v->doFakeStriping)
 			goto bad;
 		} else {
+		    v->tc[k] = tc;
 		    code = 0;
 		    if (size != striperesid[k]) {
 		        afs_warn("rxosd start_fetch: wrong length %llu instead %llu\n",
@@ -1672,7 +1683,6 @@ retry:
 		    }
 		}
 	    }
-	    afs_PutConn(tc, rxconn, SHARED_LOCK);
 	}
 	if (!v->call[k]) {
             afs_Trace3(afs_iclSetp, CM_TRACE_WASHERE,
@@ -1699,9 +1709,13 @@ bad:
 	RXAFS_CheckOSDconns(v->fs_conn->id);
 	for (l=0; l<v->stripes; l++) {
 	    if (v->call[l]) {
+		struct rx_connection *rxconn = rx_ConnectionOf(v->call[l]);
 		afs_int32 code2;
 		code2 = EndRXOSD_read(v->call[l]);
 		rx_EndCall(v->call[l], code);
+		if (v->tc[l])
+		    afs_PutConn(v->tc[l], rxconn, SHARED_LOCK);
+		v->tc[l] = NULL;
 	    }
 	}
     }
@@ -2022,11 +2036,15 @@ rxosd_fetchClose(void *r, struct vcache *avc, struct dcache *adc,
     RX_AFS_GUNLOCK();
     for (i=0; i<v->stripes; i++) {
 	if (v->call[i]) {
+	    struct rxconn *rxconn = rx_ConnectionOf(v->call[i]);
     	    code = EndRXOSD_read(v->call[i]);
     	    code1 = rx_EndCall(v->call[i], code);
     	    if (!worstcode)
 		worstcode = code1;
     	    v->call[i] = NULL;
+	    if (v->tc[i])
+	        afs_PutConn(v->tc[i], rxconn, SHARED_LOCK);
+	    v->tc[i] = NULL;
 	}
     }
     RX_AFS_GLOCK();
