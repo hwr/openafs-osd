@@ -23,7 +23,7 @@ RINCLS=${TOP_INCDIR}/rx/rx.h ${TOP_INCDIR}/rx/xdr.h \
        ${TOP_INCDIR}/afs/keys.h ${TOP_INCDIR}/afs/cellconfig.h \
 	${TOP_INCDIR}/ubik.h ${TOP_INCDIR}/afs/cmd.h
 
-INTINCLS=volint.h volser.h volser_prototypes.h volser_internal.h
+INTINCLS=volint.h volser.h volser_prototypes.h volser_internal.h volosdint.h 
 
 LIBS=\
 	${TOP_LIBDIR}/libaudit.a \
@@ -58,10 +58,11 @@ VOLDUMP_LIBS = \
 	${TOP_LIBDIR}/libsys.a \
 	${TOP_LIBDIR}/libacl.a
 
-VSOBJS=vsprocs.o vsutils.o lockprocs.o volint.xdr.o volerr.o 
+VSOBJS=vsprocs.o vsutils.o lockprocs.o volint.xdr.o volerr.o \
+		volosdint.cs.o volosdint.xdr.o
 SOBJS=volmain.o volprocs.o physio.o common.o voltrans.o volerr.o \
  volint.cs.o dumpstuff.o volint.ss.o volint.xdr.o ../fsint/afsint.xdr.o \
- vol_split.o volosdprocs.o libadsosd.o
+ vol_split.o volosdprocs.o volosdint.ss.o volosdint.cs.o volosdint.xdr.o libadsosd.o
 
 # remove "vos" from lower all:target
 all:	${TOP_INCDIR}/afs/volser.h \
@@ -138,6 +139,22 @@ volint.cs.c: volint.h
 volint.ss.c: volint.h
 volint.xdr.c: volint.h
 
+volosdint.h: volosdint.xg
+	${RXGEN} -A -x -h -o $@ ${srcdir}/volosdint.xg
+
+volosdint.cs.c: volosdint.xg
+	${RXGEN} -A -x -C -o $@ ${srcdir}/volosdint.xg
+
+volosdint.ss.c: volosdint.xg
+	${RXGEN} -A -x -S -o $@ ${srcdir}/volosdint.xg
+
+volosdint.xdr.c: volosdint.xg
+	${RXGEN} -A -x -c -o $@ ${srcdir}/volosdint.xg
+
+volosdint.cs.c: volosdint.h
+volosdint.ss.c: volosdint.h
+volosdint.xdr.c: volosdint.h
+
 osddb.h: ${OSDDBSRC}/osddb.xg
 	${RXGEN} -A -x -h -o $@ ${OSDDBSRC}/osddb.xg
 
@@ -156,6 +173,9 @@ osddbuser.o: ${OSDDBSRC}/osddbuser.c osddb.h
 volint.cs.o: volint.cs.c ${INTINCLS}
 volint.ss.o: volint.ss.c ${INTINCLS}
 volint.xdr.o: volint.xdr.c ${INTINCLS}
+volosdint.cs.o: volosdint.cs.c ${INTINCLS}
+volosdint.ss.o: volosdint.ss.c ${INTINCLS}
+volosdint.xdr.o: volosdint.xdr.c ${INTINCLS}
 vsutils.o: vsutils.c ${VINCLS} ${RINCLS} ${INTINCLS}
 volmain.o: volmain.c ${VINCLS} ${RINCLS} ${INTINCLS} AFS_component_version_number.c
 volprocs.o: volprocs.c ${VINCLS} ${RINCLS} ${INTINCLS}

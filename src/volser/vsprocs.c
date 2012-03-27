@@ -37,6 +37,9 @@
 #include <afs/afsint.h>
 #include "volser.h"
 #include "volint.h"
+#ifdef AFS_RXOSD_SUPPORT
+#include "volosdint.h"
+#endif
 #include "lockdata.h"
 #include <afs/com_err.h>
 #include <rx/rxkad.h>
@@ -450,6 +453,16 @@ UV_Bind(afs_uint32 aserver, afs_int32 port)
     struct rx_connection *tc;
 
     tc = rx_NewConnection(aserver, htons(port), VOLSERVICE_ID, uvclass,
+			  uvindex);
+    return tc;
+}
+
+struct rx_connection *
+UV_BindOsd(afs_uint32 aserver, afs_int32 port)
+{
+    struct rx_connection *tc;
+
+    tc = rx_NewConnection(aserver, htons(port), 7, uvclass,
 			  uvindex);
     return tc;
 }
@@ -7511,6 +7524,19 @@ UV_Traverse(afs_uint32 *server, afs_int32 vid, afs_uint32 nservers,
             }
             rx_DestroyConnection(tconn);
         }
+#ifdef AFS_RXOSD_SUPPORT
+	if (code == RXGEN_OPCODE) {
+            tconn = UV_BindOsd(server[n], AFSCONF_VOLUMEPORT);
+            if (tconn) {
+                if ( policy_statistic )
+                    code = AFSVOLOSD_PolicyUsage(tconn, vid, srl, list);
+                else {
+                    code = AFSVOLOSD_Traverse(tconn, vid, delay, flag, srl, list);
+                }
+                rx_DestroyConnection(tconn);
+            }
+	}
+#endif
         if (!code) {
             if ( !policy_statistic )
                 for (i=0; i<srl->sizerangeList_len; i++) {

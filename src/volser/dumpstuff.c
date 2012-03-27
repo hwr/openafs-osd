@@ -446,7 +446,7 @@ HandleUnknownTag(struct iod *iodp, int tag, afs_int32 section,
 }
 
 static int
-ReadVolumeHeader(struct iod *iodp, VolumeDiskData * vol)
+ReadVolumeHeader(struct iod *iodp, VolumeDiskData * vol, int *clearOsdPolicy)
 {
     int tag;
     afs_uint32 trash;
@@ -577,8 +577,24 @@ ReadVolumeHeader(struct iod *iodp, VolumeDiskData * vol)
 	case 'y':	/* new standard conform tag for volume policy */
 	case 'F':	/* Old non policy aware servers send F */
 	case 'P':
-	    if (!ReadInt32(iodp, &vol->osdPolicy))
-		return VOLSERREAD_DUMPERROR;
+	    {
+		afs_int32 newOsdPolicy, code;
+	        if (!ReadInt32(iodp, &newOsdPolicy))
+		    return VOLSERREAD_DUMPERROR;
+		if (!vol->osdPolicy && newOsdPolicy) {
+		    code = (osdvol->op_setOsdPolicy)(vol, newOsdPolicy);
+		    if (code)
+		        return VOLSERREAD_DUMPERROR;
+		} else if (vol->osdPolicy && !newOsdPolicy) {
+		    /*
+		     * There could still be osd files which may be removed
+		     * while the vnodes are processed. So we can convert the
+		     * volume only at the end.
+		     */
+		    *clearOsdPolicy = 1;
+		} else
+		    vol->osdPolicy = newOsdPolicy;
+	    }
 	    break;
 	case 0x7e:
 	    critical = 2;
@@ -1421,6 +1437,7 @@ RestoreVolume(struct rx_call *call, Volume * avp, int incremental,
     int s1 = 0, s2 = 0, delo = 0, tdelo;
     int tag;
     struct restoreStat rs;
+    int clearOsdPolicy = 0;
 
     memset(&rs, 0, sizeof(struct restoreStat));
     iod_Init(iodp, call);
@@ -1434,7 +1451,7 @@ RestoreVolume(struct rx_call *call, Volume * avp, int incremental,
 	Log("1 Volser: RestoreVolume: Volume header missing from dump; not restored\n");
 	return VOLSERREAD_DUMPERROR;
     }
-    if (ReadVolumeHeader(iodp, &vol) == VOLSERREAD_DUMPERROR)
+    if (ReadVolumeHeader(iodp, &vol, &clearOsdPolicy) == VOLSERREAD_DUMPERROR)
 	return VOLSERREAD_DUMPERROR;
     
     if (!delo)
@@ -1467,7 +1484,7 @@ RestoreVolume(struct rx_call *call, Volume * avp, int incremental,
 	tag = iod_getc(iodp);
 	if (tag != D_VOLUMEHEADER)
 	    break;
-	if (ReadVolumeHeader(iodp, &vol) == VOLSERREAD_DUMPERROR) {
+	if (ReadVolumeHeader(iodp, &vol, &clearOsdPolicy) == VOLSERREAD_DUMPERROR) {
 	    error = VOLSERREAD_DUMPERROR;
 	    goto out;
 	}
@@ -1497,7 +1514,14 @@ RestoreVolume(struct rx_call *call, Volume * avp, int incremental,
             error = VOLSERREAD_DUMPERROR;
             goto clean;
         }
+	if (clearOsdPolicy) {
+	    afs_int32 code;
+	    code = (osdvol->op_setOsdPolicy)(vp, 0);
+	    if (code) 
+		error = VOLSERREAD_DUMPERROR;
+	}
     }
+
 
   clean:
     ClearVolumeStats(&vol);

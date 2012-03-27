@@ -594,6 +594,7 @@ VolCreateVolume(struct rx_call *acid, afs_int32 apart, char *aname,
     V_destroyMe(vp) = DESTROY_ME;
     V_inService(vp) = 0;
     V_maxquota(vp) = 5000;	/* set a quota of 5000 at init time */
+    V_filecount(vp) = 1;	/* root directory */
     VUpdateVolume(&error, vp);
     if (error) {
 	Log("1 Volser: create UpdateVolume failed, code %d\n", error);
