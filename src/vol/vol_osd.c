@@ -5434,6 +5434,7 @@ setOsdPolicy(struct Volume *vol, afs_int32 osdPolicy)
             while (FDH_READ(fdP, vd, sizeof(vnode)) == sizeof(vnode)) {
                 if (vd->type == vFile || vd->type == vDirectory) {
 		    vd->vnodeMagic = 0;
+		    vd->vn_ino_hi = vd->uniquifier; /* repair vnode from 1.4-osd */
             	    FDH_SEEK(fdP, offset, SEEK_SET);
 		    if (FDH_WRITE(fdP, vd, sizeof(vnode)) != sizeof(vnode))
                 	ViceLog(0, ("setOsdPolicy: error writing vnode in %u\n", V_id(vol)));
@@ -5465,21 +5466,22 @@ setOsdPolicy(struct Volume *vol, afs_int32 osdPolicy)
                 FDH_SEEK(fdP, offset, SEEK_SET);
 	    }
 	}
-#ifdef RECREATE_VNODE_MAGIC
 	/* Second loop to set vnodeMagic to normal value */
         for (i=0; i<nVNODECLASSES; i++) {
             step = voldata->aVnodeClassInfo[i].diskSize;
             offset = step;
             fdP = IH_OPEN(vol->vnodeIndex[i].handle);
             if (!fdP) {
-                ViceLog(0, ("Couldn't open metadata file of volume %u\n", V_id(vol)));
+                ViceLog(0, ("Couldn't open %s vnode file of volume %u\n", 
+			i ? "small" : "large", V_id(vol)));
 		code = EIO;
                 goto bad;
             }
             FDH_SEEK(fdP, offset, SEEK_SET);
             while (FDH_READ(fdP, vd, sizeof(vnode)) == sizeof(vnode)) {
-                if (vd->type == vNULL) {
+                if (vd->type != vNull) {
 		    vd->vnodeMagic = voldata->aVnodeClassInfo[i].magic;
+		    vd->vn_ino_hi = vd->uniquifier; /* repair vnode from 1.4-osd */
             	    FDH_SEEK(fdP, offset, SEEK_SET);
 		    if (FDH_WRITE(fdP, vd, sizeof(vnode)) != sizeof(vnode))
                 	ViceLog(0, ("setOsdPolicy: error writing vnode in %u\n", V_id(vol)));
@@ -5488,7 +5490,6 @@ setOsdPolicy(struct Volume *vol, afs_int32 osdPolicy)
                 FDH_SEEK(fdP, offset, SEEK_SET);
 	    }
 	}
-#endif
     }
 
 bad:
