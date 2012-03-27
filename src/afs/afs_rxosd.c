@@ -430,7 +430,7 @@ adaptNumberOfStreams(struct rxosd_Variables *v)
     if (code)
 	return;
     afs_PutServer(ts, WRITE_LOCK);
-    rtt = tc->id->peer->rtt;
+    rtt = rx_PeerOf(tc->id)->rtt;
     afs_PutConn(tc, rxconn, SHARED_LOCK);
     if (rtt < 80)
 	return;
@@ -833,8 +833,9 @@ handleError(struct rxosd_Variables *v, afs_int32 i, afs_int32 error)
         struct server *ts;
         RX_AFS_GLOCK();
         ts = afs_GetServer(
-			&v->call[i]->conn->peer->host,	
-			1, v->avc->f.fid.Cell, v->call[i]->conn->peer->port,
+			&rx_PeerOf(rx_ConnectionOf(v->call[i]))->host,	
+			1, v->avc->f.fid.Cell,
+			rx_PeerOf(rx_ConnectionOf(v->call[i]))->port,
 			WRITE_LOCK, (afsUUID *)0, 0, 0);
     	if (error == RXGEN_OPCODE) {
 	    ObtainWriteLock(&afs_xserver, 1101);
@@ -1267,10 +1268,10 @@ rxosd_storeInit(struct vcache *avc, struct afs_conn *tc,
 	        afs_warn("waiting for busy volume %u\n", avc->f.fid.Fid.Volume);
 	    else if (code == VRESTARTING)
 	        afs_warn("waiting for restarting server %u.%u.%u.%u\n", 
-			(ntohl(tc->id->peer->host) >> 24) & 0xff,
-			(ntohl(tc->id->peer->host) >> 16) & 0xff,
-			(ntohl(tc->id->peer->host) >> 8) & 0xff,
-			ntohl(tc->id->peer->host) & 0xff);
+			(ntohl(rx_PeerOf(tc->id)->host) >> 24) & 0xff,
+			(ntohl(rx_PeerOf(tc->id)->host) >> 16) & 0xff,
+			(ntohl(rx_PeerOf(tc->id)->host) >> 8) & 0xff,
+			ntohl(rx_PeerOf(tc->id)->host) & 0xff);
 	    else 
 	        afs_warn("waiting for tape fetch of fid %u.%u.%u\n", 
 			avc->f.fid.Fid.Volume,
@@ -1609,7 +1610,7 @@ retry:
                    ICL_TYPE_INT32, __LINE__, ICL_TYPE_INT32,code);
             if (code) { /* also probably never happens */
 		afs_warn("rxosd start_fetch: StartRXOSD_readPS to x%x failed\n",
-			tc->id->peer->host);
+			rx_PeerOf(tc->id)->host);
 		v->call[k] = 0;
 	        afs_PutConn(tc, rxconn, SHARED_LOCK);
 	    } else {
@@ -1634,7 +1635,7 @@ retry:
 		    code = rx_EndCall(v->call[k], 0);
                     RX_AFS_GLOCK();
 		    afs_warn("rxosd start_fetch: read of length failed to x%x failed with %d\n",
-			tc->id->peer->host, code);
+			rx_PeerOf(tc->id)->host, code);
             	    afs_Trace3(afs_iclSetp, CM_TRACE_WASHERE,
                    	ICL_TYPE_STRING, __FILE__,
                    	ICL_TYPE_INT32, __LINE__, ICL_TYPE_INT32, code);
@@ -1642,7 +1643,7 @@ retry:
 		    if (code < 0) {
 			if (code == RX_CALL_BUSY) {
 		    	    afs_warn("rxosd start_fetch: busy call to x%x\n",
-				     tc->id->peer->host);
+				     rx_PeerOf(tc->id)->host);
 			    goto retry;
 			}
 			afs_ServerDown(ts->addr);
@@ -2197,10 +2198,10 @@ rxosd_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
 	        afs_warn("waiting for busy volume %u\n", avc->f.fid.Fid.Volume);
 	    else if (code == VRESTARTING)
 	        afs_warn("waiting for restarting server %u.%u.%u.%u\n", 
-			(ntohl(tc->id->peer->host) >> 24) & 0xff,
-			(ntohl(tc->id->peer->host) >> 16) & 0xff,
-			(ntohl(tc->id->peer->host) >> 8) & 0xff,
-			ntohl(tc->id->peer->host) & 0xff);
+			(ntohl(rx_PeerOf(tc->id)->host) >> 24) & 0xff,
+			(ntohl(rx_PeerOf(tc->id)->host) >> 16) & 0xff,
+			(ntohl(rx_PeerOf(tc->id)->host) >> 8) & 0xff,
+			ntohl(rx_PeerOf(tc->id)->host) & 0xff);
 	    else 
 	        afs_warn("waiting for tape fetch of fid %u.%u.%u\n", 
 			avc->f.fid.Fid.Volume,
@@ -2457,10 +2458,10 @@ rxosd_bringOnline(struct vcache *avc, struct vrequest *areq, afs_int32 dontWait)
 	        afs_warnuser("waiting for busy volume %u\n", avc->f.fid.Fid.Volume);
 	    else if (code == VRESTARTING)
 	        afs_warnuser("waiting for restarting server %u.%u.%u.%u\n", 
-			(ntohl(tc->id->peer->host) >> 24) & 0xff,
-			(ntohl(tc->id->peer->host) >> 16) & 0xff,
-			(ntohl(tc->id->peer->host) >> 8) & 0xff,
-			ntohl(tc->id->peer->host) & 0xff);
+			(ntohl(rx_PeerOf(tc->id)->host) >> 24) & 0xff,
+			(ntohl(rx_PeerOf(tc->id)->host) >> 16) & 0xff,
+			(ntohl(rx_PeerOf(tc->id)->host) >> 8) & 0xff,
+			ntohl(rx_PeerOf(tc->id)->host) & 0xff);
 	    else 
 	        afs_warnuser("waiting for bringing fid %u.%u.%u on-line\n", 
 			avc->f.fid.Fid.Volume,

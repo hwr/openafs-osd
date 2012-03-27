@@ -2318,7 +2318,7 @@ set_osd_file_ready(struct rx_call *call, Vnode *vn, struct cksum *checksum)
 	    struct osd_p_segm *s = &f->segmList.osd_p_segmList_val[0];
 	    struct osd_p_obj  *o = &s->objList.osd_p_objList_val[0];
 	    code = FindOsd(o->osd_id, &ip, &lun, 1);
-	    if (!code && htonl(ip) == call->conn->peer->host) {
+	    if (!code && htonl(ip) == rx_PeerOf(rx_ConnectionOf(call))->host) {
 		osd = o->osd_id;
                 if (checksum) {
 		    if (checksum->type != 1) {
@@ -2769,10 +2769,6 @@ struct rxosd_host *rxosd_hosts = NULL;
 afs_uint32 rxosd_addresses = 0;
 static afs_uint32  local_host = 0;
  
-#define MAX_OSD_TABLE_LINE 80
-#define TABLE_STEP 20
-#define OSD_TABLE_FILE "/usr/afs/local/RxosdTable"
-
 struct rxosd_conn * FindOsdConnection(afs_uint32 id)
 {
     afs_int32 code, i;
@@ -4525,8 +4521,8 @@ fill_cap1(struct t10cap *cap, struct osd_obj1 *obj, afsUUID *uuid, afs_uint32 fl
     osdconn = FindOsdConnection(obj->osd_id);
     if (!osdconn)
 	return EIO;
-    cap->epoch = htonl(osdconn->conn->epoch);
-    cap->cid = htonl(osdconn->conn->cid);
+    cap->epoch = htonl(rx_GetConnectionEpoch(osdconn->conn));
+    cap->cid = htonl(rx_GetConnectionId(osdconn->conn));
     so = rx_SecurityObjectOf(osdconn->conn);
     if (!(so)->ops->op_EncryptDecrypt) {
 	ViceLog(0,("fill_cap1: security objects has no op_EncryptDecrypt\n"));
@@ -4570,8 +4566,8 @@ fill_cap2(struct t10cap *cap, struct osd_obj2 *obj, afsUUID *uuid, afs_uint32 fl
     osdconn = FindOsdConnection(obj->osd_id);
     if (!osdconn)
 	return EIO;
-    cap->epoch = htonl(osdconn->conn->epoch);
-    cap->cid = htonl(osdconn->conn->cid);
+    cap->epoch = htonl(rx_GetConnectionEpoch(osdconn->conn));
+    cap->cid = htonl(rx_GetConnectionId(osdconn->conn));
     so = rx_SecurityObjectOf(osdconn->conn);
     if (!(so)->ops->op_EncryptDecrypt) {
 	ViceLog(0,("fill_cap2: security objects has no op_EncryptDecrypt\n"));
