@@ -2450,6 +2450,7 @@ SalvageHeader(struct SalvInfo *salvinfo, struct stuff *sp,
     int recreate = 0;
     ssize_t nBytes;
     FdHandle_t *fdP;
+    static afs_int32 osdPolicy;
 
     if (sp->obsolete == 1)
 	return 0;
@@ -2457,7 +2458,9 @@ SalvageHeader(struct SalvInfo *salvinfo, struct stuff *sp,
     if (sp->inodeType == VI_LINKTABLE)
 	return 0; /* header magic was already checked */
 #endif
-    if (*(sp->inode) == 0 && sp->inodeType != VI_OSDMETADATA) {
+    if (*(sp->inode) == 0) {
+	if (sp->inodeType == VI_OSDMETADATA && !osdPolicy) 
+	    return 0; /* non-osd-volumes do not need it */
 	if (check) {
 	    Log("Missing inode in volume header (%s)\n", sp->description);
 	    return -1;
@@ -2512,6 +2515,7 @@ SalvageHeader(struct SalvInfo *salvinfo, struct stuff *sp,
 	&& header.volumeInfo.destroyMe == DESTROY_ME) {
 	if (deleteMe)
 	    *deleteMe = 1;
+	osdPolicy = header.volumeInfo.osdPolicy;
 	FDH_REALLYCLOSE(fdP);
 	IH_RELEASE(specH);
 	return -1;
