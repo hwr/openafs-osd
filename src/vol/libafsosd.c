@@ -120,6 +120,7 @@ private struct rx_ops_v0 {
 			       xdrproc_t xdr_obj);
     bool_t (*afs_xdr_short) (XDR * xdrs, short *sp);
     bool_t (*afs_xdr_string) (XDR * xdrs, char **cpp, u_int maxsize);
+    bool_t (*afs_xdr_u_char) (XDR * xdrs, u_char * usp);
     bool_t (*afs_xdr_uint64) (XDR * xdrs, afs_uint64 * ulp);
     bool_t (*afs_xdr_vector) (XDR * xdrs, char *basep, u_int nelem, u_int elemsize,
                               xdrproc_t xdr_elem);
@@ -354,6 +355,7 @@ fill_ops(struct ops_ptr *opsptr)
     rx->afs_xdr_pointer = afs_xdr_pointer;
     rx->afs_xdr_short = afs_xdr_short;
     rx->afs_xdr_string = afs_xdr_string;
+    rx->afs_xdr_u_char = afs_xdr_u_char;
     rx->afs_xdr_uint64 = afs_xdr_uint64;
     rx->afs_xdr_vector = afs_xdr_vector;
     rx->afs_xdrmem_create = afs_xdrmem_create;
@@ -779,6 +781,12 @@ bool_t
 afs_xdr_string(XDR * xdrs, char **cpp, u_int maxsize)
 {
     return (rx->afs_xdr_string)(xdrs, cpp, maxsize);
+}
+
+bool_t
+afs_xdr_u_char(XDR * xdrs, u_char * usp)
+{
+    return (rx->afs_xdr_u_char)(xdrs, usp);
 }
 
 bool_t

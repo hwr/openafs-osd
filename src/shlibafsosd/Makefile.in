@@ -61,6 +61,7 @@ VICDEOBJS = \
 
 VOLSEROBJS = \
 	volosdprocs.o \
+	volint.xdr.o \
 	volosdint.ss.o \
 	volosdint.cs.o \
 	volosdint.xdr.o
@@ -227,6 +228,9 @@ volosdint.cs.o: volosdint.cs.c volosdint.h volint.h
 	${CCRULE2}
 
 volosdint.xdr.o: volosdint.xdr.c volosdint.h
+	${CCRULE2}
+
+volint.xdr.o: ../volser/volint.xdr.c volint.h
 	${CCRULE2}
 
 volosdprocs.o: ${VOLSER}/volosdprocs.c

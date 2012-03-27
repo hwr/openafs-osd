@@ -4521,8 +4521,8 @@ fill_cap1(struct t10cap *cap, struct osd_obj1 *obj, afsUUID *uuid, afs_uint32 fl
     osdconn = FindOsdConnection(obj->osd_id);
     if (!osdconn)
 	return EIO;
-    cap->epoch = htonl(rx_GetConnectionEpoch(osdconn->conn));
-    cap->cid = htonl(rx_GetConnectionId(osdconn->conn));
+    cap->epoch = htonl(osdconn->conn->epoch);
+    cap->cid = htonl(osdconn->conn->cid);
     so = rx_SecurityObjectOf(osdconn->conn);
     if (!(so)->ops->op_EncryptDecrypt) {
 	ViceLog(0,("fill_cap1: security objects has no op_EncryptDecrypt\n"));
@@ -4566,8 +4566,8 @@ fill_cap2(struct t10cap *cap, struct osd_obj2 *obj, afsUUID *uuid, afs_uint32 fl
     osdconn = FindOsdConnection(obj->osd_id);
     if (!osdconn)
 	return EIO;
-    cap->epoch = htonl(rx_GetConnectionEpoch(osdconn->conn));
-    cap->cid = htonl(rx_GetConnectionId(osdconn->conn));
+    cap->epoch = htonl(osdconn->conn->epoch);
+    cap->cid = htonl(osdconn->conn->cid);
     so = rx_SecurityObjectOf(osdconn->conn);
     if (!(so)->ops->op_EncryptDecrypt) {
 	ViceLog(0,("fill_cap2: security objects has no op_EncryptDecrypt\n"));
@@ -5434,7 +5434,9 @@ setOsdPolicy(struct Volume *vol, afs_int32 osdPolicy)
             while (FDH_READ(fdP, vd, sizeof(vnode)) == sizeof(vnode)) {
                 if (vd->type == vFile || vd->type == vDirectory) {
 		    vd->vnodeMagic = 0;
+#ifdef AFS_NAMEI_ENV
 		    vd->vn_ino_hi = vd->uniquifier; /* repair vnode from 1.4-osd */
+#endif
             	    FDH_SEEK(fdP, offset, SEEK_SET);
 		    if (FDH_WRITE(fdP, vd, sizeof(vnode)) != sizeof(vnode))
                 	ViceLog(0, ("setOsdPolicy: error writing vnode in %u\n", V_id(vol)));
@@ -5481,7 +5483,9 @@ setOsdPolicy(struct Volume *vol, afs_int32 osdPolicy)
             while (FDH_READ(fdP, vd, sizeof(vnode)) == sizeof(vnode)) {
                 if (vd->type != vNull) {
 		    vd->vnodeMagic = voldata->aVnodeClassInfo[i].magic;
+#ifdef AFS_NAMEI_ENV
 		    vd->vn_ino_hi = vd->uniquifier; /* repair vnode from 1.4-osd */
+#endif
             	    FDH_SEEK(fdP, offset, SEEK_SET);
 		    if (FDH_WRITE(fdP, vd, sizeof(vnode)) != sizeof(vnode))
                 	ViceLog(0, ("setOsdPolicy: error writing vnode in %u\n", V_id(vol)));
