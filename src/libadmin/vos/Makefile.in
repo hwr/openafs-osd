@@ -32,7 +32,9 @@ VLSERVEROBJS =\
 
 VOLSEROBJS =\
 	volint.cs.o \
-	volint.xdr.o
+	volint.xdr.o \
+	volosdint.cs.o \
+	volosdint.xdr.o
 
 FSINTOBJS =\
 	afsint.xdr.o \
@@ -79,6 +81,12 @@ volint.xdr.o: ${VOLSER}/volint.xdr.c
 	${CCRULE}
 
 volint.cs.o: ${VOLSER}/volint.cs.c
+	${CCRULE}
+
+volosdint.xdr.o: ${VOLSER}/volosdint.xdr.c
+	${CCRULE}
+
+volosdint.cs.o: ${VOLSER}/volosdint.cs.c
 	${CCRULE}
 
 afscbint.xdr.o: ${FSINT}/afscbint.xdr.c
