@@ -3134,7 +3134,7 @@ GetStatus(Vnode * targetptr, AFSFetchStatus * status, afs_int32 rights,
 		(parentptr ? parentptr->disk.uniquifier : 0));
     status->ServerModTime = targetptr->disk.serverModifyTime;
     status->Group = targetptr->disk.group;
-    status->lockCount = Time > targetptr->disk.lock.lockTime ? targetptr->disk.lock.lockCount : 0;
+    status->lockCount = Time > targetptr->disk.lock.lockTime ? 0 : targetptr->disk.lock.lockCount;
     status->errorCode = 0;
 
 }				/*GetStatus */
@@ -3976,6 +3976,7 @@ SRXAFS_InlineBulkStatus(struct rx_call * acall, struct AFSCBFids * Fids,
 	volptr = (Volume *) 0;
         client = (struct client *)0;
     }
+    errorCode = 0;
 
   Bad_InlineBulkStatus:
     /* Update and store volume/vnode and parent vnodes back */
@@ -4009,7 +4010,7 @@ SRXAFS_InlineBulkStatus(struct rx_call * acall, struct AFSCBFids * Fids,
                AUD_ID, t_client ? t_client->ViceId : 0,
                AUD_FIDS, Fids, AUD_END);
     SETTHREADINACTIVE();
-    return 0;
+    return errorCode;
 
 }				/*SRXAFS_InlineBulkStatus */
 

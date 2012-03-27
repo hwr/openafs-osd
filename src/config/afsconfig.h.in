@@ -260,6 +260,9 @@
 /* Define if your kernel has the d_alloc_anon function */
 #undef HAVE_LINUX_D_ALLOC_ANON
 
+/* Define if your kernel has the d_make_root function */
+#undef HAVE_LINUX_D_MAKE_ROOT
+
 /* Define to 1 if you have the <linux/errqueue.h> header file. */
 #undef HAVE_LINUX_ERRQUEUE_H
 
@@ -583,8 +586,14 @@
 /* define if your iops.create takes a nameidata argument */
 #undef IOP_CREATE_TAKES_NAMEIDATA
 
+/* define if inode.i_op->create takes a umode_t argument */
+#undef IOP_CREATE_TAKES_UMODE_T
+
 /* define if your iops.lookup takes a nameidata argument */
 #undef IOP_LOOKUP_TAKES_NAMEIDATA
+
+/* define if inode.i_op->mkdir takes a umode_t argument */
+#undef IOP_MKDIR_TAKES_UMODE_T
 
 /* define if your iops.permission takes a flags argument */
 #undef IOP_PERMISSION_TAKES_FLAGS

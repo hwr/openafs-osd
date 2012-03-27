@@ -1903,10 +1903,6 @@ rxi_ReceiveDebugPacket(struct rx_packet *ap, osi_socket asocket,
 			tconn.flags = tc->flags;
 			tconn.type = tc->type;
 			tconn.securityIndex = tc->securityIndex;
-			if (tc->type == RX_SERVER_CONNECTION)
-			    tconn.sparel[0] = tc->service->serviceId;
-			else
-			    tconn.sparel[0] = tc->serviceId;
 			if (tc->securityObject) {
 			    RXS_GetStats(tc->securityObject, tc,
 					 &tconn.secStats);
@@ -2758,8 +2754,8 @@ rxi_PrepareSendPacket(struct rx_call *call,
     }
     if (len)
         p->wirevec[i - 1].iov_len += len;
-    RXS_PreparePacket(conn->securityObject, call, p);
     MUTEX_ENTER(&call->lock);
+    RXS_PreparePacket(conn->securityObject, call, p);
 }
 
 /* Given an interface MTU size, calculate an adjusted MTU size that
