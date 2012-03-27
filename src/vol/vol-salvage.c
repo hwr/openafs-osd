@@ -2294,7 +2294,7 @@ SalvageVolumeHeaderFile(struct SalvInfo *salvinfo, struct InodeSummary *isp,
 	    Log("Rubbish header inode %s of type %d; deleted\n",
 	        PrintInode(stmp, ip->inodeNumber),
 	        ip->u.special.type);
-	} else if (!stuff[ip->u.special.type - 1].obsolete) {
+	} else if (stuff[ip->u.special.type - 1].obsolete != 1) {
 	    if (skip && skip[i]) {
 		if (orphans == ORPH_REMOVE) {
 		    Log("Removing orphan special inode %s of type %d\n",
@@ -2451,7 +2451,7 @@ SalvageHeader(struct SalvInfo *salvinfo, struct stuff *sp,
     ssize_t nBytes;
     FdHandle_t *fdP;
 
-    if (sp->obsolete)
+    if (sp->obsolete == 1)
 	return 0;
 #ifndef AFS_NAMEI_ENV
     if (sp->inodeType == VI_LINKTABLE)
