@@ -14,6 +14,7 @@ INSTALL_SCRIPT = @INSTALL_SCRIPT@
 HELPER_SPLINT=@HELPER_SPLINT@
 WITH_OBJECT_STORAGE=@WITH_OBJECT_STORAGE@
 
+LIBAFSOSD=${srcdir}/../shlibafsosd
 
 VINCLS=${TOP_INCDIR}/afs/partition.h ${TOP_INCDIR}/afs/volume.h \
 	${TOP_INCDIR}/afs/vlserver.h vol.h dump.h volser.h  lockdata.h \
@@ -139,17 +140,17 @@ volint.cs.c: volint.h
 volint.ss.c: volint.h
 volint.xdr.c: volint.h
 
-volosdint.h: volosdint.xg
-	${RXGEN} -A -x -h -o $@ ${srcdir}/volosdint.xg
+volosdint.h: ${LIBAFSOSD}/volosdint.xg
+	${RXGEN} -A -x -h -o $@ ${LIBAFSOSD}/volosdint.xg
 
-volosdint.cs.c: volosdint.xg
-	${RXGEN} -A -x -C -o $@ ${srcdir}/volosdint.xg
+volosdint.cs.c: ${LIBAFSOSD}/volosdint.xg
+	${RXGEN} -A -x -C -o $@ ${LIBAFSOSD}/volosdint.xg
 
-volosdint.ss.c: volosdint.xg
-	${RXGEN} -A -x -S -o $@ ${srcdir}/volosdint.xg
+volosdint.ss.c: ${LIBAFSOSD}/volosdint.xg
+	${RXGEN} -A -x -S -o $@ ${LIBAFSOSD}/volosdint.xg
 
-volosdint.xdr.c: volosdint.xg
-	${RXGEN} -A -x -c -o $@ ${srcdir}/volosdint.xg
+volosdint.xdr.c: ${LIBAFSOSD}/volosdint.xg
+	${RXGEN} -A -x -c -o $@ ${LIBAFSOSD}/volosdint.xg
 
 volosdint.cs.c: volosdint.h
 volosdint.ss.c: volosdint.h
@@ -182,12 +183,12 @@ volprocs.o: volprocs.c ${VINCLS} ${RINCLS} ${INTINCLS}
 dumpstuff.o: dumpstuff.c ${VINCLS} ${RINCLS} ${INTINCLS}
 voldump.o: voldump.c ${VINCLS} ${RINCLS}
 vos.o: vos.c ${VINCLS} ${RINCLS} ${INTINCLS} AFS_component_version_number.c
-vsprocs.o: vsprocs.c ${VINCLS} ${RINCLS} ${INTINCLS}
+vsprocs.o: vsprocs.c ${VINCLS} ${RINCLS} ${INTINCLS} volosdint.h
 physio.o: physio.c ${VINCLS}
 common.o: common.c ${VINCLS}
 lockprocs.o: lockprocs.c ${VINCLS} ${INTINCLS} ${RINCLS}
 vol_split.o: vol_split.c ${VINCLS} ${INTINCLS} ${RINCLS}
-volosdprocs.o: volosdprocs.c ${VINCLS} ${INTINCLS} ${RINCLS}
+volosdprocs.o: volosdprocs.c ${VINCLS} ${INTINCLS} ${RINCLS} volosdint.h
 
 #
 # Installation targets
@@ -259,6 +260,7 @@ dest: restorevol voldump volser.h volint.h vos libvolser.a
 clean:
 	$(RM) -f *.o *.a core volserver volint.ss.c volint.cs.c volint.h \
 	volint.xdr.c vos volser.h volerr.c AFS_component_version_number.c \
+	volosdint.h volosdint.ss.c volosdint.cs.c volosdint.xdr.c \
 	restorevol voldump osddb*
 
 check-splint::
