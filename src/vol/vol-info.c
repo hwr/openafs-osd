@@ -66,7 +66,7 @@
 #define afs_open	open
 #endif /* !O_LARGEFILE */
 
-#include <afs/afsosd.h>
+#include "../shlibafsosd/afsosd.h"
 int osdvolume = 0;
 struct osd_vol_ops_v0 *osdvol = NULL;
 

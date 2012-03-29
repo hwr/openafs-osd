@@ -49,7 +49,7 @@
 #include "daemon_com.h"
 #include "fssync.h"
 #include "common.h"
-#include <afs/afsosd.h>
+#include "../shlibafsosd/afsosd.h"
 
 extern struct osd_vol_ops_v0 *osdvol;
 

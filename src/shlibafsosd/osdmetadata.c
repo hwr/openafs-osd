@@ -24,11 +24,11 @@
 
 #include <rx/xdr.h>
 #include <afs/afsint.h>
-#include "nfs.h"
+#include "../vol/nfs.h"
 #include "lock.h"
-#include "ihandle.h"
-#include "vnode.h"
-#include "volume.h"
+#include "../vol/ihandle.h"
+#include "../vol/vnode.h"
+#include "../vol/volume.h"
 #include "vol_osd.h"
 #include <afs/afsutil.h>
 

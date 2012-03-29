@@ -68,7 +68,7 @@
 #include "volser_internal.h"
 #include "physio.h"
 #include "dumpstuff.h"
-#include <afs/afsosd.h>
+#include "../shlibafsosd/afsosd.h"
 
 struct osd_volser_ops_v0 *osdvolser = NULL;
 struct osd_vol_ops_v0 *osdvol = NULL;

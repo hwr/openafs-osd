@@ -134,7 +134,7 @@
 #if !defined(offsetof)
 #include <stddef.h>
 #endif
-#include <afs/afsosd.h>
+#include "../shlibafsosd/afsosd.h"
 
 #ifdef O_LARGEFILE
 #define afs_stat	stat64

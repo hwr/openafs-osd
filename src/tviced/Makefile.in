@@ -29,8 +29,7 @@ UTIL=${srcdir}/../util
 DIR=${srcdir}/../dir
 VOL=${srcdir}/../vol
 FSINT=${srcdir}/../fsint
-RXOSD=${srcdir}/../rxosd
-OSDDB=${srcdir}/../osddb
+LIBAFSOSD=${srcdir}/../shlibafsosd
 
 VICEDOBJS=viced.o afsfileprocs.o host.o physio.o callback.o serialize_state.o	
 
@@ -59,21 +58,6 @@ objects= ${VICEDOBJS} ${VLSERVEROBJS} ${LWPOBJS} ${LIBACLOBJS} \
 LIBS=${TOP_LIBDIR}/libafsauthent.a ${TOP_LIBDIR}/libafsrpc.a ${TOP_LIBDIR}/util.a
 
 all: fileserver
-
-rxosd.cs.o: ../rxosd/rxosd.cs.c
-	${CCRULE}
-
-rxosd.xdr.o: ../rxosd/rxosd.xdr.c
-	${CCRULE}
-
-osddb.cs.o: ../osddb/osddb.cs.c
-	${CCRULE}
-
-osddb.xdr.o: ../osddb/osddb.xdr.c
-	${CCRULE}
-
-osddbuser.o: ${OSDDB}/osddbuser.c
-	${CCRULE} -I../osddb
 
 rx_pthread.o: ${RX}/rx_pthread.c
 	${CCRULE} -DDPF_FSLOG
@@ -192,7 +176,7 @@ nuke.o: ${VOL}/nuke.c
 devname.o: ${VOL}/devname.c
 	${CCRULE}
 
-libafsosd.o: ${VOL}/libafsosd.c
+libafsosd.o: ${LIBAFSOSD}/libafsosd.c
 	${CCRULE} -DBUILDING_FILESERVER 
 
 # only for darwin?

@@ -63,7 +63,7 @@
 #ifdef AFS_NT40_ENV
 #include <pthread.h>
 #endif
-#include <afs/afsosd.h>
+#include "../shlibafsosd/afsosd.h"
 
 struct osd_vol_ops_v0 *osdvol = NULL;
 

@@ -53,7 +53,7 @@
 #include "vlserver.h"
 #include "vlserver_internal.h"
 #ifdef AFS_PTHREAD_ENV
-#include <afs/afsosd.h>
+#include "../shlibafsosd/afsosd.h"
 #endif
 
 struct osddb_ops_v0 *osddb = NULL;

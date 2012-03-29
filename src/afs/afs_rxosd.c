@@ -35,7 +35,7 @@
 #if defined(AFS_CACHE_BYPASS) && defined(AFS_LINUX24_ENV)
 #include "afs_bypasscache.h"
 #endif
-#include "afs/afsosdint.h"
+#include "../shlibafsosd/afsosdint.h"
 
 /* conditional GLOCK macros */
 #define COND_GLOCK(var) \

@@ -81,16 +81,16 @@
 
 #include <signal.h>
 #include <afs/partition.h>
-#include "viced_prototypes.h"
-#include "viced.h"
-#include "host.h"
-#include "callback.h"
+#include "../viced/viced_prototypes.h"
+#include "../viced/viced.h"
+#include "../viced/host.h"
+#include "../viced/callback.h"
 #include <afs/unified_afs.h>
 #include <afs/audit.h>
 #include <afs/afsutil.h>
 #include <afs/dir.h>
-#include <afs/afsosdint.h>
-#include <afs/afsosd.h>
+#include "afsosdint.h"
+#include "afsosd.h"
 
 extern struct vol_data_v0 *voldata;
 struct viced_data_v0 *viceddata = NULL;
@@ -169,9 +169,9 @@ pthread_mutex_t async_glock_mutex;
 
 #define CREATE_SGUID_ADMIN_ONLY 1
 
-#include <afs/vol_osd.h>
-#include "../vol/vol_osd_prototypes.h"
-#include <afs/rxosd.h>
+#include "vol_osd.h"
+#include "vol_osd_prototypes.h"
+#include "rxosd.h"
 
 extern afs_uint32 local_host;
 

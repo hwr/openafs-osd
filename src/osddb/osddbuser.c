@@ -52,7 +52,7 @@
 #ifdef BUILD_SHLIBAFSOSD
 #include <afs/ihandle.h>
 #define COMPILING_OSDDBUSER 1
-#include <afs/afsosd.h>
+#include "../shlibafsosd/afsosd.h"
 #endif
 
 #ifdef AFS_PTHREAD_ENV

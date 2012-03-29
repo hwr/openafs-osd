@@ -65,7 +65,7 @@
 #ifdef HAVE_STDINT_H
 # include <stdint.h>
 #endif
-#include <afs/afsosd.h>
+#include "../shlibafsosd/afsosd.h"
 
 struct VnodeClassInfo VnodeClassInfo[nVNODECLASSES];
 

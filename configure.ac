@@ -205,7 +205,6 @@ src/shlibafsauthent/Makefile \
 src/shlibafshpss/Makefile \
 src/shlibafsosd/Makefile \
 src/shlibafsrpc/Makefile \
-src/shlibdafsosd/Makefile \
 src/sys/Makefile \
 src/tbutc/Makefile \
 src/tests/Makefile \

@@ -16,10 +16,10 @@ KRB5LIBS = @KRB5_LIBS@
 
 RXOSDOBJS= ../rxosd/rxosd.cs.o ../rxosd/rxosd.xdr.o
 OSDDBOBJS= ../osddb/osddbuser.o ../osddb/osddb.cs.o ../osddb/osddb.xdr.o
-VOLOBJS= ../vol/vol_osdutil.o ../vol/vol_osd.xdr.o
-FSINTOBJS= ../fsint/afsint.cs.o ../fsint/afsint.xdr.o \
-	   ../fsint/afsosdint.cs.o ../fsint/afsosdint.xdr.o
-OSDOBJS= ${RXOSDOBJS} ${OSDDBOBJS} ${VOLOBJS}
+LIBAFSOSDOBJS= ../shlibafsosd/vol_osdutil.o ../shlibafsosd/vol_osd.xdr.o
+AFSOSDINTOBJS= ../shlibafsosd/afsosdint.cs.o ../shlibafsosd/afsosdint.xdr.o
+FSINTOBJS= ../fsint/afsint.cs.o ../fsint/afsint.xdr.o
+OSDOBJS= ${RXOSDOBJS} ${OSDDBOBJS} ${LIBAFSOSDOBJS} ${AFSOSDINTOBJS}
 
 INCLS=${TOP_INCDIR}/afs/afsint.h \
 	${TOP_INCDIR}/afs/cmd.h \
@@ -94,21 +94,20 @@ fs.o: fs.c ${INCLS} AFS_component_version_number.c
 
 fs: fs.o ${OSDOBJS} $(LIBS)
 	${CC} ${CFLAGS} -o fs fs.o ${OSDOBJS} ${TOP_LIBDIR}/libprot.a \
-		${TOP_LIBDIR}/libafsint.a ${TOP_LIBDIR}/libafsosdint.a $(LIBS) ${XLIBS}
+		${TOP_LIBDIR}/libafsint.a $(LIBS) ${XLIBS}
 
 afsio.o: afsio.c ${INCLS} AFS_component_version_number.c
 
-afsio: afsio.o ${RXOSDOBJS} $(LIBS)
-	${CC} ${CFLAGS} -o afsio afsio.o  ${RXOSDOBJS} \
+afsio: afsio.o ${RXOSDOBJS} ${AFSOSDINTOBJS} $(LIBS)
+	${CC} ${CFLAGS} -o afsio afsio.o  ${AFSOSDINTOBJS} ${RXOSDOBJS} \
 			${TOP_LIBDIR}/libprot.a \
-			${TOP_LIBDIR}/libafsosdint.a \
 			${TOP_LIBDIR}/libafsint.a $(LIBS) ${XLIBS}
 
 tafsio.o: afsio.c ${INCLS} AFS_component_version_number.c
 	${CC} ${CFLAGS} -DAFS_PTHREAD_ENV -o tafsio.o -c ${srcdir}/afsio.c
 
-tafsio: tafsio.o ${RXOSDOBJS} $(LIBS)
-	${CC} ${CFLAGS} -o afsio afsio.o ${RXOSDOBJS} ${FSINTOBJS} \
+tafsio: tafsio.o ${RXOSDOBJS} ${AFSOSDINTOBJS} $(LIBS)
+	${CC} ${CFLAGS} -o afsio afsio.o ${RXOSDOBJS} ${AFSOSDINTOBJS} ${FSINTOBJS} \
 		${PTHREADFSLIBS} -lpthread -lresolv ${TOP_LIBDIR}/libafsosd.so.0.1 
 
 afsionew.o: afsionew.c ${AFSIO_INCLS} AFS_component_version_number.c

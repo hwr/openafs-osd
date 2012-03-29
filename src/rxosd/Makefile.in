@@ -17,6 +17,7 @@ DIR=../dir
 VOL=../vol
 OSDDBSRC=${srcdir}/../osddb
 FSINT=../fsint
+LIBAFSOSD=${srcdir}/../shlibafsosd
 
 CC=${MT_CC}
 CFLAGS=${COMMON_CFLAGS} -I.. -I${UTIL}/ ${MT_CFLAGS}
@@ -34,13 +35,14 @@ UTILOBJS=assert.o uuid.o serverLog.o fileutil.o netutils.o dirpath.o volparse.o 
 
 VOLOBJS= devname.o common.o ihandle.o namei_ops.o
 
+LIBAFSOSDOBJS=afsosdint.cs.o afsosdint.xdr.o
+
 OSDDBOBJS=osddb.cs.o osddb.xdr.o osddbuser.o
 
-objects= ${OSDOBJS} ${LWPOBJS} ${UTILOBJS} ${VOLOBJS} ${OSDDBOBJS}
+objects= ${OSDOBJS} ${LWPOBJS} ${UTILOBJS} ${VOLOBJS} ${OSDDBOBJS} ${LIBAFSOSDOBJS}
 
 LIBS=${TOP_LIBDIR}/libafsauthent.a ${TOP_LIBDIR}/libafsrpc.a \
-		${TOP_LIBDIR}/libafsosdint.a ${TOP_LIBDIR}/util.a \
-		${TOP_LIBDIR}/libcmd.a
+		${TOP_LIBDIR}/util.a ${TOP_LIBDIR}/libcmd.a
 
 source: rxosd.h rxosd.cs.c rxosd.xdr.c Krxosd.cs.c Krxosd.xdr.c \
 	${TOP_INCDIR}/afs/rxosd.h rxosd.xdr.o rxosd.cs.o
@@ -113,6 +115,21 @@ netprocs.o: ${LIBACL}/netprocs.c
 
 devname.o: ${VOL}/devname.c
 	${CCRULE}
+
+afsosdint.h: ${LIBAFSOSD}/afsosdint.xg
+	${RXGEN} -A -x -h -o $@ ${LIBAFSOSD}/afsosdint.xg
+
+afsosdint.cs.c: ${LIBAFSOSD}/afsosdint.xg
+	${RXGEN} -A -x -C -o $@ ${LIBAFSOSD}/afsosdint.xg
+
+afsosdint.xdr.c: ${LIBAFSOSD}/afsosdint.xg
+	${RXGEN} -A -x -c -o $@ ${LIBAFSOSD}/afsosdint.xg
+
+afsosdint.cs.o: afsosdint.cs.c afsosdint.h
+	${CCRULE2}
+
+afsosdint.xdr.o: afsosdint.xdr.c afsosdint.h
+	${CCRULE2}
 
 # only for darwin
 fstab.o: ${VOL}/fstab.c

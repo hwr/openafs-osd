@@ -466,11 +466,11 @@ Krxosd.xdr.o: $(TOP_OBJDIR)/src/rxosd/Krxosd.xdr.c
 	$(CRULE_NOOPT)
 rxosd.h: $(TOP_OBJDIR)/src/rxosd/rxosd.h
 	$(CP) -p $(TOP_OBJDIR)/src/rxosd/rxosd.h ./
-Kviceosd.cs.o: $(TOP_OBJDIR)/src/fsint/Kviceosd.cs.c
+Kviceosd.cs.o: $(TOP_OBJDIR)/src/shlibafsosd/Kviceosd.cs.c
 	$(CRULE_NOOPT)
-Kviceosd.xdr.o: $(TOP_OBJDIR)/src/fsint/Kviceosd.xdr.c
+Kviceosd.xdr.o: $(TOP_OBJDIR)/src/shlibafsosd/Kviceosd.xdr.c
 	$(CRULE_NOOPT)
-afsosdint.h: $(TOP_OBJDIR)/src/fsint/afsosdint.h
+afsosdint.h: $(TOP_OBJDIR)/src/shlibafsosd/afsosdint.h
 	$(CP) -p $(TOP_OBJDIR)/src/fsint/afsosdint.h ./
 
 # Files which do not contain NFS translator code.

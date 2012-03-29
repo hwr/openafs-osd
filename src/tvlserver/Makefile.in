@@ -21,7 +21,7 @@ CCRULE=${CC} ${CFLAGS} -c
 RX=../rx
 UTIL=../util
 VLSERVER=../vlserver
-VOL=../vol
+LIBAFSOSD=../shlibafsosd
 
 RXOBJS= rx_pthread.o rxkad_errs.o
 
@@ -171,8 +171,8 @@ Kvldbint.cs.c: ${VLSERVER}/vldbint.xg
 Kvldbint.xdr.c: ${VLSERVER}/vldbint.xg
 	${RXGEN} -A -x -k -c -o $@ ${srcdir}/${VLSERVER}/vldbint.xg
 
-libafsosd.o: ${srcdir}/${VOL}/libafsosd.c
-	${CCRULE} -DBUILDING_VLSERVER ${srcdir}/${VOL}/libafsosd.c
+libafsosd.o: ${srcdir}/${LIBAFSOSD}/libafsosd.c
+	${CCRULE} -DBUILDING_VLSERVER ${srcdir}/${LIBAFSOSD}/libafsosd.c
 
 vlclient: vlclient.o $(OBJS) $(LIBS) ${INCLS}
 	$(CC) ${LDFLAGS} -o vlclient vlclient.o $(OBJS) $(LIBS) ${MT_LIBS} ${XLIBS} ${TOP_LIBDIR}/libcmd.a

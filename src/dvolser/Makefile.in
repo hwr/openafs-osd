@@ -29,7 +29,7 @@ VOL=${srcdir}/../vol
 FSINT=${srcdir}/../fsint
 VOLSER=${srcdir}/../volser
 RX=${srcdir}/../rx
-OSDDB=${srcdir}/../osddb
+LIBAFSOSD=${srcdir}/../shlibafsosd
 
 VOLSEROBJS=volmain.o volprocs.o physio.o voltrans.o volerr.o volint.cs.o dumpstuff.o  volint.ss.o volint.xdr.o vscommon.o vol_split.o 
 
@@ -222,7 +222,7 @@ afsint.xdr.o: ${FSINT}/afsint.xdr.c
 vol_osd.xdr.o: ../vol/vol_osd.xdr.c
 	${COMPILE}
 
-libafsosd.o: ${VOL}/libafsosd.c
+libafsosd.o: ${LIBAFSOSD}/libafsosd.c
 	${COMPILE} -DBUILDING_VOLSERVER
 
 davolserver: ${objects} ${LIBS}

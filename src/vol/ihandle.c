@@ -40,7 +40,7 @@
 #include "viceinode.h"
 #include "afs/afs_assert.h"
 #include <limits.h>
-#include <afs/afsosd.h>
+#include "../shlibafsosd/afsosd.h"
 #if defined(BUILDING_RXOSD)
 #include "afs/afsutil.h"
 #endif

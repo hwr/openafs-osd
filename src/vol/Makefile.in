@@ -24,19 +24,17 @@ LIBS=${TOP_LIBDIR}/libcmd.a vlib.a ${TOP_LIBDIR}/util.a \
 CFLAGS = ${COMMON_CFLAGS} -D${SYS_NAME} ${FSINCLUDES} ${XCFLAGS} ${ARCHFLAGS} -DFSSYNC_BUILD_SERVER -DFSSYNC_BUILD_CLIENT
 
 PUBLICHEADERS=nfs.h vnode.h viceinode.h volume.h volume_inline.h voldefs.h partition.h \
-	fssync.h ihandle.h namei_ops.h salvsync.h daemon_com.h vnode_inline.h \
-	vol_osd_inline.h
+	fssync.h ihandle.h namei_ops.h salvsync.h daemon_com.h vnode_inline.h
 
 VLIBOBJS=vnode.o volume.o vutil.o partition.o fssync-server.o fssync-client.o \
 	 clone.o nuke.o devname.o listinodes.o common.o ihandle.o purge.o \
-	 namei_ops.o salvsync-server.o salvsync-client.o daemon_com.o \
-	 vol_osd.xdr.o vol_osdutil.o
+	 namei_ops.o salvsync-server.o salvsync-client.o daemon_com.o
 
 SALVOBJS=vnode.o volume.o vutil.o partition.o fssync.o  \
 	nuke.o devname.o listinodes.o ihandle.o namei_ops.o
 
 OBJECTS=${VLIBOBJS} physio.o vol-salvage.o vol-info.o vol-dump.o vol-bless.o \
-	fssync-debug.o linkcounts.o osdmetadata.o
+	fssync-debug.o linkcounts.o 
 
 all: gi \
 	${TOP_INCDIR}/afs/ihandle.h \
@@ -44,13 +42,11 @@ all: gi \
 	${TOP_INCDIR}/afs/volume.h \
 	${TOP_INCDIR}/afs/vnode.h \
 	${TOP_INCDIR}/afs/partition.h \
-	${TOP_INCDIR}/afs/afsosd.h \
 	${TOP_LIBDIR}/vlib.a \
 	${TOP_LIBDIR}/libvlib.a \
 	salvager \
 	volinfo \
 	linkcounts \
-	osdmetadata \
 	fssync-debug \
 	$(XFS_SIZE_CHECK) \
 	${TOP_INCDIR}/afs/nfs.h \
@@ -65,21 +61,12 @@ all: gi \
 	${TOP_INCDIR}/afs/salvsync.h \
 	${TOP_INCDIR}/afs/daemon_com.h \
 	${TOP_INCDIR}/afs/namei_ops.h \
-	${TOP_INCDIR}/afs/vol_prototypes.h \
-	${TOP_INCDIR}/afs/vol_osd_prototypes.h \
-	${TOP_INCDIR}/afs/vol_osd_inline.h \
-	${TOP_INCDIR}/afs/vol_osd.h
+	${TOP_INCDIR}/afs/vol_prototypes.h
 
 ${TOP_LIBDIR}/vlib.a: vlib.a
 	${INSTALL_DATA} $? $@
 
 ${TOP_LIBDIR}/libvlib.a: vlib.a
-	${INSTALL_DATA} $? $@
-
-${TOP_INCDIR}/afs/vol_osd.h: vol_osd.h
-	${INSTALL_DATA} $? $@
-
-${TOP_INCDIR}/afs/afsosd.h: afsosd.h
 	${INSTALL_DATA} $? $@
 
 ${TOP_INCDIR}/afs/nfs.h: nfs.h
@@ -133,19 +120,10 @@ ${TOP_INCDIR}/afs/vol-salvage.h: vol-salvage.h
 ${TOP_INCDIR}/afs/vol_prototypes.h: vol_prototypes.h
 	${INSTALL_DATA} $? $@
 
-${TOP_INCDIR}/afs/vol_osd_prototypes.h: vol_osd_prototypes.h
-	${INSTALL_DATA} $? $@
-
-${TOP_INCDIR}/afs/vol_osd_inline.h: vol_osd_inline.h
-	${INSTALL_DATA} $? $@
-
-${TOP_INCDIR}/afs/afsosd.h: afsosd.h
-	${INSTALL_DATA} $? $@
-
 #
 # Installation targets
 #
-install: vlib.a salvager volinfo fssync-debug linkcounts osdmetadata
+install: vlib.a salvager volinfo fssync-debug linkcounts
 	${INSTALL} -d ${DESTDIR}${libdir}/afs
 	${INSTALL} -d ${DESTDIR}${afssrvlibexecdir}
 	${INSTALL} -d ${DESTDIR}${afssrvsbindir}
@@ -155,7 +133,6 @@ install: vlib.a salvager volinfo fssync-debug linkcounts osdmetadata
 	${INSTALL_PROGRAM} salvager ${DESTDIR}${afssrvlibexecdir}/salvager
 	${INSTALL_PROGRAM} volinfo ${DESTDIR}${afssrvsbindir}/volinfo
 	${INSTALL_PROGRAM} linkcounts ${DESTDIR}${afssrvsbindir}/linkcounts
-	${INSTALL_PROGRAM} osdmetadata ${DESTDIR}${afssrvsbindir}/osdmetadata
 	${INSTALL_PROGRAM} fssync-debug ${DESTDIR}${afssrvsbindir}/fssync-debug
 	${INSTALL_DATA} ${srcdir}/nfs.h ${DESTDIR}${includedir}/afs/nfs.h
 	${INSTALL_DATA} ${srcdir}/vnode.h ${DESTDIR}${includedir}/afs/vnode.h
@@ -170,8 +147,6 @@ install: vlib.a salvager volinfo fssync-debug linkcounts osdmetadata
 	${INSTALL_DATA} ${srcdir}/daemon_com.h ${DESTDIR}${includedir}/afs/daemon_com.h
 	${INSTALL_DATA} ${srcdir}/ihandle.h ${DESTDIR}${includedir}/afs/ihandle.h
 	${INSTALL_DATA} ${srcdir}/namei_ops.h ${DESTDIR}${includedir}/afs/namei_ops.h
-	${INSTALL_DATA} vol_osd.h ${DESTDIR}${includedir}/afs/vol_osd.h
-	${INSTALL_DATA} ${srcdir}/vol_osd_prototypes.h ${DESTDIR}${includedir}/afs/vol_osd_prototypes.h
 	set -x; if test x"$(install_XFS_SIZE_CHECK)" != x"" ; then \
 		${INSTALL_PROGRAM} xfs_size_check \
 			${DESTDIR}${afssrvsbindir}/xfs_size_check ; \
@@ -186,7 +161,6 @@ dest: vlib.a salvager volinfo fssync-debug
 	${INSTALL_PROGRAM} salvager ${DEST}/root.server/usr/afs/bin/salvager
 	${INSTALL_PROGRAM} volinfo ${DEST}/root.server/usr/afs/bin/volinfo
 	${INSTALL_PROGRAM} linkcounts ${DEST}/root.server/usr/afs/bin/linkcounts
-	${INSTALL_PROGRAM} osdmetadata ${DEST}/root.server/usr/afs/bin/osdmetadata
 	${INSTALL_PROGRAM} fssync-debug ${DEST}/root.server/usr/afs/bin/fssync-debug
 	${INSTALL_DATA} ${srcdir}/nfs.h ${DEST}/include/afs/nfs.h
 	${INSTALL_DATA} ${srcdir}/vnode.h ${DEST}/include/afs/vnode.h
@@ -201,8 +175,6 @@ dest: vlib.a salvager volinfo fssync-debug
 	${INSTALL_DATA} ${srcdir}/daemon_com.h ${DEST}/include/afs/daemon_com.h
 	${INSTALL_DATA} ${srcdir}/ihandle.h ${DEST}/include/afs/ihandle.h
 	${INSTALL_DATA} ${srcdir}/namei_ops.h ${DEST}/include/afs/namei_ops.h
-	${INSTALL_DATA} vol_osd.h ${DEST}/include/afs/vol_osd.h
-	${INSTALL_DATA} ${srcdir}/vol_osd_prototypes.h ${DEST}/include/afs/vol_osd_prototypes.h
 	set -x; if test "@DEMAND_ATTACH@" = "no" ; then \
 		${INSTALL_PROGRAM} fssync-debug \
 			${DEST}/root.server/usr/afs/bin/fssync-debug ; \
@@ -216,13 +188,11 @@ dest: vlib.a salvager volinfo fssync-debug
 # Build targets
 #
 ${OBJECTS}: ${PUBLICHEADERS} ${TOP_INCDIR}/lwp.h ${TOP_INCDIR}/lock.h \
-	${TOP_INCDIR}/afs/afsint.h ${TOP_INCDIR}/afs/vol_osd_prototypes.h \
-	${TOP_INCDIR}/afs/vol_osd_inline.h vutils.h salvage.h \
-	${TOP_INCDIR}/afs/afsosd.h AFS_component_version_number.c
+	${TOP_INCDIR}/afs/afsint.h \
+	vutils.h salvage.h \
+	AFS_component_version_number.c
 
-clone.o: vol_osd.h
-libafsosd.o: libafsosd.c
-	${CC} ${CFLAGS} -DBUILD_SALVAGER -o libafsosd.o -c ${srcdir}/libafsosd.c
+clone.o: 
 
 vol-salvage.o vutil.o: volinodes.h
 vol-salvage.o salvager.o: vol-salvage.h
@@ -237,8 +207,8 @@ vlib.a:	${VLIBOBJS} AFS_component_version_number.o
 	$(RANLIB) $@
 
 # new salvager:  remove references to /vice by linking with novice.o
-salvager: vol-salvage.o physio.o vlib.a salvager.o libafsosd.o ${LIBS}
-	${CC} ${LDFLAGS} -o salvager vol-salvage.o physio.o salvager.o libafsosd.o \
+salvager: vol-salvage.o physio.o vlib.a salvager.o ${LIBS}
+	${CC} ${LDFLAGS} -o salvager vol-salvage.o physio.o salvager.o \
 			-ldl ${LIBS} ${XLIBS}
 
 salvager.o: AFS_component_version_number.c
@@ -246,12 +216,6 @@ salvager.o: AFS_component_version_number.c
 vol-salvage: vol-salvage.o
 vol-info: vol-info.o physio.o ihandle.o vlib.a
 linkcounts: linkcounts.o
-osdmetadata: osdmetadata.o vol_osdutil.o
-
-vol_osdutil.o: ${TOP_INCDIR}/afs/vol_osd.h
-
-vol_osd_salv.o: vol_osd.c
-	${CC} ${CFLAGS} -DBUILD_SALVAGER -o vol_osd_salv.o -c ${srcdir}/vol_osd.c
 
 listinodes.o: listinodes.c AFS_component_version_number.c
 	case ${SYS_NAME} in				\
@@ -290,23 +254,9 @@ vol-bless: vol-bless.o physio.o ihandle.o ${LIBS}
 linkcounts: linkcounts.o
 	${CC} ${CFLAGS} -o linkcounts linkcounts.o ${LIBS}
 
-osdmetadata: osdmetadata.o vol_osdutil.o
-	${CC} ${CFLAGS} -o osdmetadata osdmetadata.o vol_osdutil.o vol_osd.xdr.o \
-		../../lib/libcmd.a ../../lib/librx.a ../../lib/util.a
-
 xfs_size_check: xfs_size_check.c
 	${CC} ${CFLAGS} -o xfs_size_check ${srcdir}/xfs_size_check.c
 
-vol_osd.h: ${srcdir}/vol_osd.xg
-	${RXGEN} -x -h -o vol_osd.h ${srcdir}/vol_osd.xg
-
-vol_osd.xdr.o: vol_osd.xdr.c vol_osd.h
-
-vol_osd.xdr.c: ${srcdir}/vol_osd.xg
-	${RXGEN} -x -c -o vol_osd.xdr.c ${srcdir}/vol_osd.xg
-
-vol_osd.h: ${srcdir}/vol_osd.xg
-	${RXGEN} -x -h -o vol_osd.h ${srcdir}/vol_osd.xg
 
 #
 # Misc. targets
@@ -314,7 +264,7 @@ vol_osd.h: ${srcdir}/vol_osd.xg
 clean:
 	$(RM) -f *.o *.a AFS_component_version_number.c
 	$(RM) -f ${SCMPROGS} ${STAGEPROGS} core salvager volinfo gi fssync-debug
-	$(RM) -f osdmetadata linkcounts vol_osd.xdr.c vol_osd.h
+	$(RM) -f linkcounts 
 
 test:
 	cd test; $(MAKE)

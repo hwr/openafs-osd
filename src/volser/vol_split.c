@@ -50,7 +50,7 @@
 #include "volser.h"
 #include "physio.h"
 #include "volser_internal.h"
-#include <afs/afsosd.h>
+#include "../shlibafsosd/afsosd.h"
 
 #define NEEDED 	1
 #define PARENT 	2

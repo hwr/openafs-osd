@@ -7,7 +7,7 @@ prefix S
 
 %#include <rx/rx.h>
 %#include <rx/rx_null.h>
-#include "../fsint/fs_rxosd_common.xg"
+#include "../shlibafsosd/fs_rxosd_common.xg"
 
 /* %#define NEW_OSD_FILE 1	 not yet because our fileservers don't understand it */
 

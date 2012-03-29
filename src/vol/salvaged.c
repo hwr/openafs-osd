@@ -123,7 +123,7 @@
 #include <pthread.h>
 #endif
 
-#include <afs/afsosd.h>
+#include "../shlibafsosd/afsosd.h"
 
 #if !defined(AFS_DEMAND_ATTACH_FS)
 #error "online salvager only supported for demand attach fileserver"

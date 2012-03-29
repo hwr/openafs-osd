@@ -122,11 +122,7 @@ typedef struct VnodeDiskObject {
     Date serverModifyTime;	/* Used only by the server; for incremental
 				 * backup purposes */
     afs_int32 group;		/* unix group */
-#if 0
-    afs_uint32 lastUsageTime;   /* used for HSM */
-#else
     afs_int32 vn_ino_hi;	/* high part of 64 bit inode. */
-#endif
     bit32 vn_length_hi;         /* high part of 64 bit length */
     /* Missing:
      * archiving/migration

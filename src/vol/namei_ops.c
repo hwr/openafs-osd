@@ -76,7 +76,7 @@
 #endif
 
 #if !defined(BUILDING_RXOSD)
-#include <afs/afsosd.h>
+#include "../shlibafsosd/afsosd.h"
 #endif
 
 afs_int32 defaultLinkCount = 5;

@@ -38,7 +38,7 @@
 #define _AFS_VICED_HOST_H
 #endif
 /* #if defined(BUILDING_FILESERVER) || defined(BUILDING_VOLSERVER) */
-#include <afs/afsosd.h>
+#include "afsosd.h"
 /* #endif */
 
 extern int ubeacon_AmSyncSite(void);

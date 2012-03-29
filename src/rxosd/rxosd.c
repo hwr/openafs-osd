@@ -187,7 +187,7 @@
 
 #define USE_NTO_FOR_HOST_CHECK 1
 
-#include <afs/vol_osd_inline.h>
+#include "../shlibafsosd/vol_osd_inline.h"
 
 #define NAMEI_INODESPECIAL ((Inode)RXOSD_VNODEMASK)
 

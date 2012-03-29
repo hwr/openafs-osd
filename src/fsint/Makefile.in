@@ -12,25 +12,22 @@ INSTALL_DATA = @INSTALL_DATA@
 INSTALL_PROGRAM = @INSTALL_PROGRAM@
 INSTALL_SCRIPT = @INSTALL_SCRIPT@
 
+LIBAFSOSD=${srcdir}/../shlibafsosd
+
 OBJS=afsaux.o afscbint.cs.o afscbint.ss.o afscbint.xdr.o afsint.cs.o afsint.ss.o afsint.xdr.o
 
-OSDOBJS=afsosdint.cs.o afsosdint.xdr.o
-
 all: \
-	${TOP_LIBDIR}/libafsint.a ${TOP_LIBDIR}/libafsosdint.a depinstall osddepinstall
+	${TOP_LIBDIR}/libafsint.a depinstall osddepinstall
 
 depinstall: \
 	${TOP_INCDIR}/afs/afsint.h \
-	${TOP_INCDIR}/afs/afsosdint.h \
 	${TOP_INCDIR}/afs/afscbint.h \
 	${TOP_INCDIR}/afs/pagcb.h \
 	Kcallback.ss.c Kcallback.h Kvice.cs.c Kvice.h Kvice.xdr.c \
-	Kviceosd.cs.c Kviceosd.h Kviceosd.xdr.c \
 	Kpagcb.ss.c Kpagcb.h Kpagcb.cs.c Kpagcb.xdr.c \
         afscbint.h afsint.h pagcb.h
 
 osddepinstall: \
-	${TOP_INCDIR}/afs/afsosdint.h
 
 generated: \
 	Kcallback.cs.c Kcallback.ss.c Kcallback.xdr.c Kcallback.h \
@@ -40,19 +37,10 @@ generated: \
 	afscbint.cs.c afscbint.ss.c afscbint.xdr.c afscbint.h \
 	afsint.cs.c afsint.ss.c afsint.xdr.c afsint.h
 
-osdgenerated: \
-	afsosdint.cs.c adsosdint.ss.c afsosdint.xdr.c afsosdint.h
-
 ${TOP_LIBDIR}/libafsint.a: libafsint.a
 	${INSTALL_DATA} $? $@
 
-${TOP_LIBDIR}/libafsosdint.a: libafsosdint.a
-	${INSTALL_DATA} $? $@
-
 ${TOP_INCDIR}/afs/afsint.h: afsint.h
-	${INSTALL_DATA} $? $@
-
-${TOP_INCDIR}/afs/afsosdint.h: afsosdint.h
 	${INSTALL_DATA} $? $@
 
 ${TOP_INCDIR}/afs/afscbint.h: afscbint.h
@@ -64,11 +52,6 @@ ${TOP_INCDIR}/afs/pagcb.h: pagcb.h
 libafsint.a: ${OBJS} AFS_component_version_number.o
 	-$(RM) -f $@
 	$(AR) crv $@ ${OBJS} AFS_component_version_number.o
-	$(RANLIB) $@
-
-libafsosdint.a: ${OSDOBJS} AFS_component_version_number.o
-	-$(RM) -f $@
-	$(AR) crv $@ ${OSDOBJS} AFS_component_version_number.o
 	$(RANLIB) $@
 
 afsaux.o: afsaux.c afsint.h
@@ -93,18 +76,6 @@ Kvice.xdr.c: common.xg afsint.xg
 
 Kvice.h: common.xg afsint.xg
 	${RXGEN} -A -x -k -h -o Kvice.h ${srcdir}/afsint.xg
-
-Kviceosd.cs.c: common.xg afsosdint.xg Kviceosd.h
-	${RXGEN} -A -x -k -C -o Kviceosd.cs.c ${srcdir}/afsosdint.xg
-
-Kviceosd.ss.c: common.xg afsint.xg Kviceosd.h
-	${RXGEN} -A -x -k -S -o Kviceosd.ss.c ${srcdir}/afsosdint.xg
-
-Kviceosd.xdr.c: common.xg afsosdint.xg
-	${RXGEN} -A -x -k -c -o Kviceosd.xdr.c ${srcdir}/afsosdint.xg
-
-Kviceosd.h: common.xg afsosdint.xg
-	${RXGEN} -A -x -k -h -o Kviceosd.h ${srcdir}/afsosdint.xg
 
 Kpagcb.cs.c: pagcb.xg Kpagcb.h
 	${RXGEN} -A -x -k -C -o Kpagcb.cs.c ${srcdir}/pagcb.xg
@@ -145,18 +116,6 @@ afsint.xdr.c: common.xg afsint.xg
 afsint.h: common.xg afsint.xg
 	${RXGEN} -A -x -h -o afsint.h ${srcdir}/afsint.xg
 
-afsosdint.cs.c: common.xg afsosdint.xg afsosdint.h
-	${RXGEN} -A -x -C -o afsosdint.cs.c ${srcdir}/afsosdint.xg
-
-afsosdint.ss.c: common.xg afsosdint.xg afsosdint.h
-	${RXGEN} -A -x -S -o afsosdint.ss.c ${srcdir}/afsosdint.xg
-
-afsosdint.xdr.c: common.xg afsosdint.xg
-	${RXGEN} -A -x -c -o afsosdint.xdr.c ${srcdir}/afsosdint.xg
-
-afsosdint.h: common.xg afsosdint.xg
-	${RXGEN} -A -x -h -o afsosdint.h ${srcdir}/afsosdint.xg
-
 afscbint.h: common.xg afscbint.xg
 	${RXGEN} -A -x -h -o afscbint.h ${srcdir}/afscbint.xg
 
@@ -188,6 +147,6 @@ dest: libafsint.a afsint.h afscbint.h pagcb.h
 clean:
 	$(RM) -f *.o *.cs.c *.ss.c *.er.c *.a *.xdr.c core \
 		afsint.h afscbint.h pagcb.h AFS_component_version_number.c   \
-	Kvice.h Kcallback.h Kpagcb.h Kviceosd.h
+	Kvice.h Kcallback.h Kpagcb.h
 
 include ../config/Makefile.version

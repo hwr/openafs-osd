@@ -55,7 +55,7 @@ osddbserver: osddbserver.o osddb.ss.o osddb.xdr.o ${LIBS} Makefile
 	${CC} ${CFLAGS} -o osddbserver osddbserver.o osddb.ss.o osddb.xdr.o  ${LIBS} ${XLIBS}
 
 
-osddbuser.o: ${srcdir}/osddbuser.c osddb.h volint.h ${TOP_INCDIR}/afs/afsosd.h
+osddbuser.o: ${srcdir}/osddbuser.c osddb.h volint.h
 	${CC} ${CFLAGS} -I${srcdir}/../ -o osddbuser.o -c ${srcdir}/osddbuser.c
 
 libosddb.a: osddb.cs.o osddb.xdr.o osddbuser.o
@@ -94,9 +94,6 @@ ${DESTDIR}${afssrvlibexecdir}/wiper: ${srcdir}/wiper
 	${CP} ${srcdir}/wiper ${DESTDIR}${afssrvlibexecdir}/wiper
 
 ${TOP_INCDIR}/afs/osddb.h: osddb.h
-	${INSTALL} $? $@
-
-${TOP_INCDIR}/afs/afsosd.h: ${srcdir}/../vol/afsosd.h
 	${INSTALL} $? $@
 
 ${TOP_INCDIR}/afs/osddbuser.h: osddbuser.h

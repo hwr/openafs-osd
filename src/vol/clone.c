@@ -49,7 +49,7 @@
 #include "partition.h"
 #include "viceinode.h"
 #include "vol_prototypes.h"
-#include <afs/afsosd.h>
+#include "../shlibafsosd/afsosd.h"
 #include "common.h"
 
 extern struct osd_vol_ops_v0 *osdvol;

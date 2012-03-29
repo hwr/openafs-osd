@@ -47,7 +47,7 @@
 #include "volser.h"
 #include "volint.h"
 #include "dumpstuff.h"
-#include <afs/afsosd.h>
+#include "../shlibafsosd/afsosd.h"
 
 #ifndef AFS_NT40_ENV
 #ifdef O_LARGEFILE

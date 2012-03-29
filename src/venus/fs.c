@@ -44,7 +44,7 @@
 #undef VICE
 #include "afs/prs_fs.h"
 #include <afs/afsint.h>
-#include <afs/afsosdint.h>
+#include "../shlibafsosd/afsosdint.h"
 #include <afs/auth.h>
 #include <afs/cellconfig.h>
 #include <ubik.h>
@@ -69,7 +69,7 @@
 #ifdef AFS_RXOSD_SUPPORT
 #include <pwd.h>
 #include <afs/rxosd.h>
-#include <afs/vol_osd.h>
+#include "../shlibafsosd/vol_osd.h"
 #include <afs/osddb.h>
 
 #ifdef NEW_OSD_FILE
@@ -5318,7 +5318,10 @@ ListLine(AFSFetchStatus *Status, char *fname, char *what, AFSFid *fid)
 	    printf("d");
     } else if (Status->FileType == SymbolicLink) 
 	printf("l");
-    else printf("f");
+    else if (Status->FetchStatusProtocol & POSSIBLY_OSD) 
+	printf("F");
+    else
+	printf("f");
     printf(" ");
     if (Status->UnixModeBits & 0400) printf("r"); else printf("-");
     if (Status->UnixModeBits & 0200) printf("w"); else printf("-");
@@ -5534,6 +5537,7 @@ afs_int32 osd_parms(struct cmd_syndesc *as, void *arock)
     afs_uint32 flag = FS_OSD_COMMAND;
     struct ubik_client *osddb_client = 0;
     struct OsdList l;
+    int rxafsosd = 0;
 
     if (as->name[0] == 'f')
 	fid = 1;
@@ -5695,6 +5699,14 @@ afs_int32 osd_parms(struct cmd_syndesc *as, void *arock)
 
 	call = rx_NewCall(RXConn);
 	code = StartRXAFS_GetOsdMetadata(call, &Fid);
+	if (code = RXGEN_OPCODE) {
+            RXConn = rx_NewConnection(hosts[0], htons(AFSCONF_FILEPORT), 2,
+                	cl->sc[cl->scIndex], cl->scIndex);
+	    call = rx_NewCall(RXConn);
+	    code = StartRXAFSOSD_GetOsdMetadata(call, &Fid);
+	    if (!code)
+		rxafsosd = 1;
+	}
 	if (code) {
 	    fprintf(stderr, "StartRXAFS_GetOsdMetadata returns %d\n", code);
 	    rx_EndCall(call, 0);
@@ -5711,7 +5723,10 @@ afs_int32 osd_parms(struct cmd_syndesc *as, void *arock)
 	if (!length) {
 	    if (!code)
 	        printf("%s has no osd metadata\n", as->parms[0].items->data);
-	    EndRXAFS_GetOsdMetadata(call);
+	    if (rxafsosd)
+	        EndRXAFSOSD_GetOsdMetadata(call);
+	    else
+	        EndRXAFS_GetOsdMetadata(call);
 	    rx_EndCall(call, 0);
 	} else {
 	    XDR xdr;
@@ -5721,7 +5736,10 @@ afs_int32 osd_parms(struct cmd_syndesc *as, void *arock)
 	    if (bytes != length)
 	        fprintf(stderr,"read only %d bytes of metadata instead of %d\n",
 				bytes, length);
-	    EndRXAFS_GetOsdMetadata(call);
+	    if (rxafsosd)
+	        EndRXAFSOSD_GetOsdMetadata(call);
+	    else
+	        EndRXAFS_GetOsdMetadata(call);
 	    rx_EndCall(call, 0);
 	    printf("%s has %u bytes of osd metadata", 
 			as->parms[0].items->data, length);

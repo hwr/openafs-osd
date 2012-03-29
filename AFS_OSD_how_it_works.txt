@@ -79,7 +79,6 @@ RPC names
 	DISK_	 src/ubik/ubik_int.xg	for synchronization RPCs between ubik
 					databases
 	KAA_	 src/kauth/kauth.rg	for RPCs to the kaserver
-	OSDDB_	 src/osddb/osddb.xg	for RPCs to the osddbserver
 	PAGCB_	 src/fsint/pagcb.xg	for RPCs from NFS to cache manager 
 					with NFS support
 	PR_	 src/ptserver/ptint.xg	for RPCs to the ptserver
@@ -87,13 +86,19 @@ RPC names
 	RXAFS_	 src/fsint/afsint.xg	for RPCs to the fileserver
 	RXAFSCB_ src/fsint/afsintcb.xg	for RPCs to the AFS client's cache 
 					manager
-	RXOSD_	 src/rxosd/rxosd.xg	for RPCs to the rxosd
 	RXSTATS_ src/rxstat/rxstat.xg	for RPCs to the statitic layer of RX
 	SAMPLE_	 src/ubik/utst_int.xg	for RPCs to the ubik statistics layer
 	TC_	 src/bubasics/butc.xg	for RPCs to the butc
 	UPDATE_	 src/update/update.xg	for RPCs to the upserver
 	VL_	 src/vlserver/vldbint.xg for RPCs to the vlserver
 	VOTE_	 src/ubik_ubik_int.xg	for voting RPCs between ubik databases
+	
+	The followning RPC names are new and used for AFS/OSD:
+
+	OSDDB_	 src/osddb/osddb.xg	for RPCs in libafsosd to the vlserver
+	RXAFSOSD_ src/fsint/afsosdint.xg for RPCs in libafsosd to the fileserver
+	AFSVOLOSD_ src/shlibafsosd/volosdint.xg for RPCS in libafsosd to volserver
+	RXOSD_	 src/rxosd/rxosd.xg	for RPCs to the rxosd
 	
 	In this document all RPCs are with their full name to make it easy
 	to look them up in the corresponding .xg- or .rg-file.
@@ -215,11 +220,14 @@ Opening a file in object storage
 	OSD before clients can access it. Because there may tape mounts 
 	required this is a macroscopically slow operation and should not
 	block rx-calls and threads on the fileserver or OSD. Therefore 
-	the client has to poll the fileserver with the RXAFS_GetPath (slightly
-	misleading name). Only when the file has come on-line the close
-	processing will complete. The client configuration may, however, deny
-	bringing files online or it may require to happen this asynchronously. 
-	In this case opening an offline file results in an error code.
+	the client issues the RPC RXAFSOSD_BingOnline to the fileserver
+	and waits for a callback for the file. When the rxosd has finished the
+	copying back of the file to a normal OSD it calls RXAFSOSD_SetOSdFileReady
+	which breaks the callback on the client and thus wakes the client process up.
+
+	The client configuration may, however, deny bringing files online or it may
+	require to happen this asynchronously. In this case opening an offline file
+	results in an error code.
 	
 Reading a file in object storage
 
@@ -633,3 +641,31 @@ Policies
 	"fs setpolicy" is used to set a policy number for a directory. It calls
 		pioctl which then calls RXAFS_FsCmd with CMD_SET_POLICIES.
 
+libafsosd.so
+	
+	In order to minimize the modificarions in the normal OpenAFS code
+	all AFS/OSD specific code has been concentratied in a shared library
+	which - on the server sied - can be loaded by commond line parameter.
+	Now the normal source code contains only hooks into the shared library
+	which are used only when the library has been loaded.
+
+	The new RPCs used for AFS/OSD therefore have to be in separate xg-files
+	with a different name prefix. These interfaces are reached over the
+	same port number, but with a different service id:
+
+	original     service 	AFS/OSD	     service
+
+	RXAFS_		1	RXAFSOSD_	2
+	AFSVOL		6	AFSOSDVOL_	7
+
+	Using different RPC xg-files allowed also to renumber the new RPCs
+	beginning with 1 instead of the huge old numbers.
+
+	libafsosd.so (and libdafsosd.so for DAFS-servers) are built only
+	for pthreaded servers. 
+
+	libafsosd.so also contains the code to integrate the OSDDB database
+	into the vlserver (however, only the one built under tvlserver).
+	If the vlserver is started with -libafsosd it hosts also the	
+	OSDDB which can be reached under service id 13 and - for backward
+	compatibility - under port 7012.

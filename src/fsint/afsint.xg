@@ -360,7 +360,7 @@ typedef activecall activecallList<>;
 %#define ResidencyCmdInputs FsCmdInputs
 %#define ResidencyCmdOutputs FsCmdOutputs
 
-#include "fs_rxosd_common.xg"
+#include "../shlibafsosd/fs_rxosd_common.xg"
 
 struct osd_obj0 {
     afs_uint64 obj_id;

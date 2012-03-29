@@ -42,30 +42,30 @@
 #ifdef AFS_NT40_ENV
 #include <afs/ntops.h>
 #endif
-#include <afs/vnode.h>
-#include <afs/volume.h>
-#include <afs/volume_inline.h>
-#include <afs/partition.h>
-#include "vol.h"
+#include "../vol/vnode.h"
+#include "../vol/volume.h"
+#include "../vol/volume_inline.h"
+#include "../vol/partition.h"
+#include "../volser/vol.h"
 #include <afs/daemon_com.h>
 #include <afs/fssync.h>
 #include <afs/acl.h>
 #include "afs/audit.h"
 #include <afs/dir.h>
 #include <afs/afsutil.h>
-#include <afs/vol_prototypes.h>
+#include "../vol/vol_prototypes.h"
 #include <afs/errors.h>
 
-#include <afs/volser.h>
-#include "voltrans_inline.h"
-#include <afs/volint.h>
+#include "volser.h"
+#include "../volser/voltrans_inline.h"
+#include "volint.h"
 
-#include "volser_internal.h"
-#include "physio.h"
-#include "dumpstuff.h"
-#include <afs/osddb.h>
-#include <afs/vol_osd_prototypes.h>
-#include <afs/afsosd.h>
+#include "../volser/volser_internal.h"
+#include "../volser/physio.h"
+#include "../volser/dumpstuff.h"
+#include "osddb.h"
+#include "vol_osd_prototypes.h"
+#include "afsosd.h"
 
 extern char **osdExportedVariablesPtr;
 

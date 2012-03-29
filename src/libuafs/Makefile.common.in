@@ -21,6 +21,7 @@ LIB	=../lib
 NS_INCL =SRC/../afsweb/netscape_includes
 
 TOP_OBJ_FSINT = ${TOP_OBJDIR}/src/fsint
+TOP_OBJ_LIBAFSOSD = ${TOP_OBJDIR}/src/shlibafsosd
 TOP_OBJ_RXSTAT = ${TOP_OBJDIR}/src/rxstat
 TOP_OBJ_VLSERVER = ${TOP_OBJDIR}/src/vlserver
 
@@ -690,9 +691,9 @@ $(UOBJ)/rxosd.cs.o: $(TOP_OBJ_RXOSD)/rxosd.cs.c
 	$(CRULE1)
 $(UOBJ)/rxosd.xdr.o: $(TOP_OBJ_RXOSD)/rxosd.xdr.c
 	$(CRULE1)
-$(UOBJ)/afsosdint.cs.o: $(TOP_OBJ_FSINT)/afsosdint.cs.c
+$(UOBJ)/afsosdint.cs.o: $(TOP_OBJ_LIBAFSOSD)/afsosdint.cs.c
 	$(CRULE2)
-$(UOBJ)/afsosdint.xdr.o: $(TOP_OBJ_FSINT)/afsosdint.xdr.c
+$(UOBJ)/afsosdint.xdr.o: $(TOP_OBJ_LIBAFSOSD)/afsosdint.xdr.c
 	$(CRULE2)
 $(UOBJ)/afs_segments.o: $(TOP_SRC_AFS)/afs_segments.c
 	$(CRULE1)
@@ -985,9 +986,9 @@ $(WEBOBJ)/rxosd.cs.o: $(TOP_OBJ_RXOSD)/rxosd.cs.c
 	$(CRULE2)
 $(WEBOBJ)/rxosd.xdr.o: $(TOP_OBJ_RXOSD)/rxosd.xdr.c
 	$(CRULE2)
-$(WEBOBJ)/afsosdint.cs.o: $(TOP_OBJ_FSINT)/afsosdint.cs.c
+$(WEBOBJ)/afsosdint.cs.o: $(TOP_OBJ_LIBAFSOSD)/afsosdint.cs.c
 	$(CRULE2)
-$(WEBOBJ)/afsosdint.xdr.o: $(TOP_OBJ_FSINT)/afsosdint.xdr.c
+$(WEBOBJ)/afsosdint.xdr.o: $(TOP_OBJ_LIBAFSOSD)/afsosdint.xdr.c
 	$(CRULE2)
 $(WEBOBJ)/afs_segments.o: $(TOP_SRC_AFS)/afs_segments.c
 	$(CRULE2)
@@ -1284,9 +1285,9 @@ $(JUAFS)/rxosd.cs.o: $(TOP_OBJ_RXOSD)/rxosd.cs.c
 	$(CRULE1)
 $(JUAFS)/rxosd.xdr.o: $(TOP_OBJ_RXOSD)/rxosd.xdr.c
 	$(CRULE1)
-$(JUAFS)/afsosdint.cs.o: $(TOP_OBJ_FSINT)/afsosdint.cs.c
+$(JUAFS)/afsosdint.cs.o: $(TOP_OBJ_LIBAFSOSD)/afsosdint.cs.c
 	$(CRULE2)
-$(JUAFS)/afsosdint.xdr.o: $(TOP_OBJ_FSINT)/afsosdint.xdr.c
+$(JUAFS)/afsosdint.xdr.o: $(TOP_OBJ_LIBAFSOSD)/afsosdint.xdr.c
 	$(CRULE2)
 $(JUAFS)/afs_segments.o: $(TOP_SRC_AFS)/afs_segments.c
 	$(CRULE1)

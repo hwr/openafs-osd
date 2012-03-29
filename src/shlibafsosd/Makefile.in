@@ -1,6 +1,6 @@
 # API version. When something changes, increment as appropriate. 
 # Ignore at your own risk.
-LIBAFSRPCMAJOR=0
+LIBAFSOSDMAJOR=0
 
 # Copyright 2000, International Business Machines Corporation and others.
 # All Rights Reserved.
@@ -11,8 +11,6 @@ LIBAFSRPCMAJOR=0
 #
 # Portions Copyright (c) 2003 Apple Computer, Inc.
 
-# This is a pthread safe library containing rx, rxkad and des.
-
 srcdir=@srcdir@
 include @TOP_OBJDIR@/src/config/Makefile.config
 INSTALL = @INSTALL@
@@ -20,7 +18,7 @@ INSTALL_DATA = @INSTALL_DATA@
 INSTALL_PROGRAM = @INSTALL_PROGRAM@
 INSTALL_SCRIPT = @INSTALL_SCRIPT@
 
-LIBAFSRPCMINOR=`grep LIBAFSOSD_VERSION ${TOP_INCDIR}/afs/afsosd.h | /usr/bin/awk '{print$$3}'`
+LIBAFSOSDMINOR=`grep LIBAFSOSD_VERSION ${srcdir}/afsosd.h | /usr/bin/awk '{print$$3}'`
 
 CC=${MT_CC}
 CFLAGS = ${COMMON_CFLAGS} -DRXDEBUG ${MT_CFLAGS} ${SHLIB_CFLAGS}
@@ -31,7 +29,6 @@ CCRULE2 = ${CC} ${CFLAGS} -DBUILD_SHLIBAFSOSD -c $<
 CCRULESALV = ${CC} ${CFLAGS} -DBUILD_SHLIBAFSOSD -DBUILD_SALVAGER -o vol_osd_salv.o -c $?
 
 OSDDB = ${srcdir}/../osddb
-VOL = ${srcdir}/../vol
 VOLOBJ = ../vol
 VOLSER = ${srcdir}/../volser
 VOLSEROBJ = ../volser
@@ -56,6 +53,12 @@ VOLOBJS = \
 	vol_osd.xdr.o \
 	libafsosd.o 
 
+DVOLOBJS = \
+	d_vol_osd.o \
+	d_vol_osd_salv.o \
+	vol_osd.xdr.o \
+	d_libafsosd.o 
+
 VICDEOBJS = \
 	afsosdprocs.o
 
@@ -66,13 +69,22 @@ VOLSEROBJS = \
 	volosdint.cs.o \
 	volosdint.xdr.o
 
+DVOLSEROBJS = \
+	d_volosdprocs.o \
+	volint.xdr.o \
+	volosdint.ss.o \
+	volosdint.cs.o \
+	volosdint.xdr.o
+
 FSINTOBJS = \
 	afsosdint.ss.o \
-	afsosdint.cs.o \
 	afsosdint.xdr.o
 
 VICEDOBJS = \
 	afsosdprocs.o
+
+DVICEDOBJS = \
+	d_afsosdprocs.o
 
 LIBOBJS = \
 	${OSDDBOBJS} \
@@ -82,47 +94,94 @@ LIBOBJS = \
 	${VOLSEROBJS} \
 	${FSINTOBJS}
 
-LIBAFSOSD = libafsosd.${SHLIB_SUFFIX}.${LIBAFSRPCMAJOR}.${LIBAFSRPCMINOR}
+DLIBOBJS = \
+	${OSDDBOBJS} \
+	${RXOSDOBJS} \
+	${DVOLOBJS} \
+	${DVICEDOBJS} \
+	${DVOLSEROBJS} \
+	${FSINTOBJS}
 
-all: ${TOP_LIBDIR}/${LIBAFSOSD} ${TOP_LIBDIR}/libafsosd_pic.a
+LIBAFSOSD = libafsosd.${SHLIB_SUFFIX}.${LIBAFSOSDMAJOR}.${LIBAFSOSDMINOR}
+LIBDAFSOSD = libdafsosd.${SHLIB_SUFFIX}.${LIBAFSOSDMAJOR}.${LIBAFSOSDMINOR}
+
+all: ${TOP_LIBDIR}/${LIBAFSOSD} ${TOP_LIBDIR}/${LIBDAFSOSD} \
+	${TOP_LIBDIR}/libafsosd.a ${TOP_LIBDIR}/libdafsosd.a \
+	Kviceosd.cs.c Kviceosd.xdr.c afsosdint.h osdmetadata \
+	afsosdint.cs.c afsosdint.cs.o afsosdint.xdr.o
 
 ${TOP_LIBDIR}/${LIBAFSOSD}: ${LIBAFSOSD}
 	../config/shlib-install -d ${TOP_LIBDIR} \
-		-l libafsosd -M ${LIBAFSRPCMAJOR} -m ${LIBAFSRPCMINOR}
+		-l libafsosd -M ${LIBAFSOSDMAJOR} -m ${LIBAFSOSDMINOR}
 
-${TOP_LIBDIR}/libafsosd_pic.a: libafsosd_pic.a
-	${INSTALL_DATA} libafsosd_pic.a $@
+${TOP_LIBDIR}/${LIBDAFSOSD}: ${LIBDAFSOSD}
+	../config/shlib-install -d ${TOP_LIBDIR} \
+		-l libdafsosd -M ${LIBAFSOSDMAJOR} -m ${LIBAFSOSDMINOR}
 
-install: ${LIBAFSOSD} libafsosd_pic.a
+${TOP_LIBDIR}/libafsosd.a: libafsosd.a
+	${INSTALL_DATA} libafsosd.a $@
+
+${TOP_LIBDIR}/libdafsosd.a: libdafsosd.a
+	${INSTALL_DATA} libdafsosd.a $@
+
+install: ${LIBAFSOSD} ${LIBDAFSOSD} libafsosd.a libdafsosd.a
 	../config/shlib-install -d ${DESTDIR}${libdir} \
-		-l libafsosd -M ${LIBAFSRPCMAJOR} -m ${LIBAFSRPCMINOR}
-	${INSTALL_DATA} libafsosd_pic.a ${DESTDIR}${libdir}/libafsosd_pic.a
+		-l libafsosd -M ${LIBAFSOSDMAJOR} -m ${LIBAFSOSDMINOR}
+	../config/shlib-install -d ${DESTDIR}${libdir} \
+		-l libdafsosd -M ${LIBAFSOSDMAJOR} -m ${LIBAFSOSDMINOR}
+	${INSTALL_DATA} libafsosd.a ${DESTDIR}${libdir}/libafsosd.a
+	${INSTALL_DATA} libdafsosd.a ${DESTDIR}${libdir}/libdafsosd.a
 
-dest: ${LIBAFSOSD} libafsosd_pic.a
+dest: ${LIBAFSOSD} ${LIBDAFSOSD} libafsosd.a libdafsosd.a
 	../config/shlib-install -d ${DEST}/lib \
-		-l libafsosd -M ${LIBAFSRPCMAJOR} -m ${LIBAFSRPCMINOR}
-	${INSTALL_DATA} libafsosd_pic.a ${DEST}/lib/libafsosd_pic.a
+		-l libafsosd -M ${LIBAFSOSDMAJOR} -m ${LIBAFSOSDMINOR}
+	../config/shlib-install -d ${DEST}/lib \
+		-l libdafsosd -M ${LIBAFSOSDMAJOR} -m ${LIBAFSOSDMINOR}
+	${INSTALL_DATA} libafsosd.a ${DEST}/lib/libafsosd.a
+	${INSTALL_DATA} libdafsosd.a ${DEST}/lib/libdafsosd.a
 
 ${LIBAFSOSD}: ${LIBOBJS} libafsosd.map
 	../config/shlib-build -d $(srcdir) -l libafsosd \
-		-M ${LIBAFSRPCMAJOR} -m ${LIBAFSRPCMINOR} -- \
+		-M ${LIBAFSOSDMAJOR} -m ${LIBAFSOSDMINOR} -- \
 		${LIBOBJS} ${MT_LIBS}
 
-libafsosd_pic.a: ${LIBOBJS}
+${LIBDAFSOSD}: ${DLIBOBJS} libdafsosd.map
+	../config/shlib-build -d $(srcdir) -l libdafsosd \
+		-M ${LIBAFSOSDMAJOR} -m ${LIBAFSOSDMINOR} -- \
+		${DLIBOBJS} ${MT_LIBS}
+
+libafsosd.a: ${LIBOBJS}
 	$(RM) -f $@
 	$(AR) crv $@ ${LIBOBJS}
 	$(RANLIB) $@
 
+libdafsosd.a: ${DLIBOBJS}
+	$(RM) -f $@
+	$(AR) crv $@ ${DLIBOBJS}
+	$(RANLIB) $@
+
 # vol routines
 
-vol_osd.o: ${VOL}/vol_osd.c
+vol_osd.h: ${srcdir}/vol_osd.xg
+	${RXGEN} -A -x -h -o $@ ${srcdir}/vol_osd.xg
+	
+vol_osd.o: ${srcdir}/vol_osd.c vol_osd.h
+	${CCRULE2}
+
+d_vol_osd.o: ${srcdir}/vol_osd.c
+	${CCRULE} -o d_vol_osd.o -DAFS_DEMAND_ATTACH_FS
+
+vol_osd.xdr.c: ${srcdir}/vol_osd.xg
+	${RXGEN} -A -x -c -o $@ ${srcdir}/vol_osd.xg
+
+vol_osd.xdr.o: vol_osd.xdr.c
 	${CCRULE}
 
-vol_osd.xdr.o: ${VOLOBJ}/vol_osd.xdr.c
+libafsosd.o: ${srcdir}/libafsosd.c
 	${CCRULE}
 
-libafsosd.o: ${VOL}/libafsosd.c
-	${CCRULE}
+d_libafsosd.o: ${srcdir}/libafsosd.c
+	${CCRULE} -o d_libafsosd.o -DAFS_DEMAND_ATTACH_FS
 
 # osddb routines
 
@@ -172,28 +231,37 @@ rxosd.xdr.o: rxosd.xdr.c rxosd.h
 
 # salvager stuff
 
-vol_osd_salv.o: ${VOL}/vol_osd.c
+vol_osd_salv.o: ${srcdir}/vol_osd.c
 	${CCRULESALV}
+
+d_vol_osd_salv.o: ${srcdir}/vol_osd.c
+	${CCRULESALV} -o d_vol_osd_salv.o -DAFS_DEMAND_ATTACH_FS
 
 # fileserver stuff
 
-afsint.h: ${FSINT}/afsint.xg
-	${RXGEN} -A -x -h -o $@ ${FSINT}/afsint.xg
+afsint.h: ${FSINT}/common.xg ${FSINT}/afsint.xg
+	${RXGEN} -A -x -h -o afsint.h ${FSINT}/afsint.xg
 
-afsosdint.h: ${FSINT}/afsosdint.xg
-	${RXGEN} -A -x -h -o $@ ${FSINT}/afsosdint.xg
+afsosdint.h: ${FSINT}/common.xg ${srcdir}/fs_rxosd_common.xg ${srcdir}/afsosdint.xg
+	${RXGEN} -A -x -h -o afsosdint.h ${srcdir}/afsosdint.xg
 
-afsosdint.ss.c: ${FSINT}/afsosdint.xg
-	${RXGEN} -A -x -S -o $@ ${FSINT}/afsosdint.xg
+afsosdint.ss.c: ${srcdir}/afsosdint.xg
+	${RXGEN} -A -x -S -o $@ ${srcdir}/afsosdint.xg
 
-afsosdint.cs.c: ${FSINT}/afsosdint.xg
-	${RXGEN} -A -x -C -o $@ ${FSINT}/afsosdint.xg
+afsosdint.cs.c: ${srcdir}/afsosdint.xg
+	${RXGEN} -A -x -C -o $@ ${srcdir}/afsosdint.xg
 
-afsosdint.xdr.c: ${FSINT}/afsosdint.xg
-	${RXGEN} -A -x -c -o $@ ${FSINT}/afsosdint.xg
+afsosdint.xdr.c: ${srcdir}/afsosdint.xg
+	${RXGEN} -A -x -c -o $@ ${srcdir}/afsosdint.xg
 
 afsosdint.xdr.o: afsosdint.xdr.c afsosdint.h afsint.h
 	${CCRULE2}
+
+Kviceosd.cs.c: ${FSINT}/common.xg ${srcdir}/fs_rxosd_common.xg ${srcdir}/afsosdint.xg
+	${RXGEN} -A -x -k -C -o Kviceosd.cs.c ${srcdir}/afsosdint.xg
+
+Kviceosd.xdr.c: ${FSINT}/common.xg ${srcdir}/fs_rxosd_common.xg ${srcdir}/afsosdint.xg
+	${RXGEN} -A -x -k -c -o Kviceosd.xdr.c ${srcdir}/afsosdint.xg
 
 afsosdint.ss.o: afsosdint.ss.c afsosdint.h afsint.h
 	${CCRULE2}
@@ -201,25 +269,28 @@ afsosdint.ss.o: afsosdint.ss.c afsosdint.h afsint.h
 afsosdint.cs.o: afsosdint.cs.c afsosdint.h afsint.h
 	${CCRULE2}
 
-afsosdprocs.o: ${VICED}/afsosdprocs.c
-	${CCRULE}
+afsosdprocs.o: ${srcdir}/afsosdprocs.c afsosdint.h
+	${CCRULE2}
+
+d_afsosdprocs.o: ${srcdir}/afsosdprocs.c afsosdint.h
+	${CCRULE2} -o d_afsosdprocs.o -DAFS_DEMAND_ATTACH_FS
 
 # volserver stuff
 
 volint.h: ${VOLSER}/volint.xg
 	${RXGEN} -A -x -h -o $@ ${VOLSER}/volint.xg
 
-volosdint.h: ${VOLSER}/volosdint.xg
-	${RXGEN} -A -x -h -o $@ ${VOLSER}/volosdint.xg
+volosdint.h: ${srcdir}/volosdint.xg
+	${RXGEN} -A -x -h -o $@ ${srcdir}/volosdint.xg
 
-volosdint.ss.c: ${VOLSER}/volosdint.xg
-	${RXGEN} -A -x -S -o $@ ${VOLSER}/volosdint.xg
+volosdint.ss.c: ${srcdir}/volosdint.xg
+	${RXGEN} -A -x -S -o $@ ${srcdir}/volosdint.xg
 
-volosdint.cs.c: ${VOLSER}/volosdint.xg
-	${RXGEN} -A -x -C -o $@ ${VOLSER}/volosdint.xg
+volosdint.cs.c: ${srcdir}/volosdint.xg
+	${RXGEN} -A -x -C -o $@ ${srcdir}/volosdint.xg
 
-volosdint.xdr.c: ${VOLSER}/volosdint.xg
-	${RXGEN} -A -x -c -o $@ ${VOLSER}/volosdint.xg
+volosdint.xdr.c: ${srcdir}/volosdint.xg
+	${RXGEN} -A -x -c -o $@ ${srcdir}/volosdint.xg
 
 volosdint.ss.o: volosdint.ss.c volosdint.h volint.h
 	${CCRULE2}
@@ -233,10 +304,22 @@ volosdint.xdr.o: volosdint.xdr.c volosdint.h
 volint.xdr.o: ../volser/volint.xdr.c volint.h
 	${CCRULE2}
 
-volosdprocs.o: ${VOLSER}/volosdprocs.c
-	${CCRULE}
+volser.h: ${VOLSEROBJ}/volser.h
+	${CP} ${VOLSEROBJ}/volser.h ./
+
+volosdprocs.o: ${srcdir}/volosdprocs.c volser.h volint.h
+	${CCRULE2}
+
+d_volosdprocs.o: ${srcdir}/volosdprocs.c volser.h volint.h
+	${CCRULE2} -o d_volosdprocs.o -DAFS_DEMAND_ATTACH_FS
+
+vol_osdutil.o: vol_osd.h
+
+osdmetadata: osdmetadata.o vol_osdutil.o
+	${CC} ${CFLAGS} -o osdmetadata osdmetadata.o vol_osdutil.o vol_osd.xdr.o \
+		../../lib/libcmd.a ../../lib/librx.a ../../lib/util.a
 
 clean:
-	$(RM) -f *.o libafsosd.a* libafsosd.sl* libafsosd.so* \
-		 *.c *.h *.gch \
-		libafsosd_pic.a libafsosd.dylib.* libafsosd.exp
+	$(RM) -f *.o libafsosd.a* libafsosd.sl* libafsosd.so* libdafsosd.so* \
+		 *.ss.c *.cs.c *.xdr.c *int.h osddb.h rxosd.h vol_osd.h \
+		volser.h libafsosd.a  libdafsosd.a

@@ -374,7 +374,7 @@ scout: cmd comerr gtx fsprobe
 		echo Not building scout, because no curses-headers found. ; \
 	fi
 
-uss: des kauth cmd comerr rx vlserver vol volser
+uss: des kauth cmd comerr rx vlserver vol volser shlibafsosd
 	+${COMPILE_PART1} uss ${COMPILE_PART2}
 
 bozo: cmd comerr audit auth kauth volser
@@ -634,14 +634,6 @@ shlibafsauthent: ubik auth kauth shlibafsrpc
 
 # AFSOSD extensions in shared library libafsosd.so
 
-shlibdafsosd: osddb vol volser fsint viced
-	+case ${SYS_NAME} in \
-	alpha_dux*|sgi_*|sun4x_*|sunx86_*|rs_aix*|*linux*|hp_ux11*|ia64_hpux*|*_darwin_1*|*nbsd*|*obsd*|*fbsd*) \
-	${COMPILE_PART1} shlibdafsosd ${COMPILE_PART2} ;; \
-	*) \
-		echo Not building shared libdafsosd for ${SYS_NAME} ;; \
-	esac
-
 shlibafsosd: osddb vol volser fsint viced
 	+case ${SYS_NAME} in \
 	alpha_dux*|sgi_*|sun4x_*|sunx86_*|rs_aix*|*linux*|hp_ux11*|ia64_hpux*|*_darwin_1*|*nbsd*|*obsd*|*fbsd*) \
@@ -704,7 +696,7 @@ build_tools: config des comerr rxgen
 
 finale: project cmd comerr afsd butc tbutc tbudb @ENABLE_KERNEL_MODULE@ libuafs audit kauth log \
 	ptserver tptserver scout bu_utils ubik uss bozo @VFSCK@ volser tvolser tsalvaged \
-	dviced dvolser libafscp shlibafsosd  shlibdafsosd \
+	dviced dvolser libafscp shlibafsosd  \
 	venus update xstat afsmonitor rxdebug libafsrpc \
 	libafsauthent shlibafsrpc shlibafsauthent libadmin man-pages \
 	platform kopenafs authtools tvlserver
@@ -712,7 +704,7 @@ finale: project cmd comerr afsd butc tbutc tbudb @ENABLE_KERNEL_MODULE@ libuafs 
 
 finale_nolibafs: project cmd comerr afsd butc tbutc tbudb libuafs audit kauth log \
 	ptserver tptserver scout bu_utils ubik tubik uss bozo @VFSCK@ volser tvolser tsalvaged \
-	dviced dvolser libafscp shlibafsosd  shlibdafsosd \
+	dviced dvolser libafscp shlibafsosd  \
 	venus update xstat afsmonitor rxdebug libafsrpc \
 	libafsauthent shlibafsrpc shlibafsauthent libadmin man-pages \
 	platform kopenafs authtools
@@ -815,7 +807,6 @@ clean2:
 	-${COMPILE_PART1} libafsauthent ${COMPILE_CLEAN}
 	-${COMPILE_PART1} shlibafshpss ${COMPILE_CLEAN}
 	-${COMPILE_PART1} shlibafsosd ${COMPILE_CLEAN}
-	-${COMPILE_PART1} shlibdafsosd ${COMPILE_CLEAN}
 	-${COMPILE_PART1} shlibafsrpc ${COMPILE_CLEAN}
 	-${COMPILE_PART1} shlibafsauthent ${COMPILE_CLEAN}
 	-${COMPILE_PART1} kopenafs ${COMPILE_CLEAN}

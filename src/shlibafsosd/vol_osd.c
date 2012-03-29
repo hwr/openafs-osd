@@ -72,13 +72,13 @@
 #include <rx/xdr.h>
 #include <afs/afsint.h>
 #include <afs/auth.h>
-#include <afs/vol_osd.h>
-#include "nfs.h"
+#include "vol_osd.h"
+#include "../vol/nfs.h"
 #include <afs/errors.h>
 #include "lock.h"
 #include "lwp.h"
 #include <afs/afssyscalls.h>
-#include "ihandle.h"
+#include "../vol/ihandle.h"
 #include <afs/afsutil.h>
 #include <afs/cellconfig.h>
 #include <ubik.h>
@@ -86,12 +86,11 @@
 #include "ntops.h"
 #include <io.h>
 #endif
-#include "vnode.h"
-#include "volume.h"
-#include "partition.h"
-#include "viceinode.h"
-
-#include "volinodes.h"
+#include "../vol/vnode.h"
+#include "../vol/volume.h"
+#include "../vol/partition.h"
+#include "../vol/viceinode.h"
+#include "../vol/volinodes.h"
 #ifdef	AFS_AIX_ENV
 #include <sys/lockf.h>
 #endif
@@ -120,8 +119,8 @@
 
 
 #include <afs/rxosd.h>
-#include <afs/afsosd.h>
-#include <afs/vol_osd_inline.h>
+#include "afsosd.h"
+#include "vol_osd_inline.h"
 #include <afs/osddbuser.h>
 
 private char *libraryVersion = "OpenAFS 1.6.0-osd";

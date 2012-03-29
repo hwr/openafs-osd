@@ -60,7 +60,7 @@
 #include "../util/afsutil_prototypes.h"
 #include "../tviced/serialize_state.h"
 #endif /* AFS_DEMAND_ATTACH_FS */
-#include <afs/afsosd.h>
+#include "../shlibafsosd/afsosd.h"
 
 #ifdef AFS_PTHREAD_ENV
 pthread_mutex_t host_glock_mutex;
