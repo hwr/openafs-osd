@@ -32,6 +32,7 @@
 #include "afs/afs_cbqueue.h"	
 #include "afs/nfsclient.h"
 #include "afs/afs_osidnlc.h"
+#include "LINUX/osi_compat.h"
 
 #ifdef AFS_CACHE_BYPASS
 #include "afs_bypasscache.h"
@@ -1262,7 +1263,7 @@ open_vicep_file(struct vcache *avc, char *path)
 #else /*HAVE_LINUX_PATH_LOOKUP */
     code = kern_path(path, 0, &path_data);
     if (!code)
-	code = afs_get_dentry_ref(&path_data, &mnt, &dentry);
+	afs_get_dentry_ref(&path_data, &mnt, &dentry);
 #endif /*HAVE_LINUX_PATH_LOOKUP */
     if (!code) {
 #ifdef NAMEI_DATA_HAS_NO_DENTRY
@@ -1270,11 +1271,19 @@ open_vicep_file(struct vcache *avc, char *path)
 #else /* NAMEI_DATA_HAS_NO_DENTRY */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,27)
 #if defined(STRUCT_TASK_STRUCT_HAS_CRED)
+#if defined(HAVE_LINUX_PATH_LOOKUP)	
 	fp = dentry_open(dentry, nd.path.mnt, O_LARGEFILE | O_RDWR,
 			 cache_creds);
 	if (IS_ERR(fp))
 	    fp = dentry_open(dentry, nd.path.mnt, O_LARGEFILE | O_RDWR,
 			 current_cred());
+#else /* defined(HAVE_LINUX_PATH_LOOKUP) */
+	fp = dentry_open(dentry, mnt, O_LARGEFILE | O_RDWR,
+			 cache_creds);
+	if (IS_ERR(fp))
+	    fp = dentry_open(dentry, mnt, O_LARGEFILE | O_RDWR,
+			 current_cred());
+#endif /* defined(HAVE_LINUX_PATH_LOOKUP) */
 #else /* defined(STRUCT_TASK_STRUCT_HAS_CRED) */
 	fp = dentry_open(dentry, nd.path.mnt, O_LARGEFILE | O_RDWR);
 #endif /* defined(STRUCT_TASK_STRUCT_HAS_CRED) */
