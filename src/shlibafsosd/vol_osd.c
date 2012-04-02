@@ -5369,12 +5369,12 @@ setOsdPolicy(struct Volume *vol, afs_int32 osdPolicy)
     afs_uint32 step;
     struct VnodeDiskObject vnode;
     struct VnodeDiskObject *vd = &vnode;
+    struct VolumeDiskHeader diskHeader;
     FdHandle_t *fdP;
     afs_foff_t offset = 0;
 
     if (!V_osdPolicy(vol) && osdPolicy) {	/* normal volume to OSD volume */
 	if (!vol->osdMetadataHandle) {
-	    struct VolumeDiskHeader diskHeader;
 	    struct versionStamp stamp;
 	    Inode ino;
 	    int fd;
@@ -5460,6 +5460,7 @@ setOsdPolicy(struct Volume *vol, afs_int32 osdPolicy)
                 if (vd->type == vFile) {
 		    if (vd->osdMetadataIndex) {
                 	ViceLog(0, ("setOsdPolicy: cannot reset to zero because volume %u contains still OSD files\n", V_id(vol)));
+			code = EIO;
 			goto bad;
 		    }
 		}
@@ -5491,6 +5492,25 @@ setOsdPolicy(struct Volume *vol, afs_int32 osdPolicy)
 		}
 		offset += step;
                 FDH_SEEK(fdP, offset, SEEK_SET);
+	    }
+	}
+	/* Remove osdMetadataFile */
+	code = VReadVolumeDiskHeader(V_id(vol), vol->partition, &diskHeader);
+	if (!code) {
+#ifdef AFS_64BIT_IOPS_ENV
+	    diskHeader.OsdMetadata_lo = 0;
+	    diskHeader.OsdMetadata_hi = 0;
+#else
+	    diskHeader.OsdMetadata_lo = 0;
+#endif
+	    code = VWriteVolumeDiskHeader(&diskHeader, vol->partition);
+	    if (!code) {
+		FdHandle_t *tfd = IH_OPEN(vol->osdMetadataHandle);
+		if (tfd)
+		    FDH_REALLYCLOSE(tfd);
+		IH_DEC(vol->osdMetadataHandle, vol->osdMetadataHandle->ih_ino,
+			V_parentId(vol));
+		IH_RELEASE(vol->osdMetadataHandle);
 	    }
 	}
     }
