@@ -6632,8 +6632,10 @@ SalvageOSD(struct cmd_syndesc *as, void *arock)
 
     tcon = UV_Bind(server, AFSCONF_VOLUMEPORT);
     if (tcon) {
+	int restarted = 0;
 	struct rx_call *call = rx_NewCall(tcon);
 	code = StartAFSVolSalvage(call, vid, flags, instances, localinst);
+restart:
 	if (!code) {
 	    char line[128];
 	    char *p = line;
@@ -6653,6 +6655,14 @@ SalvageOSD(struct cmd_syndesc *as, void *arock)
 		}
 	    }
 	    code = rx_EndCall(call, 0);
+	    if (code == RXGEN_OPCODE && !restarted) {
+		restarted = 1;
+	        rx_DestroyConnection(tcon);
+	        tcon = UV_BindOsd(server, AFSCONF_VOLUMEPORT);
+	        call = rx_NewCall(tcon);
+	        code = StartAFSVOLOSD_Salvage(call, vid, flags, instances, localinst);
+		goto restart;
+	    }
             if (code) 
 	   	fprintf(stderr, "RPC failed with code %d\n", code);
 	}
