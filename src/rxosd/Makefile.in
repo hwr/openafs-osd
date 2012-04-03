@@ -35,7 +35,7 @@ UTILOBJS=assert.o uuid.o serverLog.o fileutil.o netutils.o dirpath.o volparse.o 
 
 VOLOBJS= devname.o common.o ihandle.o namei_ops.o
 
-LIBAFSOSDOBJS=afsosdint.cs.o afsosdint.xdr.o
+LIBAFSOSDOBJS=vicedosd.cs.o vicedosd.xdr.o
 
 OSDDBOBJS=osddb.cs.o osddb.xdr.o osddbuser.o
 
@@ -116,19 +116,19 @@ netprocs.o: ${LIBACL}/netprocs.c
 devname.o: ${VOL}/devname.c
 	${CCRULE}
 
-afsosdint.h: ${LIBAFSOSD}/afsosdint.xg
-	${RXGEN} -A -x -h -o $@ ${LIBAFSOSD}/afsosdint.xg
+vicedosd.h: ${LIBAFSOSD}/vicedosd.xg
+	${RXGEN} -A -x -h -o $@ ${LIBAFSOSD}/vicedosd.xg
 
-afsosdint.cs.c: ${LIBAFSOSD}/afsosdint.xg
-	${RXGEN} -A -x -C -o $@ ${LIBAFSOSD}/afsosdint.xg
+vicedosd.cs.c: ${LIBAFSOSD}/vicedosd.xg
+	${RXGEN} -A -x -C -o $@ ${LIBAFSOSD}/vicedosd.xg
 
-afsosdint.xdr.c: ${LIBAFSOSD}/afsosdint.xg
-	${RXGEN} -A -x -c -o $@ ${LIBAFSOSD}/afsosdint.xg
+vicedosd.xdr.c: ${LIBAFSOSD}/vicedosd.xg
+	${RXGEN} -A -x -c -o $@ ${LIBAFSOSD}/vicedosd.xg
 
-afsosdint.cs.o: afsosdint.cs.c afsosdint.h
+vicedosd.cs.o: vicedosd.cs.c vicedosd.h
 	${CCRULE2}
 
-afsosdint.xdr.o: afsosdint.xdr.c afsosdint.h
+vicedosd.xdr.o: vicedosd.xdr.c vicedosd.h
 	${CCRULE2}
 
 # only for darwin
@@ -226,7 +226,9 @@ install: ${DESTDIR}${afssrvlibexecdir}/rxosd ${DESTDIR}${bindir}/osd \
 	${DESTDIR}${afssrvlibexecdir}/readabyte
 
 clean:
-	$(RM) -f *.o rxosd.*.* rxosd.[oh] Krxo* osd core AFS_component_version_number.c osddb* policy_parser.c
+	$(RM) -f *.o rxosd.*.* rxosd.[oh] Krxo* osd core \
+		AFS_component_version_number.c osddb* policy_parser.c \
+		vicedosd.* readabyte rxosd policies.tab.c librxosd.a
 
 include ../config/Makefile.version
 

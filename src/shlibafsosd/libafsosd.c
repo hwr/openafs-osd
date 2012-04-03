@@ -81,6 +81,7 @@ static struct dir_ops_v0 *dir = NULL;
 private struct fsint_ops_v0 {
     bool_t (*xdr_AFSFetchStatus) (XDR *xdrs, struct AFSFetchStatus *objp);
     bool_t (*xdr_AFSFid) (XDR *xdrs, struct AFSFid *objp);
+    bool_t (*xdr_AFSStoreStatus) (XDR *xdrs, struct AFSStoreStatus *objp);
     bool_t (*xdr_FsCmdInputs) (XDR *xdrs, struct FsCmdInputs *objp);
     bool_t (*xdr_FsCmdOutputs) (XDR *xdrs, struct FsCmdOutputs *objp);
     bool_t (*xdr_async) (XDR *xdrs, struct async *objp);
@@ -325,6 +326,7 @@ fill_ops(struct ops_ptr *opsptr)
     fsint->xdr_AFSFetchStatus = xdr_AFSFetchStatus;
     fsint->xdr_AFSFetchStatus = xdr_AFSFetchStatus;
     fsint->xdr_AFSFid = xdr_AFSFid;
+    fsint->xdr_AFSStoreStatus = xdr_AFSStoreStatus;
     fsint->xdr_FsCmdInputs = xdr_FsCmdInputs;
     fsint->xdr_FsCmdOutputs = xdr_FsCmdOutputs;
     fsint->xdr_async = xdr_async;
@@ -652,6 +654,12 @@ bool_t
 xdr_AFSFid(XDR *xdrs, struct AFSFid *objp)
 {
     return (fsint->xdr_AFSFid)(xdrs, objp);
+}
+
+bool_t
+xdr_AFSStoreStatus(XDR *xdrs, struct AFSStoreStatus *objp)
+{
+    return (fsint->xdr_AFSStoreStatus)(xdrs, objp);
 }
 
 bool_t
@@ -1175,6 +1183,13 @@ int
 evalclient(void *rock, afs_int32 user)
 {
     return (viced->evalclient)(rock, user);
+}
+
+afs_int32 
+extendAsyncTransaction(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
+		       afs_uint32 *expires)
+{
+    return (viced->extendAsyncTransaction)(acall, Fid, transid, expires);
 }
 
 struct Volume *

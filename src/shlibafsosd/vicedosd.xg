@@ -6,7 +6,7 @@
  */
 
 /*
- * afsosdint.xg:
+ * vicedosd.xg:
  *	Definition of the AFS File Server RPC interface extensions for AFS/OSD.
  */
 
@@ -79,3 +79,59 @@ BringOnline(
   OUT AFSFetchStatus *OutStatus,
   AFSCallBack *CallBack
 ) = 7;
+
+/***************************************************************
+ * Called by clients to start a fetch operation for a file either in
+ * object storage or/and in a visible partition. */
+
+StartAsyncFetch(
+  IN AFSFid *Fid,
+  IN RWparm *p,
+  INOUT struct async *a,
+  OUT afs_uint64 *transId,
+  OUT afs_uint32 *expires,
+  OUT AFSFetchStatus *OutStatus,
+  OUT AFSCallBack *CallBack
+) = 8;
+
+ExtendAsyncFetch(
+  IN AFSFid *fid,
+  IN afs_uint64 transId,
+  OUT afs_uint32 *expires
+) = 9;
+
+EndAsyncFetch(
+  IN AFSFid *fid,
+  IN afs_uint64 transId,
+  IN afs_uint64 bytes_sent,
+  IN afs_uint32 osd
+) = 10;
+
+StartAsyncStore(
+  IN AFSFid *Fid,
+  IN struct RWparm *p,
+  INOUT struct async *a,
+  OUT afs_uint64 *maxlength,
+  OUT afs_uint64 *transid,
+  OUT afs_uint32 *expires,
+  OUT AFSFetchStatus *OutStatus
+) = 11;
+
+ExtendAsyncStore(
+  IN AFSFid *Fid,
+  IN afs_uint64 transid,
+  OUT afs_uint32 *expires
+) = 12;
+
+EndAsyncStore(
+  IN AFSFid *Fid,
+  IN afs_uint64 transid,
+  IN afs_uint64 filelength,
+  IN afs_uint64 bytes_rcvd,
+  IN afs_uint64 bytes_sent,
+  IN afs_uint32 osd,
+  IN afs_int32 error,
+  IN struct asyncError *ae,
+  IN struct AFSStoreStatus *Instatus,
+  OUT struct AFSFetchStatus *OutStatus
+) = 13;

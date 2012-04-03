@@ -178,7 +178,7 @@ setup:
 		ln -fs ../Makefile.common $${KDIR}/Makefile.common; \
 		ln -fs ../config $${KDIR}/config; \
 		ln -fs @TOP_OBJDIR@/src/rxosd/rxosd.h $${KDIR}/rxosd.h; \
-		ln -fs @TOP_OBJDIR@/src/shlibafsosd/afsosdint.h $${KDIR}/afsosdint.h; \
+		ln -fs @TOP_OBJDIR@/src/shlibafsosd/vicedosd.h $${KDIR}/vicedosd.h; \
 		ln -fs @TOP_OBJDIR@/src/rxosd/Krxosd.cs.c $${KDIR}/Krxosd.cs.c; \
 		ln -fs @TOP_OBJDIR@/src/rxosd/Krxosd.xdr.c $${KDIR}/Krxosd.xdr.c; \
 	done 

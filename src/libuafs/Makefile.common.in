@@ -222,8 +222,8 @@ UAFSOBJ = \
 	$(UOBJ)/xdr_len.o \
 	$(UOBJ)/rxosd.cs.o \
 	$(UOBJ)/rxosd.xdr.o \
-	$(UOBJ)/afsosdint.cs.o \
-	$(UOBJ)/afsosdint.xdr.o
+	$(UOBJ)/vicedosd.cs.o \
+	$(UOBJ)/vicedosd.xdr.o
 
 AFSWEBOBJ = \
 	$(WEBOBJ)/afs_atomlist.o \
@@ -365,8 +365,8 @@ AFSWEBOBJ = \
 	$(WEBOBJ)/xdr_len.o \
 	$(WEBOBJ)/rxosd.cs.o \
 	$(WEBOBJ)/rxosd.xdr.o \
-	$(WEBOBJ)/afsosdint.cs.o \
-	$(WEBOBJ)/afsosdint.xdr.o
+	$(WEBOBJ)/vicedosd.cs.o \
+	$(WEBOBJ)/vicedosd.xdr.o
 
 AFSWEBOBJKRB = \
 	$(WEBOBJ)/afs_atomlist.o \
@@ -502,8 +502,8 @@ AFSWEBOBJKRB = \
 	$(WEBOBJ)/xdr_len.o \
 	$(WEBOBJ)/rxosd.cs.o \
 	$(WEBOBJ)/rxosd.xdr.o \
-	$(WEBOBJ)/afsosdint.cs.o \
-	$(WEBOBJ)/afsosdint.xdr.o
+	$(WEBOBJ)/vicedosd.cs.o \
+	$(WEBOBJ)/vicedosd.xdr.o
 
 JUAFSOBJ = \
 	$(JUAFS)/afs_atomlist.o \
@@ -644,8 +644,8 @@ JUAFSOBJ = \
 	$(JUAFS)/xdr_len.o \
 	$(JUAFS)/rxosd.cs.o \
 	$(JUAFS)/rxosd.xdr.o \
-	$(JUAFS)/afsosdint.cs.o \
-	$(JUAFS)/afsosdint.xdr.o
+	$(JUAFS)/vicedosd.cs.o \
+	$(JUAFS)/vicedosd.xdr.o
 
 # Compilation rules
 
@@ -691,9 +691,9 @@ $(UOBJ)/rxosd.cs.o: $(TOP_OBJ_RXOSD)/rxosd.cs.c
 	$(CRULE1)
 $(UOBJ)/rxosd.xdr.o: $(TOP_OBJ_RXOSD)/rxosd.xdr.c
 	$(CRULE1)
-$(UOBJ)/afsosdint.cs.o: $(TOP_OBJ_LIBAFSOSD)/afsosdint.cs.c
+$(UOBJ)/vicedosd.cs.o: $(TOP_OBJ_LIBAFSOSD)/vicedosd.cs.c
 	$(CRULE2)
-$(UOBJ)/afsosdint.xdr.o: $(TOP_OBJ_LIBAFSOSD)/afsosdint.xdr.c
+$(UOBJ)/vicedosd.xdr.o: $(TOP_OBJ_LIBAFSOSD)/vicedosd.xdr.c
 	$(CRULE2)
 $(UOBJ)/afs_segments.o: $(TOP_SRC_AFS)/afs_segments.c
 	$(CRULE1)
@@ -986,9 +986,9 @@ $(WEBOBJ)/rxosd.cs.o: $(TOP_OBJ_RXOSD)/rxosd.cs.c
 	$(CRULE2)
 $(WEBOBJ)/rxosd.xdr.o: $(TOP_OBJ_RXOSD)/rxosd.xdr.c
 	$(CRULE2)
-$(WEBOBJ)/afsosdint.cs.o: $(TOP_OBJ_LIBAFSOSD)/afsosdint.cs.c
+$(WEBOBJ)/vicedosd.cs.o: $(TOP_OBJ_LIBAFSOSD)/vicedosd.cs.c
 	$(CRULE2)
-$(WEBOBJ)/afsosdint.xdr.o: $(TOP_OBJ_LIBAFSOSD)/afsosdint.xdr.c
+$(WEBOBJ)/vicedosd.xdr.o: $(TOP_OBJ_LIBAFSOSD)/vicedosd.xdr.c
 	$(CRULE2)
 $(WEBOBJ)/afs_segments.o: $(TOP_SRC_AFS)/afs_segments.c
 	$(CRULE2)
@@ -1285,9 +1285,9 @@ $(JUAFS)/rxosd.cs.o: $(TOP_OBJ_RXOSD)/rxosd.cs.c
 	$(CRULE1)
 $(JUAFS)/rxosd.xdr.o: $(TOP_OBJ_RXOSD)/rxosd.xdr.c
 	$(CRULE1)
-$(JUAFS)/afsosdint.cs.o: $(TOP_OBJ_LIBAFSOSD)/afsosdint.cs.c
+$(JUAFS)/vicedosd.cs.o: $(TOP_OBJ_LIBAFSOSD)/vicedosd.cs.c
 	$(CRULE2)
-$(JUAFS)/afsosdint.xdr.o: $(TOP_OBJ_LIBAFSOSD)/afsosdint.xdr.c
+$(JUAFS)/vicedosd.xdr.o: $(TOP_OBJ_LIBAFSOSD)/vicedosd.xdr.c
 	$(CRULE2)
 $(JUAFS)/afs_segments.o: $(TOP_SRC_AFS)/afs_segments.c
 	$(CRULE1)

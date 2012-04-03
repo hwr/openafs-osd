@@ -97,7 +97,7 @@ vos: vos.o ${VSOBJS} libvolser.a ${LIBS}
 	case ${WITH_OBJECT_STORAGE} in \
 	YES) \
 	${CC} ${LDFLAGS} -o vos vos.o $(VSOBJS) \
-		../shlibafsosd/volosdint.cs.o ../shlibafsosd/volosdint.xdr.o \
+		../shlibafsosd/volserosd.cs.o ../shlibafsosd/volserosd.xdr.o \
 		libvolser.a ${TOP_LIBDIR}/libosddb.a ${LIBS} ${XLIBS} ;; \
 	*) \
 	${CC} ${LDFLAGS} -o vos vos.o $(VSOBJS) \
@@ -140,21 +140,21 @@ volint.cs.c: volint.h
 volint.ss.c: volint.h
 volint.xdr.c: volint.h
 
-volosdint.h: ${LIBAFSOSD}/volosdint.xg
-	${RXGEN} -A -x -h -o $@ ${LIBAFSOSD}/volosdint.xg
+volserosd.h: ${LIBAFSOSD}/volserosd.xg
+	${RXGEN} -A -x -h -o $@ ${LIBAFSOSD}/volserosd.xg
 
-volosdint.cs.c: ${LIBAFSOSD}/volosdint.xg
-	${RXGEN} -A -x -C -o $@ ${LIBAFSOSD}/volosdint.xg
+volserosd.cs.c: ${LIBAFSOSD}/volserosd.xg
+	${RXGEN} -A -x -C -o $@ ${LIBAFSOSD}/volserosd.xg
 
-volosdint.ss.c: ${LIBAFSOSD}/volosdint.xg
-	${RXGEN} -A -x -S -o $@ ${LIBAFSOSD}/volosdint.xg
+volserosd.ss.c: ${LIBAFSOSD}/volserosd.xg
+	${RXGEN} -A -x -S -o $@ ${LIBAFSOSD}/volserosd.xg
 
-volosdint.xdr.c: ${LIBAFSOSD}/volosdint.xg
-	${RXGEN} -A -x -c -o $@ ${LIBAFSOSD}/volosdint.xg
+volserosd.xdr.c: ${LIBAFSOSD}/volserosd.xg
+	${RXGEN} -A -x -c -o $@ ${LIBAFSOSD}/volserosd.xg
 
-volosdint.cs.c: volosdint.h
-volosdint.ss.c: volosdint.h
-volosdint.xdr.c: volosdint.h
+volserosd.cs.c: volserosd.h
+volserosd.ss.c: volserosd.h
+volserosd.xdr.c: volserosd.h
 
 osddb.h: ${OSDDBSRC}/osddb.xg
 	${RXGEN} -A -x -h -o $@ ${OSDDBSRC}/osddb.xg
@@ -174,21 +174,21 @@ osddbuser.o: ${OSDDBSRC}/osddbuser.c osddb.h
 volint.cs.o: volint.cs.c ${INTINCLS}
 volint.ss.o: volint.ss.c ${INTINCLS}
 volint.xdr.o: volint.xdr.c ${INTINCLS}
-volosdint.cs.o: volosdint.cs.c ${INTINCLS}
-volosdint.ss.o: volosdint.ss.c ${INTINCLS}
-volosdint.xdr.o: volosdint.xdr.c ${INTINCLS}
+volserosd.cs.o: volserosd.cs.c ${INTINCLS}
+volserosd.ss.o: volserosd.ss.c ${INTINCLS}
+volserosd.xdr.o: volserosd.xdr.c ${INTINCLS}
 vsutils.o: vsutils.c ${VINCLS} ${RINCLS} ${INTINCLS}
 volmain.o: volmain.c ${VINCLS} ${RINCLS} ${INTINCLS} AFS_component_version_number.c
 volprocs.o: volprocs.c ${VINCLS} ${RINCLS} ${INTINCLS}
 dumpstuff.o: dumpstuff.c ${VINCLS} ${RINCLS} ${INTINCLS}
 voldump.o: voldump.c ${VINCLS} ${RINCLS}
 vos.o: vos.c ${VINCLS} ${RINCLS} ${INTINCLS} AFS_component_version_number.c
-vsprocs.o: vsprocs.c ${VINCLS} ${RINCLS} ${INTINCLS} volosdint.h
+vsprocs.o: vsprocs.c ${VINCLS} ${RINCLS} ${INTINCLS} volserosd.h
 physio.o: physio.c ${VINCLS}
 common.o: common.c ${VINCLS}
 lockprocs.o: lockprocs.c ${VINCLS} ${INTINCLS} ${RINCLS}
 vol_split.o: vol_split.c ${VINCLS} ${INTINCLS} ${RINCLS}
-volosdprocs.o: volosdprocs.c ${VINCLS} ${INTINCLS} ${RINCLS} volosdint.h
+volosdprocs.o: volosdprocs.c ${VINCLS} ${INTINCLS} ${RINCLS} volserosd.h
 
 #
 # Installation targets
@@ -260,7 +260,7 @@ dest: restorevol voldump volser.h volint.h vos libvolser.a
 clean:
 	$(RM) -f *.o *.a core volserver volint.ss.c volint.cs.c volint.h \
 	volint.xdr.c vos volser.h volerr.c AFS_component_version_number.c \
-	volosdint.h volosdint.ss.c volosdint.cs.c volosdint.xdr.c \
+	volserosd.h volserosd.ss.c volserosd.cs.c volserosd.xdr.c \
 	restorevol voldump osddb*
 
 check-splint::

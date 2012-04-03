@@ -10396,6 +10396,7 @@ void viced_fill_ops(struct viced_ops_v0 *viced)
     viced->VanillaUser = VanillaUser;
     viced->createAsyncTransaction = createAsyncTransaction;
     viced->evalclient = evalclient;
+    viced->extendAsyncTransaction = extendAsyncTransaction;
     viced->getAsyncVolptr = getAsyncVolptr;
     viced->setActive = setActive;
     viced->setInActive = setInActive;

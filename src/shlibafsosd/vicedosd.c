@@ -89,7 +89,7 @@
 #include <afs/audit.h>
 #include <afs/afsutil.h>
 #include <afs/dir.h>
-#include "afsosdint.h"
+#include "vicedosd.h"
 #include "afsosd.h"
 
 extern struct vol_data_v0 *voldata;
@@ -2384,8 +2384,8 @@ SRXAFS_GetPath1(struct rx_call *acall, AFSFid *Fid, struct async *a)
     return errorCode;
 }
 
-afs_int32
-SRXAFS_StartAsyncFetch2(struct rx_call *acall, AFSFid *Fid, struct RWparm *p,
+afs_int32 
+StartAsyncFetch2(struct rx_call *acall, AFSFid *Fid, struct RWparm *p,
                         struct async *a, afs_uint64 *transid, afs_uint32 *expires,
                         AFSFetchStatus *OutStatus, AFSCallBack *CallBack)
 {
@@ -2453,7 +2453,74 @@ bad:
 }
 
 afs_int32
-SRXAFS_EndAsyncFetch1(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
+SRXAFS_StartAsyncFetch2(struct rx_call *acall, AFSFid *Fid, struct RWparm *p,
+                        struct async *a, afs_uint64 *transid, afs_uint32 *expires,
+                        AFSFetchStatus *OutStatus, AFSCallBack *CallBack)
+{
+    return StartAsyncFetch2(acall, Fid, p, a, transid, expires, OutStatus, CallBack);
+}
+
+afs_int32
+SRXAFSOSD_StartAsyncFetch(struct rx_call *acall, AFSFid *Fid, struct RWparm *p,
+                        struct async *a, afs_uint64 *transid, afs_uint32 *expires,
+                        AFSFetchStatus *OutStatus, AFSCallBack *CallBack)
+{
+    Error errorCode;
+    SETTHREADACTIVE(acall, 8, Fid);
+    
+    errorCode = StartAsyncFetch2(acall, Fid, p, a, transid, expires, OutStatus,
+				 CallBack);
+    SETTHREADINACTIVE();
+    return errorCode;
+}
+
+afs_int32
+SRXAFSOSD_ExtendAsyncFetch(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
+                      afs_uint32 *expires)
+{
+    Error errorCode;
+    Vnode *targetptr = 0;       /* pointer to input fid */
+    Vnode *parentwhentargetnotdir = 0;  /* parent of Fid to get ACL */
+    Vnode tparentwhentargetnotdir;      /* parent vnode for GetStatus */
+    int fileCode = 0;           /* return code from vol package */
+    Volume *volptr = 0;         /* pointer to the volume header */
+    struct client *client = 0;  /* pointer to client structure */
+    afs_int32 rights, anyrights;        /* rights for this and any user */
+    struct rx_connection *tcon;
+    struct host *thost;
+
+    SETTHREADACTIVE(acall, 9, Fid);
+    ViceLog(1,("SRXAFSOSD_ExtendAsyncFetch for %u.%u.%u\n",
+                        Fid->Volume, Fid->Vnode, Fid->Unique));
+
+    /*
+     * With fastread ExtendAsyncFetch is also used to verify the requestor's
+     * right to read this file. Therefore we do here the whole volume and vnode
+     * stuff.
+     */
+    if ((errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
+        goto Bad_ExtendAsyncFetch;
+    if ((errorCode =
+         GetVolumePackage(acall, Fid, &volptr, &targetptr, DONTCHECK,
+                          &parentwhentargetnotdir, &client, READ_LOCK,
+                          &rights, &anyrights)))
+        goto Bad_ExtendAsyncFetch;
+    if ((errorCode =
+         Check_PermissionRights(targetptr, client, rights, CHK_FETCHDATA, 0)))
+        goto Bad_ExtendAsyncFetch;
+
+    errorCode  = extendAsyncTransaction(acall, Fid, transid, expires);
+
+Bad_ExtendAsyncFetch:
+    (void)PutVolumePackage(acall, parentwhentargetnotdir, targetptr,
+                           (Vnode *) 0, volptr, &client);
+    errorCode = CallPostamble(tcon, errorCode, thost);
+    SETTHREADINACTIVE();
+    return errorCode;
+}
+
+afs_int32
+EndAsyncFetch1(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
                         afs_uint64 bytes_sent, afs_uint32 osd)
 {
     afs_int32 errorCode = RXGEN_OPCODE;
@@ -2471,9 +2538,29 @@ SRXAFS_EndAsyncFetch1(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
 }
 
 afs_int32
-SRXAFS_StartAsyncStore2(struct rx_call *acall, AFSFid *Fid, struct RWparm *p,
-                        struct async *a, afs_uint64 *maxlength, afs_uint64 *transid,
-                        afs_uint32 *expires, AFSFetchStatus *OutStatus)
+SRXAFS_EndAsyncFetch1(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
+                        afs_uint64 bytes_sent, afs_uint32 osd)
+{
+    return EndAsyncFetch1(acall, Fid, transid, bytes_sent, osd);
+}
+
+afs_int32
+SRXAFSOSD_EndAsyncFetch(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
+                        afs_uint64 bytes_sent, afs_uint32 osd)
+{
+    Error errorCode;
+    SETTHREADACTIVE(acall, 10, Fid);
+
+    errorCode = EndAsyncFetch1(acall, Fid, transid, bytes_sent, osd);
+
+    SETTHREADINACTIVE();
+    return errorCode;
+}
+
+afs_int32
+StartAsyncStore2(struct rx_call *acall, AFSFid *Fid, struct RWparm *p,
+                 struct async *a, afs_uint64 *maxlength, afs_uint64 *transid,
+                 afs_uint32 *expires, AFSFetchStatus *OutStatus)
 {
     afs_int32 errorCode = RXGEN_OPCODE;
     afs_uint64 offset, length, filelength;
@@ -2529,6 +2616,42 @@ bad:
         ViceLog(3,("StartAsyncStore for %u.%u.%u type %d returns %d\n",
                         Fid->Volume, Fid->Vnode, Fid->Unique, a->type,
                         errorCode));
+    return errorCode;
+}
+
+afs_int32
+SRXAFS_StartAsyncStore2(struct rx_call *acall, AFSFid *Fid, struct RWparm *p,
+                        struct async *a, afs_uint64 *maxlength, afs_uint64 *transid,
+                        afs_uint32 *expires, AFSFetchStatus *OutStatus)
+{
+    return StartAsyncStore2(acall, Fid, p, a, maxlength, transid, expires,
+			    OutStatus);
+}
+
+afs_int32
+SRXAFSOSD_StartAsyncStore(struct rx_call *acall, AFSFid *Fid, struct RWparm *p,
+                        struct async *a, afs_uint64 *maxlength, afs_uint64 *transid,
+                        afs_uint32 *expires, AFSFetchStatus *OutStatus)
+{
+    Error errorCode;
+    SETTHREADACTIVE(acall, 11, Fid);
+    errorCode = StartAsyncStore2(acall, Fid, p, a, maxlength, transid, expires,
+			    OutStatus);
+    SETTHREADINACTIVE();
+    return errorCode;
+}
+
+afs_int32
+SRXAFSOSD_ExtendAsyncStore(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
+                           afs_uint32 *expires)
+{
+    Error errorCode;
+    SETTHREADACTIVE(acall, 12, Fid);
+    ViceLog(1,("SRXAFSOSD_ExtendAsyncStore for %u.%u.%u\n",
+                        Fid->Volume, Fid->Vnode, Fid->Unique));
+
+    errorCode = extendAsyncTransaction(acall, Fid, transid, expires);
+    SETTHREADINACTIVE();
     return errorCode;
 }
 
@@ -2682,6 +2805,25 @@ SRXAFS_EndAsyncStore1(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
     errorCode = EndAsyncStore1(acall, Fid, transid, filelength,
                                 bytes_rcvd, bytes_sent, osd, error, ae,
                                 InStatus, OutStatus);
+    return errorCode;
+}
+
+afs_int32
+SRXAFSOSD_EndAsyncStore(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
+                       afs_uint64 filelength,  afs_uint64 bytes_rcvd,
+                       afs_uint64 bytes_sent, afs_uint32 osd, afs_int32 error,
+                       struct asyncError *ae,
+                       struct AFSStoreStatus *InStatus,
+                       struct AFSFetchStatus *OutStatus)
+{
+    Error errorCode;
+    SETTHREADACTIVE(acall, 13, Fid);
+    ViceLog(1,("SRXAFSOSD_EndAsyncStore for %u.%u.%u filelength %llu\n",
+                        Fid->Volume, Fid->Vnode, Fid->Unique, filelength));
+    errorCode = EndAsyncStore1(acall, Fid, transid, filelength,
+                                bytes_rcvd, bytes_sent, osd, error, ae,
+                                InStatus, OutStatus);
+    SETTHREADINACTIVE();
     return errorCode;
 }
 

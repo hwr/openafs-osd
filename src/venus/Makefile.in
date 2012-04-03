@@ -17,7 +17,7 @@ KRB5LIBS = @KRB5_LIBS@
 RXOSDOBJS= ../rxosd/rxosd.cs.o ../rxosd/rxosd.xdr.o
 OSDDBOBJS= ../osddb/osddbuser.o ../osddb/osddb.cs.o ../osddb/osddb.xdr.o
 LIBAFSOSDOBJS= ../shlibafsosd/vol_osdutil.o ../shlibafsosd/vol_osd.xdr.o
-AFSOSDINTOBJS= ../shlibafsosd/afsosdint.cs.o ../shlibafsosd/afsosdint.xdr.o
+AFSOSDINTOBJS= ../shlibafsosd/vicedosd.cs.o ../shlibafsosd/vicedosd.xdr.o
 FSINTOBJS= ../fsint/afsint.cs.o ../fsint/afsint.xdr.o
 OSDOBJS= ${RXOSDOBJS} ${OSDDBOBJS} ${LIBAFSOSDOBJS} ${AFSOSDINTOBJS}
 
@@ -420,7 +420,7 @@ dest: kdump-build fs afsio livesys up fstrace cmdebug
 #
 
 clean:
-	$(RM) -f *.o *.a up fs afsio kdump-* kdump kdump64 core cmdebug AFS_component_version_number.c fstrace gcpags livesys dedebug
+	$(RM) -f *.o *.a up fs afsio kdump-* kdump kdump64 core cmdebug AFS_component_version_number.c fstrace gcpags livesys dedebug cacheout
 
 test:
 	cd test; $(MAKE)

@@ -466,12 +466,12 @@ Krxosd.xdr.o: $(TOP_OBJDIR)/src/rxosd/Krxosd.xdr.c
 	$(CRULE_NOOPT)
 rxosd.h: $(TOP_OBJDIR)/src/rxosd/rxosd.h
 	$(CP) -p $(TOP_OBJDIR)/src/rxosd/rxosd.h ./
-Kviceosd.cs.o: $(TOP_OBJDIR)/src/shlibafsosd/Kviceosd.cs.c afsosdint.h
+Kviceosd.cs.o: $(TOP_OBJDIR)/src/shlibafsosd/Kviceosd.cs.c vicedosd.h
 	$(CRULE_NOOPT)
-Kviceosd.xdr.o: $(TOP_OBJDIR)/src/shlibafsosd/Kviceosd.xdr.c afsosdint.h
+Kviceosd.xdr.o: $(TOP_OBJDIR)/src/shlibafsosd/Kviceosd.xdr.c vicedosd.h
 	$(CRULE_NOOPT)
-afsosdint.h: $(TOP_OBJDIR)/src/shlibafsosd/afsosdint.h
-	$(CP) -p $(TOP_OBJDIR)/src/shlibafsosd/afsosdint.h ./
+vicedosd.h: $(TOP_OBJDIR)/src/shlibafsosd/vicedosd.h
+	$(CP) -p $(TOP_OBJDIR)/src/shlibafsosd/vicedosd.h ./
 
 # Files which do not contain NFS translator code.
 CFLAGS-afs_call.o= -DAFS_NONFSTRANS

@@ -38,7 +38,7 @@
 #include "volser.h"
 #include "volint.h"
 #ifdef AFS_RXOSD_SUPPORT
-#include "volosdint.h"
+#include "volserosd.h"
 #endif
 #include "lockdata.h"
 #include <afs/com_err.h>

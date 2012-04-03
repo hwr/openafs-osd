@@ -6940,11 +6940,11 @@ bad:
 /*
  * Called in the volserver processing "vos objects ..."
  */
-#define EXTRACT_MD5  1 	/* originally defined in volosdint.xg */
-#define EXTRACT_SIZE 2 	/* originally defined in volosdint.xg */
-#define ONLY_HERE    4 	/* originally defined in volosdint.xg */
-#define POL_INDICES  8 	/* originally defined in volosdint.xg */
-#define ONLY_WIPED  16 	/* originally defined in volosdint.xg */
+#define EXTRACT_MD5  1 	/* originally defined in volserosd.xg */
+#define EXTRACT_SIZE 2 	/* originally defined in volserosd.xg */
+#define ONLY_HERE    4 	/* originally defined in volserosd.xg */
+#define POL_INDICES  8 	/* originally defined in volserosd.xg */
+#define ONLY_WIPED  16 	/* originally defined in volserosd.xg */
 
 afs_int32
 list_objects_on_osd(struct rx_call *call, Volume *vol,  afs_int32 flag, 
