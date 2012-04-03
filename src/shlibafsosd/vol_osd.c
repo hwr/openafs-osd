@@ -7407,34 +7407,33 @@ bad:
 
 int init_osdvol (char *version, char **afsosdVersion, struct osd_vol_ops_v0 **osdvol)
 {
-    static struct osd_vol_ops_v0 osd_vol_ops_v0 = {
-        NULL,
-        GetOsdEntryLength,
-	isOsdFile,
-        truncate_osd_file,
-        clone_pre_loop,
-        clone_metadata,
-        clone_undo_increments,
-        clone_free_metadata,
-        clone_clean_up,
-        purge_add_to_list,
-        purge_clean_up,
-	osd_5min_check,
-	actual_length,
-	osdRemove,
-	FindOsdBySize,
-	osd_create_simple,
-	GetMetadataByteString,
-	dump_osd_file,
-	osd_metadata_time,
-	AllocMetadataByteString,
-	FlushMetadataHandle,
-	restore_osd_file,
-	restore_correct_linkcounts,
-	restore_dec,
-	osd_split_objects,
-	setOsdPolicy
-    };
+    static struct osd_vol_ops_v0 osd_vol_ops_v0; 
+   
+    memset(&osd_vol_ops_v0, 0, sizeof(osd_vol_ops_v0));
+    osd_vol_ops_v0.op_salv_GetOsdEntryLength = GetOsdEntryLength;
+    osd_vol_ops_v0.op_isOsdFile = isOsdFile;
+    osd_vol_ops_v0.op_truncate_osd_file = truncate_osd_file;
+    osd_vol_ops_v0.op_clone_pre_loop = clone_pre_loop;
+    osd_vol_ops_v0.op_clone_metadata = clone_metadata;
+    osd_vol_ops_v0.op_clone_undo_increments = clone_undo_increments;
+    osd_vol_ops_v0.op_clone_free_metadata = clone_free_metadata;
+    osd_vol_ops_v0.op_clone_clean_up = clone_clean_up;
+    osd_vol_ops_v0.op_purge_add_to_list = purge_add_to_list;
+    osd_vol_ops_v0.op_osd_5min_check = osd_5min_check;
+    osd_vol_ops_v0.op_actual_length = actual_length;
+    osd_vol_ops_v0.op_remove = osdRemove;
+    osd_vol_ops_v0.op_FindOsdBySize = FindOsdBySize;
+    osd_vol_ops_v0.op_create_simple = osd_create_simple;
+    osd_vol_ops_v0.op_dump_getmetadata = GetMetadataByteString;
+    osd_vol_ops_v0.op_dump_osd_file = dump_osd_file;
+    osd_vol_ops_v0.op_dump_metadata_time = osd_metadata_time;
+    osd_vol_ops_v0.op_restore_allocmetadata = AllocMetadataByteString;
+    osd_vol_ops_v0.op_restore_flushmetadata = FlushMetadataHandle;
+    osd_vol_ops_v0.op_restore_osd_file = restore_osd_file;
+    osd_vol_ops_v0.op_restore_set_linkcounts = restore_correct_linkcounts;
+    osd_vol_ops_v0.op_restore_dec = restore_dec;
+    osd_vol_ops_v0.op_split_objects = osd_split_objects;
+    osd_vol_ops_v0.op_setOsdPolicy = setOsdPolicy;
 
     *osdvol = &osd_vol_ops_v0;
     openafsVersion = version;
@@ -7453,36 +7452,14 @@ int init_salv_afsosd (char *afsversion, char **afsosdVersion, void *inrock, void
     struct init_salv_inputs *input = (struct init_salv_inputs *)inrock;
     struct init_salv_outputs *output = (struct init_salv_outputs *)outrock;
     extern struct osd_vol_ops_v0 *osdvol;
-    static struct osd_vol_ops_v0 osd_vol_ops_v0 = {
-        SalvageOsdMetadata,
-        GetOsdEntryLength,
-	isOsdFile,
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-        NULL
-    };
+    static struct osd_vol_ops_v0 osd_vol_ops_v0;
 
     voldata = input->voldata;
+
+    memset(&osd_vol_ops_v0, 0, sizeof(osd_vol_ops_v0));
+    osd_vol_ops_v0.op_salv_OsdMetadata = SalvageOsdMetadata;
+    osd_vol_ops_v0.op_salv_GetOsdEntryLength = GetOsdEntryLength;
+    osd_vol_ops_v0.op_isOsdFile = isOsdFile;
 
     *(output->osdvol) = &osd_vol_ops_v0;
 

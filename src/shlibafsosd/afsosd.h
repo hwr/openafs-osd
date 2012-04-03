@@ -37,7 +37,7 @@ struct osd_vol_ops_v0 {
 			      struct VnodeClassInfo *vcp, int reclone,
 			      void **rock);
     int (*op_clone_metadata) (struct Volume *rwvp, struct Volume *clvp,
-			      afs_foff_t offset, void **rock,
+			      afs_foff_t offset, void *rock,
 		              struct VnodeClassInfo *vcp,
 			      struct VnodeDiskObject *rwvnode,
 			      struct VnodeDiskObject *clvnode);
