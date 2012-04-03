@@ -118,7 +118,7 @@
 #define NAMEI_UNIQSHIFT    32
 
 
-#include <afs/rxosd.h>
+#include "rxosd.h"
 #include "afsosd.h"
 #include "vol_osd_inline.h"
 #include <afs/osddbuser.h>

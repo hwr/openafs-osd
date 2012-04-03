@@ -269,7 +269,7 @@ sgiefs:
 		echo No efs stuff for ${SYS_NAME};; \
 	esac
 
-vol: cmd comerr dir afs sgiefs osddb rxosdsrc
+vol: cmd comerr dir afs sgiefs 
 	+${COMPILE_PART1} vol ${COMPILE_PART2}
 
 tsalvaged: vol libafsrpc libafsauthent cmd util
@@ -299,7 +299,7 @@ tvlserver: cmd comerr vol audit tubik libafsrpc libafsauthent tvlserver_depinsta
 	esac
 
 
-viced: cmd comerr vlserver tvlserver audit vol rxosd osddb
+viced: cmd comerr vlserver tvlserver audit vol rxosd
 	+${COMPILE_PART1} viced ${COMPILE_PART2}
 
 tviced: cmd comerr viced vlserver tvlserver libafsrpc libafsauthent
@@ -318,7 +318,7 @@ dviced: cmd comerr viced vlserver tvlserver libafsrpc libafsauthent
 		echo Not building DAFS viced for ${SYS_NAME} ;; \
 	esac
 
-volser: cmd comerr usd kauth vlserver audit osddb
+volser: cmd comerr usd kauth vlserver audit shlibafsosd
 	+${COMPILE_PART1} volser ${COMPILE_PART2}
 
 tvolser: project tviced usd libafsrpc libafsauthent volser
@@ -634,7 +634,7 @@ shlibafsauthent: ubik auth kauth shlibafsrpc
 
 # AFSOSD extensions in shared library libafsosd.so
 
-shlibafsosd: osddb vol volser fsint viced
+shlibafsosd: osddb vol fsint viced 
 	+case ${SYS_NAME} in \
 	alpha_dux*|sgi_*|sun4x_*|sunx86_*|rs_aix*|*linux*|hp_ux11*|ia64_hpux*|*_darwin_1*|*nbsd*|*obsd*|*fbsd*) \
 	${COMPILE_PART1} shlibafsosd ${COMPILE_PART2} ;; \

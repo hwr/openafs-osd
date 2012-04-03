@@ -404,7 +404,11 @@ extern int init_viced_afsosd(char *afsversion, char** afsosdVersion, void *inroc
 #endif
 
 #if defined(_RXGEN_VOLINT_) || defined(BUILD_SHLIBAFSOSD)
+#ifdef BUILD_SHLIBAFSOSD
+#include "volint.h"
+#else
 #include <afs/volint.h>
+#endif
 struct volser_ops_v0 {
     int (*DeleteTrans) (struct volser_trans *atrans, afs_int32 lock);
     int (*NewTrans) (afs_uint32 avol, afs_int32 apart);
@@ -495,11 +499,14 @@ extern int init_osdvol(char *version, char **afsosdVersion,
 extern int load_libafsosd( char *initroutine, void *Inputs, void *Outputs);
 #endif /* COMPILING_OSDDBUSER */
 #ifdef BUILD_SHLIBAFSOSD
+#ifdef BUILD_LIBAFSOSD_A
+#undef ViceLog
+#define ViceLog(level, str) fprintf(stderr, str);
+#else /* BUILD_LIBAFSOSD_A */
 extern afs_int32 libafsosd_init(void *rock, afs_int32 version);
 #undef ViceLog
-
 #define ViceLog(level, str)  do { if ((level) <= *(voldata->aLogLevel)) (FSLog str); } while (0)
-
-#endif
+#endif /* BUILD_LIBAFSOSD_A */
+#endif /* BUILD_SHLIBAFSOSD */
 #endif
 

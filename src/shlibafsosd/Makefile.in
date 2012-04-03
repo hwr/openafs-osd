@@ -102,7 +102,7 @@ DLIBOBJS = \
 AOSDDBOBJS =\
 	osddb.cs.o \
 	osddb.xdr.o \
-	osddbuser.o
+	a_osddbuser.o
 
 AVOLOBJS = \
 	vol_osdutil.o \
@@ -176,7 +176,7 @@ libafsosd.a: ${ALIBOBJS}
 vol_osd.h: ${srcdir}/vol_osd.xg
 	${RXGEN} -A -x -h -o $@ ${srcdir}/vol_osd.xg
 	
-vol_osd.o: ${srcdir}/vol_osd.c vol_osd.h
+vol_osd.o: ${srcdir}/vol_osd.c vol_osd.h rxosd.h
 	${CCRULE2}
 
 d_vol_osd.o: ${srcdir}/vol_osd.c
@@ -208,8 +208,11 @@ osddb.ss.c: ${OSDDB}/osddb.xg
 osddb.xdr.c: ${OSDDB}/osddb.xg
 	${RXGEN} -A -x -c -o $@ ${OSDDB}/osddb.xg
 
-osddbuser.o: ${OSDDB}/osddbuser.c
-	${CCRULE}
+osddbuser.o: ${OSDDB}/osddbuser.c volint.h
+	${CCRULE2}
+
+a_osddbuser.o: ${OSDDB}/osddbuser.c volint.h
+	${CCRULE2} -DBUILD_LIBAFSOSD_A -o a_osddbuser.o
 
 osddb.xdr.o: osddb.xdr.c osddb.h
 	${CCRULE2}
@@ -312,11 +315,17 @@ volserosd.cs.o: volserosd.cs.c volserosd.h volint.h
 volserosd.xdr.o: volserosd.xdr.c volserosd.h
 	${CCRULE2}
 
-volint.xdr.o: ../volser/volint.xdr.c volint.h
-	${CCRULE2}
+volser.h: ${VOLSER}/volser.p.h
+	${COMPILE_ET} -p ${VOLSER} volerr -h volser
 
-volser.h: ${VOLSEROBJ}/volser.h
-	${CP} ${VOLSEROBJ}/volser.h ./
+volint.h: ${VOLSER}/volint.xg
+	${RXGEN} -A -x -h -o $@ ${VOLSER}/volint.xg
+
+volint.xdr.c: ${VOLSER}/volint.xg
+	${RXGEN} -A -x -c -o $@ ${VOLSER}/volint.xg
+
+volint.xdr.o: volint.xdr.c volint.h
+	${CCRULE2}
 
 volserosd.o: ${srcdir}/volserosd.c volser.h volint.h
 	${CCRULE2}
@@ -333,4 +342,5 @@ osdmetadata: osdmetadata.o vol_osdutil.o
 clean:
 	$(RM) -f *.o libafsosd.a* libafsosd.sl* libafsosd.so* libdafsosd.so* \
 		 *.ss.c *.cs.c *.xdr.c *int.h osddb.h rxosd.h vol_osd.h \
-		volser.h libafsosd.a osdmetadata
+		volser.h libafsosd.a volserosd.h vicedosd.h osdmetadata \
+		*.gch volerr.c

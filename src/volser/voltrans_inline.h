@@ -11,7 +11,7 @@
 #ifndef _VOLTRANS_INLINE_H
 #define _VOLTRANS_INLINE_H
 
-#include <afs/volser.h>
+#include "volser.h"
 
 /**
  * Save the most recent call and procedure name for

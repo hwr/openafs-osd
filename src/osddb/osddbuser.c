@@ -54,6 +54,9 @@
 #define COMPILING_OSDDBUSER 1
 #include "../shlibafsosd/afsosd.h"
 #endif
+#ifdef BUILD_LIBAFSOSD_A
+#include "../shlibafsosd/afsosd.h"
+#endif
 
 #ifdef AFS_PTHREAD_ENV
 static int osddb_glock_inited = 0;
