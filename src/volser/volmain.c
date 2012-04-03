@@ -542,7 +542,9 @@ main(int argc, char **argv)
 	rx_SetMaxMTU(rxMaxMTU);
     }
     rx_GetIFInfo();
+#ifndef AFS_PTHREAD_ENV
     rx_SetRxDeadTime(420);
+#endif
     memset(busyFlags, 0, sizeof(busyFlags));
 
     SetupLogSignals();
