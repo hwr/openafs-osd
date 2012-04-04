@@ -5699,7 +5699,7 @@ afs_int32 osd_parms(struct cmd_syndesc *as, void *arock)
 
 	call = rx_NewCall(RXConn);
 	code = StartRXAFS_GetOsdMetadata(call, &Fid);
-	if (code = RXGEN_OPCODE) {
+	if (code == RXGEN_OPCODE) {
             RXConn = rx_NewConnection(hosts[0], htons(AFSCONF_FILEPORT), 2,
                 	cl->sc[cl->scIndex], cl->scIndex);
 	    call = rx_NewCall(RXConn);
