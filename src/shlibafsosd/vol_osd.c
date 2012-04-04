@@ -5357,6 +5357,50 @@ afs_int32 createFileWithPolicy(AFSFid *Fid,
     return tcode;
 }
 
+static afs_int32
+add_osdMetadataFile(struct Volume *vol)
+{
+    struct versionStamp stamp;
+    struct VolumeDiskHeader diskHeader;
+    Inode ino;
+    int fd, code;
+    namei_t name;
+    int owner, group, mode;
+
+    ino = IH_CREATE(NULL, V_device(vol), VPartitionPath(V_partition(vol)), 0,
+              V_id(vol), INODESPECIAL, VI_OSDMETADATA, V_parentId(vol));
+    IH_INIT(vol->osdMetadataHandle, V_device(vol), V_parentId(vol), ino);
+    namei_HandleToName(&name, vol->osdMetadataHandle);
+    fd = afs_open(name.n_path, O_CREAT | O_RDWR, 0);
+    if (fd == INVALID_FD)
+	return EIO;
+    stamp.version = OSDMETAVERSION;
+    stamp.magic = OSDMETAMAGIC;
+    if (write(fd, &stamp, sizeof(stamp)) != sizeof(stamp))
+	return EIO;
+#ifdef AFS_NAMEI_ENV
+    /* Do what SetOGM would have done */
+    owner = V_id(vol) & 0x7fff;
+    group = (V_id(vol) >> 15) & 0x7fff;
+    mode = (V_id(vol) >> 27) & 0x18;
+    mode |= 5;
+    fchown(fd, owner, group);
+    fchmod(fd, mode);
+#endif
+    OS_CLOSE(fd);
+    code = VReadVolumeDiskHeader(V_id(vol), vol->partition, &diskHeader);
+    if (code)
+	return code;
+#ifdef AFS_64BIT_IOPS_ENV
+    diskHeader.OsdMetadata_lo = (afs_int32) ino & 0xffffffff;
+    diskHeader.OsdMetadata_hi = (afs_int32) (ino >> 32) & 0xffffffff;
+#else
+    diskHeader.OsdMetadata_lo = ino;
+#endif
+    code = VWriteVolumeDiskHeader(&diskHeader, vol->partition);
+    return code;
+}
+
 /*
  * Called when setting osdPolicy
  *	make sure volume has osdMetadata special file when converting it to OSD
@@ -5375,47 +5419,7 @@ setOsdPolicy(struct Volume *vol, afs_int32 osdPolicy)
 
     if (!V_osdPolicy(vol) && osdPolicy) {	/* normal volume to OSD volume */
 	if (!vol->osdMetadataHandle) {
-	    struct versionStamp stamp;
-	    Inode ino;
-	    int fd;
-	    namei_t name;
-
-            ino = IH_CREATE(NULL, V_device(vol), VPartitionPath(V_partition(vol)), 0,
-              V_id(vol), INODESPECIAL, VI_OSDMETADATA, V_parentId(vol));
-	    IH_INIT(vol->osdMetadataHandle, V_device(vol), V_parentId(vol), ino);
-	    namei_HandleToName(&name, vol->osdMetadataHandle);
-	    fd = afs_open(name.n_path, O_CREAT | O_RDWR, 0);
-	    if (fd == INVALID_FD) {
-		code = EIO;
-		goto bad;
-	    }
-	    stamp.version = OSDMETAVERSION;
-	    stamp.magic = OSDMETAMAGIC;
-	    if (write(fd, &stamp, sizeof(stamp)) != sizeof(stamp)) {
-		goto bad;
-	    }
-#ifdef AFS_NAMEI_ENV
-	    {	/* Do what SetOGM would have done */
-		int owner, group, mode;
-		owner = V_id(vol) & 0x7fff;
-		group = (V_id(vol) >> 15) & 0x7fff;
-		mode = (V_id(vol) >> 27) & 0x18;
-		mode |= 5;
-	        fchown(fd, owner, group);
-		fchmod(fd, mode);
-	    }
-#endif
-	    OS_CLOSE(fd);
-	    code = VReadVolumeDiskHeader(V_id(vol), vol->partition, &diskHeader);
-	    if (code)
-		goto bad;
-#ifdef AFS_64BIT_IOPS_ENV
-	    diskHeader.OsdMetadata_lo = (afs_int32) ino & 0xffffffff;
-	    diskHeader.OsdMetadata_hi = (afs_int32) (ino >> 32) & 0xffffffff;
-#else
-	    diskHeader.OsdMetadata_lo = ino;
-#endif
-	    code = VWriteVolumeDiskHeader(&diskHeader, vol->partition);
+	    code = add_osdMetadataFile(vol);
 	    if (code)
 		goto bad;
 	}
@@ -5838,6 +5842,15 @@ clone_pre_loop(Volume *rwvp, Volume *clvp, struct VnodeDiskObject *rwvnode,
 		    return EIO;
 		}
 	    }
+	}
+	/* 
+ 	 * First check if we have any objects whether the clone volume has
+	 * already an osdMetadata file. If not, create it.
+	 */
+	if (rwlist.osdobjectList_len && !clvp->osdMetadataHandle) {
+    	    code = add_osdMetadataFile(clvp);
+	    if (code)
+		return code;
 	}
 	/*
 	 * objects existing in both volumes don't require any action and
