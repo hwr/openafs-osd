@@ -1,105 +1,96 @@
 /*
  *  Read last byte of a file in order to bring it online
  */
+
+/* the following includes copied from volume.c */
+
 #include <afsconfig.h>
 #include <afs/param.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <errno.h>
-#ifdef  AFS_SGI_ENV
-#undef SHARED                   /* XXX */
+
+
+#include <rx/xdr.h>
+#include <afs/afsint.h>
+#include <ctype.h>
+#include <signal.h>
+#ifndef AFS_NT40_ENV
+#include <sys/param.h>
+#if !defined(AFS_SGI_ENV)
+#ifdef  AFS_OSF_ENV
+#include <ufs/fs.h>
+#else /* AFS_OSF_ENV */
+#ifdef AFS_VFSINCL_ENV
+#define VFS
+#ifdef  AFS_SUN5_ENV
+#include <sys/fs/ufs_fs.h>
+#else
+#if defined(AFS_DARWIN_ENV) || defined(AFS_XBSD_ENV)
+#include <ufs/ufs/dinode.h>
+#include <ufs/ffs/fs.h>
+#else
+#include <ufs/fs.h>
 #endif
+#endif
+#else /* AFS_VFSINCL_ENV */
+#if !defined(AFS_AIX_ENV) && !defined(AFS_LINUX20_ENV) && !defined(AFS_XBSD_ENV) && !defined(AFS_DARWIN_ENV)
+#include <sys/fs.h>
+#endif
+#endif /* AFS_VFSINCL_ENV */
+#endif /* AFS_OSF_ENV */
+#endif /* AFS_SGI_ENV */
+#endif /* AFS_NT40_ENV */
+#include <errno.h>
+#include <sys/stat.h>
+#include <stdio.h>
 #ifdef AFS_NT40_ENV
 #include <fcntl.h>
 #else
-#include <sys/param.h>
-#ifdef AFS_DARWIN_ENV
-#include <sys/mount.h>
-#endif
 #include <sys/file.h>
-#include <netinet/in.h>
-#include <netdb.h>
-#include <sys/ioctl.h>
-#include <sys/socket.h>
-#include <sys/wait.h>
-#include <signal.h>
+#endif
 #include <dirent.h>
-#include <sys/time.h>
-#include <utime.h>
-#if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
-#include <sys/statvfs.h>
-#endif /* AFS_HAVE_STATVFS */
-#ifdef AFS_SUN5_ENV
-#include <unistd.h>
+#ifdef  AFS_AIX_ENV
+#include <sys/vfs.h>
+#include <fcntl.h>
+#else
+#ifdef  AFS_HPUX_ENV
+#include <fcntl.h>
+#include <mntent.h>
+#else
+#if     defined(AFS_SUN_ENV) || defined(AFS_SUN5_ENV)
+#ifdef  AFS_SUN5_ENV
 #include <sys/mnttab.h>
 #include <sys/mntent.h>
 #else
-#ifdef AFS_LINUX22_ENV
 #include <mntent.h>
-#include <sys/statfs.h>
+#endif
 #else
-#include <fstab.h>
-#endif
-#endif
+#ifndef AFS_NT40_ENV
+#if defined(AFS_SGI_ENV)
+#include <fcntl.h>
+#include <mntent.h>
 
-#ifdef HAVE_STRING_H
-#include <string.h>
 #else
-#ifdef HAVE_STRINGS_H
-#include <strings.h>
-#endif
-#endif
-
 #ifndef AFS_LINUX20_ENV
-#include <net/if.h>
-#include <netinet/if_ether.h>
+#include <fstab.h>              /* Need to find in libc 5, present in libc 6 */
 #endif
 #endif
-#ifdef AFS_HPUX_ENV
-/* included early because of name conflict on IOPEN */
-#include <sys/inode.h>
-#ifdef IOPEN
-#undef IOPEN
+#endif /* AFS_SGI_ENV */
 #endif
 #endif /* AFS_HPUX_ENV */
-#if ! defined(AFS_SGI_ENV) && ! defined(AFS_AIX32_ENV) && ! defined(AFS_NT40_ENV) && ! defined(AFS_LINUX20_ENV) && !defined(AFS_DARWIN_ENV) && !defined(AFS_XBSD_ENV)
-#include <sys/map.h>
 #endif
-#if !defined(AFS_NT40_ENV)
-#include <unistd.h>
-#endif
-#if !defined(AFS_SGI_ENV) && !defined(AFS_NT40_ENV)
-#ifdef  AFS_AIX_ENV
-#include <sys/statfs.h>
-#include <sys/lockf.h>
+#ifndef AFS_NT40_ENV
+#include <netdb.h>
+#include <netinet/in.h>
+#include <sys/wait.h>
+#include <setjmp.h>
+#ifndef ITIMER_REAL
+#include <sys/time.h>
+#endif /* ITIMER_REAL */
+#endif /* AFS_NT40_ENV */
+#if defined(AFS_SUN5_ENV) || defined(AFS_NT40_ENV) || defined(AFS_LINUX20_ENV)
+#include <string.h>
 #else
-#if !defined(AFS_SUN5_ENV) && !defined(AFS_LINUX20_ENV) && !defined(AFS_DARWIN_ENV) && !defined(AFS_XBSD_ENV)
-#include <sys/dk.h>
+#include <strings.h>
 #endif
-#endif
-#endif
-
-/*@+fcnmacros +macrofcndecl@*/
-#ifdef O_LARGEFILE
-#ifdef S_SPLINT_S
-extern off64_t afs_lseek(int FD, off64_t O, int F);
-#endif /*S_SPLINT_S */
-#define afs_lseek(FD, O, F)     lseek64(FD, (off64_t)(O), F)
-#define afs_stat                stat64
-#define afs_fstat               fstat64
-#define afs_open                open64
-#define afs_fopen               fopen64
-#else /* !O_LARGEFILE */
-#ifdef S_SPLINT_S
-extern off_t afs_lseek(int FD, off_t O, int F);
-#endif /*S_SPLINT_S */
-#define afs_lseek(FD, O, F)     lseek(FD, (off_t)(O), F)
-#define afs_stat                stat
-#define afs_fstat               fstat
-#define afs_open                open
-#define afs_fopen               fopen
-#endif /* !O_LARGEFILE */
-/*@=fcnmacros =macrofcndecl@*/
 
 #include <afs/stds.h>
 #include <afs/afs_assert.h>
@@ -151,7 +142,7 @@ char **argv;
     char filename[256];
     char buffer;
     char *whoami;
-    struct afs_stat status;
+    struct stat64 status;
     int fd, verbose = 1;
     struct timeval starttime, endtime;
     struct timezone timezone;
