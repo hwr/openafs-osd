@@ -446,7 +446,8 @@ HandleUnknownTag(struct iod *iodp, int tag, afs_int32 section,
 }
 
 static int
-ReadVolumeHeader(struct iod *iodp, VolumeDiskData * vol, int *clearOsdPolicy)
+ReadVolumeHeader(struct iod *iodp, VolumeDiskData * vol, Volume *vp,
+		 int *clearOsdPolicy)
 {
     int tag;
     afs_uint32 trash;
@@ -581,11 +582,12 @@ ReadVolumeHeader(struct iod *iodp, VolumeDiskData * vol, int *clearOsdPolicy)
 		afs_int32 newOsdPolicy, code;
 	        if (!ReadInt32(iodp, &newOsdPolicy))
 		    return VOLSERREAD_DUMPERROR;
-		if (!vol->osdPolicy && newOsdPolicy) {
-		    code = (osdvol->op_setOsdPolicy)(vol, newOsdPolicy);
+		if (!V_osdPolicy(vp) && newOsdPolicy) {
+		    code = (osdvol->op_setOsdPolicy)(vp, newOsdPolicy);
 		    if (code)
 		        return VOLSERREAD_DUMPERROR;
-		} else if (vol->osdPolicy && !newOsdPolicy) {
+		    vol->osdPolicy =newOsdPolicy;
+		} else if (V_osdPolicy(vp) && !newOsdPolicy) {
 		    /*
 		     * There could still be osd files which may be removed
 		     * while the vnodes are processed. So we can convert the
@@ -1236,7 +1238,6 @@ DumpVnode(struct iod *iodp, struct VnodeDiskObject *v, Volume *vp,
 	        Log("1 Volser: DumpVnode: dump: Couldn't dump osd metadata for vnode %u (volume %i); not dumped\n", vnodeNumber, V_id(vp));
 	        return VOLSERREAD_DUMPERROR;
 	    }
-	    done = 1;
         }
         if (VNDISK_GET_INO(v) && (flag & FORCEDUMP)) {
 	    /* 
@@ -1264,7 +1265,7 @@ DumpVnode(struct iod *iodp, struct VnodeDiskObject *v, Volume *vp,
 	            return VOLSERDUMPERROR;
 	        done = 1;
 	    }
-	}
+	} 
     } 
     if (!done) {
         if (VNDISK_GET_INO(v)) {
@@ -1451,7 +1452,7 @@ RestoreVolume(struct rx_call *call, Volume * avp, int incremental,
 	Log("1 Volser: RestoreVolume: Volume header missing from dump; not restored\n");
 	return VOLSERREAD_DUMPERROR;
     }
-    if (ReadVolumeHeader(iodp, &vol, &clearOsdPolicy) == VOLSERREAD_DUMPERROR)
+    if (ReadVolumeHeader(iodp, &vol, vp, &clearOsdPolicy) == VOLSERREAD_DUMPERROR)
 	return VOLSERREAD_DUMPERROR;
     
     if (!delo)
@@ -1484,7 +1485,7 @@ RestoreVolume(struct rx_call *call, Volume * avp, int incremental,
 	tag = iod_getc(iodp);
 	if (tag != D_VOLUMEHEADER)
 	    break;
-	if (ReadVolumeHeader(iodp, &vol, &clearOsdPolicy) == VOLSERREAD_DUMPERROR) {
+	if (ReadVolumeHeader(iodp, &vol, vp, &clearOsdPolicy) == VOLSERREAD_DUMPERROR) {
 	    error = VOLSERREAD_DUMPERROR;
 	    goto out;
 	}

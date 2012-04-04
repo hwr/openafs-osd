@@ -7432,6 +7432,7 @@ int init_osdvol (char *version, char **afsosdVersion, struct osd_vol_ops_v0 **os
     osd_vol_ops_v0.op_clone_free_metadata = clone_free_metadata;
     osd_vol_ops_v0.op_clone_clean_up = clone_clean_up;
     osd_vol_ops_v0.op_purge_add_to_list = purge_add_to_list;
+    osd_vol_ops_v0.op_purge_clean_up = purge_clean_up;
     osd_vol_ops_v0.op_osd_5min_check = osd_5min_check;
     osd_vol_ops_v0.op_actual_length = actual_length;
     osd_vol_ops_v0.op_remove = osdRemove;
