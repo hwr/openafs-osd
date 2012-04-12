@@ -193,14 +193,14 @@ rxosd.h: rxosd.xg
 	${RXGEN} -x -h -o $@ ${srcdir}/rxosd.xg
 
 rxosd: rxosd.h ${objects} ${LIBS}
-	${CC} ${LDFLAGS} -ldl -o rxosd ${objects} ${LIBS} ${MT_LIBS} ${XLIBS}
+	${CC} ${LDFLAGS} -o rxosd ${objects} ${LIBS} ${MT_LIBS} ${XLIBS} -ldl
 
 readabyte.o: readabyte.c rxosd_hsm.h
 	${CCRULE2}
 
 readabyte: readabyte.o libafshsm.o
-	${CC} ${LDFLAGS} -ldl -o readabyte readabyte.o libafshsm.o \
-			${LIBS} ${MT_LIBS}
+	${CC} ${LDFLAGS} -o readabyte readabyte.o libafshsm.o \
+			${LIBS} ${MT_LIBS} -ldl
 
 ${DEST}/root.server/usr/afs/bin/rxosd: rxosd  
 	${INSTALL} $? $@
