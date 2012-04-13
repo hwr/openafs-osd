@@ -498,5 +498,15 @@ extern int init_osdvol(char *version, char **afsosdVersion,
 		       struct osd_vol_ops_v0 **osdvol);
 extern int load_libafsosd( char *initroutine, void *Inputs, void *Outputs);
 #endif /* COMPILING_OSDDBUSER */
+#ifdef BUILD_SHLIBAFSOSD
+#ifdef BUILD_LIBAFSOSD_A
+#undef ViceLog
+#define ViceLog(level, str) do { (FSLog str); } while(0)
+#else /* BUILD_LIBAFSOSD_A */
+extern afs_int32 libafsosd_init(void *rock, afs_int32 version);
+#undef ViceLog
+#define ViceLog(level, str)  do { if ((level) <= *(voldata->aLogLevel)) (FSLog str); } while (0)
+#endif /* BUILD_LIBAFSOSD_A */
+#endif /* BUILD_SHLIBAFSOSD */
 #endif
 
