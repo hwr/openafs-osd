@@ -4964,13 +4964,9 @@ DECL_PIOCTL(PFsCmd)
 	    }
 	    tc = afs_Conn(&tvc->f.fid, areq, SHARED_LOCK, &rxconn);
 	    if (tc) {
-		struct rx_call *tcall;
-		afs_int32 code1 = 0;
 		RX_AFS_GUNLOCK();
 		code = RXAFS_FsCmd(rxconn, Fid, Inputs, Outputs);
 		RX_AFS_GLOCK();
-		if (!code && code1)
-		    code = code1;
 		if (!code && Inputs->command == CMD_REPLACE_OSD)
                     tvc->f.states &= ~CStatd;
 	    } else
