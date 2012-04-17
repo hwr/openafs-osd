@@ -1903,6 +1903,10 @@ rxi_ReceiveDebugPacket(struct rx_packet *ap, osi_socket asocket,
 			tconn.flags = tc->flags;
 			tconn.type = tc->type;
 			tconn.securityIndex = tc->securityIndex;
+			if (tc->type == RX_SERVER_CONNECTION)
+			    tconn.sparel[0] = tc->service->serviceId;
+			else
+			    tconn.sparel[0] = tc->serviceId;
 			if (tc->securityObject) {
 			    RXS_GetStats(tc->securityObject, tc,
 					 &tconn.secStats);
