@@ -658,7 +658,7 @@ rxkad_EncryptDecrypt(struct rx_connection * conn, afs_uint32 * buf, int len, int
         struct rx_securityClass *obj = rx_SecurityObjectOf(conn);
         struct rxkad_cprivate * priv = obj->privateData;
         memcpy(ivec, priv->ivec, sizeof(ivec));
-        fc_cbc_encrypt(buf, buf, len, &priv->keysched, ivec, ENCRYPT);
+        fc_cbc_encrypt(buf, buf, len, priv->keysched, ivec, ENCRYPT);
     } else {                            /* rxosd */
         struct rxkad_sconn *sconn;
         sconn = (struct rxkad_sconn *)conn->securityData;
@@ -667,7 +667,7 @@ rxkad_EncryptDecrypt(struct rx_connection * conn, afs_uint32 * buf, int len, int
             return RXKADEXPIRED;
         }
         memcpy(ivec, sconn->ivec, sizeof(ivec));
-        fc_cbc_encrypt(buf, buf, len, &sconn->keysched, ivec, DECRYPT);
+        fc_cbc_encrypt(buf, buf, len, sconn->keysched, ivec, DECRYPT);
    }
    return 0;
 }
