@@ -979,7 +979,7 @@ rxosd_storeWrite(void *r, char *abuf, afs_uint32 length, afs_uint32 *byteswritte
 	        code = EIO;
 	}
     }
-    if (code) {
+    if (code && v->fs_conn) {
 	/* make sure it's not a decryption problem after rxosd restart */
         RX_AFS_GUNLOCK();
 	RXAFS_CheckOSDconns(v->fs_conn->id);
@@ -1707,7 +1707,8 @@ bad:
     if (code) {
         afs_warn("rxosd start_fetch: leaving with code %d\n", code);
         /* make sure it's not a decryption problem after rxosd restart */
-	RXAFS_CheckOSDconns(v->fs_conn->id);
+	if (v->fs_conn)
+	    RXAFS_CheckOSDconns(v->fs_conn->id);
 	for (l=0; l<v->stripes; l++) {
 	    if (v->call[l]) {
 		struct rx_connection *rxconn = rx_ConnectionOf(v->call[l]);
@@ -1818,7 +1819,7 @@ rxosd_fetchRead(void *r, afs_uint32 length, afs_uint32 *bytesread)
                    ICL_TYPE_STRING, __FILE__,
                    ICL_TYPE_INT32, __LINE__, ICL_TYPE_INT32,code);
     
-    if (code) {
+    if (code && v->fs_conn) {
 	/* make sure it's not a decryption problem after rxosd restart */
         RX_AFS_GUNLOCK();
 	RXAFS_CheckOSDconns(v->fs_conn->id);
@@ -2305,7 +2306,8 @@ rxosd_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
 bad:
     if (code) {
         /* make sure it's not a decryption problem after rxosd restart */
-	RXAFS_CheckOSDconns(rxconn);
+	if (v->fs_conn)
+	    RXAFS_CheckOSDconns(rxconn);
 	rxosd_Destroy((void**)&v, code);
 	return code;
     }
@@ -2385,50 +2387,52 @@ rxosd_bringOnline(struct vcache *avc, struct vrequest *areq, afs_int32 dontWait)
         osi_Panic("rxosd_bringOnline: ALLOC_RXOSD returned NULL\n");
     memset(v, 0, sizeof(struct rxosd_Variables));
     while (avc->protocol & RX_OSD_NOT_ONLINE) {
-        tc = afs_ConnSrv(&avc->f.fid, areq, 2 /* RXAFSOSD service id*/,
+        tc = afs_ConnSrv(&avc->f.fid, areq, VICEDOSD_SERVICE,
 		         SHARED_LOCK, &rxconn);
-        if (!tc) 
-	    return -1;
-        RX_AFS_GUNLOCK();
-	code = RXAFSOSD_BringOnline(rxconn, (struct AFSFid *) &avc->f.fid.Fid,
+        if (tc) {
+            RX_AFS_GUNLOCK();
+	    code = RXAFSOSD_BringOnline(rxconn, (struct AFSFid *) &avc->f.fid.Fid,
 				&v->OutStatus, &v->CallBack);
-	RX_AFS_GLOCK();
-	if (!code || code == OSD_WAIT_FOR_TAPE) {
-	    if (v->CallBack.ExpirationTime) {
-    	        struct volume *tvp;
-		afs_int32 now = osi_Time();
-                tvp = afs_GetVolume(&avc->f.fid, areq, READ_LOCK);
-	        ObtainWriteLock(&afs_xcbhash, 1003);
-		ObtainWriteLock(&avc->lock, 1004);
-	        avc->callback = tc->srvr->server;
-	        avc->cbExpires = v->CallBack.ExpirationTime + now;
-	        afs_QueueCallback(avc, CBHash(v->CallBack.ExpirationTime), tvp);
-	        if (code == OSD_WAIT_FOR_TAPE && !dontWait)
-		    avc->protocol |= RX_OSD_TAPE_FETCH;
-	        ReleaseWriteLock(&avc->lock);
-	        ReleaseWriteLock(&afs_xcbhash);
-	        afs_PutVolume(tvp, READ_LOCK);
-	        if (!code) {
-		    afs_ProcessFS(avc, &v->OutStatus, areq);
+	    RX_AFS_GLOCK();
+	    if (!code || code == OSD_WAIT_FOR_TAPE) {
+	        if (v->CallBack.ExpirationTime) {
+    	            struct volume *tvp;
+		    afs_int32 now = osi_Time();
+                    tvp = afs_GetVolume(&avc->f.fid, areq, READ_LOCK);
+	            ObtainWriteLock(&afs_xcbhash, 1003);
+		    ObtainWriteLock(&avc->lock, 1004);
+	            avc->callback = tc->srvr->server;
+	            avc->cbExpires = v->CallBack.ExpirationTime + now;
+	            afs_QueueCallback(avc, CBHash(v->CallBack.ExpirationTime), tvp);
+	            if (code == OSD_WAIT_FOR_TAPE && !dontWait)
+		        avc->protocol |= RX_OSD_TAPE_FETCH;
+	            ReleaseWriteLock(&avc->lock);
+	            ReleaseWriteLock(&afs_xcbhash);
+	            afs_PutVolume(tvp, READ_LOCK);
+	            if (!code) {
+		        afs_ProcessFS(avc, &v->OutStatus, areq);
+		        break;
+	            }
+	            if (code == OSD_WAIT_FOR_TAPE) {
+		        if (dontWait)
+			    break;
+	                afs_osi_Sleep(&avc->protocol);
+		        continue;
+	            }
+	        }
+	        if (code == OSD_WAIT_FOR_TAPE && dontWait)
 		    break;
-	        }
-	        if (code == OSD_WAIT_FOR_TAPE) {
-		    if (dontWait)
-			break;
-	            afs_osi_Sleep(&avc->protocol);
-		    continue;
-	        }
 	    }
-	    if (code == OSD_WAIT_FOR_TAPE && dontWait)
-		break;
-	}
+	} else
+	    code = RXGEN_OPCODE;    /* server doesn't support RXAFSOSD-calls */
 #ifdef NEW_OSD_FILE
 	v->a.type = 1;
 #else
 	v->a.type = 2;
 #endif
 	if (code == RXGEN_OPCODE) {
-    	    afs_PutConn(tc, rxconn, SHARED_LOCK);
+	    if (tc)
+    	        afs_PutConn(tc, rxconn, SHARED_LOCK);
             tc = afs_Conn(&avc->f.fid, areq, SHARED_LOCK, &rxconn);
             if (!tc) 
 	        return -1;

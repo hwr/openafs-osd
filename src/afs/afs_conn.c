@@ -247,6 +247,11 @@ afs_ConnBySAsrv(struct srvAddr *sap, unsigned short aport, afs_int32 service,
 	return NULL;
     }
 
+    /* Check for capability VICED_CAPABILITY_LIBAFSOSD if necessary */
+    if (aport == AFS_FSPORT && service != 1 
+      && !(sap->server->capabilities & VICED_CAPABILITY_LIBAFSOSD))
+	return NULL; 
+
     ObtainSharedLock(&afs_xconn, 15);
     /* Get conn by port and user. */
     for (tc = sap->conns; tc; tc = tc->next) {

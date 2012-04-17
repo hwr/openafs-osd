@@ -7744,6 +7744,8 @@ SRXAFS_GetCapabilities(struct rx_call * acall, Capabilities * capabilities)
 #endif
     if (saneacls)
         dataBuffP[0] |= VICED_CAPABILITY_SANEACLS;
+    if (osdviced)
+        dataBuffP[0] |= VICED_CAPABILITY_LIBAFSOSD;
 
     capabilities->Capabilities_len = dataBytes / sizeof(afs_int32);
     capabilities->Capabilities_val = dataBuffP;

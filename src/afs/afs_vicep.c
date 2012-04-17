@@ -8,25 +8,12 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-#ifdef AFS_LINUX26_ENV
-#if !defined(UKERNEL)
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
 
 #include "afs/sysincludes.h"	/* Standard vendor system headers */
-#ifndef AFS_LINUX22_ENV
-#include "rpc/types.h"
-#endif
-#ifdef AFS_LINUX26_ENV
 #include <linux/fs.h>
 #include <linux/buffer_head.h>
 #include <linux/module.h>
-#endif /* AFS_LINUX26_ENV */
-#ifdef	AFS_ALPHA_ENV
-#undef kmem_alloc
-#undef kmem_free
-#undef mem_alloc
-#undef mem_free
-#undef register
-#endif /* AFS_ALPHA_ENV */
 #include "afs/afsincludes.h"	/* Afs-based standard headers */
 #include "afs/afs_stats.h"	/* statistics */
 #include "afs/afs_cbqueue.h"	
@@ -38,13 +25,9 @@
 #include "afs_bypasscache.h"
 #endif
 
-#ifdef AFS_LINUX26_ENV
 #ifdef STRUCT_TASK_STRUCT_HAS_CRED
 extern struct cred *cache_creds;
 #endif
-#endif
-/* #define OLD_LUSTRE_HACK	1 */
-#undef OLD_LUSTRE_HACK
 
 afs_int32 lustre_hack = 0 ;
 extern int cacheDiskType;
@@ -137,12 +120,10 @@ struct vpac_Variables {
 void
 vpac_fsync(struct vcache *avc)
 {
-#if defined(AFS_LINUX26_ENV)
     if (avc->vpacRock) {
 	struct vpacRock *r = (struct vpacRock *)avc->vpacRock;
 	r->fsync = 1;
     }
-#endif
 }
 
 static char c_xlate[80] =
@@ -345,9 +326,6 @@ vpac_storeMemRead(void *r, struct osi_file *tfile, afs_uint32 offset,
 afs_int32
 vpac_storeWrite(void *r, char *abuf, afs_uint32 tlen, afs_uint32 *byteswritten)
 {
-#if !defined(AFS_LINUX26_ENV)
-    return EIO;
-#else
     afs_int32 code;
     mm_segment_t fs;
     unsigned long savelim = current->TASK_STRUCT_RLIM[RLIMIT_FSIZE].rlim_cur;
@@ -397,7 +375,6 @@ vpac_storeWrite(void *r, char *abuf, afs_uint32 tlen, afs_uint32 *byteswritten)
     v->bytes_rcvd += tlen;
     ReleaseWriteLock(&v->vpacRock->lock);
     return 0;
-#endif
 }
 
 afs_int32
@@ -456,9 +433,6 @@ vpac_storeStatus(void *rock)
 afs_int32
 vpac_storeClose(void *rock, struct AFSFetchStatus *OutStatus, int *doProcessFS)
 {
-#if !defined(AFS_LINUX26_ENV)
-    return EIO;
-#else
     struct vpac_Variables *v = (struct vpac_Variables *)rock;
     struct vpacRock *r = (struct vpacRock *)v->vpacRock;
     afs_int32 code = 0;
@@ -483,7 +457,6 @@ vpac_storeClose(void *rock, struct AFSFetchStatus *OutStatus, int *doProcessFS)
 
     code = EndStore(v, doProcessFS);
     return code;
-#endif
 }
 
 afs_int32
@@ -507,12 +480,6 @@ vpacDestroy(void **rock, afs_int32 error)
 	osi_FreeLargeSpace(v->tbuffer);
     if (v->vpacRock) {
 	if (v->vpacRock->refCnt > 0) {
-/*         printf("vpac_destroy decr'ing refCnt for %u.%u.%u from %d to %d\n",
-		v->avc->f.fid.Fid.Volume,
-		v->avc->f.fid.Fid.Vnode,
-		v->avc->f.fid.Fid.Unique,
-		v->vpacRock->refCnt,
-		v->vpacRock->refCnt -1); */
 	    v->vpacRock->refCnt--;
 	}
 	if (v->vpacRock->closeMe && v->vpacRock->refCnt == 0) {
@@ -526,47 +493,18 @@ vpacDestroy(void **rock, afs_int32 error)
 
 static
 struct storeOps vpac_storeUfsOps = {
-#if (defined(AFS_SGI_ENV) && !defined(__c99))
-    vpac_storeUfsPrepare,
-    vpac_storeUfsRead,
-    vpac_storeWrite,
-    vpac_storeStatus,
-    vpac_storePadd,
-    vpac_storeClose,
-    vpacDestroy,
-    afs_GenericStoreProc
-#else
     .prepare =  vpac_storeUfsPrepare,
     .read =     vpac_storeUfsRead,
-#ifdef AFS_LINUX26_ENV
     .write =    vpac_storeWriteUnlocked,
-#else
-    .write =    vpac_storeWrite,
-#endif
     .status =   vpac_storeStatus,
     .padd =     vpac_storePadd,
     .close =    vpac_storeClose,
     .destroy =  vpacDestroy,
-#ifdef AFS_LINUX26_ENV
     .storeproc = afs_linux_storeproc
-#else
-    .storeproc = afs_GenericStoreProc
-#endif
-#endif
 };
 
 static
 struct storeOps vpac_storeMemOps = {
-#if (defined(AFS_SGI_ENV) && !defined(__c99))
-    vpac_storeMemPrepare,
-    vpac_storeMemRead,
-    vpac_storeMemWrite,
-    vpac_storeStatus,
-    vpac_storePadd,
-    vpac_storeClose,
-    vpacDestroy,
-    afs_GenericStoreProc
-#else
     .prepare =  vpac_storeMemPrepare,
     .read =     vpac_storeMemRead,
     .write =    vpac_storeMemWrite,
@@ -575,7 +513,6 @@ struct storeOps vpac_storeMemOps = {
     .close =    vpac_storeClose,
     .destroy =  vpacDestroy,
     .storeproc = afs_GenericStoreProc
-#endif
 };
 
 static afs_int32
@@ -587,9 +524,6 @@ common_storeInit(struct vcache *avc, struct afs_conn *tc,
 		afs_uint64 transid, afs_uint32 expires, afs_uint64 maxlength,
 		afs_uint32 osd)
 {
-#if !defined(AFS_LINUX26_ENV)
-    return EIO;
-#else
     struct vpac_Variables *v;
     struct vpacRock *r;
     struct RWparm p;
@@ -702,18 +636,11 @@ common_storeInit(struct vcache *avc, struct afs_conn *tc,
 	*ops = &vpac_storeUfsOps;
     } else 
 	*ops = &vpac_storeMemOps;
-/*      printf("vpac_storeInit incr'ing refCnt for %u.%u.%u from %d to %d\n",
-		v->avc->f.fid.Fid.Volume,
-		v->avc->f.fid.Fid.Vnode,
-		v->avc->f.fid.Fid.Unique,
-		r->refCnt,
-		r->refCnt +1); */
     r->refCnt++;
     v->vpacRock = r;
     v->ops = (void *) *ops;
     *rock = (void *)v;
     return 0;
-#endif
 }
 
 afs_int32
@@ -753,9 +680,6 @@ fake_vpac_storeInit(struct vcache *avc, struct afs_conn *tc,
 afs_int32
 vpac_fetchRead(void *r, afs_uint32 tlen, afs_uint32 *bytesread)
 {
-#if !defined(AFS_LINUX26_ENV)
-    return EIO;
-#else
     afs_int32 code;
     struct vpac_Variables *v = (struct vpac_Variables *)r;
     mm_segment_t fs;
@@ -782,14 +706,6 @@ vpac_fetchRead(void *r, afs_uint32 tlen, afs_uint32 *bytesread)
 	}
     } else
         v->fp->f_pos = v->base;
-#if 0
-    if (!vicep_fastread && !vicep_nosync && !code) {
-        code = locks_mandatory_area(FLOCK_VERIFY_READ, v->fp->f_dentry->d_inode,
-                                        v->fp, v->base, tlen);
-        if (code)
-	    afs_warn("vpac_fetchRead: locks_mandatory_area failed at %llu\n", v->base);
-    }
-#endif
     if (!code) 
         code = v->fp->f_op->read(v->fp, v->bp, tlen, &v->fp->f_pos);
     set_fs(fs);
@@ -817,7 +733,6 @@ vpac_fetchRead(void *r, afs_uint32 tlen, afs_uint32 *bytesread)
     *bytesread = tlen;
     ReleaseWriteLock(&v->vpacRock->lock);
     return 0;
-#endif
 }
 
 afs_int32
@@ -835,7 +750,7 @@ vpac_fetchMemRead(void *r, afs_uint32 tlen, afs_uint32 *bytesread)
     return code;
 }
 
-#if defined(AFS_CACHE_BYPASS) && defined(AFS_LINUX24_ENV)
+#if defined(AFS_CACHE_BYPASS)
 afs_int32
 vpac_fetchBypassCacheRead(void *r, afs_uint32 size, afs_uint32 *bytesread)
 {
@@ -872,14 +787,6 @@ vpac_fetchBypassCacheRead(void *r, afs_uint32 size, afs_uint32 *bytesread)
 	}
     } else
         v->fp->f_pos = v->base;
-#if 0
-    if (!vicep_fastread && !vicep_nosync && !code) {
-        code = locks_mandatory_area(FLOCK_VERIFY_READ, v->fp->f_dentry->d_inode,
-                                        v->fp, v->base, length);
-        if (code)
-	    afs_warn("vpac_fetchRead: locks_mandatory_area failed at %llu\n", v->base);
-    }
-#endif
     bytes = 0;
     if (!code) {
 	for (curpage = 0; curpage < nio; curpage++) {
@@ -933,7 +840,7 @@ done:
     ReleaseWriteLock(&v->vpacRock->lock);
     return code;
 }
-#endif /* AFS_CACHE_BYPASS && AFS_LINUX24_ENV */
+#endif /* AFS_CACHE_BYPASS */
 
 afs_int32
 vpac_fetchUfsWrite(void *r, struct osi_file *fP, afs_uint32 offset, 
@@ -957,7 +864,7 @@ vpac_fetchMemWrite(void *r, struct osi_file *fP, afs_uint32 offset,
     return 0;
 }
 
-#if defined(AFS_CACHE_BYPASS) && defined(AFS_LINUX26_ENV)
+#if defined(AFS_CACHE_BYPASS)
 afs_int32
 vpac_fetchBypassCacheWrite(void *r, struct osi_file *fP, afs_uint32 offset,
                    afs_uint32 tlen, afs_uint32 *byteswritten)
@@ -971,9 +878,6 @@ afs_int32
 vpac_fetchClose(void *rock, struct vcache *avc, struct dcache *adc, 
 					struct afs_FetchOutput *o)
 {
-#if !defined(AFS_LINUX26_ENV)
-    return EIO;
-#else
     struct vpac_Variables *v = (struct vpac_Variables *)rock;
     afs_uint64 length = avc->f.m.Length;
     afs_uint64 ilength;
@@ -988,9 +892,7 @@ vpac_fetchClose(void *rock, struct vcache *avc, struct dcache *adc,
     o->OutStatus.DataVersion = avc->f.m.DataVersion.low;
     o->OutStatus.InterfaceVersion = DONT_PROCESS_FS;
     return 0;
-#endif
 }
-
 
 static
 struct fetchOps vpac_fetchUfsOps = {
@@ -1010,7 +912,7 @@ struct fetchOps vpac_fetchMemOps = {
     vpacDestroy
 };
 
-#if defined(AFS_CACHE_BYPASS) && defined(AFS_LINUX26_ENV)
+#if defined(AFS_CACHE_BYPASS)
 static
 struct fetchOps vpac_fetchBypassCacheOps = {
     0,
@@ -1030,16 +932,13 @@ common_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
 	        struct fetchOps **ops, void **rock, afs_uint64 transid,
 		afs_uint32 expires, afs_uint32 osd)
 {
-#if !defined(AFS_LINUX26_ENV)
-    return EIO;
-#else
     afs_int32 code;
     struct vpac_Variables *v;
     struct vpacRock *r;
     struct memCacheEntry *mceP = (struct memCacheEntry *)fP;
     afs_int64 tlength;
     afs_int64 ilength;
-#if defined(AFS_CACHE_BYPASS) && defined(AFS_LINUX26_ENV)
+#if defined(AFS_CACHE_BYPASS)
     struct nocache_read_request *bparms;
 
     bparms  = (struct nocache_read_request *) bypassparms;
@@ -1121,7 +1020,7 @@ common_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
 		afs_warn("RXAFS_StartAsyncFetch for %u.%u.%u.%u returns %d\n",
 				avc->f.fid.Cell, avc->f.fid.Fid.Volume,
 				avc->f.fid.Fid.Vnode, avc->f.fid.Fid.Unique, code);
-#if defined(AFS_BYPASS_CACHE) && defined(AFS_LINUX24_ENV)
+#if defined(AFS_BYPASS_CACHE)
         	if (bypassparms) {
         	    unlock_and_release_pages(bparms->auio);
         	}
@@ -1154,7 +1053,7 @@ common_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
 	    *length = bytes;
 	}
     }
-#if defined(AFS_CACHE_BYPASS) && defined(AFS_LINUX26_ENV)
+#if defined(AFS_CACHE_BYPASS)
     if (bypassparms) {
 	v->bypassparms = bypassparms;
 	*ops = &vpac_fetchBypassCacheOps;
@@ -1181,18 +1080,11 @@ common_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
 	v->bufsize = mceP->dataSize;
 	v->bp = mceP->data;
     }
-/*  printf("vpac_fetchInit incr'ing refCnt for %u.%u.%u from %d to %d\n",
-		v->avc->f.fid.Fid.Volume,
-		v->avc->f.fid.Fid.Vnode,
-		v->avc->f.fid.Fid.Unique,
-		r->refCnt,
-		r->refCnt +1); */
     r->refCnt++;
     v->vpacRock = r;
     v->ops = (void *) *ops;
     *rock = (void *)v;
     return 0;
-#endif
 }
 
 afs_int32
@@ -1232,9 +1124,6 @@ fake_vpac_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
 static afs_int32
 open_vicep_file(struct vcache *avc, char *path)
 {
-#if !defined(AFS_LINUX26_ENV)
-    return ENOENT;
-#else
     afs_int32 code = 0;
     mm_segment_t fs;
     struct dentry *dentry;
@@ -1294,7 +1183,7 @@ open_vicep_file(struct vcache *avc, char *path)
 #if !defined(HAVE_LINUX_PATH_LOOKUP)
 	dput(dentry);
 	mntput(mnt);
-#endif /*HAVE_LINUX_PATH_LOOKUP */
+#endif /* HAVE_LINUX_PATH_LOOKUP */
     }
     set_fs(fs);
     if (!code && IS_ERR(fp)) {
@@ -1318,7 +1207,6 @@ open_vicep_file(struct vcache *avc, char *path)
     if (code)
 	afs_warn("open_vicep_file returns %d for %s\n", code, path);
     return code;
-#endif
 }
 
 struct GetPathOutputs {
@@ -1479,7 +1367,6 @@ void
 afs_close_vicep_file(struct vcache *avc, struct vrequest *areq, 
 			afs_int32 locked)
 {
-#if defined(AFS_LINUX26_ENV)
     struct afs_conn *tc;
     struct rx_connection *rxconn;
     afs_int32 code;
@@ -1488,19 +1375,7 @@ afs_close_vicep_file(struct vcache *avc, struct vrequest *areq,
     if (avc->vpacRock) {
         int code2;
 	struct vpacRock *r = (struct vpacRock *) avc->vpacRock;
-/*	printf("afs_close_vicep_file for %u.%u.%u refCnt is %d\n",
-			avc->f.fid.Fid.Volume,
-			avc->f.fid.Fid.Vnode,
-			avc->f.fid.Fid.Unique,
-			r->refCnt); */
 	if (r->refCnt > 0) {
-/*	    afs_warn("afs_close_vicep_file for %u.%u.%u returns without closing, refcnt = %d, %s req %s\n",
-			avc->f.fid.Fid.Volume,
-			avc->f.fid.Fid.Vnode,
-			avc->f.fid.Fid.Unique,
-			r->refCnt,
-			areq ? "with" : "w/o",
-			locked ? " locked":""); */
 	    r->closeMe++;
 	    return;
 	}
@@ -1531,9 +1406,6 @@ afs_close_vicep_file(struct vcache *avc, struct vrequest *areq,
             RX_AFS_GUNLOCK();
             tfp->f_op = fops_get(tfp->f_dentry->d_inode->i_fop);
             code2 = filp_close(tfp, NULL);
-	    /* printf("afs_close_vicep_file %u.%u.%u code2=%d, oprn files: %d\n",
-			avc->f.fid.Fid.Volume, avc->f.fid.Fid.Vnode,
-			avc->f.fid.Fid.Unique, code2, openAfsServerVnodes); */
             RX_AFS_GLOCK();
             set_fs(fs);
             if (code2)
@@ -1554,7 +1426,6 @@ afs_close_vicep_file(struct vcache *avc, struct vrequest *areq,
                    ICL_TYPE_INT32, __LINE__,
                    ICL_TYPE_INT32, openAfsServerVnodes);
     }
-#endif
 }
 
 afs_int32
@@ -1744,5 +1615,4 @@ afs_fast_vpac_check(struct vcache *avc, struct afs_conn *tc,
     }
     return ENOENT;
 }
-#endif 
-#endif 
+#endif /* AFS_LINUX26_ENV */
