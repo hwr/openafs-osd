@@ -172,7 +172,7 @@ How get files into OSDs
 	partition.
 
 	rxosd_storeInit must get the information where the object(s) the
-	file consists of lives and how it is oragized (simple, stripes, 
+	file consists of lives and how it is organized (simple, striped, 
 	mirrored ...). Also because the storing is asynchronously to the
 	fileserver the file must be write-locked on the fileserver to 
 	prevent other clients to read or write to the same file before 
@@ -183,7 +183,7 @@ How get files into OSDs
 	and all information the client needs to access the OSDs in play.
 	For each object this information contains the IP-address of the 
 	OSD, the partition-id and the object-id of the object the number
-	of stripe-number and stripe-size in case the files is triped,
+	of stripe-number and stripe-size in case the files is striped,
 	and an encrypted rock which must be sent with all RPCs to the 
 	OSD to make sure the fileserver granted access to the object.
 
@@ -665,7 +665,43 @@ libafsosd.so
 	for pthreaded servers. 
 
 	libafsosd.so also contains the code to integrate the OSDDB database
-	into the vlserver (however, only the one built under tvlserver).
+	into the pthreaded vlserver (built under src/tvlserver).
 	If the vlserver is started with -libafsosd it hosts also the	
 	OSDDB which can be reached under service id 13 and - for backward
-	compatibility - under port 7012.
+	compatibility - also under port 7012.
+
+Asynchronous I/O 
+
+	As mentioned before fetch or store access to data in object storage
+	begins with an RPC to the fileserver 
+	*	to check the access rights of the user,  
+	*	to lock the file
+	*	to get the information about the objects the file consists of
+		which is needed to start the data transfer.
+	These RPCs are called RXAFS_StartAsyncFetch and RXAFS_StartAsyncStore.
+	They could also have been directed to the new interface RXAFSOSD_
+	in the libafsosd.so, but in a discussion with Jeffrey Altman and
+	Derrick Brashear at the European AFS meeting in Hamburg in 2011
+	was proposed to implement these RPCs in the main afsfileprocs.c
+	because there could be also new usage cases in OpenAFS which require
+	asynchronous operations in the future.
+	In order to make these RPCs extendable and not dependend on AFS/OSD
+	only the parameters common to any form of asynchronous I/O such as
+	the file's AFSFid, offset and length of data to be transferred and
+	- in case of store - the file length - are unmarshalled directly in
+	the RPC header routine while all other input and output parameters
+	are hidden in a struct opaque and ummarshalled/marshalled only in
+	the backend routines in case of AFS/OSD in the libafsosd.so.
+
+	The Async I/O is ended with RPCs RXAFS_EndAsyncFetch and 
+	RXAFS_EndAsyncStore which do the unlocking of the file and
+	- in case of store - the updating of the metadata, such as data version
+	and file length.
+
+	In order to prevent files from being locked for-ever the Start-Async-RPCs
+	set an expiration time for the transaction after which the file is
+	unlocked automatically. The client gets the possibility to extend
+	the expriration time by use of two more RPCs: RXAFS_ExtendAsyncFetch
+	and RXAFS_ExtendAsyncStore.
+
+
