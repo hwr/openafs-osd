@@ -10,7 +10,9 @@
  *	Definition of the AFS File Server RPC interface extensions for AFS/OSD.
  */
 
-%#include <afs/afsint.h>
+%#include "../fsint/afsint.h"
+
+%#define VICEDOSD_SERVICE 2
 
 /* prototype for pseudo-RPC call */
 %char *RXAFSOSD_TranslateOpCode(afs_int32 code);
