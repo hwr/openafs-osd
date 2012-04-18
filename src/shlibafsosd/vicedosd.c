@@ -415,10 +415,6 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 		    goto Bad_OSD_Wipe;
 		}
             }
-    	    if (parentwhentargetnotdir != NULL) {
-		VPutVnode(&code, parentwhentargetnotdir);
-		parentwhentargetnotdir = NULL;
-    	    }
 	    code = remove_osd_online_file(targetptr, version);
 
     Bad_OSD_Wipe:
@@ -1193,7 +1189,6 @@ GetOSDlocation(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
 #if defined(AFS_NAMEI_ENV)
     Vnode * targetptr = 0;              /* pointer to input fid */
     Vnode * parentwhentargetnotdir = 0; /* parent of Fid to get ACL */
-    Vnode   tparentwhentargetnotdir;    /* parent vnode for GetStatus */
     int storing = 0;
     int     errorCode = 0;              /* return code for caller */
     int     fileCode =  0;              /* return code from vol package */
@@ -1292,7 +1287,13 @@ GetOSDlocation(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
 
     /* Get the updated File's status back to the caller */
     if (OutStatus)
-        GetStatus(targetptr, OutStatus, rights, anyrights, 0);
+        GetStatus(targetptr, OutStatus, rights, anyrights, parentwhentargetnotdir);
+
+    /* Could perhaps take some time, so don't block parent directory */
+    if (parentwhentargetnotdir != NULL) {
+	VPutVnode(&errorCode, parentwhentargetnotdir);
+	parentwhentargetnotdir = NULL;
+    }
 
     VN_GET_LEN(InitialVnodeFileLength, targetptr);
     maxLength = InitialVnodeFileLength;
@@ -1375,7 +1376,7 @@ ApplyOsdPolicy(struct rx_call *acall, AFSFid *Fid, afs_uint64 length,
 {
     Vnode * targetptr = 0;              /* pointer to input fid */
     Vnode * parentwhentargetnotdir = 0; /* parent of Fid to get ACL */
-    Vnode   tparentwhentargetnotdir;    /* parent vnode for GetStatus */
+    Vnode   tparent;    		/* parent vnode for GetStatus */
     int storing = 0;
     int     errorCode = 0;              /* return code for caller */
     int     fileCode =  0;              /* return code from vol package */
@@ -1536,7 +1537,6 @@ GetOsdMetadata(struct rx_call *acall, AFSFid *Fid)
 {
     Vnode * targetptr = 0;              /* pointer to input fid */
     Vnode * parentwhentargetnotdir = 0; /* parent of Fid to get ACL */
-    Vnode   tparentwhentargetnotdir;    /* parent vnode for GetStatus */
     int     errorCode = 0;              /* return code for caller */
     int     fileCode =  0;              /* return code from vol package */
     Volume * volptr = 0;                /* pointer to the volume header */
@@ -1769,7 +1769,6 @@ common_GetPath(struct rx_call *acall, AFSFid *Fid, struct async *a)
     afs_int32 errorCode;
     Vnode *targetptr = 0;       /* pointer to input fid */
     Vnode *parentwhentargetnotdir = 0;  /* parent of Fid to get ACL */
-    Vnode tparentwhentargetnotdir;      /* parent vnode for GetStatus */
     int fileCode = 0;           /* return code from vol package */
     Volume *volptr = 0;         /* pointer to the volume header */
     struct client *client = 0;  /* pointer to client structure */
@@ -1871,7 +1870,7 @@ SRXAFSOSD_BringOnline(struct rx_call *acall, AFSFid *Fid,
     afs_int32 errorCode;
     Vnode *targetptr = NULL;       		/* pointer to input fid */
     Vnode *parentwhentargetnotdir = NULL;  	/* parent of Fid to get ACL */
-    Vnode tparentwhentargetnotdir;      	/* parent vnode for GetStatus */
+    Vnode tparent;      			/* parent vnode for GetStatus */
     Volume *volptr = NULL;         		/* pointer to the volume header */
     struct client *client = NULL;  		/* pointer to client structure */
     afs_int32 rights, anyrights;        	/* rights for this and any user */
@@ -1903,6 +1902,12 @@ SRXAFSOSD_BringOnline(struct rx_call *acall, AFSFid *Fid,
 	    errorCode = EIO;
 	    goto Bad_BringOnline;
 	}
+	/* Could take some time, give directory back but keep contents of vnode */
+    	if (parentwhentargetnotdir != NULL) {
+	    memcpy((char *)&tparent, (char *)parentwhentargetnotdir, sizeof(tparent));
+	    VPutVnode(&errorCode, parentwhentargetnotdir);
+	    parentwhentargetnotdir = NULL;
+        }
 	errorCode = fill_osd_file(targetptr, NULL, 0, &fileno, client->ViceId);
     }
 
@@ -1910,8 +1915,7 @@ Bad_BringOnline:
     if (!errorCode || errorCode == OSD_WAIT_FOR_TAPE) {
 	afs_int32 cb;
 
-        GetStatus(targetptr, OutStatus, rights, anyrights,
-              &tparentwhentargetnotdir);
+        GetStatus(targetptr, OutStatus, rights, anyrights, &tparent);
         /* if a r/w volume, promise a callback to the caller */
         if (VolumeWriteable(volptr)) {
 	    cb = AddCallBack1(client->host, Fid, 0, 1, 0);
@@ -2481,7 +2485,6 @@ SRXAFSOSD_ExtendAsyncFetch(struct rx_call *acall, AFSFid *Fid, afs_uint64 transi
     Error errorCode;
     Vnode *targetptr = 0;       /* pointer to input fid */
     Vnode *parentwhentargetnotdir = 0;  /* parent of Fid to get ACL */
-    Vnode tparentwhentargetnotdir;      /* parent vnode for GetStatus */
     int fileCode = 0;           /* return code from vol package */
     Volume *volptr = 0;         /* pointer to the volume header */
     struct client *client = 0;  /* pointer to client structure */
@@ -2667,7 +2670,7 @@ EndAsyncStore1(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
     Error errorCode = RXGEN_OPCODE;
     Vnode *targetptr = 0;       /* pointer to input fid */
     Vnode *parentwhentargetnotdir = 0;  /* parent of Fid to get ACL */
-    Vnode tparentwhentargetnotdir;      /* parent vnode for GetStatus */
+    Vnode tparent;		/* parent vnode for GetStatus */
     Volume *volptr = 0;         /* pointer to the volume header */
     struct client *client = 0;  /* pointer to client structure */
     afs_int32 rights, anyrights;        /* rights for this and any user */
@@ -2703,6 +2706,16 @@ EndAsyncStore1(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
          Check_PermissionRights(targetptr, client, rights, CHK_STOREDATA,
                                 InStatus))) {
         goto Bad_EndAsyncStore;
+    }
+
+    /*
+     * recover_store can take some time, give directory back but keep
+     * contents of vnode
+     */
+    if (parentwhentargetnotdir != NULL) {
+	 memcpy((char *)&tparent, (char *)parentwhentargetnotdir, sizeof(tparent));
+	 VPutVnode(&errorCode, parentwhentargetnotdir);
+	 parentwhentargetnotdir = NULL;
     }
 
     if (ae) {
@@ -2763,8 +2776,7 @@ EndAsyncStore1(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
     Update_TargetVnodeStatus(targetptr, TVS_SDATA, client, InStatus,
                              targetptr, volptr, 0);
     /* Get the updated File's status back to the caller */
-    GetStatus(targetptr, OutStatus, rights, anyrights,
-              &tparentwhentargetnotdir);
+    GetStatus(targetptr, OutStatus, rights, anyrights, &tparent);
 
     rx_KeepAliveOn(acall);
 
@@ -2977,7 +2989,6 @@ ServerPath(struct rx_call * acall, AFSFid *Fid, afs_int32 writing,
 #ifdef AFS_ENABLE_VICEP_ACCESS
     Vnode *targetptr = 0;       /* pointer to input fid */
     Vnode *parentwhentargetnotdir = 0;  /* parent of Fid to get ACL */
-    Vnode tparentwhentargetnotdir;      /* parent vnode for GetStatus */
     int fileCode = 0;           /* return code from vol package */
     Volume *volptr = 0;         /* pointer to the volume header */
     struct client *client = 0;  /* pointer to client structure */
@@ -3099,7 +3110,7 @@ ServerPath(struct rx_call * acall, AFSFid *Fid, afs_int32 writing,
         a->async_u.p4.rwvol = V_parentId(volptr);
     }
     GetStatus(targetptr, OutStatus, rights, anyrights,
-              &tparentwhentargetnotdir);
+              parentwhentargetnotdir);
 
 Bad_ServerPath:
     (void)PutVolumePackage(acall, parentwhentargetnotdir, targetptr,
@@ -3156,7 +3167,6 @@ SRXAFS_GetPath0(struct rx_call *acall, AFSFid *Fid, afs_uint64 *ino, afs_uint32 
     afs_int32 errorCode = RXGEN_OPCODE;
     Vnode *targetptr = 0;       /* pointer to input fid */
     Vnode *parentwhentargetnotdir = 0;  /* parent of Fid to get ACL */
-    Vnode tparentwhentargetnotdir;      /* parent vnode for GetStatus */
     int fileCode = 0;           /* return code from vol package */
     Volume *volptr = 0;         /* pointer to the volume header */
     struct client *client = 0;  /* pointer to client structure */
