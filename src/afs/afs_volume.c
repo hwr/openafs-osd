@@ -1096,10 +1096,6 @@ LockAndInstallUVolumeEntry(struct volume *av, struct uvldbentry *ve, int acell,
 	    if (ts && (ts->sr_addr_uniquifier == ve->serverUnique[i])
 		&& ts->addr) {
 		/* uuid, uniquifier, and portal are the same */
-#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
-                if (afs_compare_serveruuid((char *)&ve->serverNumber))
-                    av->states |= VPartVisible;
-#endif
 	    } else {
 		afs_uint32 *addrp, code;
 		afs_int32 nentries, unique;
@@ -1150,6 +1146,10 @@ LockAndInstallUVolumeEntry(struct volume *av, struct uvldbentry *ve, int acell,
 				   ve->serverUnique[i], av);
 		xdr_free((xdrproc_t) xdr_bulkaddrs, &addrs);
 	    }
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
+            if (afs_compare_serveruuid(&ve->serverNumber[i]))
+                av->states |= VPartVisible;
+#endif
 	}
 	serverHost[j] = ts;
 

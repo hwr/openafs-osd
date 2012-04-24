@@ -1434,7 +1434,7 @@ extern afs_int32 afs_set_visible_osd(long parm2, long parm3, long parm4,
                 long parm5);
 extern afs_int32 vpac_checkPolicy(struct vcache *avc, struct afs_conn *tc,
                 afs_uint64 length, afs_uint32 *protocol);
-extern afs_int32 afs_compare_serveruuid(char *a);
+extern afs_int32 afs_compare_serveruuid(afsUUID *a);
 
 /* Prototypes for generated files that aren't really in src/afs/ */
 

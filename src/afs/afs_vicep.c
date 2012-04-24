@@ -1409,32 +1409,27 @@ afs_close_vicep_file(struct vcache *avc, struct vrequest *areq,
             RX_AFS_GLOCK();
             set_fs(fs);
             if (code2)
-                afs_Trace3(afs_iclSetp, CM_TRACE_WASHERE,
-                       ICL_TYPE_STRING, __FILE__,
-                       ICL_TYPE_INT32, __LINE__,
-                       ICL_TYPE_INT32, code2);
+		afs_warn("afs_close_vicep_file: close for %u.%u.%u returned %d\n",
+			avc->f.fid.Fid.Volume, avc->f.fid.Fid.Vnode,
+			avc->f.fid.Fid.Unique, code2);
 	    avc->vpacRock = NULL;
 	    FREE_VICEP(r, struct vpacRock);
 	    if (avc->protocol & VICEP_ACCESS)
 		avc->protocol |= RX_FILESERVER;
-	    if (!locked)
-                ReleaseWriteLock(&avc->lock);
 	}
+	if (!locked)
+            ReleaseWriteLock(&avc->lock);
         openAfsServerVnodes--;
-        afs_Trace3(afs_iclSetp, CM_TRACE_WASHERE,
-                   ICL_TYPE_STRING, __FILE__,
-                   ICL_TYPE_INT32, __LINE__,
-                   ICL_TYPE_INT32, openAfsServerVnodes);
     }
 }
 
 afs_int32
-afs_compare_serveruuid(char *a)
+afs_compare_serveruuid(afsUUID *a)
 {
     afs_int32 i;
 
     for (i=0; i<nServerUuids; i++) {
-	if (memcmp(a, (char *)&afs_visiblePart[i].uuid, sizeof(afsUUID)) == 0)
+	if (memcmp((void *)a, (void *)&afs_visiblePart[i].uuid, sizeof(afsUUID)) == 0)
 	    return 1;
     }
     return 0;
