@@ -10,7 +10,9 @@
 
 #if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
 
+#ifndef STRUCT_TASK_STRUCT_HAS_CRED
 #define CHANGE_FSUID 	1 
+#endif
 
 #include "afs/sysincludes.h"	/* Standard vendor system headers */
 #include <linux/fs.h>
