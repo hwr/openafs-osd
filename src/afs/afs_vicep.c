@@ -10,6 +10,8 @@
 
 #if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
 
+#define CHANGE_FSUID 	1 
+
 #include "afs/sysincludes.h"	/* Standard vendor system headers */
 #include <linux/fs.h>
 #include <linux/buffer_head.h>
@@ -328,6 +330,9 @@ vpac_storeWrite(void *r, char *abuf, afs_uint32 tlen, afs_uint32 *byteswritten)
 {
     afs_int32 code;
     mm_segment_t fs;
+#ifdef CHANGE_FSUID
+    uid_t fsuid;
+#endif
     unsigned long savelim = current->TASK_STRUCT_RLIM[RLIMIT_FSIZE].rlim_cur;
     struct vpac_Variables *v = (struct vpac_Variables *)r;
 
@@ -339,6 +344,10 @@ vpac_storeWrite(void *r, char *abuf, afs_uint32 tlen, afs_uint32 *byteswritten)
     }
     current->TASK_STRUCT_RLIM[RLIMIT_FSIZE].rlim_cur = RLIM_INFINITY;
     fs = get_fs();
+#ifdef CHANGE_FSUID
+    fsuid = current_fsuid();
+    current_fsuid() = 0;
+#endif
     set_fs(KERNEL_DS);
     RX_AFS_GUNLOCK();
     code = 0;
@@ -356,8 +365,11 @@ vpac_storeWrite(void *r, char *abuf, afs_uint32 tlen, afs_uint32 *byteswritten)
 	}
     } else
 	afs_warn("vpac_storeWrite: llseek failed\n");
-    set_fs(fs);
     RX_AFS_GLOCK();
+    set_fs(fs);
+#ifdef CHANGE_FSUID
+    current_fsuid() = fsuid;
+#endif
     current->TASK_STRUCT_RLIM[RLIMIT_FSIZE].rlim_cur = savelim;
     v->aE.asyncError_u.no_new_version = 0;
     v->base += tlen;
@@ -441,8 +453,15 @@ vpac_storeClose(void *rock, struct AFSFetchStatus *OutStatus, int *doProcessFS)
     if (r && (!vicep_nosync || r->fsync)) { 
 	/* Make sure data are also visible on the fileserver */
         mm_segment_t fs;
+#ifdef CHANGE_FSUID
+	uid_t fsuid;
+#endif
         struct file *tfp = r->fp;
         fs = get_fs();
+#ifdef CHANGE_FSUID
+	fsuid = current_fsuid();
+	current_fsuid() = 0;
+#endif
         set_fs(KERNEL_DS);
         RX_AFS_GUNLOCK();
         tfp->f_op = fops_get(tfp->f_dentry->d_inode->i_fop);
@@ -453,9 +472,15 @@ vpac_storeClose(void *rock, struct AFSFetchStatus *OutStatus, int *doProcessFS)
 #endif
         RX_AFS_GLOCK();
         set_fs(fs);
+#ifdef CHANGE_FSUID
+	current_fsuid() = fsuid;
+#endif
     }
 
     code = EndStore(v, doProcessFS);
+    if (!code && *doProcessFS)
+	memcpy((void *)OutStatus, (void *) &v->OutStatus,
+		 sizeof(struct AFSFetchStatus));
     return code;
 }
 
@@ -468,13 +493,14 @@ vpacDestroy(void **rock, afs_int32 error)
     *rock = NULL;
     if (v->transid) {
         afs_int32 code2;
-        RX_AFS_GUNLOCK();
         if (v->writing)
 	    code2 = EndStore(v, NULL);
-        else
+        else {
+            RX_AFS_GUNLOCK();
             code2 = RXAFS_EndAsyncFetch1(v->fs_conn->id, &v->avc->f.fid.Fid,
                                         v->transid, v->bytes_sent, v->osd);
-        RX_AFS_GLOCK();
+            RX_AFS_GLOCK();
+	}
     }
     if (v->tbuffer)
 	osi_FreeLargeSpace(v->tbuffer);
@@ -683,6 +709,9 @@ vpac_fetchRead(void *r, afs_uint32 tlen, afs_uint32 *bytesread)
     afs_int32 code;
     struct vpac_Variables *v = (struct vpac_Variables *)r;
     mm_segment_t fs;
+#ifdef CHANGE_FSUID
+    uid_t fsuid;
+#endif
     unsigned long savelim = current->TASK_STRUCT_RLIM[RLIMIT_FSIZE].rlim_cur;
     
     *bytesread = 0;
@@ -696,6 +725,10 @@ vpac_fetchRead(void *r, afs_uint32 tlen, afs_uint32 *bytesread)
 	tlen = v->bufsize;
     current->TASK_STRUCT_RLIM[RLIMIT_FSIZE].rlim_cur = RLIM_INFINITY;
     fs = get_fs();
+#ifdef CHANGE_FSUID
+    fsuid = current_fsuid();
+    current_fsuid() = 0;
+#endif
     set_fs(KERNEL_DS);
     RX_AFS_GUNLOCK();
     code = 0;
@@ -708,8 +741,11 @@ vpac_fetchRead(void *r, afs_uint32 tlen, afs_uint32 *bytesread)
         v->fp->f_pos = v->base;
     if (!code) 
         code = v->fp->f_op->read(v->fp, v->bp, tlen, &v->fp->f_pos);
-    set_fs(fs);
     RX_AFS_GLOCK();
+    set_fs(fs);
+#ifdef CHANGE_FSUID
+    current_fsuid() = fsuid;
+#endif
     current->TASK_STRUCT_RLIM[RLIMIT_FSIZE].rlim_cur = savelim;
     if (code != tlen) {
         afs_Trace3(afs_iclSetp, CM_TRACE_WASHERE,
@@ -1126,6 +1162,9 @@ open_vicep_file(struct vcache *avc, char *path)
 {
     afs_int32 code = 0;
     mm_segment_t fs;
+#ifdef CHANGE_FSUID
+    uid_t fsuid;
+#endif
     struct dentry *dentry;
 #if defined(HAVE_LINUX_PATH_LOOKUP)
     struct nameidata nd;
@@ -1138,11 +1177,18 @@ open_vicep_file(struct vcache *avc, char *path)
 
     if (avc->vpacRock) 
 	return 0;
-    RX_AFS_GUNLOCK();
     fs = get_fs();
     set_fs(KERNEL_DS);
+#ifdef CHANGE_FSUID
+    fsuid = current_fsuid();
+    current_fsuid() = 0;
+#endif
+    RX_AFS_GUNLOCK();
 #if defined(HAVE_LINUX_PATH_LOOKUP)
     code = path_lookup(path, 0, &nd);
+if (code)
+	printf("open_vicep_file: path_lookup returns %d for %s\n",
+		code, path);
     if (!code)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,27)
 	dentry = nd.path.dentry;
@@ -1151,6 +1197,9 @@ open_vicep_file(struct vcache *avc, char *path)
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,27) */
 #else /*HAVE_LINUX_PATH_LOOKUP */
     code = kern_path(path, 0, &path_data);
+if (code)
+	printf("open_vicep_file: kern_path returns %d for %s\n",
+		code, path);
     if (!code)
 	afs_get_dentry_ref(&path_data, &mnt, &dentry);
 #endif /*HAVE_LINUX_PATH_LOOKUP */
@@ -1185,13 +1234,16 @@ open_vicep_file(struct vcache *avc, char *path)
 	mntput(mnt);
 #endif /* HAVE_LINUX_PATH_LOOKUP */
     }
+    RX_AFS_GLOCK();
     set_fs(fs);
+#ifdef CHANGE_FSUID
+    current_fsuid() = fsuid;
+#endif
     if (!code && IS_ERR(fp)) {
 	afs_warn("dentry_open returns %ld for %s\n", 
 		(long)fp, path);
 	code = ENOENT;
     } 
-    RX_AFS_GLOCK();
     if (!code) {
 	ALLOC_VICEP(r, struct vpacRock);
 	memset(r, 0, sizeof(struct vpacRock));
@@ -1372,6 +1424,10 @@ afs_close_vicep_file(struct vcache *avc, struct vrequest *areq,
     afs_int32 code;
     struct file *tfp;
     mm_segment_t fs;
+#ifdef CHANGE_FSUID
+    uid_t fsuid;
+#endif
+
     if (avc->vpacRock) {
         int code2;
 	struct vpacRock *r = (struct vpacRock *) avc->vpacRock;
@@ -1402,12 +1458,19 @@ afs_close_vicep_file(struct vcache *avc, struct vrequest *areq,
 	if (avc->vpacRock) { /* May have disappeared in a race condition */
             tfp = r->fp;
             fs = get_fs();
+#ifdef CHANGE_FSUID
+	    fsuid = current_fsuid();
+	    current_fsuid() = 0;
+#endif
             set_fs(KERNEL_DS);
             RX_AFS_GUNLOCK();
             tfp->f_op = fops_get(tfp->f_dentry->d_inode->i_fop);
             code2 = filp_close(tfp, NULL);
             RX_AFS_GLOCK();
             set_fs(fs);
+#ifdef CHANGE_FSUID
+	    current_fsuid() = fsuid;
+#endif
             if (code2)
 		afs_warn("afs_close_vicep_file: close for %u.%u.%u returned %d\n",
 			avc->f.fid.Fid.Volume, avc->f.fid.Fid.Vnode,
