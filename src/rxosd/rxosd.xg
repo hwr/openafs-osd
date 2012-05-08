@@ -13,9 +13,9 @@ prefix S
 
 /* prototype for pseudo-RPC call */
 %char *RXOSD_TranslateOpCode(afs_int32 code);
+%char *OSDDB_TranslateOpCode(afs_int32 code);
 
 %#define	OSD_SERVER_PORT		htons(7011) /* as MR-AFS remioserver */
-%#define	OSD_SERVICE_PORT	htons(0)
 %#define	OSD_SERVICE_ID		900   /* same as REMIOSRV for MR-AFS */
 %#define	OSD_NULL			0
 %#define	OSD_RXKAD			2
