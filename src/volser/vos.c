@@ -6070,6 +6070,7 @@ Traverse(struct cmd_syndesc *as, void *arock)
         code = UV_Traverse(&server, vid, nservers, flag, delay, srl, list);
         if (code) {
 	    fprintf(stderr, "UV_Traverse returned %d\n", code);
+	    return code;
         }
 	if (more) {
 	    char buffer[256];
