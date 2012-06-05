@@ -505,7 +505,11 @@ extern int load_libafsosd( char *initroutine, void *Inputs, void *Outputs);
 #else /* BUILD_LIBAFSOSD_A */
 extern afs_int32 libafsosd_init(void *rock, afs_int32 version);
 #undef ViceLog
+#ifdef BUILD_SALVAGER
+#define ViceLog(level, str) (Log str);
+#else /* BUILD_SALVAGER */
 #define ViceLog(level, str)  do { if ((level) <= *(voldata->aLogLevel)) (FSLog str); } while (0)
+#endif /* BUILD_SALVAGER */
 #endif /* BUILD_LIBAFSOSD_A */
 #endif /* BUILD_SHLIBAFSOSD */
 #endif

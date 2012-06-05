@@ -41,6 +41,10 @@
 #include "afsosd.h"
 /* #endif */
 
+#ifdef BUILD_SALVAGER
+extern LogOsd(const char *format, ...);
+#endif
+
 extern int ubeacon_AmSyncSite(void);
 extern void FidZap(DirHandle *);
 /*
@@ -269,6 +273,7 @@ struct vol_ops_v0 {
     int (*stream_aseek) (StreamHandle_t * streamP, afs_foff_t offset);
     afs_sfsize_t (*stream_read) (void *ptr, afs_fsize_t size,
                                 afs_fsize_t nitems, StreamHandle_t * streamP);
+    void (*LogOsd) (const char *format, va_list args);
 };
 static struct vol_ops_v0 vol_ops_v0, *vol = NULL;
 
@@ -460,6 +465,9 @@ fill_ops(struct ops_ptr *opsptr)
 #endif
     vol->stream_aseek = stream_aseek;
     vol->stream_read = stream_read;
+#ifdef BUILD_SALVAGER
+    vol->LogOsd = LogOsd;
+#endif
     opsptr->vol = vol;
 #endif
 
@@ -491,7 +499,7 @@ int load_libafsosd(char *initroutine, void *inrock, void *outrock)
     memset(&opsptr, 0, sizeof(opsptr));
     sprintf(libname, "%s/%s.%d.%d",
 		AFSDIR_SERVER_BIN_DIRPATH,
-#ifdef AFS_DEMAND_ATTACH_FS
+#if defined(AFS_DEMAND_ATTACH_FS) || defined(AFS_DEMAND_ATTACH_UTIL)
 		"libdafsosd.so",
 #else
 		"libafsosd.so",
@@ -1238,6 +1246,16 @@ int
 ListLockedVnodes(afs_uint32 *count, afs_uint32 maxcount, afs_uint32 **ptr)
 {
     return (vol->ListLockedVnodes)(count, maxcount, ptr);
+}
+
+void
+Log(const char *format, ...)
+{
+    va_list args;
+
+    va_start(args, format);
+    (vol->LogOsd)(format, args);
+    va_end(args);
 }
 
 struct Volume *

@@ -4840,6 +4840,21 @@ CheckLogFile(char * log_path)
     strcpy(oldSlvgLog, log_path);
     strcat(oldSlvgLog, ".old");
     if (!logFile) {
+        time_t t = time(0);
+        struct stat buf;
+	struct tm *TimeFields;
+        TimeFields = localtime(&t);
+    makefilename:
+        afs_snprintf(oldSlvgLog, MAXPATHLEN, "%s.%d%02d%02d%02d%02d%02d",
+                     log_path, TimeFields->tm_year + 1900,
+                     TimeFields->tm_mon + 1, TimeFields->tm_mday,
+                     TimeFields->tm_hour, TimeFields->tm_min,
+                     TimeFields->tm_sec);
+        if(lstat(oldSlvgLog, &buf) == 0) {
+            /* avoid clobbering a log */
+            TimeFields->tm_sec++;
+            goto makefilename;
+        }
 	renamefile(log_path, oldSlvgLog);
 	logFile = afs_fopen(log_path, "a");
 
@@ -4925,6 +4940,25 @@ Log(const char *format, ...)
 	    fprintf(logFile, "%s %s", TimeStamp(now.tv_sec, 1), tmp);
 	    fflush(logFile);
 	}
+}
+
+void
+LogOsd(const char *format, va_list args)
+{
+    struct timeval now;
+    char tmp[1024];
+
+    (void)afs_vsnprintf(tmp, sizeof tmp, format, args);
+#ifndef AFS_NT40_ENV
+    if (useSyslog) {
+        syslog(LOG_INFO, "%s", tmp);
+    } else
+#endif
+    if (logFile) {
+        gettimeofday(&now, 0);
+        fprintf(logFile, "%s %s", TimeStamp(now.tv_sec, 1), tmp);
+        fflush(logFile);
+    }
 }
 
 void
