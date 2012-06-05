@@ -6,7 +6,6 @@ package OSDDB_
 prefix S
 
 %#define OSDDB_SERVER_PORT		htons(7012)
-%#define OSDDB_SERVER_NEWPORT		htons(7006)
 %#define OSDDB_SERVICE_ID		13
 %#define OSDDB_HASHSIZE  		251	/* must be prime (?) */
 %#define OSDDB_HEADER_SIZE		8192
