@@ -6334,6 +6334,7 @@ ListObjects(struct cmd_syndesc *as, void *arock)
     char *p = line;
     afs_uint32 delay = 3600;
     char str[16];
+    int restarted = 0;
 
     if (as->parms[12].items)			/*  -cell  */
 	cell = as->parms[12].items->data;
@@ -6457,6 +6458,7 @@ ListObjects(struct cmd_syndesc *as, void *arock)
 		    server, code);
 	return EIO;
     }
+restart:
     while (1) {
 	bytes = rx_Read(call, p, 1);
 	if (bytes <= 0)
@@ -6483,6 +6485,13 @@ ListObjects(struct cmd_syndesc *as, void *arock)
     }   
     code = rx_EndCall(call, 0);
     rx_DestroyConnection(tcon);
+    if (code == RXGEN_OPCODE && !restarted) {
+        tcon = UV_BindOsd(server, AFSCONF_VOLUMEPORT);
+        call = rx_NewCall(tcon);
+        code = StartAFSVOLOSD_ListObjects(call, vid, flag, osd, delay);
+	restarted = 1;
+	goto restart;
+    }
     if (code) 
 	fprintf(stderr, "RPC failed with code %d\n", code);
     return code;
@@ -6513,7 +6522,7 @@ SalvageOSD(struct cmd_syndesc *as, void *arock)
     afs_uint32 server = 0, vid;
     afs_int32 flags = 8; 	/* to say volserver we are using new syntax */ 
     char buffer[16];
-    struct rx_conn *tcon;
+    struct rx_connection *tcon;
     afs_int32 instances = 0;
     afs_int32 localinst = 0;
     struct nvldbentry entry;
