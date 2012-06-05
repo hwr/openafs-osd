@@ -237,12 +237,20 @@ int EndStore(struct vpac_Variables *v, int *doProcessFS)
 	    struct AsyncParams Inputs;
             Inputs.AsyncParams_val = buf;
             Inputs.AsyncParams_len = len;
+retry_after_busy1:
             RX_AFS_GUNLOCK();
 	    code = RXAFS_EndAsyncStore(v->fs_conn->id, &v->avc->f.fid.Fid,
                                        v->transid, v->avc->f.m.Length,
 				       VICEPACCESS_BACKEND, &Inputs, &InStatus,
 				       &v->OutStatus);
             RX_AFS_GLOCK();
+	    if (code == -10) {
+	        afs_warn("RXAFS_ExtendAsyncFetch(1) for %u.%u.%u.%u returns %d\n",
+			    v->avc->f.fid.Cell, v->avc->f.fid.Fid.Volume,
+			    v->avc->f.fid.Fid.Vnode, v->avc->f.fid.Fid.Unique, code);
+	        afs_osi_Wait(100, 0, 0);
+	        goto retry_after_busy1;
+	    }
 	} else
 	    code = RXGEN_CC_MARSHAL;
 	osi_Free(buf, len);
@@ -498,10 +506,18 @@ vpacDestroy(void **rock, afs_int32 error)
         if (v->writing)
 	    code2 = EndStore(v, NULL);
         else {
+retry_after_busy2:
             RX_AFS_GUNLOCK();
             code2 = RXAFS_EndAsyncFetch1(v->fs_conn->id, &v->avc->f.fid.Fid,
                                         v->transid, v->bytes_sent, v->osd);
             RX_AFS_GLOCK();
+	    if (code == -10) {
+	        afs_warn("RXAFS_EndAsyncFetch1(2) for %u.%u.%u.%u returns %d\n",
+			    v->avc->f.fid.Cell, v->avc->f.fid.Fid.Volume,
+			    v->avc->f.fid.Fid.Vnode, v->avc->f.fid.Fid.Unique, code);
+	        afs_osi_Wait(100, 0, 0);
+	        goto retry_after_busy2;
+	    }
 	}
     }
     if (v->tbuffer)
@@ -580,10 +596,18 @@ common_storeInit(struct vcache *avc, struct afs_conn *tc,
     v->base = base;
     v->osd = osd;
     if (r->transid) { 	/* we must end the read transaction first */
+retry_after_busy3:
 	RX_AFS_GUNLOCK();
 	code = RXAFS_EndAsyncFetch1(rxconn, &avc->f.fid.Fid, r->transid,
 			r->bytes_sent, r->osd);
 	RX_AFS_GLOCK();
+	if (code == -10) {
+	    afs_warn("RXAFS_EndAsyncFetch1(3) for %u.%u.%u.%u returns %d\n",
+			    avc->f.fid.Cell, avc->f.fid.Fid.Volume,
+			    avc->f.fid.Fid.Vnode, avc->f.fid.Fid.Unique, code);
+	    afs_osi_Wait(100, 0, 0);
+	    goto retry_after_busy3;
+	}
 	r->transid = 0;
 	r->expires = 0;
 	r->bytes_sent = 0;
@@ -593,6 +617,7 @@ common_storeInit(struct vcache *avc, struct afs_conn *tc,
  	v->expires = expires;
 	v->maxlength = maxlength;
     } else {
+retry_after_busy4:
         v->a.type = 3;
 	v->a.async_u.p3.path.path_info_val = NULL;
 	v->a.async_u.p3.path.path_info_len = 0;
@@ -606,9 +631,13 @@ common_storeInit(struct vcache *avc, struct afs_conn *tc,
 				    &v->expires, &v->OutStatus);
         RX_AFS_GLOCK();
         if (code) {
-	    afs_warn("RXAFS_StartAsyncStore for %u.%u.%u.%u returns %d\n",
+	    afs_warn("RXAFS_StartAsyncStore(4) for %u.%u.%u.%u returns %d\n",
 				avc->f.fid.Cell, avc->f.fid.Fid.Volume,
 				avc->f.fid.Fid.Vnode, avc->f.fid.Fid.Unique, code);
+	    if (code == -10) {
+		afs_osi_Wait(100, 0, 0);
+		goto retry_after_busy4;
+	    }
     	    FREE_VICEP(v, struct vpac_Variables);
 	    return code;
         }
@@ -1008,10 +1037,18 @@ common_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
     v->osd = osd;
     if (r->transid) {
 	if (r->expires + 1 <= osi_Time()) {
+retry_after_busy5:
 	    RX_AFS_GUNLOCK();
 	    code = RXAFS_ExtendAsyncFetch(rxconn, &avc->f.fid.Fid, r->transid,
 					&r->expires);
 	    RX_AFS_GLOCK();
+	    if (code == -10) {
+	        afs_warn("RXAFS_EndAsyncFetch1(5) for %u.%u.%u.%u returns %d\n",
+			        avc->f.fid.Cell, avc->f.fid.Fid.Volume,
+			        avc->f.fid.Fid.Vnode, avc->f.fid.Fid.Unique, code);
+	        afs_osi_Wait(100, 0, 0);
+	        goto retry_after_busy5;
+	    }
 	    if (code) {
 	        r->transid = 0;
 		r->expires = 0;
@@ -1034,12 +1071,12 @@ common_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
         } else { 	/* called from vpac_fetchInit (visible fileserver part.) */
 	    struct RWparm p;
 	    afs_uint64 *transidP;
+retry_after_busy6:
 	    p.type = 1;
             v->a.type = 3;
 	    v->a.async_u.p3.path.path_info_val = NULL;
 	    v->a.async_u.p3.path.path_info_len = 0;
 	    
-            RX_AFS_GUNLOCK();
 	    if (vicep_fastread) {
 	        p.RWparm_u.p1.offset = 0;
 	        p.RWparm_u.p1.length = MAX_L;
@@ -1049,13 +1086,21 @@ common_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
 	        p.RWparm_u.p1.length = bytes;
 		transidP = &v->transid;
 	    }
+            RX_AFS_GUNLOCK();
             code = RXAFS_StartAsyncFetch2(rxconn, 
 			    (struct AFSFid *) &avc->f.fid.Fid,
 			    &p, &v->a, transidP, &r->expires,
 			    &v->OutStatus, &v->CallBack);
             RX_AFS_GLOCK();
+	    if (code == -10) {
+	        afs_warn("RXAFS_StartAsyncFetch2(6) for %u.%u.%u.%u returns %d\n",
+			        avc->f.fid.Cell, avc->f.fid.Fid.Volume,
+			        avc->f.fid.Fid.Vnode, avc->f.fid.Fid.Unique, code);
+	        afs_osi_Wait(100, 0, 0);
+	        goto retry_after_busy6;
+	    }
             if (code) {
-		afs_warn("RXAFS_StartAsyncFetch for %u.%u.%u.%u returns %d\n",
+		afs_warn("RXAFS_StartAsyncFetch2 for %u.%u.%u.%u returns %d\n",
 				avc->f.fid.Cell, avc->f.fid.Fid.Volume,
 				avc->f.fid.Fid.Vnode, avc->f.fid.Fid.Unique, code);
 #if defined(AFS_BYPASS_CACHE)
@@ -1292,9 +1337,17 @@ afs_open_vicep_localFile(struct vcache *avc, struct vrequest *treq)
 	    a.type = 3;
 	    a.async_u.p3.path.path_info_val = NULL;
 	    a.async_u.p3.path.path_info_len = 0;
+retry_after_busy7:
             RX_AFS_GUNLOCK();
 	    code = RXAFS_GetPath(rxconn, &avc->f.fid.Fid, &a );
 	    RX_AFS_GLOCK();
+	    if (code == -10) {
+	        afs_warn("RXAFS_GetPath(7) for %u.%u.%u.%u returns %d\n",
+				avc->f.fid.Cell, avc->f.fid.Fid.Volume,
+				avc->f.fid.Fid.Vnode, avc->f.fid.Fid.Unique, code);
+		afs_osi_Wait(100, 0, 0);
+		goto retry_after_busy7;
+	    }
 	    if (!code) {
 		for (i=0; i<nServerUuids; i++) {
 		    if (afs_visiblePart[i].lun == a.async_u.p3.lun &&
@@ -1446,10 +1499,18 @@ afs_close_vicep_file(struct vcache *avc, struct vrequest *areq,
 	        tc = afs_Conn(&avc->f.fid, &treq, SHARED_LOCK, &rxconn);
 	    }
 	    if (tc) {
+retry_after_busy8:
 	        RX_AFS_GUNLOCK();
 		code = RXAFS_EndAsyncFetch1(rxconn, &avc->f.fid.Fid,
 				r->transid, r->bytes_sent, r->osd);
 	        RX_AFS_GLOCK();
+		if (code == -10) {
+	    	    afs_warn("RXAFS_EndAsyncFetch1(8) for %u.%u.%u.%u returns %d\n",
+				avc->f.fid.Cell, avc->f.fid.Fid.Volume,
+				avc->f.fid.Fid.Vnode, avc->f.fid.Fid.Unique, code);
+		    afs_osi_Wait(100, 0, 0);
+		    goto retry_after_busy8;
+		}
 		afs_PutConn(tc, rxconn, SHARED_LOCK);
 	    }
 	    r->transid = 0;
@@ -1631,10 +1692,18 @@ afs_fast_vpac_check(struct vcache *avc, struct afs_conn *tc,
 	}
 	if (r->transid) {
 	    if (storing) {
+retry_after_busy9:
                 RX_AFS_GUNLOCK();
 		code = RXAFS_EndAsyncFetch1(rxconn, &avc->f.fid.Fid, r->transid,
 					r->bytes_sent, r->osd);
                 RX_AFS_GLOCK();
+		if (code == -10) {
+	    	    afs_warn("RXAFS_EndAsyncFetch1(9) for %u.%u.%u.%u returns %d\n",
+				avc->f.fid.Cell, avc->f.fid.Fid.Volume,
+				avc->f.fid.Fid.Vnode, avc->f.fid.Fid.Unique, code);
+		    afs_osi_Wait(100, 0, 0);
+		    goto retry_after_busy9;
+		}
 		r->transid = 0;
 		r->bytes_sent = 0;
 	    } else { 
@@ -1651,10 +1720,18 @@ afs_fast_vpac_check(struct vcache *avc, struct afs_conn *tc,
 		}
 		if (!found || r->expires < osi_Time()) {
 		    afs_uint32 texpires;
+retry_after_busy10:
 	            RX_AFS_GUNLOCK();
 	            code = RXAFS_ExtendAsyncFetch(rxconn, &avc->f.fid.Fid, 
 						r->transid, &texpires);
 	            RX_AFS_GLOCK();
+		    if (code == -10) {
+	    	        afs_warn("RXAFS_ExtendAsyncFetch(10) for %u.%u.%u.%u returns %d\n",
+				    avc->f.fid.Cell, avc->f.fid.Fid.Volume,
+				    avc->f.fid.Fid.Vnode, avc->f.fid.Fid.Unique, code);
+		        afs_osi_Wait(100, 0, 0);
+		        goto retry_after_busy10;
+		    }
 	            if (code) {
 		        if (r->expires < osi_Time()) {
 		            r->transid = 0;
