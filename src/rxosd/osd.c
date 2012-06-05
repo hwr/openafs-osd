@@ -42,6 +42,9 @@ struct rx_connection *Conn = 0;
 struct rx_call *Call;
 struct rx_securityClass *Null_secObj;
 u_long Host = 0;
+short port = 25371;    /* htons(7011) */
+/* short port = 24091;*/       /* htons(7006) */
+short service = 900;
 char *cellp = 0;
 afs_uint32 server = 0;
 afs_uint32 lun = 0;
@@ -203,6 +206,12 @@ scan_osd_or_host()
         for (j=0; j<l.OsdList_len; j++) {
 	    if (l.OsdList_val[j].id == ip0) {
 	        Host = htonl(l.OsdList_val[j].t.etype_u.osd.ip);
+		if (l.OsdList_val[j].t.etype_u.osd.service_port) {
+		    service = (afs_int32)
+				l.OsdList_val[j].t.etype_u.osd.service_port >> 16;
+		    port = l.OsdList_val[j].t.etype_u.osd.service_port & 0xffff;
+		    port = htons(port);
+		}
 		lun = l.OsdList_val[j].t.etype_u.osd.lun;
 		if (Oprm.vsn == 2) {
 		    Oprm.ometa_u.f.lun = lun;
@@ -4021,7 +4030,7 @@ int GetConnection()
         sc[0] = (struct rx_securityClass *) rxnull_NewClientSecurityObject();
     if (!Host)
         Host = GetHost(thost);
-    Conn = rx_NewConnection(Host, OSD_SERVER_PORT, OSD_SERVICE_ID, sc[scIndex],
+    Conn = rx_NewConnection(Host, port, service, sc[scIndex],
 				scIndex);
 }
    
