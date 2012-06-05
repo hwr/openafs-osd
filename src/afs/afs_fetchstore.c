@@ -1406,7 +1406,8 @@ afs_FetchProc(struct afs_conn *tc, struct rx_connection *rxconn,
     }
 
 #if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
-    if (!avc->vpacRock && (avc->f.states & CPartVisible))
+    if (!(avc->f.fid.Fid.Vnode & 1)  /* not a directory */
+      && (avc->f.states & CPartVisible) && !avc->vpacRock)
         afs_open_vicep_localFile(avc, areq);
 #endif
 
