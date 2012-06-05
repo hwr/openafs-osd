@@ -125,7 +125,9 @@
 
 private char *libraryVersion = "OpenAFS 1.6.0-osd";
 private char *openafsVersion = NULL;
-#ifndef BUILD_SALVAGER
+#ifdef BUILD_SALVAGER
+extern void Log(const char *format, ...);
+#else
 #define MAX_MOVE_OSD_SIZE               1024*1024
 afs_uint64 max_move_osd_size = MAX_MOVE_OSD_SIZE;
 afs_int32 max_move_osd_size_set_by_hand = 0;
@@ -1293,6 +1295,12 @@ FlushMetadataHandle(Volume *vol, struct VnodeDiskObject *vd,
     bp = (char *)&mh->data;
     rescount = mh->length;
     offset = 0;
+    if (!rescount) {
+	ViceLog(0, ("FlushMetadataHandle: zero length metadata for index %d in volume %u\n",
+		index, V_id(vol)));
+	code = EIO;
+	goto bad;
+    }
     while (rescount) {
 	afs_int32 tlen, tindex, length;
 	tindex = index;
@@ -3563,27 +3571,6 @@ bad:
 	    vn->changed_newTime = 1;
     }
     destroy_osd_p_fileList(&list);
-    return code;
-}
-
-/*
- * Called from SAFSS_CreateFile(). Right now a dummy. Later it should 
- * check the policies to find out from the file name whether the file
- * belongs into OSD.
- */
-afs_int32
-UseOSD(AFSFid *fid, char *name, Vnode *vn, Volume *vol, afs_uint32 *osd, 
-	afs_uint32 *lun)
-{
-    return 0; /* don't create automatically files on object storage */
-}
-
-static afs_int32 
-archive_read(FdHandle_t *fd, char *buf, afs_int32 len)
-{
-    afs_int32 code;
-
-    code = FDH_READ(fd, buf, len);
     return code;
 }
 
