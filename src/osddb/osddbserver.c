@@ -2592,11 +2592,11 @@ main(argc, argv)
     ubik_CheckRXSecurityProc = afsconf_CheckAuth;
     ubik_CheckRXSecurityRock = (char *)tdir;
     code =
-	ubik_ServerInitByInfo(myHost, OSDDB_OLD_SERVER_PORT, &info, clones,
+	ubik_ServerInitByInfo(myHost, OSDDB_SERVER_PORT, &info, clones,
 			      osd_dbaseName, &OSD_dbase);
     if (code) {
 	printf("osddb: Ubik init for port %u failed with code %d\n",
-		 ntohs(OSDDB_OLD_SERVER_PORT),code);
+		 ntohs(OSDDB_SERVER_PORT),code);
 	exit(2);
     }
     if (!rxJumbograms) {
