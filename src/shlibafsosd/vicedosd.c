@@ -1423,9 +1423,12 @@ ApplyOsdPolicy(struct rx_call *acall, AFSFid *Fid, afs_uint64 length,
 
     VN_GET_LEN(InitialVnodeFileLength, targetptr);
 
-    /* *protocol = 1; */  /* RX_FILESERVER as default makes old clients unhappy*/
     if (!V_osdPolicy(volptr))
 	goto Bad_ApplyOsdPolicy;    
+    if (targetptr->disk.type == vFile && targetptr->disk.osdMetadataIndex) {
+	*protocol = RX_OSD;
+	goto Bad_ApplyOsdPolicy;
+    }
     if (targetptr->disk.type == vFile 
       && InitialVnodeFileLength <= max_move_osd_size) {
 	unsigned int policyIndex = parentwhentargetnotdir->disk.osdPolicyIndex;
@@ -1442,7 +1445,7 @@ ApplyOsdPolicy(struct rx_call *acall, AFSFid *Fid, afs_uint64 length,
 	errorCode = createFileWithPolicy(Fid, length, policyIndex, fileName,
 				targetptr, volptr, evalclient, client);
 	if (!errorCode)
-	    *protocol = 2; 	/* RX_OSD */
+	    *protocol = RX_OSD;
 	else {
 	    if (errorCode == ENOENT)
 		errorCode = 0;
@@ -2249,7 +2252,8 @@ fill_status(Vnode *targetptr, afs_fsize_t targetLen, AFSFetchStatus *status)
                 status->FetchStatusProtocol |= POSSIBLY_OSD;
         }
     }
-    if (ClientsWithAccessToFileserverPartitions && VN_GET_INO(targetptr)) {
+    if (ClientsWithAccessToFileserverPartitions && VN_GET_INO(targetptr)
+      && !(targetptr->vnodeNumber & 1)) {
         namei_t name;
         struct stat64 tstat;
 
