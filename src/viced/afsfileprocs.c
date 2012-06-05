@@ -5225,6 +5225,8 @@ SAFSS_Rename(struct rx_call *acall, struct AFSFid *OldDirFid, char *OldName,
     if (CheckLength(volptr, oldvptr, -1) ||
         CheckLength(volptr, newvptr, -1)) {
         VTakeOffline(volptr);
+        ViceLog(0, ("Volume %u now offline, must be salvaged. Rename CheckLength\n",
+		    volptr->hashid));
         errorCode = VSALVAGE;
         goto Bad_Rename;
     }
@@ -8505,6 +8507,8 @@ FetchData_RXStyle(Volume * volptr, Vnode * targetptr,
     if (CheckLength(volptr, targetptr, tlen)) {
         FDH_CLOSE(fdP);
         VTakeOffline(volptr);
+        ViceLog(0, ("Volume %u now offline, must be salvaged. FetchData CheckLength\n",
+		    volptr->hashid));
         return VSALVAGE;
     }
     if (Pos > tlen) {
@@ -9294,6 +9298,8 @@ StoreData_RXStyle(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
         if (CheckLength(volptr, targetptr, DataLength)) {
             FDH_CLOSE(fdP);
             VTakeOffline(volptr);
+            ViceLog(0, ("Volume %u now offline, must be salvaged. StoreData CheckLength\n",
+		    volptr->hashid));
             return VSALVAGE;
         }
 
