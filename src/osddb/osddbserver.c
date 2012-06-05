@@ -827,7 +827,7 @@ afs_int32 check_osd_tab(struct osddb_osd_tab *in)
                                 port));
             return EINVAL;
         }
-        if (port >= 7000 && port <= 7009) {
+        if (port >= 7000 && port <= 7009 && port != 7006) {
             ViceLog(0,("check_osd_tab: port number conflict with AFS: %d\n",
                                 port));
             return EINVAL;
@@ -2592,11 +2592,11 @@ main(argc, argv)
     ubik_CheckRXSecurityProc = afsconf_CheckAuth;
     ubik_CheckRXSecurityRock = (char *)tdir;
     code =
-	ubik_ServerInitByInfo(myHost, OSDDB_SERVER_PORT, &info, clones,
+	ubik_ServerInitByInfo(myHost, OSDDB_OLD_SERVER_PORT, &info, clones,
 			      osd_dbaseName, &OSD_dbase);
     if (code) {
 	printf("osddb: Ubik init for port %u failed with code %d\n",
-		 ntohs(OSDDB_SERVER_PORT),code);
+		 ntohs(OSDDB_OLD_SERVER_PORT),code);
 	exit(2);
     }
     if (!rxJumbograms) {
@@ -2612,13 +2612,6 @@ main(argc, argv)
     tservice =
 	rx_NewServiceHost(host, 0, OSDDB_SERVICE_ID, "osddb server", sc, numSc,
 		      OSDDB_ExecuteRequest);
-    if (!tservice) {
-	printf("osddb: Could not create OSDDB rx service\n");
-	exit(3);
-    }
-    tservice =
-	rx_NewServiceHost(host, OSDDB_SERVER_NEWPORT, OSDDB_SERVICE_ID,
-			  "osddb server", sc, numSc, OSDDB_ExecuteRequest);
     if (!tservice) {
 	printf("osddb: Could not create OSDDB rx service\n");
 	exit(3);

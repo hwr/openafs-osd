@@ -835,7 +835,7 @@ check_osd_tab(struct osddb_osd_tab *in)
                                 port));
             return EINVAL;
         }
-        if (port >= 7000 && port <= 7009) {
+        if (port >= 7000 && port <= 7009 && port != 7006) {
             ViceLog(0,("check_osd_tab: port number conflict with AFS: %d\n",
                                 port));
             return EINVAL;
