@@ -473,13 +473,17 @@ main(int argc, char **argv)
 			  securityClasses, numClasses,
 			  (osddb->op_OSDDB_ExecuteRequest));
 	if (!tservice) 
-	    printf("vlserver: Could not create OSDDB service, continuing without ...\n");	
+	    printf("vlserver: Could not create OSDDB service, continuing without ...\n");
+        rx_SetMinProcs(tservice, 2);
+        rx_SetMaxProcs(tservice, 4);
 	tservice =
 	    rx_NewServiceHost(host, OSDDB_SERVER_OLDPORT, OSDDB_SERVICE_ID,
 			      "osddb server", securityClasses, numClasses,
 			  (osddb->op_OSDDB_ExecuteRequest));
 	if (!tservice) 
-	    printf("vlserver: Could not create OSDDB service, continuing without ...\n");	
+	    printf("vlserver: Could not create OSDDB service, continuing without ...\n");
+        rx_SetMinProcs(tservice, 2);
+        rx_SetMaxProcs(tservice, 4);
     }
     if (libafsosd) {
         rx_SetMinProcs(tservice, 4);
