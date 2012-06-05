@@ -1941,7 +1941,7 @@ ReadVnodes(struct iod *iodp, Volume * vp, int incremental,
 		    return VOLSERREAD_DUMPERROR;
 	        }
 	    }
-	    if (!osdvol)
+	    if (!V_osdPolicy(vp))
 	        vnode->vnodeMagic = vcp->magic;
 	    if (FDH_PWRITE(fdP, vnode, vcp->diskSize, vnodeIndexOffset(vcp, vnodeNumber)) != vcp->diskSize) {
 		Log("1 Volser: ReadVnodes: Error writing vnode index; restore aborted\n");
