@@ -211,12 +211,15 @@
 pthread_mutex_t osdproc_glock_mutex;
 pthread_mutex_t queue_glock_mutex;
 pthread_mutex_t active_glock_mutex;
+pthread_mutex_t conn_glock_mutex;
 #define OSD_LOCK MUTEX_ENTER(&osdproc_glock_mutex)
 #define OSD_UNLOCK MUTEX_EXIT(&osdproc_glock_mutex)
 #define QUEUE_LOCK MUTEX_ENTER(&queue_glock_mutex)
 #define QUEUE_UNLOCK MUTEX_EXIT(&queue_glock_mutex)
 #define ACTIVE_LOCK MUTEX_ENTER(&active_glock_mutex)
 #define ACTIVE_UNLOCK MUTEX_EXIT(&active_glock_mutex)
+#define CONN_LOCK MUTEX_ENTER(&conn_glock_mutex)
+#define CONN_UNLOCK MUTEX_EXIT(&conn_glock_mutex)
 
 /*@+fcnmacros +macrofcndecl@*/
 #ifdef O_LARGEFILE
@@ -908,8 +911,9 @@ afs_uint32 HostAddr_HBO = 0;
 afs_uint32 HostAddrs[ADDRSPERSITE], HostAddr_cnt=0;
 
 struct RemoteConnection {
-    afs_int32 host;	/* HBO */
-    short     port;	/* NBO */
+    afs_int32 host;	/* network byte order */
+    short     port;	/* network byte order */
+    short     service;	/* host byte order */
     struct rx_connection *conn;
     struct RemoteConnection *next;
 };
@@ -2146,22 +2150,33 @@ struct rx_connection *GetConnection(afs_uint32 host,  afs_uint32 limit, short po
     static struct rx_connection *Connection;
     struct RemoteConnection *tc;
 
+    if (!service) {
+        if (port == OSD_SERVER_PORT || port == OSD_SECOND_SERVER_PORT)
+	    service = OSD_SERVICE_ID;
+	else
+	    service = 1;
+    }
+    CONN_LOCK;
     /* First see if we already have a connection to the desired host. */
     for (tc=RemoteConnections; tc; tc=tc->next) {
-        if (tc->host == host && tc->port == port) {
+        if (tc->host == host && tc->port == port && tc->service == service) {
             nConnections++;
             for (i=RX_MAXCALLS; i ; i--) {
                 if (!(tc->conn->call[i-1]) ||
-                (tc->conn->call[i-1]->state != RX_STATE_ACTIVE)) 
+                (tc->conn->call[i-1]->state != RX_STATE_ACTIVE)) {
+		    CONN_UNLOCK;
                     return tc->conn;
+		}
             }
         }
     }
     /* not more than limit connections per host */
     if (nConnections >= limit) {
         for (tc=RemoteConnections; tc; tc=tc->next) {
-            if (tc->host == host && tc->port == port) 
+            if (tc->host == host && tc->port == port) {
+		CONN_UNLOCK;
                 return(tc->conn);
+	    }
 	}
     }
     /* Get a new connection */
@@ -2172,32 +2187,32 @@ struct rx_connection *GetConnection(afs_uint32 host,  afs_uint32 limit, short po
             if (code) {
                 ViceLog(0, ("GetConnection: afsconf_ClientAuth failed with code=%d\n",
                           code));
+		CONN_UNLOCK;
                 return 0;
             }
         }
         else {
             ViceLog(0, ("GetConnection: afsconf_GetLatestKey failed with code=%d\n",
                       code));
+	    CONN_UNLOCK;
             return 0;
         }
     }
-    if (!service) {
-        if (port == OSD_SERVER_PORT)
-	    service = OSD_SERVICE_ID;
-        else
-	    service = 1;
-    }
     Connection = rx_NewConnection(host, port, service, sc, scIndex);
-    if (Connection == 0)
+    if (Connection == 0) {
+	CONN_UNLOCK;
         return (Connection);
+    }
     tc = (struct RemoteConnection *) malloc(sizeof(struct RemoteConnection));
     assert(tc != 0);
     ++nRemoteConnections;
     tc->host = host;
     tc->port = port;
+    tc->service = service;
     tc->conn = Connection;
     tc->next = RemoteConnections;
     RemoteConnections = tc;
+    CONN_UNLOCK;
     return Connection;
 }
 
@@ -7465,6 +7480,7 @@ main(int argc, char *argv[])
     int num_listeners = 1;
     int bufSize = 0;        /* temp variable to read in udp socket buf size */
     FILE *debugFile = NULL;
+    short port = htons(7006);
     pthread_t serverPid;
     pthread_attr_t tattr;
 
@@ -7484,7 +7500,22 @@ main(int argc, char *argv[])
     SetupLogSignals();
 
     for (i=1; i<argc; i++) {
-        if (!strcmp(argv[i], "-hsm"))
+	if (!strcmp(argv[i], "-port")) {
+	    afs_int32 p;
+	    if ((i + 1) >= argc) {
+                printf("You have to specify -port <integer value>\n");
+                return -1;
+            }
+	    p = atoi(argv[++i]);
+	    port = p;
+	    port = htons(port);
+	} else if (!strcmp(argv[i], "-lwps")) {
+	    lwps = atoi(argv[++i]);
+	    if (lwps > MAX_RXOSD_THREADS)
+		lwps = MAX_RXOSD_THREADS;
+	    if (lwps < 9)
+		lwps = 9;
+	} else if (!strcmp(argv[i], "-hsm"))
             HSM = 1;
         else if (!strcmp(argv[i], "-nojumbo"))
             nojumbo = 1;
@@ -7565,7 +7596,7 @@ main(int argc, char *argv[])
     confDir = afsconf_Open(AFSDIR_SERVER_ETC_DIRPATH);
     /* Initialize Rx, telling it port number this server will use for its single service */
     rx_extraPackets = 1000;
-    if (rx_Init(OSD_SERVER_PORT) < 0)
+    if (rx_Init(port) < 0)
 	   Quit("Cannot initialize RX");
 
     /* Create a single security object, in this case the null security object,
@@ -7580,17 +7611,17 @@ main(int argc, char *argv[])
 							RXOSD_ExecuteRequest);
     if (!service)
 	Quit("Failed to initialize RX");
-#ifdef notdef
-    /* Alternative port 7006 */
-#define OSD_SERVICE_ID_7006 901
-    service = rx_NewServiceHost(HostAddr_NBO, htons(7006), OSD_SERVICE_ID_7006,
-				 "OSD-7006", sc, 4, RXOSD_ExecuteRequest);
+    rx_SetMinProcs(service, 2);
+    rx_SetMaxProcs(service, lwps/2);
+    rx_SetCheckReach(service, 1);
+    /* Alternative port 7011 */
+    service = rx_NewServiceHost(HostAddr_NBO, OSD_SECOND_SERVER_PORT, 
+			OSD_SERVICE_ID, "OSD-7011", sc, 4, RXOSD_ExecuteRequest);
     if (!service)
 	ViceLog(0,("Failed to initialize RX on port 7006"));
-#endif
 	
     rx_SetMinProcs(service, 2);
-    rx_SetMaxProcs(service, lwps);
+    rx_SetMaxProcs(service, lwps/2);
     rx_SetCheckReach(service, 1);
     if (udpBufSize)
         rx_SetUdpBufSize(udpBufSize);   /* set the UDP buffer size for receive */
