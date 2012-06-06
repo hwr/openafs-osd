@@ -266,7 +266,7 @@ DoCloneIndex(Volume * rwvp, Volume * clvp, VnodeClass class, int reclone)
 	if (rwvnode->type != vNull) {
 	    afs_fsize_t ll;
 
-	    if (!osdvol && rwvnode->vnodeMagic != vcp->magic)
+	    if (!rwvp->osdMetadataHandle && rwvnode->vnodeMagic != vcp->magic)
 		ERROR_EXIT(-1);
 	    rwinode = VNDISK_GET_INO(rwvnode);
             filecount++;
@@ -339,6 +339,8 @@ DoCloneIndex(Volume * rwvp, Volume * clvp, VnodeClass class, int reclone)
 	    if (code)
 	        ERROR_EXIT(code); 
         } 
+	if (!clvp->osdMetadataHandle && rwvnode->vnodeMagic != vcp->magic)
+	    rwvnode->vnodeMagic = vcp->magic;
 	code = STREAM_WRITE(rwvnode, vcp->diskSize, 1, clfileout);
 	if (code != 1) {
 clonefailed:

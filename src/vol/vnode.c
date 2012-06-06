@@ -448,7 +448,7 @@ VInitVnodes(VnodeClass class, int nVnodes)
  * allocate an unused vnode from the lru chain.
  *
  * @param[in] vcp  vnode class info object pointer
- * @param[in] vp   volume ponter
+ * @param[in] vp   volume pointer
  * @param[in] vnodeNumber new vnode number that the vnode will be used for
  *
  * @pre VOL_LOCK is held
@@ -876,7 +876,16 @@ VAllocVnode_r(Error * ec, Volume * vp, VnodeType type)
     vnp->changed_newTime = 0;	/* set this bit when vnode is updated */
     vnp->changed_oldTime = 0;	/* set this on CopyOnWrite. */
     vnp->delete = 0;
-    if (!osdvol)
+    /*
+     * The integer which used to be vnodeMagic now is a union which either
+     * may contain the magic or the osdMetadataIndex and osdOnline.
+     * On 1.4 (and before) AFS/OSD fileservers this field was always used
+     * as osdMetadataIndex even in non-OSD volumes. To be more compatible
+     * with OpenAFS 1.6 we now set the magic only if no osdMetadata special
+     * file is present. Ths is also for the salvager the criterium to require
+     * a magic or not. 
+     */
+    if (!vp->osdMetadataHandle)
         vnp->disk.vnodeMagic = vcp->magic;
     vnp->disk.type = type;
     vnp->disk.uniquifier = unique;
@@ -962,7 +971,8 @@ VnLoad(Error * ec, Volume * vp, Vnode * vnp,
     VOL_LOCK;
 
     /* Quick check to see that the data is reasonable */
-    if (vnp->disk.type == vNull || (!osdvol && vnp->disk.vnodeMagic != vcp->magic)) {
+    if (vnp->disk.type == vNull || 
+      (!vp->osdMetadataHandle && vnp->disk.vnodeMagic != vcp->magic)) {
 	if (vnp->disk.type == vNull) {
 	    *ec = VNOVNODE;
 	    dosalv = 0;
@@ -1345,7 +1355,6 @@ VSyncVnode_r(Volume *vp, VnodeDiskObject *vd, afs_uint32 vN, int newtime)
     }
     class = vnodeIdToClass(vN);
     vcp = &VnodeClassInfo[class];
-    vcp = &VnodeClassInfo[class];
     ihP = vp->vnodeIndex[class].handle;
     VOL_UNLOCK;
     fdP = IH_OPEN(ihP);
@@ -1420,7 +1429,16 @@ VPutVnode_r(Error * ec, Vnode * vnp)
     osi_Assert(Vn_refcount(vnp) != 0);
     class = vnodeIdToClass(Vn_id(vnp));
     vcp = &VnodeClassInfo[class];
-    if (!osdvol)
+    /*
+     * The integer which used to be vnodeMagic now is a union which either
+     * may contain the magic or the osdMetadataIndex and osdOnline.
+     * On 1.4 (and before) AFS/OSD fileservers this field was always used
+     * as osdMetadataIndex even in non-OSD volumes. To be more compatible
+     * with OpenAFS 1.6 we now set the magic only if no osdMetadata special
+     * file is present. Ths is also for the salvager the criterium to require
+     * a magic or not. 
+     */
+    if (!vnp->volumePtr->osdMetadataHandle)
         osi_Assert(vnp->disk.vnodeMagic == vcp->magic);
     VNLog(200, 2, Vn_id(vnp), (intptr_t) vnp, 0, 0);
 
@@ -1566,7 +1584,16 @@ VVnodeWriteToRead_r(Error * ec, Vnode * vnp)
     osi_Assert(Vn_refcount(vnp) != 0);
     class = vnodeIdToClass(Vn_id(vnp));
     vcp = &VnodeClassInfo[class];
-    if (!osdvol)
+    /*
+     * The integer which used to be vnodeMagic now is a union which either
+     * may contain the magic or the osdMetadataIndex and osdOnline.
+     * On 1.4 (and before) AFS/OSD fileservers this field was always used
+     * as osdMetadataIndex even in non-OSD volumes. To be more compatible
+     * with OpenAFS 1.6 we now set the magic only if no osdMetadata special
+     * file is present. Ths is also for the salvager the criterium to require
+     * a magic or not. 
+     */
+    if (!vnp->volumePtr->osdMetadataHandle)
         osi_Assert(vnp->disk.vnodeMagic == vcp->magic);
     VNLog(300, 2, Vn_id(vnp), (intptr_t) vnp, 0, 0);
 
