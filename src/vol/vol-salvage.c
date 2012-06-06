@@ -221,6 +221,7 @@ struct vol_data_v0 vol_data_v0 = {
 };
 
 struct osd_vol_ops_v0 *osdvol = NULL;
+struct osd_vol_ops_v0 *osdvolsave = NULL;
 
 /*@+fcnmacros +macrofcndecl@*/
 #ifdef O_LARGEFILE
@@ -2194,6 +2195,13 @@ SalvageVolumeHeaderFile(struct SalvInfo *salvinfo, struct InodeSummary *isp,
 
     memset(goodspecial, 0, sizeof(goodspecial));
 
+    /* fill osdvol only if the volume has an osdMetadata special file */
+    if (check) {
+        if (osdvol)
+            osdvolsave = osdvol;
+        osdvol = NULL;
+    }
+
     skip = malloc(isp->nSpecialInodes * sizeof(*skip));
     if (skip) {
 	memset(skip, 0, isp->nSpecialInodes * sizeof(*skip));
@@ -2348,25 +2356,30 @@ SalvageVolumeHeaderFile(struct SalvInfo *salvinfo, struct InodeSummary *isp,
 		/* This seems to be an OSD volume */
 		if (!osdvol) {
 		    int code;
-        	    struct init_salv_inputs input = {
-			&vol_data_v0
-        	    };
-        	    struct init_salv_outputs output = {
-            		&osdvol
-        	    };
+		    if (osdvolsave) {
+			osdvol = osdvolsave;
+			code = 0;
+		    } else {
+        	        struct init_salv_inputs input = {
+			    &vol_data_v0
+        	        };
+        	        struct init_salv_outputs output = {
+            		    &osdvol
+        	        };
 #ifdef AFS_PTHREAD_ENV
-		    code = load_libafsosd("init_salv_afsosd", (void *)&input,
+		        code = load_libafsosd("init_salv_afsosd", (void *)&input,
 			 		  (void *)&output);
 #else
-		    code = ENOENT;
+		        code = ENOENT;
 #endif
+		    }
 		    if (code) {
 	    		Log("Couldn't load libafsosd.so for OSD volume %u, code was %d, aborting\n",
 					 isp->volumeId, code);
-	    		return -1;
+	    	    	return -1;
 		    } else
 	    		Log("libafsosd.so loaded for OSD volume %u\n",
-					 isp->volumeId);
+					     isp->volumeId);
 		}
 	    }
 	}
