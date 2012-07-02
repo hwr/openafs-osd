@@ -442,7 +442,7 @@ read_osddb_entry(struct ubik_trans *trans, afs_int32 offs, struct oe *e)
 	    code = EIO;
         xdr_destroy(&xdr);
 	if (e->vsn != OSDDB_ENTRY_VERSION) {
-	    ViceLog(0, ("read_osddb_entry strange version %d at offest %u for %u %s\n",
+	    ViceLog(1, ("read_osddb_entry strange version %d at offest %u for %u %s\n",
 			e->vsn, offs, e->oe_u.t3.id, e->oe_u.t3.name));
 	    if (e->vsn == 2 && OSDDB_ENTRY_VERSION == 3) {
 	    	e->vsn = 3; /* Don't know what else needs to be done */
