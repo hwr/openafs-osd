@@ -7480,7 +7480,7 @@ main(int argc, char *argv[])
     int num_listeners = 1;
     int bufSize = 0;        /* temp variable to read in udp socket buf size */
     FILE *debugFile = NULL;
-    short port = htons(7006);
+    short port = OSD_SERVER_PORT; /* == htons(7006); */
     pthread_t serverPid;
     pthread_attr_t tattr;
 
@@ -7614,9 +7614,16 @@ main(int argc, char *argv[])
     rx_SetMinProcs(service, 2);
     rx_SetMaxProcs(service, lwps/2);
     rx_SetCheckReach(service, 1);
-    /* Alternative port 7011 */
-    service = rx_NewServiceHost(HostAddr_NBO, OSD_SECOND_SERVER_PORT, 
+    
+    if (port == OSD_SECOND_SERVER_PORT) {
+	/* Alternative port 7006 */
+        service = rx_NewServiceHost(HostAddr_NBO, OSD_SERVER_PORT, 
+			OSD_SERVICE_ID, "OSD-7006", sc, 4, RXOSD_ExecuteRequest);
+    } else {
+        /* Alternative port 7011 */
+        service = rx_NewServiceHost(HostAddr_NBO, OSD_SECOND_SERVER_PORT, 
 			OSD_SERVICE_ID, "OSD-7011", sc, 4, RXOSD_ExecuteRequest);
+    }
     if (!service)
 	ViceLog(0,("Failed to initialize RX on port 7006"));
 	
