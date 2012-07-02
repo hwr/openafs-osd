@@ -517,7 +517,7 @@ ubik_ServerInitCommon(afs_uint32 myHost, short myPort, afs_int32 index,
 	    return -1;
         }
         rx_SetMinProcs(tservice, 2);
-        rx_SetMaxProcs(tservice, 3);
+        rx_SetMaxProcs(tservice, 6);	/* Some more for more independent dbases */
 
         /* start an rx_ServerProc to handle incoming RPC's in particular the
          * UpdateInterfaceAddr RPC that occurs in ubeacon_InitServerList. This avoids
