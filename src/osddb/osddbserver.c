@@ -435,7 +435,7 @@ read_entry(struct ubik_trans *trans, afs_int32 offs, struct oe *e)
 	    code = EIO;
         xdr_destroy(&xdr);
 	if (e->vsn != OSDDB_ENTRY_VERSION) {
-	    ViceLog(0, ("read_entry strange version %d at offest %u for %u %s\n",
+	    ViceLog(1, ("read_entry strange version %d at offest %u for %u %s\n",
 			e->vsn, offs, e->oe_u.t3.id, e->oe_u.t3.name));
 	    if (e->vsn == 2 && OSDDB_ENTRY_VERSION == 3) {
 	    	e->vsn = 3; /* Don't know what else needs to be done */
@@ -1016,7 +1016,7 @@ pthread_mutex_t active_glock_mutex;
 #define MAX_OSDDB_THREADS 128
 #define NOSDDBRPCS 50
 
-struct timeval statisticStart;
+afs_uint32 statisticStart;
 osddb_stat stats[NOSDDBRPCS];
 osddb_statList statList;
 
@@ -1088,7 +1088,7 @@ SOSDDB_Statistic(struct rx_call *call, afs_int32 reset, afs_uint32 *since,
 
     l->osddb_statList_len = 0;
     l->osddb_statList_val = NULL;
-    *since = statisticStart.tv_sec;
+    *since = statisticStart;
     for (i=0; i<NOSDDBRPCS; i++) {
         if (!stats[i].rpc)
             break;
@@ -1107,7 +1107,7 @@ SOSDDB_Statistic(struct rx_call *call, afs_int32 reset, afs_uint32 *since,
             for (i=0; i<NOSDDBRPCS; i++) {
                 stats[i].cnt = 0;
             }
-            FT_GetTimeOfDay(&statisticStart, 0);
+            statisticStart = FT_ApproxTime();
         }
     }
 out:
@@ -1247,7 +1247,11 @@ GetOsdList(struct rx_call *call, struct OsdList *list)
 	return 0;
     }
 	
+#if 0  /* Why */
     if (code = init_dbase(&trans, ubeacon_AmSyncSite()? LOCKWRITE : LOCKREAD))
+#else
+    if (code = init_dbase(&trans, LOCKREAD))
+#endif
 	return code;
     list->OsdList_val = malloc(header.nOsds * sizeof(struct Osd));
     if (!list->OsdList_val)
@@ -1906,7 +1910,11 @@ ServerList(struct rx_call *call, struct OsdList *list)
     list->OsdList_len = 0;
     list->OsdList_val = NULL; 
 
+#if 0  /* Why? */
     if (code = init_dbase(&trans, ubeacon_AmSyncSite()? LOCKWRITE : LOCKREAD))
+#else
+    if (code = init_dbase(&trans, LOCKREAD))
+#endif
 	return code;
     list->OsdList_val = (struct Osd *) 
 			xdr_alloc(header.nServers * sizeof(struct Osd));
@@ -2159,7 +2167,11 @@ PolicyList(struct rx_call *call, struct OsdList *list)
     list->OsdList_len = 0;
     list->OsdList_val = NULL; 
 
+#if 0  /* Why? */
     if (code = init_dbase(&trans, ubeacon_AmSyncSite()? LOCKWRITE : LOCKREAD))
+#else
+    if (code = init_dbase(&trans, LOCKREAD))
+#endif
 	return code;
 
     list->OsdList_val =  xdr_alloc(header.nPolicies * sizeof(struct Osd));
@@ -2282,7 +2294,11 @@ GetPolicyID(struct rx_call *call,char *name, afs_uint32 *id)
     afs_int32 code, offset;
     struct oe e;
 
+#if 0  /* Why? */
     if (code = init_dbase(&trans, ubeacon_AmSyncSite()? LOCKWRITE : LOCKREAD))
+#else
+    if (code = init_dbase(&trans, LOCKREAD))
+#endif
 	return code;
 
     code = FindByName(trans, OSDDB_POLICY, name, &e, &offset);
@@ -2324,7 +2340,11 @@ GetPoliciesRevision(struct rx_call *call, afs_uint32 *revision)
     struct ubik_trans *trans;
     afs_int32 code;
 
+#if 0  /* Why? */
     if (code = init_dbase(&trans, ubeacon_AmSyncSite()? LOCKWRITE : LOCKREAD))
+#else
+    if (code = init_dbase(&trans, LOCKREAD))
+#endif
 	return code;
 
     *revision = header.policies_revision;
@@ -2503,7 +2523,7 @@ main(argc, argv)
 
     for (i=0; i<STAT_INDICES; i++)
         stat_index[i] = -1;
-    FT_GetTimeOfDay(&statisticStart, 0);
+    statisticStart = FT_ApproxTime();
 
     /* Initialize dirpaths */
     if (!(initAFSDirPath() & AFSDIR_SERVER_PATHS_OK)) {
@@ -2644,23 +2664,34 @@ main(argc, argv)
     osds.OsdList_val = NULL;
     rx_StartServer(0);
     while (1) {
+	afs_int32 sleepseconds;
+	time_t now = FT_ApproxTime();
+	/*
+	 * The FiveMinuteCheck of fileservers and volservers wakes up
+	 * at hh:05, hh:10, hh:15 ...
+	 * The FiveMinuteCheck of rxosds wakes up 
+	 * at hh:03, hh:08, hh:13 ...
+	 * We should wake up in between to find as close as possible dead rxosds
+	 * so wake up at hh:04, hh:09, hh:14 ...
+	*/
+	sleepseconds = 300 - (now % 300); 
+	sleepseconds -= 60;    /* 1 minute before hh:05 ... */
+	if (sleepseconds < 0)
+	   sleepseconds += 300;
+	IOMGR_Sleep(sleepseconds);
 	if (ubeacon_AmSyncSite()) {
-	    int i;
-    	    struct timeval now;
-    	    FT_GetTimeOfDay(&now, 0);
 	    if (!osds.OsdList_val) {
 		code = SOSDDB_OsdList(0, &osds);
 		if (!code) { /* initialize timeStamps */
 		    for (i=0; i<osds.OsdList_len; i++) {
-			if (osds.OsdList_val[i].id == 1) {
+			if (osds.OsdList_val[i].id == 1) { /* local_disk */
 			    osds.OsdList_val[i].t.etype_u.osd.unavail = 0;
 			    continue;
 			}
 			if (osds.OsdList_val[i].t.etype_u.osd.unavail)
 			    osds.OsdList_val[i].t.etype_u.osd.timeStamp = 0;
 			else
-			    osds.OsdList_val[i].t.etype_u.osd.timeStamp =
-						now.tv_sec;
+			    osds.OsdList_val[i].t.etype_u.osd.timeStamp = now;
 		    }
 		}
 	    } else { /* find dead osds and update database if necessary */
@@ -2670,7 +2701,7 @@ main(argc, argv)
 			o->t.etype_u.osd.unavail = 0;
 			continue;
 		    }
-		    if ((now.tv_sec - o->t.etype_u.osd.timeStamp) > OSD_TIMEOUT
+		    if ((now - o->t.etype_u.osd.timeStamp) > OSD_TIMEOUT
 		      && !(o->t.etype_u.osd.unavail & OSDDB_OSD_DEAD)) {
 			afs_int32 code2;
 			struct osddb_osd_tab *t;
@@ -2695,6 +2726,5 @@ main(argc, argv)
 	} else { /* remove in memory list */
 	    xdr_free ((xdrproc_t) xdr_OsdList, &osds);
 	}
-	IOMGR_Sleep(60);
     }
 }
