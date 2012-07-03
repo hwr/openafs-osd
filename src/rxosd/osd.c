@@ -3177,6 +3177,9 @@ WipeCand(struct cmd_syndesc *as, void *rock)
     afs_uint32 criteria = 0, max = 100, minMB = 0, spare = 0;
     afs_int32 atimeSeconds = 0;
     struct WipeCandidateList q;
+#ifdef ALLOW_OLD
+    struct WipeCandidate0List q0;
+#endif
  
     if (as->parms[0].items)					/* -server */ 
         thost = as->parms[0].items->data;
@@ -3268,7 +3271,9 @@ WipeCand(struct cmd_syndesc *as, void *rock)
     }
 #ifdef ALLOW_OLD
     if (code == RXGEN_OPCODE)
-        code = RXOSD_wipe_candidates291(Conn, lun, max, criteria, minMB, spare, &q);
+        q0.WipeCandidate0List_len = 0;
+        q0.WipeCandidate0List_val = 0;
+        code = RXOSD_wipe_candidates291(Conn, lun, max, criteria, minMB, spare, &q0);
 #endif
     if (code)
 	fprintf(stderr,"RXOSD_wipe_candidates failed with code %d\n", code);
@@ -3278,8 +3283,8 @@ WipeCand(struct cmd_syndesc *as, void *rock)
 	char month[4];
 	char weekday[4];
 	int hour, minute, second, day, year;
-	for (i=0; i<q.WipeCandidateList_len; i++) {
-	    struct WipeCandidate0 *w = &q.WipeCandidateList_val[i];
+	for (i=0; i<q0.WipeCandidate0List_len; i++) {
+	    struct WipeCandidate0 *w = &q0.WipeCandidate0List_val[i];
 	    char obj[64], fid[64];
 	    sprintf(obj, "%u.%u.%u.%u",
 			(afs_uint32) w->p_id,
