@@ -1453,6 +1453,8 @@ SetOsd(struct rx_call *call, struct osddb_osd_tab *in)
     } 
     code = write_osddb_entry(trans, offs, e);
     if (code) {
+	ViceLog(0,("SetOsd: write_osddb_entry failed for offs %d with %d\n", 
+			offs, code));
 	goto abort;
     }
     
@@ -2404,7 +2406,7 @@ OSDDB_5_minuteCheck()
 	 */
         sleepseconds = 300 - (now % 300); 
         sleepseconds -= 60;	/* 1 minute before hh:05 ... */
-        if (sleepseconds < 0)
+        if (sleepseconds <= 0)
 	    sleepseconds += 300;
         sleep(sleepseconds);
         if (ubeacon_AmSyncSite()) {
@@ -2433,6 +2435,7 @@ OSDDB_5_minuteCheck()
                       && !(o->t.etype_u.osd.unavail & OSDDB_OSD_DEAD)) {
                         afs_int32 code2;
                         struct osddb_osd_tab *t;
+			o->t.etype_u.osd.unavail |= OSDDB_OSD_DEAD;
                         t = malloc(sizeof(struct osddb_osd_tab));
                         if (t) {
                             fill_osd_tab_from_Osd(t, o->id, o->name, o->t);

@@ -1444,6 +1444,7 @@ SetOsd(struct rx_call *call, struct osddb_osd_tab *in)
     } 
     code = write_entry(trans, offs, e);
     if (code) {
+	ViceLog(0,("SetOsd: write_entry failed at offs %d with %d\n", offs, code));
 	goto abort;
     }
     
@@ -2694,7 +2695,7 @@ main(argc, argv)
 	*/
 	sleepseconds = 300 - (now % 300); 
 	sleepseconds -= 60;    /* 1 minute before hh:05 ... */
-	if (sleepseconds < 0)
+	if (sleepseconds <= 0)
 	   sleepseconds += 300;
 	sleep(sleepseconds);
 	now = FT_ApproxTime();
@@ -2725,6 +2726,7 @@ main(argc, argv)
 			afs_int32 code2;
 			struct osddb_osd_tab *t;
 			t = malloc(sizeof(struct osddb_osd_tab));
+			o->t.etype_u.osd.unavail |= OSDDB_OSD_DEAD;
     			if (t) {
 			    fill_osd_tab_from_Osd(t, o->id, o->name, o->t);
 			    t->unavail |= OSDDB_OSD_DEAD;
