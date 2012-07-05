@@ -2397,6 +2397,7 @@ main(argc, argv)
     char commandLine[150];
     char clones[MAXHOSTSPERCELL];
     afs_uint32 host = ntohl(INADDR_ANY);
+    time_t now;
 
 #ifdef	AFS_AIX32_ENV
     /*
@@ -2663,9 +2664,26 @@ main(argc, argv)
     osds.OsdList_len = 0;
     osds.OsdList_val = NULL;
     rx_StartServer(0);
+
+    now = FT_ApproxTime();
+    if (ubeacon_AmSyncSite()) {
+	code = SOSDDB_OsdList(0, &osds);
+	if (!code) { /* initialize timeStamps */
+	    for (i=0; i<osds.OsdList_len; i++) {
+		if (osds.OsdList_val[i].id == 1) { /* local_disk */
+		    osds.OsdList_val[i].t.etype_u.osd.unavail = 0;
+		    continue;
+		}
+		if (osds.OsdList_val[i].t.etype_u.osd.unavail)
+		    osds.OsdList_val[i].t.etype_u.osd.timeStamp = 0;
+		else
+		    osds.OsdList_val[i].t.etype_u.osd.timeStamp = now;
+	    }
+	}
+    }
     while (1) {
 	afs_int32 sleepseconds;
-	time_t now = FT_ApproxTime();
+	now = FT_ApproxTime();
 	/*
 	 * The FiveMinuteCheck of fileservers and volservers wakes up
 	 * at hh:05, hh:10, hh:15 ...
@@ -2678,7 +2696,8 @@ main(argc, argv)
 	sleepseconds -= 60;    /* 1 minute before hh:05 ... */
 	if (sleepseconds < 0)
 	   sleepseconds += 300;
-	IOMGR_Sleep(sleepseconds);
+	sleep(sleepseconds);
+	now = FT_ApproxTime();
 	if (ubeacon_AmSyncSite()) {
 	    if (!osds.OsdList_val) {
 		code = SOSDDB_OsdList(0, &osds);

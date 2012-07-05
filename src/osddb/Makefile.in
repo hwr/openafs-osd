@@ -18,6 +18,13 @@ LIBS =	${TOP_LIBDIR}/libubik.a \
 		${TOP_LIBDIR}/util.a \
 		${TOP_LIBDIR}/libsys.a 
 
+SERVERLIBS = 	${TOP_LIBDIR}/libubik_pthread.a \
+		${TOP_LIBDIR}/libafsauthent.a \
+		${TOP_LIBDIR}/libcmd.a \
+		${TOP_LIBDIR}/libafsrpc.a \
+		${TOP_LIBDIR}/libafsutil.a
+
+
 SRCS = ${srcdir}/*.c
 
 
@@ -49,10 +56,11 @@ volint.h: ${srcdir}/../volser/volint.xg
 
 
 osddbserver.o: ${srcdir}/osddbserver.c osddb.h
-	${CC} ${CFLAGS} -o osddbserver.o -c ${srcdir}/osddbserver.c
+	${CC} ${CFLAGS} -DAFS_PTHREAD_ENV -o osddbserver.o -c ${srcdir}/osddbserver.c
 
 osddbserver: osddbserver.o osddb.ss.o osddb.xdr.o ${LIBS} Makefile
-	${CC} ${CFLAGS} -o osddbserver osddbserver.o osddb.ss.o osddb.xdr.o  ${LIBS} ${XLIBS}
+	${CC} ${CFLAGS} ${MT_CFLAGS} -o osddbserver osddbserver.o osddb.ss.o osddb.xdr.o  \
+			${SERVERLIBS} ${MTLIBS} ${XLIBS}
 
 
 osddbuser.o: ${srcdir}/osddbuser.c osddb.h volint.h
