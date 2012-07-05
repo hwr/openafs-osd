@@ -232,7 +232,7 @@ tubik: ubik libafsrpc
 
 ubiktests: ubik
 
-osddb: cmd comerr ubik cmd comerr auth audit
+osddb: cmd comerr ubik cmd comerr auth audit libafsrpc tubik libafsauthent
 	${COMPILE_PART1} osddb ${COMPILE_PART2}
 
 ptserver: cmd comerr ubik cmd comerr auth audit ptserver_depinstall
