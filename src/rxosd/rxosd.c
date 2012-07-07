@@ -1370,13 +1370,17 @@ GetFetchEntry(struct oparmT10 *o)
 afs_int32
 FindInFetchqueue(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 		 struct osd_segm_descList *list, afs_int32 flag,
-		 struct fetch_entry **ptr)
+		 struct fetch_entry **ptr, int anytag)
 {
     struct fetch_entry *f;
+    afs_uint64 mask = (UNIQUEMASK << 32) + RXOSD_VNODEMASK;
     
     QUEUE_LOCK;
     for (f=rxosd_fetchq; f; f=f->next) {		
 	if (f->d.o.obj_id == o->obj_id && f->d.o.part_id == o->part_id) 
+	    break;
+	if (anytag && f->d.o.part_id == o->part_id 
+	  && (f->d.o.obj_id & mask) == o->obj_id)
 	    break;
     }
     if (f) {
@@ -3116,7 +3120,7 @@ int examine(struct rx_call *call, t10rock *rock, struct oparmT10 *o,
     if ((mask & WANTS_SIZE) && sizep)
         *sizep = tstat.st_size;
     if ((mask & WANTS_HSM_STATUS) && statusp) {
-	result = FindInFetchqueue(call, o, 0, NULL, 0, NULL);
+	result = FindInFetchqueue(call, o, 0, NULL, 0, NULL, 0);
 	if (result == OSD_WAIT_FOR_TAPE)  /* don't bother HSM system, we know it's 'm' */
 	    *statusp = 'm';
 	else if (h.ih_ops->stat_tapecopies) { /* hpss or dcache */
@@ -4217,7 +4221,7 @@ readPS(struct rx_call *call, t10rock *rock, struct oparmT10 * o,
 		struct osd_segm_descList list;
 		list.osd_segm_descList_val = 0;
 		list.osd_segm_descList_len = 0;
-		code = FindInFetchqueue(call, o, user, &list, 0, NULL);
+		code = FindInFetchqueue(call, o, user, &list, 0, NULL, 0);
 	    } else {
                 ViceLog(0,("readPS: IH_OPEN failed for %u.%u.%u tag %d\n",
                     vid, (afs_uint32)(o->obj_id & RXOSD_VNODEMASK),
@@ -5575,7 +5579,7 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 	oh_release(oh);
         oh = 0;
         if (HSM || hsmFile)
-            code = FindInFetchqueue(call, o, user, list, flag, NULL);
+            code = FindInFetchqueue(call, o, user, list, flag, NULL, 0);
         else {
             ViceLog(0,("restore_archive: couldn't open %s\n",
 				sprint_oparmT10(o, string, sizeof(string))));
@@ -6206,13 +6210,13 @@ SRXOSD_modify_fetchq(struct rx_call *call, struct ometa *o, afs_int32 what,
     }
     if (what == REMOVE_FROM_FETCHQUEUE) {
 	if (o->vsn == 1)
-            code = FindInFetchqueue(call, &o->ometa_u.t, 0, NULL, 0, &f);
+            code = FindInFetchqueue(call, &o->ometa_u.t, 0, NULL, 0, &f, 1);
 	else {
 	    struct oparmT10 o1;
 	    code = convert_ometa_2_1(&o->ometa_u.f, &o1);
 	    if (code)
 		goto finis;
-            code = FindInFetchqueue(call, &o1, 0, NULL, 0, &f);
+            code = FindInFetchqueue(call, &o1, 0, NULL, 0, &f, 1);
 	}
         if (f) {				/* still in fetch queue */
 	    /*
@@ -7104,7 +7108,7 @@ SRXOSD_online(struct rx_call *call, struct ometa *o, afs_int32 flag, struct exam
 	    struct osd_segm_descList list;
 	    list.osd_segm_descList_val = 0;
 	    list.osd_segm_descList_len = 0;
-	    code = FindInFetchqueue(call, o, user, &list, 0, NULL);
+	    code = FindInFetchqueue(call, o, user, &list, 0, NULL, 0);
 	} else { 	/* object presumably on-line */
 	    struct o_handle *oh = oh_init_oparmT10(&o->ometa_u.t);
 	    struct FdHandle_t *fdP;
@@ -7141,7 +7145,7 @@ SRXOSD_online317(struct rx_call *call, afs_uint64 part_id, afs_uint64 obj_id,
 	struct osd_segm_descList list;
 	list.osd_segm_descList_val = 0;
 	list.osd_segm_descList_len = 0;
-	code = FindInFetchqueue(call, &o, user, &list, 0, NULL);
+	code = FindInFetchqueue(call, &o, user, &list, 0, NULL, 0);
     } else { 	/* object presumably on-line */
 	struct o_handle *oh = oh_init_oparmT10(&o.ometa_u.t);
 	struct FdHandle_t *fdP;
