@@ -246,7 +246,7 @@ rxosd.xdr.o: rxosd.xdr.c rxosd.h
 # salvager stuff
 
 vol_osd_salv.o: ${srcdir}/vol_osd.c
-	${CCRULESALV}
+	${CCRULESALV} -o vol_osd_salv.o
 
 d_vol_osd_salv.o: ${srcdir}/vol_osd.c
 	${CCRULESALV} -o d_vol_osd_salv.o -DAFS_DEMAND_ATTACH_FS
