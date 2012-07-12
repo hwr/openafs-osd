@@ -6200,6 +6200,8 @@ traverse(Volume *vol, struct sizerangeList *srl, struct osd_infoList *list,
         return 0;
     if (only_non_osd_volumes && V_osdPolicy(vol) != 0)
         return 0;
+    if (policy_statistics && V_osdPolicy(vol) == 0)
+        return 0;
     if ( policy_statistics && V_osdPolicy(vol) && V_osdPolicy(vol) != 1 ) {
         info = findInfo(list, V_osdPolicy(vol) );
         if ( !info )
@@ -6273,6 +6275,8 @@ traverse(Volume *vol, struct sizerangeList *srl, struct osd_infoList *list,
                     struct  osd_p_fileList fl;
                     vN = (offset >> (voldata->aVnodeClassInfo[i].logSize - 1)) - 1 + i;
 		    if (V_osdPolicy(vol) == 0) {
+			if (vd->vnodeMagic == voldata->aVnodeClassInfo[i].magic)
+			    break;
                         ViceLog(0, ("traverse: %u.%u.%u is an OSD file in a volume without osdPolicy\n",
                                 V_id(vol), vN, vd->uniquifier));
 		    }
