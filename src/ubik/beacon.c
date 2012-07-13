@@ -361,6 +361,7 @@ ubeacon_Interact(void *dummy)
     /* loop forever getting votes */
     lastWakeupTime = 0;		/* keep track of time we last started a vote collection */
     while (1) {
+	struct ubik_db_state buffer[MAX_UBIK_DBASES];
 
 	/* don't wakeup more than every POLLTIME seconds */
 	temp = (lastWakeupTime + POLLTIME) - FT_ApproxTime();
@@ -409,8 +410,8 @@ ubeacon_Interact(void *dummy)
 	    if (ubik_dbase[k])
 		l++;
 	}
-	list.ubik_db_stateList_val = (struct ubik_db_state *)
-				      malloc(l * sizeof(struct ubik_db_state));
+	memset(&buffer, 0, sizeof(buffer));
+	list.ubik_db_stateList_val = &buffer;
 	list.ubik_db_stateList_len = l;
 	l = 0; /* offset in list */
 	for (k=0; k<MAX_UBIK_DBASES; k++) {
