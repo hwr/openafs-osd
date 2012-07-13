@@ -6966,6 +6966,9 @@ list_objects_on_osd(struct rx_call *call, Volume *vol,  afs_int32 flag,
     struct osd_infoList list = {0, NULL};
     afs_uint32 now = FT_ApproxTime();
 
+    if (!V_osdPolicy(vol))	/* Makes sense only for OSD volumes */
+	return 0;
+
     if ( (flag & POL_INDICES) && !osd )
 	if ( code = init_pol_statList(&list) ) {
 	    sprintf(line, "eFailed to fetch list of known policies, dumping all\n");
