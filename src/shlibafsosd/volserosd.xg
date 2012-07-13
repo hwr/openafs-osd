@@ -15,13 +15,9 @@ prefix S
 
 %#include "volint.h"
 
-#define     VOLSALVAGE          1
-#define     VOLARCHCAND         2
-#define     VOLLISTOBJECTS      3
-#define     VOLTRAVERSE         4
-#define     VOLPOLUSE           5
-#define     VOLSTATISTIC        6
-#define     VOLVARIABLE         7
+/*
+ *   Meaning of flag bits
+ */
 
 %#define     SALVAGE_UPDATE    2       /* for "vos salvage" */
 %#define     SALVAGE_DECREM    4       /* for "vos salvage" */
@@ -37,7 +33,7 @@ prefix S
 
 const SIZE = 1024;
 
-#if 0
+#if 0		/* These are already included from volint.h */
 struct osd_info {
     afs_uint32 osdid;
     afs_uint32 fids;
@@ -74,35 +70,16 @@ proc OsdSupport(
 ) = VOLOSDSUPPORT;
 #endif
 
+/*
+ * procs must be in order of opcodes!
+ */
+
 proc Salvage(
   IN afs_uint32 vid,
   IN afs_int32 flag,
   IN afs_int32 instances,
   IN afs_int32 localinst
-) split = VOLSALVAGE;
-
-proc Statistic (
-  IN afs_int32 reset,
-  OUT afs_uint32 *since,
-  OUT afs_uint64* rcvd,
-  OUT afs_uint64* sent,
-  OUT struct volser_kbps *kbpsrcvd,
-  OUT struct volser_kbps *kbpssent
-) = VOLSTATISTIC;
-
-proc PolicyUsage (
-  IN afs_uint32 vid,
-  OUT sizerangeList *srl,
-  OUT osd_infoList *list
-) = VOLPOLUSE;
-
-proc Traverse(
-  IN afs_uint32 vid,
-  afs_uint32 delay,
-  afs_int32 flag,
-  OUT sizerangeList *srl,
-  OUT osd_infoList *list
-) = VOLTRAVERSE;
+) split = 1;
 
 proc GetArchCandidates(
   IN afs_uint64 minsize,
@@ -113,11 +90,41 @@ proc GetArchCandidates(
   IN afs_int32 flag,
   IN afs_uint32 delay,
   OUT hsmcandList *list
-) = VOLARCHCAND;
+) = 2;
 
 proc ListObjects(
   IN afs_uint32 vid,
   IN afs_int32 flag,
   IN afs_int32 osd,
   IN afs_uint32 minage
-) split = VOLLISTOBJECTS;
+) split = 3;
+
+proc Traverse(
+  IN afs_uint32 vid,
+  afs_uint32 delay,
+  afs_int32 flag,
+  OUT sizerangeList *srl,
+  OUT osd_infoList *list
+) = 4;
+
+proc PolicyUsage (
+  IN afs_uint32 vid,
+  OUT sizerangeList *srl,
+  OUT osd_infoList *list
+) = 5;
+
+proc Variable (
+  IN afs_int32 cmd,
+  IN string name<256>,
+  IN afs_int64 value,
+  OUT afs_int64 *result
+) = 6;
+
+proc Statistic (
+  IN afs_int32 reset,
+  OUT afs_uint32 *since,
+  OUT afs_uint64* rcvd,
+  OUT afs_uint64* sent,
+  OUT struct volser_kbps *kbpsrcvd,
+  OUT struct volser_kbps *kbpssent
+) = 7;
