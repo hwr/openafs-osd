@@ -1623,7 +1623,8 @@ int objects(struct cmd_syndesc *as, void *rock)
     return error;
 }/* clist */
 
-static int examine(struct cmd_syndesc *as, void *rock) 
+static int 
+examine(struct cmd_syndesc *as, void *rock) 
 {
     afs_uint64 size;
     afs_uint32 high, vid, vnode, unique, tag, linkCount, time, atime;
@@ -1800,16 +1801,16 @@ static int examine(struct cmd_syndesc *as, void *rock)
 	code = RXOSD_examineHSM186(Conn, part, oid, &size, &linkCount, &time, &status);
 	if (!code) {
 	    if (Oprm.ometa_u.f.nStripes > 1)
-        	printf("%llu.%llu.%llu.%u  %u/%u/%u lng %llu lc %u",
+        	printf("%llu.%llu.%llu.%u  %u/%u/%u lng %llu lc %u\n",
 		    Oprm.ometa_u.f.rwvol, Oprm.ometa_u.f.vN, 
 		    Oprm.ometa_u.f.unique, Oprm.ometa_u.f.tag, 
 		    Oprm.ometa_u.f.myStripe, Oprm.ometa_u.f.nStripes,
 		    Oprm.ometa_u.f.stripeSize,
-		    size, lc);
+		    size, linkCount);
 	    else	
-	        printf("%llu.%llu.%llu.%u not-striped lng %llu lc %u",
+	        printf("%llu.%llu.%llu.%u not-striped lng %llu lc %u\n",
                     Oprm.ometa_u.f.rwvol, Oprm.ometa_u.f.vN,
-		    Oprm.ometa_u.f.unique, Oprm.ometa_u.f.tag, size, lc);
+		    Oprm.ometa_u.f.unique, Oprm.ometa_u.f.tag, size, linkCount);
 	} else
 #endif
 	fprintf(stderr, "RXOSD_examine return code was %d\n", code);
