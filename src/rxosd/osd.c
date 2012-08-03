@@ -1714,7 +1714,7 @@ examine(struct cmd_syndesc *as, void *rock)
 		char str[2];
 		str[0] = e.exam_u.e4.status;
 		str[1] = 0;
-	        printf(" HSM status %s ", str);
+	        printf(" HSM status %s", str);
 	    }
 	    if (mask & WANTS_CTIME)
         	PrintTime(&e.exam_u.e4.ctime);
@@ -1801,16 +1801,24 @@ examine(struct cmd_syndesc *as, void *rock)
 	code = RXOSD_examineHSM186(Conn, part, oid, &size, &linkCount, &time, &status);
 	if (!code) {
 	    if (Oprm.ometa_u.f.nStripes > 1)
-        	printf("%llu.%llu.%llu.%u  %u/%u/%u lng %llu lc %u\n",
+        	printf("%llu.%llu.%llu.%u  %u/%u/%u lng %llu lc %u",
 		    Oprm.ometa_u.f.rwvol, Oprm.ometa_u.f.vN, 
 		    Oprm.ometa_u.f.unique, Oprm.ometa_u.f.tag, 
 		    Oprm.ometa_u.f.myStripe, Oprm.ometa_u.f.nStripes,
 		    Oprm.ometa_u.f.stripeSize,
 		    size, linkCount);
 	    else	
-	        printf("%llu.%llu.%llu.%u not-striped lng %llu lc %u\n",
+	        printf("%llu.%llu.%llu.%u not-striped lng %llu lc %u",
                     Oprm.ometa_u.f.rwvol, Oprm.ometa_u.f.vN,
 		    Oprm.ometa_u.f.unique, Oprm.ometa_u.f.tag, size, linkCount);
+	    if (mask & WANTS_HSM_STATUS) { 
+		char str[2];
+		str[0] = status;
+		str[1] = 0;
+		printf(" HSM status %s", str);
+	    }
+            PrintTime(&time);
+	    printf("\n");
 	} else
 #endif
 	fprintf(stderr, "RXOSD_examine return code was %d\n", code);
