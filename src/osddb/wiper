@@ -192,7 +192,7 @@ do
 				active=`$FS fidosd $fid2 | grep -c osd=$o`
 				if [ $active -eq 0 ]; then
 				    $OSD ex $o $f 
-				    lc=`$OSD ex $o $f | awk '{print $10}'`
+				    lc=`$OSD ex $o $f | awk '{print $6}'`
 				    if [ $lc -lt 32 ]; then
 					while [ $lc -gt 0 ]
 				    	do
