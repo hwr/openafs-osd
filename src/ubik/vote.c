@@ -407,6 +407,7 @@ SVOTE_MXSDebug(struct rx_call * rxcall, afs_int32 awhich,
 		if (ubik_dbase[j])
 		    k++;
 	    aparm->list.ubik_db_remoteList_len = k;
+	    aparm->list.ubik_db_remoteList_val = NULL;
 	    if (k)
 		aparm->list.ubik_db_remoteList_val = (struct ubik_db_remote *)
 				malloc(k * sizeof(struct ubik_db_remote));
@@ -427,6 +428,9 @@ SVOTE_MXSDebug(struct rx_call * rxcall, afs_int32 awhich,
 	    }
 	    *isclone = ts->isClone;
 	    return 0;
+	} else {
+	    aparm->list.ubik_db_remoteList_val = NULL;
+	    aparm->list.ubik_db_remoteList_len = 0;
 	}
     }
     return 2;
