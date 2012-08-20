@@ -2038,7 +2038,7 @@ rxosd_fetchClose(void *r, struct vcache *avc, struct dcache *adc,
     RX_AFS_GUNLOCK();
     for (i=0; i<v->stripes; i++) {
 	if (v->call[i]) {
-	    struct rxconn *rxconn = rx_ConnectionOf(v->call[i]);
+	    struct rx_connection *rxconn = rx_ConnectionOf(v->call[i]);
     	    code = EndRXOSD_read(v->call[i]);
     	    code1 = rx_EndCall(v->call[i], code);
     	    if (!worstcode)
