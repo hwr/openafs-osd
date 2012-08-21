@@ -5,6 +5,9 @@
 package OSDDB_
 prefix S
 
+/* prototype for pseudo-RPC call */
+%char *OSDDB_TranslateOpCode(afs_int32 code);
+
 %#define OSDDB_SERVER_PORT		htons(7012)
 %#define OSDDB_SERVICE_ID		13
 %#define OSDDB_HASHSIZE  		251	/* must be prime (?) */
