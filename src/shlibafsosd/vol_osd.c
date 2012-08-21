@@ -5903,7 +5903,7 @@ clone_metadata(Volume *rwvp, Volume *clvp, afs_foff_t offset, void *rock,
      *  cloned volume. Therefore it's necessary to copy information from the clvnode
      *  such as osdMetaDataIndex over to the rwvnode.
      */
-    if (rwvnode->type == vFile && rwvnode->osdMetadataIndex) {
+    if (V_osdPolicy(rwvp) && rwvnode->type == vFile && rwvnode->osdMetadataIndex) {
 	char *rwtrock, *cltrock, *rwtdata, *cltdata;
 	afs_uint32 rwtlength, cltlength;
 	afs_uint32 vnodeNumber = offset >> (vcp->logSize -1);
@@ -5960,7 +5960,7 @@ skipped:
 static void 
 clone_free_metadata(Volume *clvp, struct VnodeDiskObject *clvnode, afs_uint32 vN)
 {
-    if (clvnode->type == vFile && clvnode->osdMetadataIndex)
+    if (V_osdPolicy(clvp) && clvnode->type == vFile && clvnode->osdMetadataIndex)
 	FreeMetadataEntryChain(clvp, clvnode->osdMetadataIndex,
             		       vN, clvnode->uniquifier);
 }
