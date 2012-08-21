@@ -51,6 +51,9 @@ int ListViceInodes(char *devname, char *mountedOn, FILE *inodeFile,
 		   afs_uint32 singleVolumeNumber, int *forcep, int forceR,
 		   char *wpath, void *rock);
 
+#ifndef FSSYNC_BUILD_CLIENT
+extern int convertVolumeInfo(FD_t fdr, FD_t fdw, afs_uint32 vid, int osdSeen);
+#endif
 #define NAMEI_LCOMP_LEN 32
 #define NAMEI_PATH_LEN 256
 

@@ -5741,6 +5741,8 @@ purge_add_to_list(Volume *vp, struct VnodeDiskObject *vnode, afs_int32 vN,
     struct cloneRock *cloneRock = (struct cloneRock *) *rock;
     afs_foff_t offset = 0;
 
+    if (!V_osdPolicy(vp)) 
+	return;
     if (!cloneRock) {
 	cloneRock = (struct cloneRock *) malloc(sizeof(struct cloneRock));
 	memset(cloneRock, 0, sizeof(struct cloneRock));

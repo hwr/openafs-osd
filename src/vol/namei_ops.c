@@ -3428,7 +3428,7 @@ DecodeInode(char *dpath, char *name, struct ViceInodeInfo *info, IHandle_t *ih)
 
 #ifdef FSSYNC_BUILD_CLIENT
 static afs_int32
-convertVolumeInfo(FD_t fdr, FD_t fdw, afs_uint32 vid)
+convertVolumeInfo(FD_t fdr, FD_t fdw, afs_uint32 vid, int osdSeen)
 {
     struct VolumeDiskData vd;
     char *p;
@@ -3438,6 +3438,11 @@ convertVolumeInfo(FD_t fdr, FD_t fdw, afs_uint32 vid)
 	Log("1 convertVolumeInfo: read failed for %lu with code %d\n",
 	    afs_printable_uint32_lu(vid),
 	    errno);
+	return -1;
+    }
+    if (vd.osdPolicy && !osdSeen) {
+	Log("1 convertVolumeInfo: %lu is an osd-Volume without metadata file\n",
+	    afs_printable_uint32_lu(vid));
 	return -1;
     }
     vd.restoredFromId = vd.id;	/* remember the RO volume here */
@@ -3623,7 +3628,7 @@ namei_ConvertROtoRWvolume(char *pname, afs_uint32 volumeId, afs_uint32 *newId)
     }
     closedir(dirp);
 
-    if (!infoSeen || !smallSeen || !largeSeen || !linkSeen || (osdvol && !osdSeen)) {
+    if (!infoSeen || !smallSeen || !largeSeen || !linkSeen) {
 	Log("1 namei_ConvertROtoRWvolume: not all special files found in %s\n", dir_name);
 	code = -1;
 	goto done;
@@ -3662,7 +3667,7 @@ namei_ConvertROtoRWvolume(char *pname, afs_uint32 volumeId, afs_uint32 *newId)
 	code = -1;
 	goto done;
     }
-    code = convertVolumeInfo(fd, fd2, ih->ih_vid);
+    code = convertVolumeInfo(fd, fd2, ih->ih_vid, osdSeen);
     OS_CLOSE(fd);
     if (code) {
 	OS_CLOSE(fd2);

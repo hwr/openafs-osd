@@ -4632,7 +4632,7 @@ VCloseVolumeHandles_r(Volume * vp)
 	IH_CONDSYNC(vp->vnodeIndex[vLarge].handle);
 	IH_CONDSYNC(vp->vnodeIndex[vSmall].handle);
 	IH_CONDSYNC(vp->diskDataHandle);
-	if (osdvol)
+	if (osdvol && vp->osdMetadataHandle)
 	    IH_CONDSYNC(vp->osdMetadataHandle);
 #ifdef AFS_NT40_ENV
 	IH_CONDSYNC(vp->linkHandle);
@@ -4642,7 +4642,7 @@ VCloseVolumeHandles_r(Volume * vp)
     IH_REALLYCLOSE(vp->vnodeIndex[vLarge].handle);
     IH_REALLYCLOSE(vp->vnodeIndex[vSmall].handle);
     IH_REALLYCLOSE(vp->diskDataHandle);
-    if (osdvol)
+    if (osdvol && vp->osdMetadataHandle)
         IH_REALLYCLOSE(vp->osdMetadataHandle);
     IH_REALLYCLOSE(vp->linkHandle);
 
