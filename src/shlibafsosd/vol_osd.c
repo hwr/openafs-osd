@@ -3435,7 +3435,7 @@ osdRemove(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN)
 
     if (vd->type != vFile)
 	return EINVAL;
-    if (!vd->osdMetadataIndex)
+    if (!V_osdPolicy(vol) || !vd->osdMetadataIndex)
 	return EINVAL;
     code = read_osd_p_fileList(vol, vd, vN, &list);
     if (code)
@@ -3469,6 +3469,8 @@ truncate_osd_file(Vnode *vn, afs_uint64 length)
     struct osd_p_fileList list;
     afs_int32 changed = 0;
     
+    if (!V_osdPolicy(vn->volumePtr) || !vn->disk.osdMetadataIndex)
+	return 0;
     ViceLog(1,("truncate_osd_file for %u.%u.%u to length %llu\n",
                         V_id(vn->volumePtr), vn->vnodeNumber, vn->disk.uniquifier,
                         length));
@@ -6442,7 +6444,7 @@ actual_length(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN,
     afs_uint32 lc, ctime, atime, ip, lun;
 
     *size = 0;		/* we will later only add what we find */
-    if (vd->type != vFile || !vd->osdMetadataIndex) {
+    if (vd->type != vFile || !V_osdPolicy(vol) || !vd->osdMetadataIndex) {
         ViceLog(0, ("actual_length: %u.%u.%u is not an OSD file\n",
 				V_id(vol), vN, vd->uniquifier));
 	return EINVAL;
