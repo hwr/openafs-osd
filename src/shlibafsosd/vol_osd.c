@@ -1656,7 +1656,7 @@ extract_objects(Volume *vol, VnodeDiskObject *vd, afs_uint32 vN, struct osdobjec
 
     list->osdobjectList_len = 0;
     list->osdobjectList_val = 0;
-    if (vd->type != vFile || !vd->osdMetadataIndex)
+    if (vd->type != vFile || !V_osdPolicy(vol) || !vd->osdMetadataIndex)
 	return 0;
 
 #ifdef RXOSD_DEBUG
