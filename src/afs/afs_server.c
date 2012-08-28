@@ -340,7 +340,7 @@ CheckRxosdServer(struct srvAddr *sa, struct vrequest *areq)
     if (!aserver->cell)
         return;                 /* can't do much */
 
-    tc = afs_ConnByHost(aserver, AFS_RXOSDPORT, aserver->cell->cellNum,
+    tc = afs_ConnByHostSrv(aserver, sa->sa_portal, 900,  aserver->cell->cellNum,
 		 	areq, 1, SHARED_LOCK, 0, &rxconn);
     if (!tc)
         return;
@@ -655,7 +655,7 @@ afs_CheckServers(int adown, struct cell *acellp)
 	    continue;
 
 	/* check rxosd with special code */
-	if (sa->sa_portal == AFS_RXOSDPORT) {
+	if (sa->sa_portal != AFS_VLPORT && sa->sa_portal != AFS_FSPORT) {
 	    CheckRxosdServer(sa, &treq);
 	    continue;
 	}

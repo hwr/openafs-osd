@@ -205,6 +205,12 @@ extern struct afs_conn *afs_ConnByHost(struct server *aserver,
 				   afs_int32 locktype,
 				   afs_int32 replicated,
 				   struct rx_connection **rxconn);
+extern struct afs_conn *afs_ConnByHostSrv(struct server *aserver,
+				          unsigned short aport, afs_int32 service,
+					  afs_int32 acell, struct vrequest *areq,
+					  int aforce, afs_int32 locktype,
+				          afs_int32 replicated,
+				          struct rx_connection **rxconn);
 extern void afs_PutConn(struct afs_conn *ac,
 				   struct rx_connection *rxconn,
 				   afs_int32 locktype);

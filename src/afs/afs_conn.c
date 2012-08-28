@@ -386,10 +386,10 @@ afs_ConnBySA(struct srvAddr *sap, unsigned short aport, afs_int32 acell,
      */
     if (aport == sap->server->cell->vlport)
 	service = 52;
-    else if (aport == AFS_RXOSDPORT)
-	service = 900;
-    else
+    else if (aport == AFS_FSPORT)
 	service = 1;
+    else		/* Then it can presently only be a rxosd */
+	service = 900;
     return afs_ConnBySAsrv(sap, aport, service, acell, tu, force_if_down,
 			  create, locktype, replicated, rxconn);
 }
@@ -412,9 +412,10 @@ afs_ConnBySA(struct srvAddr *sap, unsigned short aport, afs_int32 acell,
  * @return The established connection.
  */
 struct afs_conn *
-afs_ConnByHost(struct server *aserver, unsigned short aport, afs_int32 acell,
-	       struct vrequest *areq, int aforce, afs_int32 locktype,
-	       afs_int32 replicated, struct rx_connection **rxconn)
+afs_ConnByHostSrv(struct server *aserver, unsigned short aport, afs_int32 service,
+		  afs_int32 acell, struct vrequest *areq, int aforce,
+		  afs_int32 locktype, afs_int32 replicated,
+		  struct rx_connection **rxconn)
 {
     struct unixuser *tu;
     struct afs_conn *tc = 0;
@@ -438,18 +439,28 @@ afs_ConnByHost(struct server *aserver, unsigned short aport, afs_int32 acell,
     tu = afs_GetUser(areq->uid, acell, SHARED_LOCK);
 
     for (sa = aserver->addr; sa; sa = sa->next_sa) {
-	tc = afs_ConnBySA(sa, aport, acell, tu, aforce,
-			  0 /*don't create one */ ,
-			  locktype, replicated, rxconn);
+	if (service)
+	    tc = afs_ConnBySAsrv(sa, aport, service, acell, tu, aforce,
+			         0 /*don't create one */ ,
+			         locktype, replicated, rxconn);
+	else
+	    tc = afs_ConnBySA(sa, aport, acell, tu, aforce,
+			      0 /*don't create one */ ,
+			      locktype, replicated, rxconn);
 	if (tc)
 	    break;
     }
 
     if (!tc) {
 	for (sa = aserver->addr; sa; sa = sa->next_sa) {
-	    tc = afs_ConnBySA(sa, aport, acell, tu, aforce,
-			      1 /*create one */ ,
-			      locktype, replicated, rxconn);
+	    if (service)
+	        tc = afs_ConnBySAsrv(sa, aport, service, acell, tu, aforce,
+			             1 /*create one */ ,
+			             locktype, replicated, rxconn);
+	    else
+	        tc = afs_ConnBySA(sa, aport, acell, tu, aforce,
+			          1 /*create one */ ,
+			          locktype, replicated, rxconn);
 	    if (tc)
 		break;
 	}
@@ -459,6 +470,15 @@ afs_ConnByHost(struct server *aserver, unsigned short aport, afs_int32 acell,
     return tc;
 
 }				/*afs_ConnByHost */
+
+struct afs_conn *
+afs_ConnByHost(struct server *aserver, unsigned short aport, afs_int32 acell,
+	       struct vrequest *areq, int aforce, afs_int32 locktype,
+	       afs_int32 replicated, struct rx_connection **rxconn)
+{
+    return afs_ConnByHostSrv(aserver, aport, 0, acell, areq, aforce, locktype,
+			     replicated, rxconn);
+}
 
 
 /**
