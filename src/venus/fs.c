@@ -494,6 +494,12 @@ n",AFSDIR_CLIENT_ETC_DIRPATH);
     mask = VLSF_RWVOL;
     if (!onlyRW) 
 	mask |= VLSF_ROVOL + VLSF_BACKVOL;
+    if (Fid->Volume == vldbEntry.volumeId[0])
+	mask = VLSF_RWVOL;
+    else if (Fid->Volume == vldbEntry.volumeId[1])
+	mask = VLSF_ROVOL;
+    else if (Fid->Volume == vldbEntry.volumeId[2])
+	mask = VLSF_BACKVOL;
     for (i=0, j=0; j<vldbEntry.nServers; j++) {
         if (vldbEntry.serverFlags[j] & mask) {
             *h++ = ntohl(vldbEntry.serverNumber[j]);
