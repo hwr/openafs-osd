@@ -351,7 +351,8 @@ extern int ih_condsync(IHandle_t * ihP);
 /* Macros common to user space and inode API's. */
 #define IH_INIT(H, D, V, I) ((H) = ih_init((D), (V), (I)))
 
-#define IH_COPY(D, S) ((D) = ih_copy(S))
+	/* files in object storage don't have a handle! */
+#define IH_COPY(D, S) if (S) (D) = ih_copy(S); else (D) = NULL
 
 #define IH_NLINK(H) ih_nlink(H)
 

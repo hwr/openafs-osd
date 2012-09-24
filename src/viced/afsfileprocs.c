@@ -5324,7 +5324,6 @@ SAFSS_Rename(struct rx_call *acall, struct AFSFid *OldDirFid, char *OldName,
 	    errorCode = EIO;
 	    goto Bad_Rename;
 	}
-	SetDirHandle(&newfiledir, newfileptr);
 	/* Now check that we're moving directories over directories properly, etc.
 	 * return proper POSIX error codes:
 	 * if fileptr is a file and new is a dir: EISDIR.
@@ -5332,6 +5331,7 @@ SAFSS_Rename(struct rx_call *acall, struct AFSFid *OldDirFid, char *OldName,
 	 * Also, dir to be removed must be empty, of course.
 	 */
 	if (newfileptr->disk.type == vDirectory) {
+	    SetDirHandle(&newfiledir, newfileptr);
 	    if (fileptr->disk.type != vDirectory) {
 		errorCode = EISDIR;
 		goto Bad_Rename;
