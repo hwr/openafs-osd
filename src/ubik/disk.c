@@ -44,19 +44,19 @@ static struct buffer {
     char lockers;		/*!< usage ref count */
     char dirty;			/*!< is buffer modified */
     char hashIndex;		/*!< back ptr to hash table */
-} *Buffers;
+} *Buffers[MAX_UBIK_DBASES];
 
 #define pHash(page) ((page) & (PHSIZE-1))
 
 afs_int32 ubik_nBuffers = NBUFFERS;
-static struct buffer *phTable[PHSIZE];	/*!< page hash table */
-static struct buffer *LruBuffer;
-static int nbuffers;
+static struct buffer *phTable[MAX_UBIK_DBASES][PHSIZE];	/*!< page hash table */
+static struct buffer *LruBuffer[MAX_UBIK_DBASES];
+static int nbuffers[MAX_UBIK_DBASES];
 static int calls = 0, ios = 0, lastb = 0;
-static char *BufferData;
+static char *BufferData[MAX_UBIK_DBASES];
 static struct buffer *newslot(struct ubik_dbase *adbase, afs_int32 afid,
 			      afs_int32 apage);
-static int initd = 0;
+static int initd[MAX_UBIK_DBASES] = {0, 0, 0, 0};
 #define	BADFID	    0xffffffff
 
 static int DTrunc(struct ubik_trans *atrans, afs_int32 fid, afs_int32 length);
@@ -88,16 +88,18 @@ void
 udisk_Debug_new(afs_int32 *lockedPages, afs_int32 *writeLockedPages)
 {
     struct buffer *tb;
-    int i;
+    int i, j;
 
     *lockedPages = 0;
     *writeLockedPages = 0;
-    tb = Buffers;
-    for (i = 0; i < nbuffers; i++, tb++) {
-	if (tb->lockers) {
-	    *lockedPages++;
-	    if (tb->dirty)
-		*writeLockedPages++;
+    for (j=0; j<MAX_UBIK_DBASES; j++) {
+        tb = Buffers[j];
+        for (i = 0; i < nbuffers[j]; i++, tb++) {
+	    if (tb->lockers) {
+	        *lockedPages++;
+	        if (tb->dirty)
+		    *writeLockedPages++;
+	    }
 	}
     }
 }
@@ -105,21 +107,7 @@ udisk_Debug_new(afs_int32 *lockedPages, afs_int32 *writeLockedPages)
 void
 udisk_Debug(struct ubik_debug *aparm)
 {
-    struct buffer *tb;
-    int i;
-
-    memcpy(&aparm->localVersion, &ubik_dbase[0]->version,
-	   sizeof(struct ubik_version));
-    aparm->lockedPages = 0;
-    aparm->writeLockedPages = 0;
-    tb = Buffers;
-    for (i = 0; i < nbuffers; i++, tb++) {
-	if (tb->lockers) {
-	    aparm->lockedPages++;
-	    if (tb->dirty)
-		aparm->writeLockedPages++;
-	}
-    }
+    return udisk_Debug_new(&aparm->lockedPages, &aparm->writeLockedPages);
 }
 /*!
  * \brief Write an opcode to the log.
@@ -264,28 +252,28 @@ udisk_LogWriteData(struct ubik_dbase *adbase, afs_int32 afile, void *abuffer,
 }
 
 static int
-DInit(int abuffers)
+DInit(int abuffers, int index)
 {
     /* Initialize the venus buffer system. */
     int i;
     struct buffer *tb;
-    Buffers = (struct buffer *)malloc(abuffers * sizeof(struct buffer));
-    memset(Buffers, 0, abuffers * sizeof(struct buffer));
-    BufferData = (char *)malloc(abuffers * UBIK_PAGESIZE);
-    nbuffers = abuffers;
+    Buffers[index] = (struct buffer *)malloc(abuffers * sizeof(struct buffer));
+    memset(Buffers[index], 0, abuffers * sizeof(struct buffer));
+    BufferData[index] = (char *)malloc(abuffers * UBIK_PAGESIZE);
+    nbuffers[index] = abuffers;
     for (i = 0; i < PHSIZE; i++)
-	phTable[i] = 0;
+	phTable[index][i] = 0;
     for (i = 0; i < abuffers; i++) {
 	/* Fill in each buffer with an empty indication. */
-	tb = &Buffers[i];
-	tb->lru_next = &(Buffers[i + 1]);
-	tb->lru_prev = &(Buffers[i - 1]);
-	tb->data = &BufferData[UBIK_PAGESIZE * i];
+	tb = &Buffers[index][i];
+	tb->lru_next = &(Buffers[index][i + 1]);
+	tb->lru_prev = &(Buffers[index][i - 1]);
+	tb->data = &BufferData[index][UBIK_PAGESIZE * i];
 	tb->file = BADFID;
     }
-    Buffers[0].lru_prev = &(Buffers[abuffers - 1]);
-    Buffers[abuffers - 1].lru_next = &(Buffers[0]);
-    LruBuffer = &(Buffers[0]);
+    Buffers[index][0].lru_prev = &(Buffers[index][abuffers - 1]);
+    Buffers[index][abuffers - 1].lru_next = &(Buffers[index][0]);
+    LruBuffer[index] = &(Buffers[index][0]);
     return 0;
 }
 
@@ -293,9 +281,9 @@ DInit(int abuffers)
  * \brief Take a buffer and mark it as the least recently used buffer.
  */
 static void
-Dlru(struct buffer *abuf)
+Dlru(struct buffer *abuf, int index)
 {
-    if (LruBuffer == abuf)
+    if (LruBuffer[index] == abuf)
 	return;
 
     /* Unthread from where it is in the list */
@@ -303,22 +291,22 @@ Dlru(struct buffer *abuf)
     abuf->lru_prev->lru_next = abuf->lru_next;
 
     /* Thread onto beginning of LRU list */
-    abuf->lru_next = LruBuffer;
-    abuf->lru_prev = LruBuffer->lru_prev;
+    abuf->lru_next = LruBuffer[index];
+    abuf->lru_prev = LruBuffer[index]->lru_prev;
 
-    LruBuffer->lru_prev->lru_next = abuf;
-    LruBuffer->lru_prev = abuf;
-    LruBuffer = abuf;
+    LruBuffer[index]->lru_prev->lru_next = abuf;
+    LruBuffer[index]->lru_prev = abuf;
+    LruBuffer[index] = abuf;
 }
 
 /*!
  * \brief Take a buffer and mark it as the most recently used buffer.
  */
 static void
-Dmru(struct buffer *abuf)
+Dmru(struct buffer *abuf, int index)
 {
-    if (LruBuffer == abuf) {
-	LruBuffer = LruBuffer->lru_next;
+    if (LruBuffer[index] == abuf) {
+	LruBuffer[index] = LruBuffer[index]->lru_next;
 	return;
     }
 
@@ -327,10 +315,10 @@ Dmru(struct buffer *abuf)
     abuf->lru_prev->lru_next = abuf->lru_next;
 
     /* Thread onto end of LRU list - making it the MRU buffer */
-    abuf->lru_next = LruBuffer;
-    abuf->lru_prev = LruBuffer->lru_prev;
-    LruBuffer->lru_prev->lru_next = abuf;
-    LruBuffer->lru_prev = abuf;
+    abuf->lru_next = LruBuffer[index];
+    abuf->lru_prev = LruBuffer[index]->lru_prev;
+    LruBuffer[index]->lru_prev->lru_next = abuf;
+    LruBuffer[index]->lru_prev = abuf;
 }
 
 static_inline int
@@ -365,9 +353,10 @@ DRead(struct ubik_trans *atrans, afs_int32 fid, int page)
     struct buffer *tb, *lastbuffer;
     afs_int32 code;
     struct ubik_dbase *dbase = atrans->dbase;
+    int index = dbase->dbase_number;
 
     calls++;
-    lastbuffer = LruBuffer->lru_prev;
+    lastbuffer = LruBuffer[index]->lru_prev;
 
     if (MatchBuffer(lastbuffer, page, fid, atrans)) {
 	tb = lastbuffer;
@@ -375,9 +364,9 @@ DRead(struct ubik_trans *atrans, afs_int32 fid, int page)
 	lastb++;
 	return tb->data;
     }
-    for (tb = phTable[pHash(page)]; tb; tb = tb->hashNext) {
+    for (tb = phTable[index][pHash(page)]; tb; tb = tb->hashNext) {
 	if (MatchBuffer(tb, page, fid, atrans)) {
-	    Dmru(tb);
+	    Dmru(tb, index);
 	    tb->lockers++;
 	    return tb->data;
 	}
@@ -394,7 +383,7 @@ DRead(struct ubik_trans *atrans, afs_int32 fid, int page)
 			UBIK_PAGESIZE);
     if (code < 0) {
 	tb->file = BADFID;
-	Dlru(tb);
+	Dlru(tb, index);
 	tb->lockers--;
 	ubik_print("Ubik: Error reading database file: errno=%d\n", errno);
 	return 0;
@@ -417,12 +406,13 @@ DTrunc(struct ubik_trans *atrans, afs_int32 fid, afs_int32 length)
     struct buffer *tb;
     int i;
     struct ubik_dbase *dbase = atrans->dbase;
+    int index = dbase->dbase_number;
 
     maxPage = (length + UBIK_PAGESIZE - 1) >> UBIK_LOGPAGESIZE;	/* first invalid page now in file */
-    for (i = 0, tb = Buffers; i < nbuffers; i++, tb++) {
+    for (i = 0, tb = Buffers[index]; i < nbuffers[index]; i++, tb++) {
 	if (tb->page >= maxPage && tb->file == fid && tb->dbase == dbase) {
 	    tb->file = BADFID;
-	    Dlru(tb);
+	    Dlru(tb, index);
 	}
     }
     return 0;
@@ -506,11 +496,12 @@ udisk_Invalidate(struct ubik_dbase *adbase, afs_int32 afid)
 {
     struct buffer *tb;
     int i;
+    int index = adbase->dbase_number;
 
-    for (i = 0, tb = Buffers; i < nbuffers; i++, tb++) {
+    for (i = 0, tb = Buffers[index]; i < nbuffers[index]; i++, tb++) {
 	if (tb->file == afid) {
 	    tb->file = BADFID;
-	    Dlru(tb);
+	    Dlru(tb, index);
 	}
     }
     return 0;
@@ -524,9 +515,11 @@ FixupBucket(struct buffer *ap)
 {
     struct buffer **lp, *tp;
     int i;
+    int index = ap->dbase->dbase_number;
+
     /* first try to get it out of its current hash bucket, in which it might not be */
     i = ap->hashIndex;
-    lp = &phTable[i];
+    lp = &phTable[index][i];
     for (tp = *lp; tp; tp = tp->hashNext) {
 	if (tp == ap) {
 	    *lp = tp->hashNext;
@@ -537,8 +530,8 @@ FixupBucket(struct buffer *ap)
     /* now figure the new hash bucket */
     i = pHash(ap->page);
     ap->hashIndex = i;		/* remember where we are for deletion */
-    ap->hashNext = phTable[i];	/* add us to the list */
-    phTable[i] = ap;
+    ap->hashNext = phTable[index][i];	/* add us to the list */
+    phTable[index][i] = ap;
     return 0;
 }
 
@@ -551,9 +544,10 @@ newslot(struct ubik_dbase *adbase, afs_int32 afid, afs_int32 apage)
     /* Find a usable buffer slot */
     afs_int32 i;
     struct buffer *pp, *tp;
+    int index = adbase->dbase_number;
 
     pp = 0;			/* last pure */
-    for (i = 0, tp = LruBuffer; i < nbuffers; i++, tp = tp->lru_next) {
+    for (i = 0, tp = LruBuffer[index]; i < nbuffers[index]; i++, tp = tp->lru_next) {
 	if (!tp->lockers && !tp->dirty) {
 	    pp = tp;
 	    break;
@@ -573,7 +567,7 @@ newslot(struct ubik_dbase *adbase, afs_int32 afid, afs_int32 apage)
     pp->page = apage;
 
     FixupBucket(pp);		/* move to the right hash bucket */
-    Dmru(pp);
+    Dmru(pp, index);
     return pp;
 }
 
@@ -581,15 +575,15 @@ newslot(struct ubik_dbase *adbase, afs_int32 afid, afs_int32 apage)
  * \brief Release a buffer, specifying whether or not the buffer has been modified by the locker.
  */
 static void
-DRelease(char *ap, int flag)
+DRelease(char *ap, int index, int flag)
 {
-    int index;
+    int i;
     struct buffer *bp;
 
     if (!ap)
 	return;
-    index = (int)(ap - (char *)BufferData) >> UBIK_LOGPAGESIZE;
-    bp = &(Buffers[index]);
+    i = (int)(ap - (char *)BufferData[index]) >> UBIK_LOGPAGESIZE;
+    bp = &(Buffers[index][i]);
     bp->lockers--;
     if (flag)
 	bp->dirty = 1;
@@ -612,9 +606,10 @@ DFlush(struct ubik_trans *atrans)
     afs_int32 code;
     struct buffer *tb;
     struct ubik_dbase *adbase = atrans->dbase;
+    int index = adbase->dbase_number;
 
-    tb = Buffers;
-    for (i = 0; i < nbuffers; i++, tb++) {
+    tb = Buffers[index];
+    for (i = 0; i < nbuffers[index]; i++, tb++) {
 	if (tb->dirty) {
 	    code = tb->page * UBIK_PAGESIZE;	/* offset within file */
 	    code =
@@ -635,13 +630,14 @@ DAbort(struct ubik_trans *atrans)
 {
     int i;
     struct buffer *tb;
+    int index = atrans->dbase->dbase_number;
 
-    tb = Buffers;
-    for (i = 0; i < nbuffers; i++, tb++) {
+    tb = Buffers[index];
+    for (i = 0; i < nbuffers[index]; i++, tb++) {
 	if (tb->dirty) {
 	    tb->dirty = 0;
 	    tb->file = BADFID;
-	    Dlru(tb);
+	    Dlru(tb, index);
 	}
     }
     return 0;
@@ -655,15 +651,15 @@ DAbort(struct ubik_trans *atrans)
  * identical (except for contents) to the read-transaction buffer.
  */
 static void
-DedupBuffer(struct buffer *abuf)
+DedupBuffer(struct buffer *abuf, int index)
 {
     struct buffer *tb;
-    for (tb = phTable[pHash(abuf->page)]; tb; tb = tb->hashNext) {
+    for (tb = phTable[index][pHash(abuf->page)]; tb; tb = tb->hashNext) {
         if (tb->page == abuf->page && tb != abuf && tb->file == abuf->file
             && tb->dbase == abuf->dbase) {
 
             tb->file = BADFID;
-            Dlru(tb);
+            Dlru(tb, index);
         }
     }
 }
@@ -680,17 +676,18 @@ DSync(struct ubik_trans *atrans)
     afs_int32 file;
     afs_int32 rCode;
     struct ubik_dbase *adbase = atrans->dbase;
+    int index = adbase->dbase_number;
 
     rCode = 0;
     while (1) {
 	file = BADFID;
-	for (i = 0, tb = Buffers; i < nbuffers; i++, tb++) {
+	for (i = 0, tb = Buffers[index]; i < nbuffers[index]; i++, tb++) {
 	    if (tb->dirty == 1) {
 		if (file == BADFID)
 		    file = tb->file;
 		if (file != BADFID && tb->file == file) {
 		    tb->dirty = 0;
-		    DedupBuffer(tb);
+		    DedupBuffer(tb, index);
 		}
 	    }
 	}
@@ -730,11 +727,13 @@ udisk_read(struct ubik_trans *atrans, afs_int32 afile, void *abuffer,
     char *bp;
     afs_int32 offset, len, totalLen;
     struct ubik_dbase *dbase;
+    int index;
 
     if (atrans->flags & TRDONE)
 	return UDONE;
     totalLen = 0;
     dbase = atrans->dbase;
+    index = dbase->dbase_number;
     while (alen > 0) {
 	bp = DRead(atrans, afile, apos >> UBIK_LOGPAGESIZE);
 	if (!bp)
@@ -749,7 +748,7 @@ udisk_read(struct ubik_trans *atrans, afs_int32 afile, void *abuffer,
 	apos += len;
 	alen -= len;
 	totalLen += len;
-	DRelease(bp, 0);
+	DRelease(bp, index, 0);
     }
     return 0;
 }
@@ -799,6 +798,7 @@ udisk_write(struct ubik_trans *atrans, afs_int32 afile, void *abuffer,
     afs_int32 offset, len, totalLen;
     struct ubik_trunc *tt;
     afs_int32 code;
+    int index = atrans->dbase->dbase_number;
 
     if (atrans->flags & TRDONE)
 	return UDONE;
@@ -838,7 +838,7 @@ udisk_write(struct ubik_trans *atrans, afs_int32 afile, void *abuffer,
 	apos += len;
 	alen -= len;
 	totalLen += len;
-	DRelease(bp, 1);	/* buffer modified */
+	DRelease(bp, index, 1);	/* buffer modified */
     }
     return 0;
 }
@@ -854,9 +854,9 @@ udisk_begin(struct ubik_dbase *adbase, int atype, struct ubik_trans **atrans)
 
     *atrans = (struct ubik_trans *)NULL;
     /* Make sure system is initialized before doing anything */
-    if (!initd) {
-	initd = 1;
-	DInit(ubik_nBuffers);
+    if (!initd[adbase->dbase_number]) {
+	initd[adbase->dbase_number] = 1;
+	DInit(ubik_nBuffers, adbase->dbase_number);
     }
     if (atype == UBIK_WRITETRANS) {
 	if (adbase->flags & DBWRITING)
