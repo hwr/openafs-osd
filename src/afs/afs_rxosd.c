@@ -1644,6 +1644,8 @@ retry:
 			if (code == RX_CALL_BUSY) {
 		    	    afs_warn("rxosd start_fetch: busy call to x%x\n",
 				     rx_PeerOf(tc->id)->host);
+			    /* It's not a busy volume ! */
+		    	    v->areq->busyCount = 0;
 			    goto retry;
 			}
 			afs_ServerDown(ts->addr);
