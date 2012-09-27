@@ -1601,6 +1601,7 @@ Bad_GetOsdMetadata:
     PutVolumePackage(acall, parentwhentargetnotdir, targetptr, (Vnode *)0, volptr, 
 					&client);
     errorCode = CallPostamble(tcon, errorCode, thost);
+    ViceLog(3, ("GetOsdMetadata returns %d\n", errorCode));
     return errorCode;
 }
 
