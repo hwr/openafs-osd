@@ -1519,6 +1519,7 @@ retry_after_busy8:
 	if (!locked)
             ObtainWriteLock(&avc->lock, 411);
 	if (avc->vpacRock) { /* May have disappeared in a race condition */
+	    avc->vpacRock = NULL;
             tfp = r->fp;
             fs = get_fs();
 #ifdef CHANGE_FSUID
@@ -1538,7 +1539,6 @@ retry_after_busy8:
 		afs_warn("afs_close_vicep_file: close for %u.%u.%u returned %d\n",
 			avc->f.fid.Fid.Volume, avc->f.fid.Fid.Vnode,
 			avc->f.fid.Fid.Unique, code2);
-	    avc->vpacRock = NULL;
 	    FREE_VICEP(r, struct vpacRock);
 	    if (avc->protocol & VICEP_ACCESS)
 		avc->protocol |= RX_FILESERVER;
