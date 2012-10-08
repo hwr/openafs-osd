@@ -455,7 +455,11 @@ rxosd_CopyOnWrite(afs_uint32 osd, afs_uint64 p_id, afs_uint64 o_id,
 	    n.ometa_u.t.obj_id = o_id;
 	    n.ometa_u.t.osd_id = osd;
 	    code = RXOSD_CopyOnWrite(conn->conn, &o, offs, leng, size, &n);
-	    *new_id = n.ometa_u.t.obj_id;
+	    if (!code)
+	        *new_id = n.ometa_u.t.obj_id;
+	    if (code == RXGEN_OPCODE)
+		code =RXOSD_CopyOnWrite211(conn->conn, p_id, o_id, offs, leng, size, 
+					   &new_id);
 	    PutOsdConn(&conn);
         } else
             code = EIO;
