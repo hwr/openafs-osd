@@ -123,6 +123,8 @@
 #include "vol_osd_inline.h"
 #include <afs/osddbuser.h>
 
+private int oldRxosdsPresent = 0;
+
 private char *libraryVersion = "OpenAFS 1.6.0-osd";
 private char *openafsVersion = NULL;
 #ifdef BUILD_SALVAGER
@@ -670,6 +672,8 @@ rxosd_updatecounters(afs_uint32 osd, afs_uint64 bytes_rcvd,
     conn = FindOsdConnection(osd);
     if (conn) {
         code = RXOSD_updatecounters(conn->conn, bytes_rcvd, bytes_sent);
+	if (code == RXGEN_OPCODE)
+            code = RXOSD_updatecounters315(conn->conn, bytes_rcvd, bytes_sent);
         PutOsdConn(&conn);
     } else
         code = EIO;
@@ -2907,6 +2911,8 @@ restart:
             if (!c->checked) {
                 OSD_UNLOCK;
                 code = RXOSD_ProbeServer(c->conn);
+    		if (code == RXGEN_OPCODE)
+		    code = RXOSD_ProbeServer270(c->conn);
                 if (code) {
                     struct rxosd_conn **prev;
                     OSD_LOCK;
@@ -3554,6 +3560,13 @@ truncate_osd_file(Vnode *vn, afs_uint64 length)
 			o.ometa_u.t.obj_id = obj->obj_id;
 		        code = 
 			    RXOSD_truncate(conn->conn, &o, tlength, &out);
+			if (code == RXGEN_OPCODE) {
+			    code =RXOSD_truncate140(conn->conn, obj->part_id,
+						    obj->obj_id, tlength);
+			    out.vsn = 1;
+			    out.ometa_u.t.part_id = obj->part_id;
+			    out.ometa_u.t.obj_id = obj->obj_id;
+			}
 		        PutOsdConn(&conn);
 			if (code == EINVAL) { /* link count was not 1 */
 			    ViceLog(0, ("truncate_osd_file: link count != 1 for %u.%u.%u\n",
@@ -4858,6 +4871,7 @@ DataXchange(afs_int32 (*ioroutine)(void *rock, char* buf, afs_uint32 lng),
     for (j=0; j<file->segmList.osd_p_segmList_len; j++) {
 	struct osd_p_segm *segm = &file->segmList.osd_p_segmList_val[j];
 	afs_int32 currentcopies = segm->copies;
+	afs_uint64 saveXferLength;
 	if (offset < segm->offset 
 		|| (segm->length && segm->offset + segm->length <= offset)) 
 	    continue; 
@@ -4865,6 +4879,9 @@ DataXchange(afs_int32 (*ioroutine)(void *rock, char* buf, afs_uint32 lng),
 	if (segm->length && segm->offset + segm->length - offset < length)
 	    XferLength = segm->offset + segm->length - offset;
 	length -= XferLength;
+	saveXferLength = XferLength;
+    restart:
+	XferLength = saveXferLength;
 	m = 0; 
 	usenext = m;
 	if (segm->nstripes == 1) {
@@ -4926,7 +4943,8 @@ DataXchange(afs_int32 (*ioroutine)(void *rock, char* buf, afs_uint32 lng),
 	    bsize = segm->stripe_size;
 	else
 	    bsize = OSD_XFER_BSIZE;
-	buffer = (char *) malloc(bsize);
+	if (!buffer)
+	    buffer = (char *) malloc(bsize);
 	if (!buffer) {
 	    ViceLog(0, ("DataXchange: couldn't allocate buffer\n"));
 	    code = EIO;
@@ -4973,7 +4991,15 @@ DataXchange(afs_int32 (*ioroutine)(void *rock, char* buf, afs_uint32 lng),
 			    p.RWparm_u.p1.offset = stripeoffset[l];
 			    p.RWparm_u.p1.length = striperesid[l];
 			    call[ll] = rx_NewCall(conn[ll]->conn);
-			    code = StartRXOSD_write(call[ll], &dummyrock, &p, &ometa);
+			    if (!oldRxosdsPresent)
+			        code = StartRXOSD_write(call[ll], &dummyrock, &p,
+						        &ometa);
+			    else
+				code = StartRXOSD_write121(call[l], dummyrock, 
+							   obj->part_id,
+							   obj->obj_id,
+							   stripeoffset[l],
+							   striperesid[l]);
 			}
 			ll++;
 		    } else {
@@ -4993,7 +5019,14 @@ DataXchange(afs_int32 (*ioroutine)(void *rock, char* buf, afs_uint32 lng),
 retry:
 			    call[l] = rx_NewCall(conn[l]->conn);
 			
-			    code = StartRXOSD_read(call[l], &dummyrock, &p, &ometa);
+			    if (!oldRxosdsPresent)
+			        code = StartRXOSD_read(call[l], &dummyrock, &p, &ometa);
+			    else 
+			        code = StartRXOSD_read131(call[l], dummyrock, 
+							  obj->part_id,
+							  obj->obj_id,
+							  stripeoffset[l],
+							  striperesid[l]);
 			    xdrrx_create(&xdr, call[l], XDR_DECODE);
 			    if (code || !xdr_uint64(&xdr, &tlength)) {
 		    		ViceLog(0, ("DataXchange: couldn't read length of stripe %u in segment %u of %u.%u.%u\n",
@@ -5114,6 +5147,13 @@ retry:
 		if (code)
 		    worstcode = code;
 		code = rx_EndCall(call[i], 0);
+		if (code == RXGEN_OPCODE) {
+		    if (!oldRxosdsPresent) {
+		        ViceLog(0, ("DataXchange: old rxosd present, switching to 1.4 style RPCs\n"));
+		        oldRxosdsPresent = 1;
+		        goto restart;
+		    }
+		}
 		if (code) {
 		    ViceLog(0, ("DataXchange: EndRXOSD_%s to osd %u for %u.%u.%u returned %d\n",
 			storing? "write":"read", osd[i],
