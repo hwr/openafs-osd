@@ -2240,12 +2240,18 @@ retry:
 		        obj->obj_id = pobj->obj_id;
 		        obj->part_id = pobj->part_id;
 		        obj->osd_id = pobj->osd_id;
-		        /*
-		         * Let FindOsd ignore unavailability of osds.
-		         * There may be multiple copies and the client may find 
-		         * out which one is accessible. ----------v
-		         */
-		        FindOsd(obj->osd_id, &obj->osd_ip, &tlun, 1);
+			if (segm->copies > 1)
+		            /*
+		             * Let FindOsd ignore unavailability of osds.
+		             * There are multiple copies and the client may find 
+		             * out which one is accessible. ----------v
+		             */
+		            FindOsd(obj->osd_id, &obj->osd_ip, &tlun, 1);
+			else {
+		            code = FindOsd(obj->osd_id, &obj->osd_ip, &tlun, 0);
+			    if (code)
+				goto bad;
+			}
 		        obj->stripe = pobj->stripe;
 		    }
 	        }
