@@ -5032,6 +5032,14 @@ retry:
 		    		ViceLog(0, ("DataXchange: couldn't read length of stripe %u in segment %u of %u.%u.%u\n",
 					l, j, V_id(vol), vN, vd->uniquifier));
 				code = rx_Error(call[l]);
+				if (code == RXGEN_OPCODE) {
+		    		    if (!oldRxosdsPresent) {
+				        rx_EndCall(call[i], code);
+		        		ViceLog(0, ("DataXchange: old rxosd present, switching to 1.4 style RPCs\n"));
+		        		oldRxosdsPresent = 1;
+		        		goto restart;
+		    		    }
+				}
 				if (code == RXOSD_RESTARTING) {
 				    rx_EndCall(call[i], code);
 #ifdef AFS_PTHREAD_ENV
@@ -5105,6 +5113,14 @@ retry:
 			    struct ometa out;
 			    afs_int32 code2;
 			    code = rx_Error(call[m+ll]);
+			    if (code == RXGEN_OPCODE) {
+				if (!oldRxosdsPresent) {
+			            rx_EndCall(call[m+ll], code);
+		        	    ViceLog(0, ("DataXchange: old rxosd present, switching to 1.4 style RPCs\n"));
+		        	    oldRxosdsPresent = 1;
+		        	    goto restart;
+				}
+			    }
 		    	    code2 = EndRXOSD_write(call[m+ll], &out);
 			    code = rx_EndCall(call[m+ll], code);
 			    call[m+ll] = 0;
