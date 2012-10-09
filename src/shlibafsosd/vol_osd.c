@@ -2180,12 +2180,19 @@ retry:
 		        obj->m.ometa_u.t.part_id = pobj->part_id;
 		        obj->m.ometa_u.t.osd_id = pobj->osd_id;
 		        obj->osd_id = pobj->osd_id;
-		        /*
-		         * Let fillRxEndpoint ignore unavailability of osds.
-		         * There may be multiple copies and the client may find 
-		         * out which one is accessible. ------------------------v
-		         */
-			fillRxEndpoint(obj->osd_id, &obj->addr, &obj->osd_type, 1);
+			if (segm->copies > 1)
+		            /*
+		             * Let fillRxEndpoint ignore unavailability of osds.
+		             * There are multiple copies and the client may find 
+		             * out which one is accessible. ------------------------v
+		             */
+			    fillRxEndpoint(obj->osd_id, &obj->addr, &obj->osd_type, 1);
+			else {
+			    code = fillRxEndpoint(obj->osd_id, &obj->addr,
+						  &obj->osd_type, 0);
+			    if (code)
+				goto bad;
+			}
 		        obj->stripe = pobj->stripe;
 		    }
 	        }
