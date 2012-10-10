@@ -3365,6 +3365,9 @@ attach2(Error * ec, VolId volumeId, char *path, struct DiskPartition64 *partp,
 #endif /* AFS_DEMAND_ATTACH_FS */
 
 	goto locked_error;
+    } else if (V_inUse(vp) && VolumeWriteable(vp)) {
+	V_inUse(vp) = 0;
+	VUpdateVolume_r(ec, vp, 0);
     }
 
     if (programType == fileServer && V_destroyMe(vp) == DESTROY_ME) {
