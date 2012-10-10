@@ -107,7 +107,7 @@ udisk_Debug_new(afs_int32 *lockedPages, afs_int32 *writeLockedPages)
 void
 udisk_Debug(struct ubik_debug *aparm)
 {
-    return udisk_Debug_new(&aparm->lockedPages, &aparm->writeLockedPages);
+    udisk_Debug_new(&aparm->lockedPages, &aparm->writeLockedPages);
 }
 /*!
  * \brief Write an opcode to the log.

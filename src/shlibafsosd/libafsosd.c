@@ -1340,7 +1340,7 @@ VSyncVnode(struct Volume *vp, struct VnodeDiskObject *vd, afs_uint32 vN, int new
 void
 VTakeOffline(struct Volume *vp)
 {
-    return (vol->VTakeOffline)(vp);
+    (vol->VTakeOffline)(vp);
 }
 
 void

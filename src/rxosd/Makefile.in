@@ -39,7 +39,7 @@ LIBAFSOSDOBJS=vicedosd.cs.o vicedosd.xdr.o
 
 OSDDBOBJS=osddb.cs.o osddb.xdr.o osddbuser.o
 
-objects= ${OSDOBJS} ${LWPOBJS} ${UTILOBJS} ${VOLOBJS} ${OSDDBOBJS} ${LIBAFSOSDOBJS}
+objects= ${OSDOBJS} ${LWPOBJS} ${UTILOBJS} ${VOLOBJS} ${OSDDBOBJS} stubs.o ${LIBAFSOSDOBJS} 
 
 LIBS=${TOP_LIBDIR}/libafsauthent.a ${TOP_LIBDIR}/libafsrpc.a \
 		${TOP_LIBDIR}/util.a ${TOP_LIBDIR}/libcmd.a
@@ -49,7 +49,7 @@ source: rxosd.h rxosd.cs.c rxosd.xdr.c Krxosd.cs.c Krxosd.xdr.c \
 
 all:	${TOP_INCDIR}/afs/rxosd.h  ${TOP_INCDIR}/afs/rxosd_hsm.h \
 		rxosd Krxosd.cs.c Krxosd.xdr.c rxosd.h osd readabyte \
-		${TOP_LIBDIR}/librxosd.a
+		${TOP_LIBDIR}/librxosd.a -lnsl
 
 
 dest: all
@@ -201,6 +201,9 @@ readabyte.o: readabyte.c rxosd_hsm.h
 readabyte: readabyte.o libafshsm.o
 	${CC} ${LDFLAGS} -o readabyte readabyte.o libafshsm.o \
 			${LIBS} ${MT_LIBS} -ldl
+
+stubs.o: stubs.c
+	${CCRULE}
 
 ${DEST}/root.server/usr/afs/bin/rxosd: rxosd  
 	${INSTALL} $? $@

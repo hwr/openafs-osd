@@ -2961,7 +2961,12 @@ printf("securityIndex %d != conn->securityIndex %d\n", securityIndex, conn->secu
 	if (!service || (securityIndex >= service->nSecurityObjects)
 	    || (service->securityObjects[securityIndex] == 0)) {
 	    MUTEX_EXIT(&rx_connHashTable_lock);
+if (!service)
 printf("rxi_FindService failed for serviceId %d\n", serviceId);
+else if (securityIndex >= service->nSecurityObjects)
+printf("securityIndex %d for serviceId %d\n", securityIndex, serviceId);
+else
+printf("No securityObject for %d with serviceId %d\n", securityIndex, serviceId);
 	    return (struct rx_connection *)0;
 	}
 	conn = rxi_AllocConnection();	/* This bzero's the connection */

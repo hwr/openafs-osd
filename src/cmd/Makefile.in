@@ -51,7 +51,9 @@ cmd64.o: cmd.c cmd.h
 libcmd64.a: ${LIB64OBJS} AFS_component_version_number64.o
 	-$(RM) -f $@
 	case ${SYS_NAME} in \
-	rs_aix5* rs_aix6* ) \
+	rs_aix5* ) \
+		$(AR) -X64 crv $@ ${LIB64OBJS} AFS_component_version_number64.o ;; \
+	rs_aix6* ) \
 		$(AR) -X64 crv $@ ${LIB64OBJS} AFS_component_version_number64.o ;; \
 	* ) \
 		$(AR) crv $@ ${LIB64OBJS} AFS_component_version_number64.o ;; \
