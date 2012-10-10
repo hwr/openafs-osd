@@ -141,7 +141,7 @@ struct DumpHeader {
  */
 
 #ifdef AFS_RXOSD_SUPPORT
-#include "../vol/vol_osd.h"
+#include "../shlibafsosd/vol_osd.h"
 
 #define MAX_OSD_METADATA_LENGTH 2040
 struct osdMetadataHandle {
@@ -828,19 +828,11 @@ ListVnode(int argc, char **argv, struct vnodeData *vdatacwd, FILE *f,
 				vdata->vnode->vn_ino_lo, 
 				vdata->vnode->vn_ino_lo, 
 				vdata->vnode->vn_ino_lo >> 26); 
-#if defined(AFS_RXOSD_SUPPORT) && defined(AFS_NAMEI_ENV)
-    if (vdata->vnode->osdMetadataIndex) {
-        printf("\tlastUsageTime\t =");
-        PrintTime(&vdata->vnode->lastUsageTime);
-        printf("\n");
-    }
-#else
     printf("\tvn_ino_hi  	= %u	(0x%x)\n",
 				vdata->vnode->vn_ino_hi, 
 				vdata->vnode->vn_ino_hi);
-#endif
 #ifdef AFS_RXOSD_SUPPORT
-    if (vdata->vnode->osdMetadataIndex)
+    if (vol->osdPolicy && vdata->vnode->osdMetadataIndex)
         printf("\tosd file on disk  = %u\n", vdata->vnode->osdFileOnline);
 #endif
     return;
@@ -961,6 +953,7 @@ ScanVnodes(FILE * f, VolumeDiskData * vol, int sizescan)
 		}
 		break;
 	    case 'F':
+		fprintf(stderr, "Strange vnode tag 'F'\n");
 		if (ReadInt32(f, (uint32_t *) & vnode->vn_ino_lo))
 		    return -1;
 		break;
@@ -986,18 +979,26 @@ ScanVnodes(FILE * f, VolumeDiskData * vol, int sizescan)
 		    fprintf(stderr, "failed int32 for 'f'\n");
 		    return -1;
 		}
+		if (verbose > 1 && sizescan)
+		    printf("vnode %u has %lu byte of file data!\n", vnodeNumber, length);
 		vnode->length = length;
 		offset = ftello64(f);
 		fseeko64(f, length, SEEK_CUR);
 		break;
 #ifdef AFS_RXOSD_SUPPORT
 	    case 'u':
-		if (ReadInt32(f, (uint32_t *) & vnode->lastUsageTime))
-		    return -1;
-		break;
+		{
+		    afs_uint32 junk;
+		    fprintf(stderr, "Strange vnode tag 'u'\n");
+		    if (ReadInt32(f, & junk))
+		        return -1;
+		    break;
+		}
 	    case 'x':
-		if (ReadInt32(f, &online))
+		if (ReadInt32(f, &online)) {
+		    fprintf(stderr, "failed int32 for 'x'\n");
 		    return -1;
+		}
 		if (online)
 		    vnode->osdFileOnline = 1;
 		break; 
