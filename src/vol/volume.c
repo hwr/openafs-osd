@@ -3366,6 +3366,7 @@ attach2(Error * ec, VolId volumeId, char *path, struct DiskPartition64 *partp,
 
 	goto locked_error;
     } else if (V_inUse(vp) && VolumeWriteable(vp)) {
+	Log("VAttachVolume: clearing inUse flag in volume %s to avoid salvage.\n", path);
 	V_inUse(vp) = 0;
 	VUpdateVolume_r(ec, vp, 0);
     }
