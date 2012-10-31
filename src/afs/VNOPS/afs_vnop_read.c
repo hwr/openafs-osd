@@ -29,6 +29,7 @@
 
 
 extern char afs_zeros[AFS_ZEROS];
+extern afs_uint32 afs_protocols;
 
 /* Imported variables */
 extern afs_rwlock_t afs_xdcache;
@@ -191,10 +192,15 @@ afs_MemRead(struct vcache *avc, struct uio *auio,
 		    /* daemon is not busy */
 		    ObtainSharedLock(&tdc->mflock, 665);
 		    if (!(tdc->mflags & DFFetchReq)) {
+			int dontwait = B_DONTWAIT;
 			/* start the daemon (may already be running, however) */
 			UpgradeSToWLock(&tdc->mflock, 666);
 			tdc->mflags |= DFFetchReq;
-			bp = afs_BQueue(BOP_FETCH, avc, B_DONTWAIT, 0, acred,
+#ifdef STRUCT_TASK_STRUCT_HAS_CRED
+			if (afs_protocols & VICEP_ACCESS)
+			    dontwait = 0;
+#endif
+			bp = afs_BQueue(BOP_FETCH, avc, dontwait, 0, acred,
 					(afs_size_t) filePos, (afs_size_t) 0,
 					tdc, (void *)0, (void *)0);
 			if (!bp) {
@@ -277,7 +283,8 @@ afs_MemRead(struct vcache *avc, struct uio *auio,
 	    }
 
 	    if (!tdc) {
-		/* If we get, it was not possible to start the
+printf("afs_read: forground %u.%u.%u\n", avc->f.fid.Fid.Volume, avc->f.fid.Fid.Vnode, avc->f.fid.Fid.Unique);
+		/* If we get here, it was not possible to start the
 		 * background daemon. With flag == 1 afs_GetDCache
 		 * does the FetchData rpc synchronously.
 		 */
@@ -644,9 +651,14 @@ afs_UFSRead(struct vcache *avc, struct uio *auio,
 		    /* daemon is not busy */
 		    ObtainSharedLock(&tdc->mflock, 667);
 		    if (!(tdc->mflags & DFFetchReq)) {
+			int dontwait = B_DONTWAIT;
 			UpgradeSToWLock(&tdc->mflock, 668);
 			tdc->mflags |= DFFetchReq;
-			bp = afs_BQueue(BOP_FETCH, avc, B_DONTWAIT, 0, acred,
+#ifdef STRUCT_TASK_STRUCT_HAS_CRED
+			if (afs_protocols & VICEP_ACCESS)
+			    dontwait = 0;
+#endif
+			bp = afs_BQueue(BOP_FETCH, avc, dontwait, 0, acred,
 					(afs_size_t) filePos, (afs_size_t) 0,
 					tdc, (void *)0, (void *)0);
 			if (!bp) {

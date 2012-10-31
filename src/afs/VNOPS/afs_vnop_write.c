@@ -29,6 +29,7 @@
 
 
 extern unsigned char *afs_indexFlags;
+extern afs_uint32 afs_protocols;
 
 /* Called by all write-on-close routines: regular afs_close,
  * store via background daemon and store via the
@@ -284,7 +285,11 @@ afs_MemWrite(struct vcache *avc, struct uio *auio, int aio,
 	 * the high-level write op.
 	 */
 	if (!noLock) {
+#ifdef AFS_LINUX26_ENV
+	    code = afs_DoPartialWrite(avc, &treq, acred);
+#else
 	    code = afs_DoPartialWrite(avc, &treq);
+#endif
 	    if (code) {
 		error = code;
 		break;
@@ -593,7 +598,11 @@ afs_UFSWrite(struct vcache *avc, struct uio *auio, int aio,
 	 * the high-level write op.
 	 */
 	if (!noLock) {
+#ifdef AFS_LINUX26_ENV
+	    code = afs_DoPartialWrite(avc, &treq, acred);
+#else
 	    code = afs_DoPartialWrite(avc, &treq);
+#endif
 	    if (code) {
 		error = code;
 		break;
@@ -642,7 +651,11 @@ afs_UFSWrite(struct vcache *avc, struct uio *auio, int aio,
 
 /* do partial write if we're low on unmodified chunks */
 int
+#ifdef AFS_LINUX26_ENV
+afs_DoPartialWrite(struct vcache *avc, struct vrequest *areq, afs_ucred_t *acred)
+#else
 afs_DoPartialWrite(struct vcache *avc, struct vrequest *areq)
+#endif
 {
     afs_int32 code;
 
@@ -657,6 +670,22 @@ afs_DoPartialWrite(struct vcache *avc, struct vrequest *areq)
 #if	defined(AFS_SUN5_ENV)
     code = afs_StoreAllSegments(avc, areq, AFS_ASYNC | AFS_VMSYNC_INVAL);
 #else
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
+    if (afs_protocols & VICEP_ACCESS) {
+        struct brequest *tb;
+        tb = afs_BQueue(BOP_PARTIAL_STORE, avc, 0, 1, acred,
+                        (afs_size_t) afs_cr_uid(acred), (afs_size_t) 0,
+                        (void *)0, (void *)0, (void *)0);
+        /* sleep waiting for the store to start, then retrieve error code */
+        while ((tb->flags & BUVALID) == 0) {
+            tb->flags |= BUWAIT;
+            afs_osi_Sleep(tb);
+        }
+        code = tb->code;
+        afs_BRelease(tb);
+    }
+    else
+#endif
     code = afs_StoreAllSegments(avc, areq, AFS_ASYNC);
 #endif
     return code;

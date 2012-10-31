@@ -1225,11 +1225,17 @@ open_vicep_file(struct vcache *avc, char *path)
     if (avc->vpacRock) 
 	return 0;
     fs = get_fs();
-    set_fs(KERNEL_DS);
 #ifdef CHANGE_FSUID
     fsuid = current_fsuid();
     current_fsuid() = 0;
+#else
+    if (current_fsuid() != 0) {
+	printf("open_vicep_file called with fsuid %d for %s\n",
+		current_fsuid(), path);
+	return ENOENT;
+    }
 #endif
+    set_fs(KERNEL_DS);
     RX_AFS_GUNLOCK();
 #if defined(HAVE_LINUX_PATH_LOOKUP)
     code = path_lookup(path, 0, &nd);
@@ -1244,7 +1250,7 @@ if (code)
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,27) */
 #else /*HAVE_LINUX_PATH_LOOKUP */
     code = kern_path(path, 0, &path_data);
-if (code)
+    if (code)
 	printf("open_vicep_file: kern_path returns %d for %s\n",
 		code, path);
     if (!code)
@@ -1265,9 +1271,12 @@ if (code)
 #else /* defined(HAVE_LINUX_PATH_LOOKUP) */
 	fp = dentry_open(dentry, mnt, O_LARGEFILE | O_RDWR,
 			 cache_creds);
-	if (IS_ERR(fp))
+	if (IS_ERR(fp)) {
+printf("dentry_open failed with %ld for %s retrying with current_cred\n",
+		(long)fp, path);
 	    fp = dentry_open(dentry, mnt, O_LARGEFILE | O_RDWR,
 			 current_cred());
+	}
 #endif /* defined(HAVE_LINUX_PATH_LOOKUP) */
 #else /* defined(STRUCT_TASK_STRUCT_HAS_CRED) */
 	fp = dentry_open(dentry, nd.path.mnt, O_LARGEFILE | O_RDWR);
@@ -1277,7 +1286,9 @@ if (code)
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,27) */
 #endif /* NAMEI_DATA_HAS_NO_DENTRY */
 #if !defined(HAVE_LINUX_PATH_LOOKUP)
+#if 0
 	dput(dentry);
+#endif
 	mntput(mnt);
 #endif /* HAVE_LINUX_PATH_LOOKUP */
     }
@@ -1435,7 +1446,7 @@ afs_open_vicep_osdfile(struct vcache *avc, afs_uint32 osd, struct ometa *p, char
         for (i=0; i<afs_nVisibleOsds; i++) {
 	    if (avc->f.fid.Cell == afs_visibleOsd[i].cell
 	      && afs_visibleOsd[i].osd == osd) {
-		if (avc->vpacRock) {
+		if (avc->vpacRock) { /* already open, may be changed by copy on write */
 		    struct vpacRock *r = (struct vpacRock *) avc->vpacRock;
 		    if (p->vsn == 1) {
 		        if (r->file.obj_id != p->ometa_u.t.obj_id) /* Changed by CopyOnWrite */

@@ -1318,8 +1318,14 @@ extern int afs_StoreOnLastReference(struct vcache *avc,
 				    struct vrequest *treq);
 extern int afs_UFSWrite(struct vcache *avc, struct uio *auio,
 			int aio, afs_ucred_t *acred, int noLock);
+#ifdef AFS_LINUX26_ENV
+extern int afs_DoPartialWrite(struct vcache *avc,
+			      struct vrequest *areq,
+			      afs_ucred_t *acred);
+#else
 extern int afs_DoPartialWrite(struct vcache *avc,
 			      struct vrequest *areq);
+#endif
 extern int afs_closex(struct file *afd);
 
 #ifdef AFS_SGI65_ENV

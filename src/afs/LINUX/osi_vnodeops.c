@@ -47,6 +47,7 @@
 #endif
 
 extern struct backing_dev_info *afs_backing_dev_info;
+extern afs_uint32 afs_protocols;
 
 extern struct vcache *afs_globalVp;
 
@@ -621,6 +622,21 @@ afs_linux_flush(struct file *fp)
     if ((vcp->execsOrWriters > 0) && (file_count(fp) == 1)) {
 	UpgradeSToWLock(&vcp->lock, 536);
 	if (!AFS_IS_DISCONNECTED) {
+#ifndef UKERNEL
+	    if (afs_protocols & VICEP_ACCESS) {
+		struct brequest *tb;
+		tb = afs_BQueue(BOP_PARTIAL_STORE, vcp, 0, 1, credp,
+                        	(afs_size_t) afs_cr_uid(credp), (afs_size_t) 0,
+                        	(void *)0, (void *)0, (void *)0);
+        	/* sleep waiting for the store to start, then retrieve error code */
+        	while ((tb->flags & BUVALID) == 0) {
+            	    tb->flags |= BUWAIT;
+            	    afs_osi_Sleep(tb);
+        	}
+        	code = tb->code;
+        	afs_BRelease(tb);
+	    } else
+#endif
 		code = afs_StoreAllSegments(vcp,
 				&treq,
 				AFS_SYNC | AFS_LASTSTORE);
@@ -2162,7 +2178,7 @@ afs_linux_dopartialwrite(struct vcache *avc, cred_t *credp) {
     int code = 0;
 
     if (!afs_InitReq(&treq, credp))
-	code = afs_DoPartialWrite(avc, &treq);
+	code = afs_DoPartialWrite(avc, &treq, credp);
 
     return afs_convert_code(code);
 }

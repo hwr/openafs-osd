@@ -211,7 +211,7 @@ getRxosdConn(struct rxosd_Variables *v, struct osd_obj *o,
 	port = htons(port);
 	service = o->addr.service;
     } else {
-        afs_warn("check_for_vicep_access: protocol %d or IP version %d  not yet supported\n",
+        afs_warn("getRxosdConn: protocol %d or IP version %d  not yet supported\n",
 			o->addr.protocol, o->addr.ip.addrtype);
         code = EIO;
 	return code;
@@ -1302,11 +1302,7 @@ rxosd_storeInit(struct vcache *avc, struct afs_conn *tc,
 	v->expires += startTime;
 
 #if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
-#ifdef NEW_OSD_FILE
     code = check_for_vicep_access(v, 1, &osd_id);
-#else
-    code = check_for_vicep_access(v, 1, &osd_id);
-#endif
     if (!code) {
 	code = fake_vpac_storeInit(avc, tc, rxconn, base, bytes, length, sync,
 				areq, ops, rock, v->transid, v->expires, 
@@ -1391,7 +1387,7 @@ rxosd_serverUp(struct rxosd_Variables *v, struct osd_obj *o)
 	port = o->addr.port;
 	port = htons(port);
     } else {
-        afs_warn("check_for_vicep_access: protocol %d or IP version %d  not yet supported\n",
+        afs_warn("rxosd_serverUp: protocol %d or IP version %d  not yet supported\n",
 			o->addr.protocol, o->addr.ip.addrtype);
 	return 0;
     }
