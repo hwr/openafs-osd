@@ -1207,8 +1207,8 @@ DumpVnode(struct iod *iodp, struct VnodeDiskObject *v, Volume *vp,
 		DumpByteString(iodp, 'A', (byte *) VVnodeDiskACL(v),
 			       VAclDiskSize(v));
 	if (osdvol && !code && v->osdPolicyIndex && (flag & TARGETHASOSDSUPPORT))
-	    code = DumpInt32(iodp, 'P', v->osdPolicyIndex);
-	/*  code = DumpInt32(iodp, 'd', v->osdPolicyIndex); */
+	    code = DumpInt32(iodp, 'd', v->osdPolicyIndex);
+	/*  code = DumpInt32(iodp, 'P', v->osdPolicyIndex); */
     }
     if (osdvol) {
 	/* 
