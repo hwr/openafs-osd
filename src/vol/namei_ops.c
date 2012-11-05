@@ -1426,11 +1426,19 @@ namei_inc(IHandle_t * h, Inode ino, int p1)
 	code = -1;
     else {
 	count++;
+#ifdef BUILDING_RXOSD
+	if (count > 31) {
+	    errno = OS_ERROR(EINVAL);
+	    code = -1;
+	    count = 31;
+	}
+#else
 	if (count > 7) {
 	    errno = OS_ERROR(EINVAL);
 	    code = -1;
 	    count = 7;
 	}
+#endif
 	if (namei_SetLinkCount(fdP, ino, count, 1) < 0)
 	    code = -1;
     }
@@ -1783,7 +1791,7 @@ static int
 namei_GetLCOffsetAndIndexFromIno(Inode ino, FdHandle_t *fd, afs_foff_t * offset, int *length, int *index, int *mask)
 {
     afs_uint64 toff = ino & NAMEI_VNODEMASK;
-    int tindex = (int)((ino>>NAMEI_TAGSHIFT) & NAMEI_TAGMASK);
+    int tindex;
     int shared;
 
     if (ino == 0) {                     /* linktable itself */
@@ -1799,6 +1807,7 @@ namei_GetLCOffsetAndIndexFromIno(Inode ino, FdHandle_t *fd, afs_foff_t * offset,
         *mask = 0x7;                      /*    3 bits */
         *length = 2;                      /*    2 bytes */
     }
+    tindex = (int)((ino>>NAMEI_TAGSHIFT) & *mask);
     if (toff == NAMEI_VNODESPECIAL) {
         *offset = 8;
         if (tindex == 6)
@@ -1901,6 +1910,7 @@ namei_GetLinkCount(FdHandle_t * h, Inode ino, int lockit, int fixup, int nowrite
     namei_GetLCOffsetAndIndexFromIno(ino, &offset, &index);
     buf = (char *)&shortrow;
     length = sizeof(shortrow);
+    mask = NAMEI_TAGMASK;
 #endif
 
     if (lockit) {
@@ -1912,7 +1922,7 @@ namei_GetLinkCount(FdHandle_t * h, Inode ino, int lockit, int fixup, int nowrite
     if (rc == -1)
 	goto bad_getLinkByte;
 
-    if ((rc == 0 || !((row >> index) & NAMEI_TAGMASK)) && fixup && nowrite) {
+    if ((rc == 0 || !((row >> index) & mask)) && fixup && nowrite) {
         return 1;
     }
     if (rc == 0 && fixup) {
@@ -1943,7 +1953,7 @@ namei_GetLinkCount(FdHandle_t * h, Inode ino, int lockit, int fixup, int nowrite
     if (!shared)
         row = shortrow;
 
-    if (fixup && !((row >> index) & NAMEI_TAGMASK)) {
+    if (fixup && !((row >> index) & mask)) {
 	/*
 	 * fix up zlc
 	 *
@@ -1965,7 +1975,7 @@ namei_GetLinkCount(FdHandle_t * h, Inode ino, int lockit, int fixup, int nowrite
 	    goto bad_getLinkByte;
     }
 
-    return ((row >> index) & NAMEI_TAGMASK);
+    return ((row >> index) & mask);
 
   bad_getLinkByte:
     if (lockit)
@@ -2094,9 +2104,20 @@ namei_SetLinkCount(FdHandle_t * fdP, Inode ino, int count, int locked)
     namei_GetLCOffsetAndIndexFromIno(ino, &offset, &index);
     shared = 0;
     length = 2;
-    mask = 7;
+    mask = NAMEI_TAGMASK;
     buf = (char *)&shortrow;
 #endif
+
+    /* be sure it fits in the bits of the entry */
+    if (count > mask) {
+	Log("SetLinkCount: count %d for %u.%u.%u.%u doesn't fit in 0x%x using instead %d\n",
+	    count, fdP->fd_ih->ih_vid,
+	    (afs_uint32) ino & NAMEI_VNODEMASK,
+	    (afs_uint32) (ino >> NAMEI_UNIQSHIFT),
+	    (afs_uint32) (ino >> NAMEI_TAGSHIFT) & 7,
+	     mask, mask);
+	count = mask;
+    }
 
     if (!locked) {
 	if (FDH_LOCKFILE(fdP, offset) != 0) {
