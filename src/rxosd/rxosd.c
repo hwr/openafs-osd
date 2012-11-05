@@ -1379,7 +1379,7 @@ FindInFetchqueue(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
     for (f=rxosd_fetchq; f; f=f->next) {		
 	if (f->d.o.obj_id == o->obj_id && f->d.o.part_id == o->part_id) 
 	    break;
-	if (anytag && f->d.o.part_id == o->part_id 
+	if (anytag && f->d.o.part_id == o->part_id
 	  && (f->d.o.obj_id & mask) == o->obj_id)
 	    break;
     }
@@ -2593,11 +2593,12 @@ SRXOSD_create(struct rx_call *call, struct ometa *o, struct ometa *r)
     } else if (o->vsn == 2) {
 	struct oparmT10 o1, r1;
 	code = convert_ometa_2_1(&o->ometa_u.f, &o1);
+	*r = *o;
 	r1.part_id = o1.part_id;
 	if (!code)
             code = create(call, o1.part_id, o1.obj_id, &r1.obj_id);
 	if (!code)
-	    (void) convert_ometa_1_2(&r1, &o->ometa_u.f);
+	    (void) convert_ometa_1_2(&r1, &r->ometa_u.f);
     } else
 	code = RXGEN_SS_UNMARSHAL;
     SETTHREADINACTIVE();
@@ -2678,12 +2679,41 @@ incdec(struct rx_call *call, struct oparmT10 *o, afs_int32 diff)
                 	sprint_oparmT10(o, string, sizeof(string)), code));
        }
     } else {
+	afs_int32 lc;
+        fdP = IH_OPEN(lh->ih);
+        if (!fdP) {
+            ViceLog(0,("incdec: IH_OPEN for linktable failed for %s\n",
+			sprint_oparmT10(o, string, sizeof(string))));
+            oh_release(lh);
+            code = EIO;
+	    goto finis;
+        }
+        lc = namei_GetLinkCount(fdP, inode, 0, 0, 0);
+	if (lc == 0) {		/* perhaps an already deleted file */
+	    struct afs_stat tstat;
+	    namei_t name;
+	    IHandle_t h;
+    	    memset(&h, 0, sizeof(h));
+    	    h.ih_vid = o->part_id & RXOSD_VOLIDMASK;
+    	    h.ih_dev = o->part_id >> RXOSD_LUNSHIFT;
+    	    h.ih_ino = o->obj_id;
+    	    namei_HandleToName(&name, &h);
+    	    code = h.ih_ops->stat64(name.n_path, &tstat);
+	    FDH_CLOSE(fdP);
+	    if (code) {
+                oh_release(lh);
+                code = ENOENT;
+	        goto finis;
+	    }
+	}
 	code = IH_INC(lh->ih, inode, vid);
         ViceLog(2,("incdec %s %d in lun %u after IH_INC\n",
                 sprint_oparmT10(o, string, sizeof(string)), diff, lun));
-	if (code)
-            ViceLog(0,("incdec: IH_INC failed for %s with %d.\n",
+	if (code) {
+            ViceLog(0,("incdec: IH_INC failed for %s with %d returning EIO.\n",
                 	sprint_oparmT10(o, string, sizeof(string)), code));
+	    code = EIO;
+	}
     }
     ViceLog(2,("incdec %s %d in lun %u before oh_release\n",
                 sprint_oparmT10(o, string, sizeof(string)), diff, lun));
@@ -3762,18 +3792,6 @@ int CopyOnWrite(struct rx_call *call, struct oparmT10 *o, afs_uint64 offs,
     }
     linkCount = namei_GetLinkCount(lhp, inode, 0, 0, 0);
     FDH_CLOSE(lhp);
-    if (linkCount == 1) {
-        oh_release(lh);
-        code = 0;
-	goto finis;
-    }
-    volutil_PartitionName_r(lun, (char *)&partition, PARTNAMELEN);
-    newinode = IH_CREATE(lh->ih, lun, (char *)&partition, 0, vid, vnode, unique, 1);
-    if (!(VALID_INO(newinode))) {
-        code = ENOSPC;
-        goto bad;
-    }
-    new->obj_id = newinode;
     oh = oh_init(o->part_id, inode);
     if (oh == NULL) {
         ViceLog(0,("CopyOnWrite: oh_init failed for %s\n",
@@ -3788,6 +3806,19 @@ int CopyOnWrite(struct rx_call *call, struct oparmT10 *o, afs_uint64 offs,
         code = EIO;
         goto bad;
     }
+    if (linkCount == 1 && tstat.st_nlink == 1) {
+        oh_release(lh);
+        oh_release(oh);
+        code = 0;
+	goto finis;
+    }
+    volutil_PartitionName_r(lun, (char *)&partition, PARTNAMELEN);
+    newinode = IH_CREATE(lh->ih, lun, (char *)&partition, 0, vid, vnode, unique, 1);
+    if (!(VALID_INO(newinode))) {
+        code = ENOSPC;
+        goto bad;
+    }
+    new->obj_id = newinode;
     fdP = IH_OPEN(oh->ih);
     if (fdP == NULL) {
         ViceLog(0,("CopyOnWrite: IH_OPEN failed for %s.\n",
@@ -7618,10 +7649,10 @@ main(int argc, char *argv[])
     rx_SetMinProcs(service, 2);
     rx_SetMaxProcs(service, lwps/2);
     rx_SetCheckReach(service, 1);
-    
+
     if (port == OSD_SECOND_SERVER_PORT) {
 	/* Alternative port 7006 */
-        service = rx_NewServiceHost(HostAddr_NBO, OSD_SERVER_PORT, 
+	service = rx_NewServiceHost(HostAddr_NBO, OSD_SERVER_PORT,
 			OSD_SERVICE_ID, "OSD-7006", sc, 4, RXOSD_ExecuteRequest);
     } else {
         /* Alternative port 7011 */

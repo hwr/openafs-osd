@@ -1812,6 +1812,92 @@ bad:
     return code;
 }
 
+/*
+ * called from the volserver in dumpstuff.c when restoring a volume.
+ * If the volume gets restored to a volume outside the volume group - typically
+ * when restoreing a dump to a temporary volume - create hard links to the
+ * original objects.
+ */
+check_and_flush_metadata(struct Volume *vp, struct VnodeDiskObject *vnode,
+			 afs_uint32 vnodeNumber, void *rock, int *lcOk)
+{
+    afs_int32 code;
+    int i, j, k, changed = 0;
+    struct osd_p_fileList list;
+
+    code = FlushMetadataHandle(vp, vnode, vnodeNumber, rock, 1);
+    if (code)
+	return code;
+    list.osd_p_fileList_val = NULL;
+    list.osd_p_fileList_len = 0;
+    code = read_osd_p_fileList(vp, vnode, vnodeNumber, &list);
+    if (!code) {
+	for (i=0; i<list.osd_p_fileList_len; i++) {
+	    struct osd_p_file *f = &list.osd_p_fileList_val[i];
+	    for (j=0; j<f->segmList.osd_p_segmList_len; j++) {
+		struct osd_p_segm *s = &f->segmList.osd_p_segmList_val[j];
+		for (k=0; k<s->objList.osd_p_objList_len; k++) {
+		    struct osd_p_obj *o = &s->objList.osd_p_objList_val[k];
+		    if (o->part_id & 0xffffffff != V_parentId(vp)) {
+			/*
+			 * Restore of into a new volume:
+			 * create hard links from the old volumes objects
+			 * into the new volume's namei-tree and change
+			 * the part_id in the metadata accordingly to the
+			 * new RW_id.
+			 */
+			afs_uint64 newpartid, newobjid;
+			newpartid = (o->part_id & 0xffffffff00000000L)
+					 | V_parentId(vp);
+			newobjid = o->obj_id;
+	        	code = rxosd_hardlink(o->osd_id, o->part_id, o->obj_id,
+					newpartid, o->obj_id, &newobjid);
+			if (code) { 
+			    /*
+			     * If this is an old dump being restored, it may happen
+			     * that an object doesn't exist anymore. That's ok and
+			     * can be fixed by 'vos salvage' later on.
+			     */
+			    ViceLog(0, ("restore to new volume: hard link in osd %u from %u.%u.%u.%u to %u.%u.%u.%u failed with %d, continuing anyway\n",
+				o->osd_id,
+				(afs_uint32)(o->part_id & RXOSD_VOLIDMASK),
+				(afs_uint32)(o->obj_id & RXOSD_VNODEMASK),
+				(afs_uint32)((o->obj_id >> RXOSD_UNIQUESHIFT) & RXOSD_UNIQUEMASK),
+				(afs_uint32)((o->obj_id >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK),
+				V_parentId(vp),
+				(afs_uint32)(newobjid & RXOSD_VNODEMASK),
+				(afs_uint32)((newobjid >> RXOSD_UNIQUESHIFT) & RXOSD_UNIQUEMASK),
+				(afs_uint32)((newobjid >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK),
+				code));
+			    code = 0;
+			} else{
+			    changed = 1;
+			    *lcOk = 1;
+			    ViceLog(1, ("restore to new volume: hard link in osd %u from %u.%u.%u.%u to %u.%u.%u.%u\n",
+				    o->osd_id,
+				    (afs_uint32)(o->part_id & RXOSD_VOLIDMASK),
+				    (afs_uint32)(o->obj_id & RXOSD_VNODEMASK),
+				    (afs_uint32)((o->obj_id >> RXOSD_UNIQUESHIFT) & RXOSD_UNIQUEMASK),
+				    (afs_uint32)((o->obj_id >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK),
+				    V_parentId(vp),
+				    (afs_uint32)(newobjid & RXOSD_VNODEMASK),
+				    (afs_uint32)((newobjid >> RXOSD_UNIQUESHIFT) & RXOSD_UNIQUEMASK),
+				    (afs_uint32)((newobjid >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK)));
+			    o->part_id = newpartid;
+			    o->obj_id = newobjid;
+		        }
+		    }
+		}
+	    }
+	}
+	if (changed)
+    	    code = write_osd_p_fileList(vp, vnode, vnodeNumber, &list, &changed, 1);
+    }
+bad:
+    destroy_osd_p_fileList(&list);
+    return code;
+}
+
 /* 
  * Called in fill_osd_file() when file is not on-line. The osd_segm_descList
  * is used as parameter for RXOSD_restore_archive().
@@ -1996,7 +2082,7 @@ fill_osd_file(Vnode *vn, struct async *a,
 			        struct osd_p_obj *co = &cs->objList.osd_p_objList_val[jj];
         		        code = rxosd_examine(co->osd_id, co->part_id, 
 					    co->obj_id, mask, &e);
-				if (e.type != 4)
+				if (!code && e.type != 4)
 				    ViceLog(0,("Unexpected e.type %d instead of 4\n",
 						e.type));
 		                if (code || e.exam_u.e4.size != cs->length) 
@@ -6094,7 +6180,7 @@ restore_osd_file(afs_int32 (*ioroutine)(char *rock, char *buf, afs_uint32 lng),
  * (for files where the metadata changed).
  */
 afs_int32
-IncDecObjectList(struct osdobjectList *list, afs_int32 what)
+IncDecObjectList(Volume *vol, struct osdobjectList *list, afs_int32 what)
 {
     afs_int32 code = 0, i;
 
@@ -6114,21 +6200,47 @@ IncDecObjectList(struct osdobjectList *list, afs_int32 what)
                             (afs_uint32)((list->osdobjectList_val[i].oid >> NAMEI_TAGSHIFT) & NAMEI_TAGMASK)));
 #endif	    
             if (code) {
-                ViceLog(0, ("incdec_objectLinkCounts %s failed with %d for osd 0x%x, part 0x%lx, obj 0x%lx\n",
-                            what>0?"incr":"decr", code,
+                if (what > 0) { /* a restore */
+		    /*
+		     * If this is a restore of an old dump to a temporary volume
+		     * in order to restore a deleted file we may allow the object
+		     * to have disappeared in the meantime. If it existed only
+		     * on a non-archival OSD it will be lost forever, but if it
+		     * a copy on an archival OSD the object may still exist as
+		     * xxxxx-unlinked-yyyymmdd in the archival OSD. Then it is
+		     * necessary to rename it by hand in order to get it back.
+		     */
+		    if (list->osdobjectList_val[i].pid && 0xffffffff != V_parentId(vol)
+		      && code == ENOENT) {
+			/* 
+			 * When a dump gets restored to a different RW-volume
+			 * during FlushMetadata the part_id gets changed to
+			 * the new RW_volId only if the creation of a hardlink
+			 * succeeded. otherwise the original part_id is in place.
+			 */
+                	ViceLog(1, ("incdec_objectLinkCounts incr failed with %d for osd 0x%x, part 0x%lx, obj 0x%lx\n",
+                            code,
                             list->osdobjectList_val[i].osd,
                             list->osdobjectList_val[i].pid,
                             list->osdobjectList_val[i].oid));
-                if (what > 0)
-                    return code;
+			code = 0;
+		    } else {
+                	ViceLog(0, ("incdec_objectLinkCounts incr failed with %d for osd 0x%x, part 0x%lx, obj 0x%lx\n",
+                            code,
+                            list->osdobjectList_val[i].osd,
+                            list->osdobjectList_val[i].pid,
+                            list->osdobjectList_val[i].oid));
+                        return code;
+		    }
+		}
             }
         }
     }
     return code;
 }
+
 /*
- * Called in the volserver when restoring a volume for vnodes when both
- * the new and the old vnode pointed to OSD files.
+ * Called in the volserver when restoring a volume
  */
 static afs_int32
 restore_correct_linkcounts(Volume *vol, struct VnodeDiskObject *old, afs_uint32 vN,
@@ -6138,6 +6250,9 @@ restore_correct_linkcounts(Volume *vol, struct VnodeDiskObject *old, afs_uint32 
     struct osdobjectList *oldlist = NULL;
     struct osdobjectList newlist;
     afs_int32 code = 0, i, j;
+
+    if (!V_osdPolicy(vol))	/* not an OSD-volume: nothing to do */
+	return 0;
 
     if (old->type == vFile && old->osdMetadataIndex) {
 	oldlist = (struct osdobjectList *) malloc(sizeof(struct osdobjectList));
@@ -6154,7 +6269,7 @@ restore_correct_linkcounts(Volume *vol, struct VnodeDiskObject *old, afs_uint32 
 	    return code;
     }
     /*
-     * objects existing in both vnodes don't require any action and
+     * objects existing in old and new vnode don't require any action and
      * are are flagged by osd=0
      */
     if (oldlist) {
@@ -6173,19 +6288,22 @@ restore_correct_linkcounts(Volume *vol, struct VnodeDiskObject *old, afs_uint32 
         }
     }
     if (newlist.osdobjectList_len && !noNeedToIncrement) {
-        code = IncDecObjectList(&newlist, 1);
+        code = IncDecObjectList(vol, &newlist, 1);
         free(newlist.osdobjectList_val);
     }
     return code;
 }
 
+/*
+ * Called in the volserver when restoring a volume.
+ */
 static void
 restore_dec(Volume *vp, struct VnodeDiskObject *old, struct VnodeDiskObject *new,
 	    afs_int32 vN, void **rock)
 {
     if (*rock) {
 	struct osdobjectList *oldlist = (struct osdobjectList *)*rock;
-	IncDecObjectList(oldlist, -1);
+	IncDecObjectList(vp, oldlist, -1);
 	free(oldlist->osdobjectList_val);
 	free(*rock);
 	*rock = NULL;
@@ -6194,9 +6312,9 @@ restore_dec(Volume *vp, struct VnodeDiskObject *old, struct VnodeDiskObject *new
 	FreeMetadataEntryChain(vp, old->osdMetadataIndex, vN, old->uniquifier);
 }
 
-/* this struct must be the same as in volint.xg !!! */
 
 #ifndef BUILD_SHLIBAFSOSD
+/* this struct must be the same as in volint.xg !!! */
 struct osd_info {
     afs_uint32 osdid;
     afs_uint32 fids;
@@ -6807,7 +6925,7 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 							 o->obj_id, mask, &e); 
 					if (code) {
 	    				    sprintf(line, "Object %u.%u.%u.%u: RXOSD_examine of object for %u.%u.%u failed on OSD %u with code %d\n",
-						V_id(vol), 
+						(afs_uint32) (o->part_id & 0xffffffff), 
 						(afs_uint32) (o->obj_id & NAMEI_VNODEMASK), 
 						(afs_uint32) (o->obj_id >> 32), 
 						(afs_uint32) ((o->obj_id >> NAMEI_TAGSHIFT) & NAMEI_TAGMASK), 
@@ -7513,7 +7631,7 @@ int init_osdvol (char *version, char **afsosdVersion, struct osd_vol_ops_v0 **os
     osd_vol_ops_v0.op_dump_osd_file = dump_osd_file;
     osd_vol_ops_v0.op_dump_metadata_time = osd_metadata_time;
     osd_vol_ops_v0.op_restore_allocmetadata = AllocMetadataByteString;
-    osd_vol_ops_v0.op_restore_flushmetadata = FlushMetadataHandle;
+    osd_vol_ops_v0.op_restore_flushmetadata = check_and_flush_metadata;
     osd_vol_ops_v0.op_restore_osd_file = restore_osd_file;
     osd_vol_ops_v0.op_restore_set_linkcounts = restore_correct_linkcounts;
     osd_vol_ops_v0.op_restore_dec = restore_dec;

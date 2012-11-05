@@ -1694,11 +1694,11 @@ ReadVnodes(struct iod *iodp, Volume * vp, int incremental,
 		    *length = taglen;
 		    ReadByteString(iodp, (byte *) data, *length);
 		    code = (osdvol->op_restore_flushmetadata)(vp, vnode, vnodeNumber,
-							      rock, 1);
+							      rock, &lcOk);
 	            haveMetadata = 1;
 		    free(rock);
 		    if (code) {
-        	        Log("1 Volser: ReadVnodes: Restore aborted FlushMetadataHandle failed\n");
+        	        Log("1 Volser: ReadVnodes: Restore aborted FlushMetadataHandle failed with %d\n", code);
 		        return VOLSERREAD_DUMPERROR;
     		    }
 		    break;
