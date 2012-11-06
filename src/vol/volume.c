@@ -3347,6 +3347,13 @@ attach2(Error * ec, VolId volumeId, char *path, struct DiskPartition64 *partp,
     VOL_LOCK;
     vp->nextVnodeUnique = V_uniquifier(vp);
 
+    if (VCanUnsafeAttach() && VShouldCheckInUse(mode) && VolumeWriteable(vp)
+	&& V_inUse(vp) == fileServer && !V_needsSalvaged(vp)) {
+	Log("VAttachVolume: clearing inUse flag in volume %s to avoid salvage.\n",
+	    path);
+	V_inUse(vp) = 0;
+    }
+
     if (VShouldCheckInUse(mode) && V_inUse(vp) && VolumeWriteable(vp)) {
 	if (!V_needsSalvaged(vp)) {
 	    V_needsSalvaged(vp) = 1;
@@ -3365,10 +3372,6 @@ attach2(Error * ec, VolId volumeId, char *path, struct DiskPartition64 *partp,
 #endif /* AFS_DEMAND_ATTACH_FS */
 
 	goto locked_error;
-    } else if (V_inUse(vp) && VolumeWriteable(vp)) {
-	Log("VAttachVolume: clearing inUse flag in volume %s to avoid salvage.\n", path);
-	V_inUse(vp) = 0;
-	VUpdateVolume_r(ec, vp, 0);
     }
 
     if (programType == fileServer && V_destroyMe(vp) == DESTROY_ME) {
