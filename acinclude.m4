@@ -1376,6 +1376,7 @@ AC_CHECK_FUNCS(setvbuf vsyslog getcwd)
 AC_CHECK_FUNCS(regcomp regexec regerror)
 AC_CHECK_FUNCS(fseeko64 ftello64 pread preadv pwrite pwritev preadv64 pwritev64)
 AC_CHECK_FUNCS([setenv unsetenv])
+AC_CHECK_FUNCS(poll)
 
 case $AFS_SYSNAME in
 *hp_ux* | *hpux*)
