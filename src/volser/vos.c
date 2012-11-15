@@ -580,7 +580,7 @@ DisplayFormat(volintInfo *pntr, afs_uint32 server, afs_int32 part,
 	    fprintf(STDOUT,
 		    "    %d accesses in the past day (i.e., vnode references)\n",
 		    pntr->dayUse);
-	} else if (pntr->status == VBUSY) {
+	} else if (pntr->status == VBUSY || pntr->status == VOLSERVOLBUSY) {
 	    *totalBusy += 1;
 	    qPut(&busyHead, pntr->volid);
 	    if (disp)
@@ -615,7 +615,7 @@ DisplayFormat(volintInfo *pntr, afs_uint32 server, afs_int32 part,
 	    if (pntr->needsSalvaged == 1)
 		fprintf(STDOUT, "**needs salvage**");
 	    fprintf(STDOUT, "\n");
-	} else if (pntr->status == VBUSY) {
+	} else if (pntr->status == VBUSY || pntr->status == VOLSERVOLBUSY) {
 	    *totalBusy += 1;
 	    qPut(&busyHead, pntr->volid);
 	    if (disp)
@@ -808,7 +808,7 @@ XDisplayFormat(volintXInfo *a_xInfoP, afs_uint32 a_servID, afs_int32 a_partID,
 	    fprintf(STDOUT,
 		    "          |-------------------------------------------|\n");
 	} /*Volume status OK */
-	else if (a_xInfoP->status == VBUSY) {
+	else if (a_xInfoP->status == VBUSY || a_xInfoP->status == VOLSERVOLBUSY) {
 	    (*a_totalBusyP)++;
 	    qPut(&busyHead, a_xInfoP->volid);
 	    if (a_showProblems)
@@ -847,7 +847,7 @@ XDisplayFormat(volintXInfo *a_xInfoP, afs_uint32 a_servID, afs_int32 a_partID,
 	    }
 	    fprintf(STDOUT, "\n");
 	} /*Volume OK */
-	else if (a_xInfoP->status == VBUSY) {
+	else if (a_xInfoP->status == VBUSY || a_xInfoP->status == VOLSERVOLBUSY) {
 	    (*a_totalBusyP)++;
 	    qPut(&busyHead, a_xInfoP->volid);
 	    if (a_showProblems)
@@ -1007,7 +1007,7 @@ XDisplayFormat2(volintXInfo *a_xInfoP, afs_uint32 a_servID, afs_int32 a_partID,
 		}
 
 	} /*Volume status OK */
-	else if (a_xInfoP->status == VBUSY) {
+	else if (a_xInfoP->status == VBUSY || a_xInfoP->status == VOLSERVOLBUSY) {
 	    (*a_totalBusyP)++;
 	    qPut(&busyHead, a_xInfoP->volid);
 	    if (a_showProblems)
@@ -1044,7 +1044,7 @@ XDisplayFormat2(volintXInfo *a_xInfoP, afs_uint32 a_servID, afs_int32 a_partID,
 		(*a_totalNotOKP)++;
 
 	} /*Volume OK */
-	else if (a_xInfoP->status == VBUSY) {
+	else if (a_xInfoP->status == VBUSY || a_xInfoP->status == VOLSERVOLBUSY) {
 	    (*a_totalBusyP)++;
 	    qPut(&busyHead, a_xInfoP->volid);
 	    if (a_showProblems)
@@ -1092,6 +1092,7 @@ DisplayFormat2(long server, long partition, volintInfo *pntr)
     case VOK:
 	fprintf(STDOUT, "status\t\tOK\n");
 	break;
+    case VOLSERVOLBUSY:
     case VBUSY:
 	fprintf(STDOUT, "status\t\tBUSY\n");
 	return;
