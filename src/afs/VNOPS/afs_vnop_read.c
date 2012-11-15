@@ -142,6 +142,7 @@ afs_MemRead(struct vcache *avc, struct uio *auio,
 		len = tdc->f.chunkBytes - offset;
 	    }
 	} else {
+	    int versionOk;
 	    /* a tricky question: does the presence of the DFFetching flag
 	     * mean that we're fetching the latest version of the file?  No.
 	     * The server could update the file as soon as the fetch responsible
@@ -176,6 +177,7 @@ afs_MemRead(struct vcache *avc, struct uio *auio,
 		ReleaseReadLock(&tdc->lock);
 		afs_PutDCache(tdc);	/* before reusing tdc */
 	    }
+    try_background:
 	    tdc = afs_GetDCache(avc, filePos, &treq, &offset, &len, 2);
 	    ObtainReadLock(&tdc->lock);
 	    /* now, first try to start transfer, if we'll need the data.  If
@@ -187,7 +189,11 @@ afs_MemRead(struct vcache *avc, struct uio *auio,
 		/* have cache entry, it is not coming in now,
 		 * and we'll need new data */
 	      tagain:
+#ifdef STRUCT_TASK_STRUCT_HAS_CRED
+		if (trybusy && (!afs_BBusy() || (afs_protocols & VICEP_ACCESS))) {
+#else
 		if (trybusy && !afs_BBusy()) {
+#endif
 		    struct brequest *bp;
 		    /* daemon is not busy */
 		    ObtainSharedLock(&tdc->mflock, 665);
@@ -259,16 +265,16 @@ afs_MemRead(struct vcache *avc, struct uio *auio,
 	    }
 	    /* fetching flag gone, data is here, or we never tried
 	     * (BBusy for instance) */
+	    len = tdc->validPos - filePos;
+	    versionOk = hsame(avc->f.m.DataVersion, tdc->f.versionNo) ? 1 : 0;
 	    if (tdc->dflags & DFFetching) {
 		/* still fetching, some new data is here:
 		 * compute length and offset */
 		offset = filePos - AFS_CHUNKTOBASE(tdc->f.chunk);
-		len = tdc->validPos - filePos;
 	    } else {
 		/* no longer fetching, verify data version
 		 * (avoid new GetDCache call) */
-		if (hsame(avc->f.m.DataVersion, tdc->f.versionNo)
-		    && ((len = tdc->validPos - filePos) > 0)) {
+		if (versionOk && len > 0) {
 		    offset = filePos - AFS_CHUNKTOBASE(tdc->f.chunk);
 		} else {
 		    /* don't have current data, so get it below */
@@ -276,6 +282,15 @@ afs_MemRead(struct vcache *avc, struct uio *auio,
 			       ICL_TYPE_INT64, ICL_HANDLE_OFFSET(filePos),
 			       ICL_TYPE_HYPER, &avc->f.m.DataVersion,
 			       ICL_TYPE_HYPER, &tdc->f.versionNo);
+#if 0
+#ifdef STRUCT_TASK_STRUCT_HAS_CRED
+if (afs_protocols & VICEP_ACCESS) {
+printf("afs_read: DV mismatch? %d instead of %d for %u.%u.%u\n", tdc->f.versionNo.low, avc->f.m.DataVersion.low, avc->f.fid.Fid.Volume, avc->f.fid.Fid.Vnode, avc->f.fid.Fid.Unique);
+printf("afs_read: validPos %llu filePos %llu totalLength %lld m.Length %llu noLock %d\n", tdc->validPos, filePos, totalLength, avc->f.m.Length, noLock);
+printf("afs_read: or len too low? %lld for %u.%u.%u\n", len, avc->f.fid.Fid.Volume, avc->f.fid.Fid.Vnode, avc->f.fid.Fid.Unique);
+}
+#endif
+#endif
 		    ReleaseReadLock(&tdc->lock);
 		    afs_PutDCache(tdc);
 		    tdc = NULL;
@@ -283,7 +298,17 @@ afs_MemRead(struct vcache *avc, struct uio *auio,
 	    }
 
 	    if (!tdc) {
+#ifdef STRUCT_TASK_STRUCT_HAS_CRED
+		if (afs_protocols & VICEP_ACCESS) { /* avoid foreground fetch */
+		    if (!versionOk) {
+printf("afs_read: avoid forground %u.%u.%u\n", avc->f.fid.Fid.Volume, avc->f.fid.Fid.Vnode, avc->f.fid.Fid.Unique);
+		        goto try_background;
+		    }
+#if 0
 printf("afs_read: forground %u.%u.%u\n", avc->f.fid.Fid.Volume, avc->f.fid.Fid.Vnode, avc->f.fid.Fid.Unique);
+#endif
+		}
+#endif
 		/* If we get here, it was not possible to start the
 		 * background daemon. With flag == 1 afs_GetDCache
 		 * does the FetchData rpc synchronously.
@@ -598,6 +623,7 @@ afs_UFSRead(struct vcache *avc, struct uio *auio,
 		len = tdc->validPos - filePos;
 	    }
 	} else {
+	    int versionOk;
 	    /* a tricky question: does the presence of the DFFetching flag
 	     * mean that we're fetching the latest version of the file?  No.
 	     * The server could update the file as soon as the fetch responsible
@@ -632,6 +658,7 @@ afs_UFSRead(struct vcache *avc, struct uio *auio,
 		ReleaseReadLock(&tdc->lock);
 		afs_PutDCache(tdc);	/* before reusing tdc */
 	    }
+    try_background:
 	    tdc = afs_GetDCache(avc, filePos, &treq, &offset, &len, 2);
 	    if (!tdc) {
 	        error = ENETDOWN;
@@ -646,7 +673,11 @@ afs_UFSRead(struct vcache *avc, struct uio *auio,
 		&& !hsame(avc->f.m.DataVersion, tdc->f.versionNo)) {
 		/* have cache entry, it is not coming in now, and we'll need new data */
 	      tagain:
+#ifdef STRUCT_TASK_STRUCT_HAS_CRED
+		if (trybusy && (!afs_BBusy() || (afs_protocols & VICEP_ACCESS))) {
+#else
 		if (trybusy && !afs_BBusy()) {
+#endif
 		    struct brequest *bp;
 		    /* daemon is not busy */
 		    ObtainSharedLock(&tdc->mflock, 667);
@@ -717,16 +748,16 @@ afs_UFSRead(struct vcache *avc, struct uio *auio,
 	    }
 	    /* fetching flag gone, data is here, or we never tried
 	     * (BBusy for instance) */
+	    len = tdc->validPos - filePos;
+	    versionOk = hsame(avc->f.m.DataVersion, tdc->f.versionNo) ? 1 : 0;
 	    if (tdc->dflags & DFFetching) {
 		/* still fetching, some new data is here:
 		 * compute length and offset */
 		offset = filePos - AFS_CHUNKTOBASE(tdc->f.chunk);
-		len = tdc->validPos - filePos;
 	    } else {
 		/* no longer fetching, verify data version (avoid new
 		 * GetDCache call) */
-		if (hsame(avc->f.m.DataVersion, tdc->f.versionNo)
-		    && ((len = tdc->validPos - filePos) > 0)) {
+		if (versionOk && len > 0) {
 		    offset = filePos - AFS_CHUNKTOBASE(tdc->f.chunk);
 		} else {
 		    /* don't have current data, so get it below */
@@ -734,6 +765,15 @@ afs_UFSRead(struct vcache *avc, struct uio *auio,
 			       ICL_TYPE_INT64, ICL_HANDLE_OFFSET(filePos),
 			       ICL_TYPE_HYPER, &avc->f.m.DataVersion,
 			       ICL_TYPE_HYPER, &tdc->f.versionNo);
+#if 0
+#ifdef STRUCT_TASK_STRUCT_HAS_CRED
+if (afs_protocols & VICEP_ACCESS) {
+printf("afs_read: DV mismatch? %d instead of %d for %u.%u.%u\n", tdc->f.versionNo.low, avc->f.m.DataVersion.low, avc->f.fid.Fid.Volume, avc->f.fid.Fid.Vnode, avc->f.fid.Fid.Unique);
+printf("afs_read: validPos %llu filePos %llu totalLength %d m.Length %llu noLock %d\n", tdc->validPos, filePos, totalLength, avc->f.m.Length, noLock);
+printf("afs_read: or len too low? %lld for %u.%u.%u\n", len, avc->f.fid.Fid.Volume, avc->f.fid.Fid.Vnode, avc->f.fid.Fid.Unique);
+}
+#endif
+#endif
 		    ReleaseReadLock(&tdc->lock);
 		    afs_PutDCache(tdc);
 		    tdc = NULL;
@@ -741,7 +781,15 @@ afs_UFSRead(struct vcache *avc, struct uio *auio,
 	    }
 
 	    if (!tdc) {
-		/* If we get, it was not possible to start the
+#ifdef STRUCT_TASK_STRUCT_HAS_CRED
+		if (afs_protocols & VICEP_ACCESS) { /* avoid foreground fetch */
+		    if (!versionOk) {
+printf("afs_read: avoid forground %u.%u.%u\n", avc->f.fid.Fid.Volume, avc->f.fid.Fid.Vnode, avc->f.fid.Fid.Unique);
+			goto try_background;
+		    }
+		}
+#endif
+		/* If we get here, it was not possible to start the
 		 * background daemon. With flag == 1 afs_GetDCache
 		 * does the FetchData rpc synchronously.
 		 */

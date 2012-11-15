@@ -1341,6 +1341,12 @@ afs_open_vicep_localFile(struct vcache *avc, struct vrequest *treq)
 
 	if (avc->protocol & RX_OSD)
 	    return;
+#ifdef STRUCT_TASK_STRUCT_HAS_CRED
+	if (current_fsuid() != 0) {  	/* in forground: open would fail */
+printf("afs_open_vicep_localFile %u.%u.%u called with fs_uid %d, ignored\n", avc->f.fid.Fid.Volume, avc->f.fid.Fid.Vnode, avc->f.fid.Fid.Unique, current_fsuid());
+	    return;
+	}
+#endif
         tc = afs_Conn(&avc->f.fid, treq, SHARED_LOCK, &rxconn);
         if (tc) {
 	    struct async a;
