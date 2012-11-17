@@ -3282,11 +3282,14 @@ common_FetchData64(struct rx_call *acall, struct AFSFid *Fid,
 #if FS_STATS_DETAILED
 	bytesToXfer = Len;
 #endif
-	rx_KeepAliveOff(acall);
+	rx_KeepAliveOn(acall); /* switched off by GetVolumePackage before.
+			        * It may take a long time if file has first
+				* to be brought on-line from tape */
 	errorCode = (osdviced->op_legacyFetchData) (volptr, &targetptr, acall,
 					       Pos, Len, Int64Mode,
 					       client->ViceId, MyThreadEntry,
 					       &logHostAddr);
+	rx_KeepAliveOff(acall); /* will be switched on again later */
 	if (errorCode)
 	    goto Bad_FetchData;
 #if FS_STATS_DETAILED
@@ -9225,6 +9228,7 @@ StoreData_RXStyle(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
         FT_GetTimeOfDay(&StartTime, 0);
         errorCode = (osdviced->op_legacyStoreData)(volptr, &targetptr, Fid, client, Call,
                 Pos, Length, FileLength);
+	rx_KeepAliveOff(Call);
         if (errorCode)
 	    return errorCode;
 #if FS_STATS_DETAILED

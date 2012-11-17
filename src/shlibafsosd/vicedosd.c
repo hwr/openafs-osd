@@ -360,6 +360,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 		VPutVnode(&code, parentwhentargetnotdir);
 		parentwhentargetnotdir = NULL;
     	    }
+	    rx_KeepAliveOn(acall); /* Archiving may take a while */
 	    code = osd_archive(targetptr, Inputs->int32s[0], Inputs->int32s[1]);
 
     Bad_OSD_Archive:
@@ -402,6 +403,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 			  &rights, &anyrights))) {
 		goto Bad_OSD_Wipe;
     	    }
+	    rx_KeepAliveOn(acall); 
  	    memset(&InStatus, 0, sizeof(InStatus));
 	    if (version && VanillaUser(client)) {
 	        code = EACCES;
@@ -447,6 +449,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 			  &rights, &anyrights))) {
 		goto Bad_StripedOsdFile;
     	    }
+	    rx_KeepAliveOn(acall); 
  	    memset(&InStatus, 0, sizeof(InStatus));
     	    if ((code =
 	 	Check_PermissionRights(targetptr, client, rights, CHK_STOREDATA,
@@ -493,6 +496,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 			  &rights, &anyrights))) {
 		goto Bad_ReplaceOSD;
     	    }
+	    rx_KeepAliveOn(acall); 
  	    memset(&InStatus, 0, sizeof(InStatus));
     	    if (VanillaUser(client)) {
 		code = EPERM;
@@ -505,7 +509,6 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 	    code = replace_osd(targetptr, Inputs->int32s[0], Inputs->int32s[1],
 				&Outputs->int32s[0]);
 	    if (!code) {
-		rx_KeepAliveOn(acall);
 		BreakCallBack(client->host, Fid, 0);
 	    }
 
@@ -542,6 +545,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 	        code = EACCES;
 		goto Bad_Get_Arch_Osds;
 	    }
+	    rx_KeepAliveOn(acall); 
 	    code = get_arch_osds(targetptr, &Outputs->int64s[0], 
 				 &Outputs->int32s[0]);
         Bad_Get_Arch_Osds:
@@ -571,6 +575,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 			  &rights, &anyrights))) {
 		goto Bad_List_Osds;
     	    }
+	    rx_KeepAliveOn(acall); 
  	    memset(&InStatus, 0, sizeof(InStatus));
     	    if ((code =
 	 	Check_PermissionRights(targetptr, client, rights, CHK_FETCHDATA,
@@ -615,6 +620,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 			  &rights, &anyrights))) {
 		goto Bad_SetPolicy;
     	    }
+	    rx_KeepAliveOn(acall); 
 	    /* For the momoent we don't give this feature to normal users */
 	    if (VanillaUser(client)) {
 	        code = EPERM;
@@ -655,6 +661,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
                           &rights, &anyrights)))
                 goto Bad_Get_Policies;
  
+	    rx_KeepAliveOn(acall); 
             Outputs->int32s[0] = (afs_int32)V_osdPolicy(volptr);
             if ( Fid->Vnode&1 )
                 Outputs->int32s[1] = (afs_int32)targetptr->disk.osdPolicyIndex;
@@ -1279,6 +1286,7 @@ GetOSDlocation(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
                                  &rights, &anyrights)) 
             goto Bad_GetOSDloc;
     }
+    rx_KeepAliveOn(acall); 
 
     memset(&InStatus, 0, sizeof(InStatus));
     if (errorCode = Check_PermissionRights(targetptr, client, rights,
@@ -1415,7 +1423,8 @@ ApplyOsdPolicy(struct rx_call *acall, AFSFid *Fid, afs_uint64 length,
                                      &client, WRITE_LOCK,
                                      &rights, &anyrights))
         goto Bad_ApplyOsdPolicy;
-
+	
+    rx_KeepAliveOn(acall);
     memset(&InStatus, 0, sizeof(InStatus));
     if (errorCode = Check_PermissionRights(targetptr, client, rights,
                         CHK_STOREDATA, &InStatus))
@@ -1441,7 +1450,8 @@ ApplyOsdPolicy(struct rx_call *acall, AFSFid *Fid, afs_uint64 length,
 				targetptr->disk.uniquifier, fileName, 255))
 		fileName[0] = '\0';
 	    FidZap(&dir);
-	}
+	} else
+	    fileName[0] = 0;
 	errorCode = createFileWithPolicy(Fid, length, policyIndex, fileName,
 				targetptr, volptr, evalclient, client);
 	if (!errorCode)
@@ -1821,6 +1831,7 @@ common_GetPath(struct rx_call *acall, AFSFid *Fid, struct async *a)
                           &rights, &anyrights)))
         goto Bad_GetPath;
  
+    rx_KeepAliveOn(acall);
     switch (a->type) {
     case 1: 	/* Called from rxosd_bringOnline in the cache manager */
     case 2: 	/* Called from rxosd_bringOnline in the cache manager */
@@ -1894,6 +1905,7 @@ SRXAFSOSD_BringOnline(struct rx_call *acall, AFSFid *Fid,
                           &rights, &anyrights)))
         goto Bad_BringOnline;
 
+    rx_KeepAliveOn(acall);
     if (errorCode = Check_PermissionRights(targetptr, client, rights,
                         CHK_FETCHDATA, NULL)) {
 	if (VanillaUser(client))
