@@ -1649,10 +1649,10 @@ read_osd_p_fileList(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN,
 #endif
 bad:
     xdr_destroy(&xdr);
-bad_no_xdr:
-    free(mh);
     if (code) 
 	destroy_osd_p_fileList(list);
+bad_no_xdr:
+    free(mh);
     return code;
 }
 
@@ -7417,7 +7417,7 @@ get_arch_cand(Volume *vol, struct cand *cand, afs_uint64 minsize,
     afs_uint64 offset;
     afs_uint64 size, length;
     Inode ino;
-    struct VnodeDiskObject vnode, *vd = &vnode;
+    struct VnodeDiskObject *vd;
     int i, j, k, l, m;
     afs_uint32 step, vN;
     afs_uint32 weight;
@@ -7435,6 +7435,10 @@ get_arch_cand(Volume *vol, struct cand *cand, afs_uint64 minsize,
     namei_HandleToName(&name, vol->osdMetadataHandle);
     if (afs_stat(name.n_path, &st) < 0 || st.st_size <= 8) /* no osd metadata */
 	return 0;
+
+    vd = (struct VnodeDiskObject *) malloc(sizeof(struct VnodeDiskObject));
+    if (!vd)
+	return ENOMEM;
     step = voldata->aVnodeClassInfo[vSmall].diskSize;
     offset = step;
     fdP = IH_OPEN(vol->vnodeIndex[vSmall].handle);
@@ -7444,7 +7448,8 @@ get_arch_cand(Volume *vol, struct cand *cand, afs_uint64 minsize,
 	goto bad;
     }
     FDH_SEEK(fdP, offset, SEEK_SET);
-    while (FDH_READ(fdP, vd, sizeof(vnode)) == sizeof(vnode)) {
+    while (FDH_READ(fdP, vd, sizeof(struct VnodeDiskObject))
+      == sizeof(struct VnodeDiskObject)) {
 	if (vd->type == vFile && vd->osdMetadataIndex) {
 	    afs_int32 check;
 	    afs_uint32 blocks;
@@ -7538,6 +7543,7 @@ skip:
 bad:
     if (fdP)
 	FDH_CLOSE(fdP);
+    free(vd);
     return code;
 }
 

@@ -670,12 +670,13 @@ SAFSVOLOSD_GetArchCandidates(struct rx_call *acall, afs_uint64 minsize,
     struct dirent *d;
     int i, j, k, nosds;
     afs_int32 minweight = 0;
-    struct VolumeDiskHeader h;
+    struct VolumeDiskHeader *h;
     struct volser_trans *tt = 0;
-    namei_t name;
-    struct afs_stat st;
     IHandle_t ih;
 
+    h = (struct VolumeDiskHeader *) malloc(sizeof(struct VolumeDiskHeader));
+    if (!h)
+	return ENOMEM;
     list->hsmcandList_len = 0;
     list->hsmcandList_val = (struct hsmcand *) malloc(maxcandidates *
                                 sizeof(struct hsmcand));
@@ -724,21 +725,24 @@ SAFSVOLOSD_GetArchCandidates(struct rx_call *acall, afs_uint64 minsize,
                     if (fd < 0)
                         ViceLog(0, ("1 GetArchCandidates: couldn't open %s\n", path));
                     else {                      /* skip all except RW volumes */
-                        h.id = 0;
+                        h->id = 0;
                         afs_lseek(fd, 0, SEEK_SET);
-                        if (bytes = read(fd, &h, sizeof(h)) != sizeof(h))
+                        if (bytes = read(fd, h, sizeof(struct VolumeDiskHeader))
+			   != sizeof(struct VolumeDiskHeader))
                             ViceLog(0, ("1 GetArchCandidates: couldn't read %s (%d, %d, %d)\n",
                                                 path, bytes, errno, fd));
                         close(fd);
-                        if (h.id && h.id == h.parent) {/* only RW volumes */
-                            ih.ih_vid = h.id;
-                            ih.ih_ino = h.OsdMetadata_hi;
+                        if (h->id && h->id == h->parent) {/* only RW volumes */
+    			    struct afs_stat st;
+    			    namei_t name;
+                            ih.ih_vid = h->id;
+                            ih.ih_ino = h->OsdMetadata_hi;
                             ih.ih_ino = ih.ih_ino << 32;
-                            ih.ih_ino |= h.OsdMetadata_lo;
+                            ih.ih_ino |= h->OsdMetadata_lo;
                             namei_HandleToName(&name, &ih);
                             if (afs_stat(name.n_path, &st) == 0
                               && st.st_size > 8)
-                                vol = VAttachVolume(&code, h.id, V_PEEK);
+                                vol = VAttachVolume(&code, h->id, V_PEEK);
                         }
                     }
                     if (vol) {
@@ -754,7 +758,7 @@ SAFSVOLOSD_GetArchCandidates(struct rx_call *acall, afs_uint64 minsize,
                     } else {
                         if (voldata->aLogLevel && *(voldata->aLogLevel))
                             ViceLog(0, ("1 GetArchCandidates: skipping %s (%u)\n",
-                                                path, h.id));
+                                                path, h->id));
 #ifndef AFS_PTHREAD_ENV
                         if (loopcnt > 100) {
                             IOMGR_Poll();
@@ -771,6 +775,7 @@ SAFSVOLOSD_GetArchCandidates(struct rx_call *acall, afs_uint64 minsize,
         }
     }
 bad:
+    free(h);
     return code;
 }
 
