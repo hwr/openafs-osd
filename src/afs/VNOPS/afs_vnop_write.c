@@ -773,7 +773,12 @@ afs_close(OSI_VC_DECL(avc), afs_int32 aflags, afs_ucred_t *acred)
     }
 #endif
     if (aflags & (FWRITE | FTRUNC)) {
+#ifdef STRUCT_TASK_STRUCT_HAS_CRED
+	if (!(afs_protocols & VICEP_ACCESS) 
+	  && (afs_BBusy() || (AFS_NFSXLATORREQ(acred)) || AFS_IS_DISCONNECTED)) {
+#else
 	if (afs_BBusy() || (AFS_NFSXLATORREQ(acred)) || AFS_IS_DISCONNECTED) {
+#endif
 	    /* do it yourself if daemons are all busy */
 	    ObtainWriteLock(&avc->lock, 124);
 	    code = afs_StoreOnLastReference(avc, &treq);
