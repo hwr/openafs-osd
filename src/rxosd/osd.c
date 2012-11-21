@@ -215,6 +215,7 @@ scan_osd_or_host()
 		lun = l.OsdList_val[j].t.etype_u.osd.lun;
 		if (Oprm.vsn == 2) {
 		    Oprm.ometa_u.f.lun = lun;
+		    Oprm.ometa_u.f.osd_id = l.OsdList_val[j].id;
 		} else if (Oprm.vsn == 1) {
 		    Oprm.ometa_u.t.part_id |= (afs_uint64)lun << 32;
 		}
