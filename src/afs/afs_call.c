@@ -117,7 +117,9 @@ afs_InitSetup(int preallocs)
 
     memset(afs_zeros, 0, AFS_ZEROS);
 
+#if 0	/* This creates more problems than it solves! */
     rx_SetBusyChannelError(1);  /* turn on busy call error reporting */
+#endif
 
     /* start RX */
     if(!afscall_set_rxpck_received)
