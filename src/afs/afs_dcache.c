@@ -1979,6 +1979,16 @@ afs_GetDCache(struct vcache *avc, afs_size_t abyte,
      * avc->lock(W) if !setLocks || slowPass
      * tdc->lock(S)
      */
+    /*
+     * For files it is for sure that DataVersion == 0 means the file
+     * has not yet been sent to the fileserver. For symbolic links,
+     * however, an old fileserver bug let them stay with DataVersion zero
+     * forwver, but the ODM indicated version 1 which then only by the
+     * salvager got corrected. Thereforr the followong is restricted
+     * to regular files.
+     */
+    if (hiszero(avc->f.m.DataVersion) && (vType(avc) == VREG))
+	hzero(tdc->f.versionNo);	/* can only be empty */
     if (!hsame(avc->f.m.DataVersion, tdc->f.versionNo) && !overWriteWholeChunk) {
 	/*
 	 * Version number mismatch.

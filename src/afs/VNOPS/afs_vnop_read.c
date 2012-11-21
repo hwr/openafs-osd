@@ -413,8 +413,13 @@ printf("afs_read: forground %u.%u.%u\n", avc->f.fid.Fid.Volume, avc->f.fid.Fid.V
      */
     if (tdc) {
 	ReleaseReadLock(&tdc->lock);
-	/* try to queue prefetch, if needed */
-	if (!noLock &&
+	/*
+         * try to queue prefetch, if needed. If DataVersion is zero there
+	 * should not be any more: files with DV 0 never have been stored
+	 * on the fileserver, symbolic links and directories never require
+	 * more than a single chunk.
+	 */
+	if (!noLock && !(hiszero(avc->f.m.DataVersion)) &&
 #ifndef AFS_VM_RDWR_ENV
 	    afs_preCache
 #else
@@ -991,8 +996,13 @@ printf("afs_read: avoid forground %u.%u.%u\n", avc->f.fid.Fid.Volume, avc->f.fid
     if (tdc) {
 	ReleaseReadLock(&tdc->lock);
 #if !defined(AFS_VM_RDWR_ENV)
-	/* try to queue prefetch, if needed */
-	if (!noLock) {
+	/*
+         * try to queue prefetch, if needed. If DataVersion is zero there
+	 * should not be any more: files with DV 0 never have been stored
+	 * on the fileserver, symbolic links and directories never require
+	 * more than a single chunk.
+	 */
+	if (!noLock && !(hiszero(avc->f.m.DataVersion))) {
 	    if (!(tdc->mflags & DFNextStarted))
 		afs_PrefetchChunk(avc, tdc, acred, &treq);
 	}
