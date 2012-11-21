@@ -723,6 +723,7 @@ afs_CacheStoreVCache(struct dcache **dcList, struct vcache *avc,
 		afs_PutConn(tc, rxconn, 0);
 		tc = NULL;
                 if (!code) {
+		    UpgradeSToWLock(&avc->lock, 1211);
 #if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
                     if (avc->protocol & VICEP_ACCESS) {
                         afs_close_vicep_file(avc, areq, 1);
@@ -733,6 +734,7 @@ afs_CacheStoreVCache(struct dcache **dcList, struct vcache *avc,
                     avc->protocol = protocol;
                     if (!(avc->protocol & PROTOCOL_MASK))
                         avc->protocol = RX_FILESERVER;
+		    ConvertWToSLock(&avc->lock);
                     afs_Trace3(afs_iclSetp, CM_TRACE_WASHERE,
                            ICL_TYPE_STRING, __FILE__,
                            ICL_TYPE_INT32, __LINE__,
@@ -744,7 +746,9 @@ afs_CacheStoreVCache(struct dcache **dcList, struct vcache *avc,
               && (avc->protocol & RX_FILESERVER)
               && (avc->f.states & CPartVisible)
               && !avc->vpacRock)  {
+		UpgradeSToWLock(&avc->lock, 1212);
                 afs_open_vicep_localFile(avc, areq);
+		ConvertWToSLock(&avc->lock);
             }
 #endif
 
@@ -1364,7 +1368,7 @@ rxfs_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
  *     avc->lock(W) if !setLocks || slowPass
  *     tdc->lock(W)
  *
- * Locks held when called from afs_PrefetchNoCache (afs_bypass.c)
+ * Locks held when called from afs_PrefetchNoCache (afs_bypasscache.c)
  *     avc->lock(R) 
  */
 int
@@ -1407,8 +1411,19 @@ afs_FetchProc(struct afs_conn *tc, struct rx_connection *rxconn,
 
 #if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
     if (!(avc->f.fid.Fid.Vnode & 1)  /* not a directory */
-      && (avc->f.states & CPartVisible) && !avc->vpacRock)
+      && (avc->f.states & CPartVisible) && !avc->vpacRock) {
+	int excl_locked = avc->lock.excl_locked;
+	if (!excl_locked) {
+	    ReleaseWriteLock(&adc->lock);
+	    ReleaseReadLock(&avc->lock);
+	    ObtainWriteLock(&avc->lock, 1213);
+	}
         afs_open_vicep_localFile(avc, areq);
+	if (!excl_locked) {
+	    ConvertWToRLock(&avc->lock);
+	    ObtainWriteLock(&adc->lock, 1214);
+	}
+    }
 #endif
 
 restart:

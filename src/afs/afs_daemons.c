@@ -614,8 +614,10 @@ BPartialStore(struct brequest *ab)
     int locked, shared_locked = 0;
 
     AFS_STATCNT(BStore);
-    if ((code = afs_InitReq(&treq, ab->cred)))
+    if ((code = afs_InitReq(&treq, ab->cred))) {
+	printf("BPartialStore, afs_InitReq failed with %d\n", code);
         return;
+    }
     code = 0;
     tvc = ab->vc;
     locked = tvc->lock.excl_locked? 1:0;
@@ -623,22 +625,19 @@ BPartialStore(struct brequest *ab)
         ObtainWriteLock(&tvc->lock, 1209);
     else if (!(tvc->lock.excl_locked & WRITE_LOCK)) {
         shared_locked = 1;
-        ConvertSToRLock(&tvc->lock);
+	UpgradeSToWLock(&tvc->lock, 1210);
     }
+    /* requires tvc write lock */
     code = afs_StoreAllSegments(tvc, &treq, AFS_ASYNC);
     if (!locked)
         ReleaseWriteLock(&tvc->lock);
     else if (shared_locked)
-        ConvertSToRLock(&tvc->lock);
+        ConvertWToSLock(&tvc->lock);
     /* now set final return code, and wakeup anyone waiting */
-    if ((ab->flags & BUVALID) == 0) {
-        ab->code = afs_CheckCode(code, &treq, 43);      /* set final code, since treq doesn't go across processes */
-        ab->flags |= BUVALID;
-        if (ab->flags & BUWAIT) {
-            ab->flags &= ~BUWAIT;
-            afs_osi_Wakeup(ab);
-        }
-    }
+    ab->code = afs_CheckCode(code, &treq, 43);
+    ab->flags |= BUVALID;
+    ab->flags &= ~BUWAIT;
+    afs_osi_Wakeup(ab);
 }
 
 /* release a held request buffer */
