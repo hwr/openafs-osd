@@ -612,11 +612,11 @@ retry_after_busy3:
 	r->expires = 0;
 	r->bytes_sent = 0;
     }
-    if (transid) {
+    if (transid) { /* called from fake_vpac_storeInit coming from afs_rxosd.c */
 	v->transid = transid;
  	v->expires = expires;
 	v->maxlength = maxlength;
-    } else {
+    } else {	   /* called from vpac_storeInit */
 retry_after_busy4:
         v->a.type = 3;
 	v->a.async_u.p3.path.path_info_val = NULL;
@@ -700,6 +700,9 @@ retry_after_busy4:
     return 0;
 }
 
+/*
+ * At entry shared lock on avc
+ */ 
 afs_int32
 vpac_storeInit(struct vcache *avc, struct afs_conn *tc,
 		struct rx_connection *rxconn, afs_offs_t base, 
@@ -990,6 +993,9 @@ struct fetchOps vpac_fetchBypassCacheOps = {
 };
 #endif
 
+/*
+ * Either avc->lock(R) or avc->lock(W)
+ */
 static afs_int32
 common_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
 		struct vcache *avc, afs_offs_t base, 
@@ -1170,6 +1176,11 @@ retry_after_busy6:
     return 0;
 }
 
+/*
+ * Called in afs_FetchProc (afs_fetchstore.c)
+ * Lock held
+ *     avc->lock(R) or avc->lock(W)
+ */
 afs_int32
 vpac_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
 		struct vcache *avc, afs_offs_t base, 
