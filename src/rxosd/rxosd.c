@@ -6322,6 +6322,10 @@ Variable(struct rx_call *call, afs_int32 cmd, char *name,
 	    extern int fdCacheSize;
 	    *result = fdCacheSize;
 	    code = 0;
+	} else if (!strcmp(name, "fdMaxCacheSize")) {
+	    extern int fdMaxCacheSize;
+	    *result = fdMaxCacheSize;
+	    code = 0;
 	} else
 	    code = ENOENT;
     } else if (cmd == 2) {					/* set */
@@ -6415,6 +6419,8 @@ char ExportedVariables[] =
     "fdInUseCount"
     EXP_VAR_SEPARATOR
     "fdCacheSize"
+    EXP_VAR_SEPARATOR
+    "fdMaxCacheSize"
     EXP_VAR_SEPARATOR
     "";
     
