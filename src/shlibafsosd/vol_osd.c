@@ -1838,7 +1838,8 @@ check_and_flush_metadata(struct Volume *vp, struct VnodeDiskObject *vnode,
 		struct osd_p_segm *s = &f->segmList.osd_p_segmList_val[j];
 		for (k=0; k<s->objList.osd_p_objList_len; k++) {
 		    struct osd_p_obj *o = &s->objList.osd_p_objList_val[k];
-		    if (o->part_id & 0xffffffff != V_parentId(vp)) {
+		    afs_uint32 parent_id = o->part_id & 0xffffffff;
+		    if (parent_id != V_parentId(vp)) {
 			/*
 			 * Restore of into a new volume:
 			 * create hard links from the old volumes objects
