@@ -49,7 +49,7 @@ source: rxosd.h rxosd.cs.c rxosd.xdr.c Krxosd.cs.c Krxosd.xdr.c \
 
 all:	${TOP_INCDIR}/afs/rxosd.h  ${TOP_INCDIR}/afs/rxosd_hsm.h \
 		rxosd Krxosd.cs.c Krxosd.xdr.c rxosd.h osd readabyte \
-		${TOP_LIBDIR}/librxosd.a -lnsl
+		${TOP_LIBDIR}/librxosd.a
 
 
 dest: all
