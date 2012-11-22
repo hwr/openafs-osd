@@ -7632,6 +7632,7 @@ main(int argc, char *argv[])
     MUTEX_INIT(&osdproc_glock_mutex, "osdproc lock", MUTEX_DEFAULT, 0);
     MUTEX_INIT(&queue_glock_mutex, "fetchqueue lock", MUTEX_DEFAULT, 0);
     MUTEX_INIT(&active_glock_mutex, "active threads lock", MUTEX_DEFAULT, 0);
+    MUTEX_INIT(&conn_glock_mutex, "connections lock", MUTEX_DEFAULT, 0);
     osi_audit_init();
 
     confDir = afsconf_Open(AFSDIR_SERVER_ETC_DIRPATH);
