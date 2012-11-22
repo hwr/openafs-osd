@@ -789,6 +789,9 @@ ListMetadata(int argc, char **argv, struct vnodeData *vdatacwd, FILE *f)
 	return;
     if (vdata->metadata)
         printOsdMetadata(vdata->metadata, argv[1]);
+    else if (!vdata->dumpdata)
+	printf("Vnode %u.%u not contained in this dump\n", vdata->vnodeNumber,
+                                vdata->vnode->uniquifier);
     return;
 }
 #endif
@@ -805,6 +808,13 @@ ListVnode(int argc, char **argv, struct vnodeData *vdatacwd, FILE *f,
     
     if ((vdata = FindFile(vdatacwd, argv[1])) == NULL)
 	return;
+    printf("Vnode %u.%u.%u", vol->id, vdata->vnodeNumber,
+				vdata->vnode->uniquifier);
+    if (!vdata->metadata && !vdata->dumpdata) {
+	printf(" not contained in this dump\n");
+	return;
+    }
+    printf("\n\tmodeBits\t = 0%3o\n", vdata->vnode->modeBits);
     printf("File %u.%u.%u\n", vol->id, vdata->vnodeNumber,
 				vdata->vnode->uniquifier);
     printf("\tmodeBits\t = 0%3o\n", vdata->vnode->modeBits);
@@ -1524,8 +1534,11 @@ DirListInternal(struct vnodeData *vdata, char *pathnames[], int numpathnames,
 		    {
 			if (lvdata->dumpdata)
 		    	    printf("F ");
-			else 
-		    	    printf("f ");
+			else {
+		    	    printf("f                (not contained in this dump)     %s\n",
+				eplist[i]->name); 
+			    continue;
+			}
 		    }
 		}
 
