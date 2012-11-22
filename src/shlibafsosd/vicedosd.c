@@ -2544,13 +2544,14 @@ EndAsyncFetch1(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
                         afs_uint64 bytes_sent, afs_uint32 osd)
 {
     afs_int32 errorCode = RXGEN_OPCODE;
-    ViceLog(1,("EndAsyncFetch for %u.%u.%u\n",
-                        Fid->Volume, Fid->Vnode, Fid->Unique));
     errorCode = EndAsyncTransaction(acall, Fid, transid);
     if (osd) {
+        ViceLog(1,("EndAsyncFetch(osd) for %u.%u.%u\n",
+                        Fid->Volume, Fid->Vnode, Fid->Unique));
         rxosd_updatecounters(osd, 0, bytes_sent);
-    } else
-    {
+    } else {
+        ViceLog(1,("EndAsyncFetch(vicep) for %u.%u.%u bytes read %llu\n",
+                        Fid->Volume, Fid->Vnode, Fid->Unique, bytes_sent));
         *(voldata->aTotal_bytes_sent) += bytes_sent;
         *(voldata->aTotal_bytes_sent_vpac) += bytes_sent;
     }
@@ -2798,12 +2799,18 @@ EndAsyncStore1(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
     rx_KeepAliveOn(acall);
 
     BreakCallBack(client->host, Fid, 0);
+
   NothingHappened:
     errorCode = EndAsyncTransaction(acall, Fid, transid);
   Bad_EndAsyncStore:
     if (osd) {
+        ViceLog(2, ("EndAsyncStore(osd) returns %d for %u.%u.%u\n",
+                        errorCode, Fid->Volume, Fid->Vnode, Fid->Unique));
         rxosd_updatecounters(osd, bytes_rcvd, bytes_sent);
     } else {
+        ViceLog(2, ("EndAsyncStore(vicep) returns %d for %u.%u.%u bytes stored %llu\n",
+                        errorCode, Fid->Volume, Fid->Vnode, Fid->Unique,
+			bytes_rcvd));
 	*(voldata->aTotal_bytes_sent) += bytes_sent;
 	*(voldata->aTotal_bytes_rcvd) += bytes_rcvd;
 	*(voldata->aTotal_bytes_sent_vpac) += bytes_sent;
@@ -2812,8 +2819,6 @@ EndAsyncStore1(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
     /* Update and store volume/vnode and parent vnodes back */
     (void)PutVolumePackage(acall, parentwhentargetnotdir, targetptr,
 					 (Vnode *) 0, volptr, &client);
-    ViceLog(2, ("EndAsyncStore returns %d for %u.%u.%u\n",
-                        errorCode, Fid->Volume, Fid->Vnode, Fid->Unique));
 
     errorCode = CallPostamble(tcon, errorCode, thost);
     return errorCode;
@@ -3014,11 +3019,11 @@ ServerPath(struct rx_call * acall, AFSFid *Fid, afs_int32 writing,
     struct host *thost;
 
     if (writing) {
-        ViceLog(1,("ServerPath: writing (%lu.%lu.%lu) filelength %llu\n",
-                Fid->Volume, Fid->Vnode, Fid->Unique, filelength));
+        ViceLog(1,("ServerPath: writing (%lu.%lu.%lu) offset %llu length %llu filelength %llu\n",
+                Fid->Volume, Fid->Vnode, Fid->Unique, offset, length, filelength));
     } else {
-        ViceLog(1,("ServerPath: reading (%lu.%lu.%lu)\n",
-                Fid->Volume, Fid->Vnode, Fid->Unique));
+        ViceLog(1,("ServerPath: reading (%lu.%lu.%lu) offset %llu length %llu\n",
+                Fid->Volume, Fid->Vnode, Fid->Unique, offset, length));
     }
 
     *maxSize = 0;
