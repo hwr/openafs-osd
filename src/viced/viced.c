@@ -2200,7 +2200,9 @@ main(int argc, char *argv[])
     rx_SetMinProcs(tservice, 3);
     rx_SetMaxProcs(tservice, lwps - (lwps >> 1));
     rx_SetCheckReach(tservice, 1);
+#if 0		/* Don't want idle dead */
     rx_SetServerIdleDeadErr(tservice, VNOSERVICE);
+#endif
 
     tservice =
 	rx_NewService(0, RX_STATS_SERVICE_ID, "rpcstats", securityClasses,
@@ -2242,7 +2244,9 @@ main(int argc, char *argv[])
         rx_SetMinProcs(tservice, 3);
         rx_SetMaxProcs(tservice, (lwps>>1));
         rx_SetCheckReach(tservice, 1);
+#if 0		/* Don't want idle dead */
         rx_SetServerIdleDeadErr(tservice, VNOSERVICE);
+#endif
     }
 #endif
 
