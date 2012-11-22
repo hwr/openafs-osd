@@ -280,6 +280,12 @@ char ExportedVariables[] =
     EXP_VAR_SEPARATOR
     "maxLexLegacyThreadsPerClient"
     EXP_VAR_SEPARATOR
+    "fdInUseCount"
+    EXP_VAR_SEPARATOR
+    "fdCacheSize"
+    EXP_VAR_SEPARATOR
+    "fdMaxCacheSize"
+    EXP_VAR_SEPARATOR
     ""
     ;
 
@@ -618,6 +624,10 @@ createAsyncTransaction(struct rx_call *call, AFSFid *Fid, afs_int32 flag,
 	    if (a->waiters > maxWaiters)
 		maxWaiters = a->waiters;
 	    while (a->readers || a->writer) {
+        	ViceLog(3, ("createAsynctransaction(w): waiting for %u.%u.%u\n",
+			Fid->Volume,
+			Fid->Vnode,
+			Fid->Unique));
 #ifdef AFS_PTHREAD_ENV
 	        CV_WAIT(&a->cond, &async_glock_mutex);
 #else
@@ -634,6 +644,10 @@ createAsyncTransaction(struct rx_call *call, AFSFid *Fid, afs_int32 flag,
 	    if (a->waiters > maxWaiters)
 		maxWaiters = a->waiters;
 	    while (a->writer) {
+        	ViceLog(3, ("createAsynctransaction(r): waiting for %u.%u.%u\n",
+			Fid->Volume,
+			Fid->Vnode,
+			Fid->Unique));
 #ifdef AFS_PTHREAD_ENV
 	        CV_WAIT(&a->cond, &async_glock_mutex);
 #else
@@ -663,6 +677,11 @@ createAsyncTransaction(struct rx_call *call, AFSFid *Fid, afs_int32 flag,
     if (expires)
 	*expires = AFS_ASYNC_IO_TIMEOUT;
     ASYNC_UNLOCK;
+    ViceLog(3, ("createAsynctransaction %u.%u.%u got transid %llu\n",
+			Fid->Volume,
+			Fid->Vnode,
+			Fid->Unique,
+			t->transid));
     return 0;
 }
 
@@ -723,7 +742,8 @@ EndAsyncTransaction(struct rx_call *call, AFSFid *Fid, afs_uint64 transid)
         host = call->conn->peer->host;
         port = call->conn->peer->port;
     }
-    ViceLog(3, ("EndAsyncTransaction %u.%u.%u from %u.%u.%u.%u:%u\n",
+    ViceLog(3, ("EndAsyncTransaction %llu %u.%u.%u from %u.%u.%u.%u:%u\n",
+			transid,
 			Fid->Volume,
 			Fid->Vnode,
 			Fid->Unique,
@@ -762,7 +782,7 @@ EndAsyncTransaction(struct rx_call *call, AFSFid *Fid, afs_uint64 transid)
     }
     if (!t) {	/* we couldn't identify the transaction */
 	ASYNC_UNLOCK;
-	ViceLog(1, ("EndAsyncTransaction: couldn't find transaction for %u.%u.%u from %u.%u.%u.%u:%u\n",
+	ViceLog(0, ("EndAsyncTransaction: couldn't find transaction for %u.%u.%u from %u.%u.%u.%u:%u\n",
 			Fid->Volume,
 			Fid->Vnode,
 			Fid->Unique,
@@ -821,7 +841,8 @@ getAsyncVolptr(struct rx_call *call, AFSFid *Fid, afs_uint64 transid,
         host = call->conn->peer->host;
         port = call->conn->peer->port;
     }
-    ViceLog(3, ("getAsyncVolptr %u.%u.%u from %u.%u.%u.%u:%u\n",
+    ViceLog(3, ("getAsyncVolptr transid %llu for %u.%u.%u from %u.%u.%u.%u:%u\n",
+			transid,
 			Fid->Volume,
 			Fid->Vnode,
 			Fid->Unique,
@@ -858,7 +879,7 @@ getAsyncVolptr(struct rx_call *call, AFSFid *Fid, afs_uint64 transid,
 	    break;
 	t2 = t;
     }
-    if (!t) {	/* we couldin't identify the transaction */
+    if (!t) {	/* we couldn't identify the transaction */
         ASYNC_UNLOCK;
 	ViceLog(1, ("getAsyncVolptr: couldn't find transaction for %u.%u.%u from %u.%u.%u.%u:%u\n",
 			Fid->Volume,
@@ -4943,6 +4964,9 @@ SAFSS_CreateFile(struct rx_call *acall, struct AFSFid *DirFid, char *Name,
 
     /* Return a callback promise for the newly created file to the caller */
     SetCallBackStruct(AddCallBack(client->host, OutFid), CallBack);
+    ViceLog(2, ("SAFS_CreateFile %s in %u.%u.%u new fid %u.%u.%u\n",
+	   Name, DirFid->Volume, DirFid->Vnode, DirFid->Unique,
+	   V_id(volptr), targetptr->vnodeNumber, targetptr->disk.uniquifier));
 
   Bad_CreateFile:
     /* Update and store volume/vnode and parent vnodes back */
@@ -9659,6 +9683,18 @@ Variable(struct rx_call *acall, afs_int32 cmd, char *name,
             code = 0;
         } else if (!strcmp(name, "maxLegacyThreadsPerClient")) {
             *result = maxLegacyThreadsPerClient;
+            code = 0;
+        } else if (!strcmp(name, "fdInUseCount")) {
+            extern int fdInUseCount;
+            *result = fdInUseCount;
+            code = 0;
+        } else if (!strcmp(name, "fdCacheSize")) {
+            extern int fdCacheSize;
+            *result = fdCacheSize;
+            code = 0;
+        } else if (!strcmp(name, "fdMaxCacheSize")) {
+            extern int fdMaxCacheSize;
+            *result = fdMaxCacheSize;
             code = 0;
         } else
             code = ENOENT;
