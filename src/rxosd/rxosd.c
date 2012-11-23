@@ -7145,7 +7145,7 @@ SRXOSD_online(struct rx_call *call, struct ometa *o, afs_int32 flag, struct exam
 	    struct osd_segm_descList list;
 	    list.osd_segm_descList_val = 0;
 	    list.osd_segm_descList_len = 0;
-	    code = FindInFetchqueue(call, o, user, &list, 0, NULL, 0);
+	    code = FindInFetchqueue(call, &o->ometa_u.t, user, &list, 0, NULL, 0);
 	} else { 	/* object presumably on-line */
 	    struct o_handle *oh = oh_init_oparmT10(&o->ometa_u.t);
 	    struct FdHandle_t *fdP;
