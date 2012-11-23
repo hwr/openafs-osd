@@ -3150,9 +3150,10 @@ int examine(struct rx_call *call, t10rock *rock, struct oparmT10 *o,
     if ((mask & WANTS_SIZE) && sizep)
         *sizep = tstat.st_size;
     if ((mask & WANTS_HSM_STATUS) && statusp) {
-	result = FindInFetchqueue(call, o, 0, NULL, 0, NULL, 0);
-	if (result == OSD_WAIT_FOR_TAPE)  /* don't bother HSM system, we know it's 'm' */
-	    *statusp = 'm';
+        struct fetch_entry *f;
+        f = GetFetchEntry(o);
+        if (f)
+            *statusp = 'm';
 	else if (h.ih_ops->stat_tapecopies) { /* hpss or dcache */
 	    time_t before = time(0), after;
 	    char what[2];
