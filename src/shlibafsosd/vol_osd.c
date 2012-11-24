@@ -152,7 +152,8 @@ struct vol_data_v0 *voldata = NULL;
 struct rxosd_conn * FindOsdConnection(afs_uint32 id);
 void PutOsdConn(struct rxosd_conn **conn);
 static afs_int32 DataXchange(afs_int32 (*ioroutine)(void *rock, char* buf, 
-	    afs_uint32 lng), void *rock, Volume *vol, struct VnodeDiskObject *vd,
+	    afs_uint32 lng, afs_uint64 offset), 
+	    void *rock, Volume *vol, struct VnodeDiskObject *vd,
 	    afs_uint32 vN, afs_uint64 offset, afs_int64 length, 
 	    afs_uint64 filelength, afs_int32 storing, afs_int32 useArchive,
 	    struct asyncError *ae);
@@ -160,7 +161,10 @@ static afs_int32 add_simple_osdFile(Volume *vol, struct VnodeDiskObject *vd,
 				afs_uint32 vN,
 				struct osd_p_fileList *l, afs_uint64 size,
 				afs_uint32 flag);
-static afs_int32 read_local_file(void *rock, char *buf, afs_int32 len);
+static afs_int32 read_local_file(void *rock, char *buf, afs_uint32 len,
+				afs_uint64 offset);
+static afs_int32 write_local_file(void *rock, char *buf, afs_uint32 len,
+				afs_uint64 offset);
 
 private afs_int64 minOsdFileSize = -1;
 private t10rock dummyrock = {0, 0};
@@ -461,7 +465,7 @@ rxosd_CopyOnWrite(afs_uint32 osd, afs_uint64 p_id, afs_uint64 o_id,
 	        *new_id = n.ometa_u.t.obj_id;
 	    if (code == RXGEN_OPCODE)
 		code =RXOSD_CopyOnWrite211(conn->conn, p_id, o_id, offs, leng, size, 
-					   &new_id);
+					   new_id);
 	    PutOsdConn(&conn);
         } else
             code = EIO;
@@ -721,8 +725,7 @@ AllocMetadataEntry(FdHandle_t *callerfd, Volume *vol, afs_int32 *number,
 	code = ENOMEM;
 	goto bad;
     }
-    FDH_SEEK(fd, offset, SEEK_SET);
-    bytes = FDH_READ(fd, entry, MAXOSDMETADATAENTRYLEN);
+    bytes = FDH_PREAD(fd, entry, MAXOSDMETADATAENTRYLEN, 0);
     if (bytes == 8) { /* only magic and version: create alloc table */
 	memset((char *)&entry->length, 0, MAXOSDMETADATAENTRYLEN - 8);
         *entrylength = OSDMETADATA_ENTRYLEN;
@@ -759,8 +762,7 @@ AllocMetadataEntry(FdHandle_t *callerfd, Volume *vol, afs_int32 *number,
 	    base += (ep - bp) << 3;
 	    if (entry->next) { 				/* found one, read it */
 		offset = entry->next * (*entrylength);
-	        if ((FDH_SEEK(fd, offset, SEEK_SET) != offset)
-                 || (FDH_READ(fd, entry, *entrylength) != *entrylength)) {
+                if (FDH_PREAD(fd, entry, *entrylength, offset) != *entrylength) {
 	    	    ViceLog(0, ("AllocMetadataEntry: read failed at offset %llu for volume %u\n",
 				offset, V_id(vol)));
 	    	    code = EIO;
@@ -768,8 +770,7 @@ AllocMetadataEntry(FdHandle_t *callerfd, Volume *vol, afs_int32 *number,
 	        }
 	    } else { 			/* allocate new entry for alloc table */
 		entry->next = base;
-	        if ((FDH_SEEK(fd, offset, SEEK_SET) != offset)
-                 || (FDH_WRITE(fd, entry, *entrylength) != *entrylength)) {
+                if (FDH_PWRITE(fd, entry, *entrylength, offset) != *entrylength) {
 	    	    ViceLog(0, ("AllocMetadataEntry: write failed at offset %llu for volume %u\n",
 				offset, V_id(vol)));
 	    	    code = EIO;
@@ -784,8 +785,7 @@ AllocMetadataEntry(FdHandle_t *callerfd, Volume *vol, afs_int32 *number,
 	}
     }
     entry->timestamp = FT_ApproxTime();
-    if ((FDH_SEEK(fd, offset, SEEK_SET) != offset)
-     || (FDH_WRITE(fd, entry, *entrylength) != *entrylength)) {
+    if (FDH_PWRITE(fd, entry, *entrylength, offset) != *entrylength) {
     	ViceLog(0, ("AllocMetadataEntry: write failed at offset %llu for volume %u\n",
 				offset, V_id(vol)));
     	code = EIO;
@@ -848,8 +848,7 @@ FreeMetadataEntry( FdHandle_t *callerfd, Volume *vol, afs_uint32 n)
 	goto bad;
     }
     ObtainWriteLock(&vol->lock);
-    FDH_SEEK(fd, offset, SEEK_SET);
-    bytes = FDH_READ(fd, entry, MAXOSDMETADATAENTRYLEN);
+    bytes = FDH_PREAD(fd, entry, MAXOSDMETADATAENTRYLEN, offset);
     entrylength = entry->length;
     if (bytes < MINOSDMETADATAENTRYLEN || bytes < entrylength) {
 	ViceLog(0, ("AllocMetadataEntry: read failed at offset %llu for volume %u\n",
@@ -868,8 +867,7 @@ FreeMetadataEntry( FdHandle_t *callerfd, Volume *vol, afs_uint32 n)
 	    goto bad;
 	}
 	offset = entry->next * entrylength;
-	if ((FDH_SEEK(fd, offset, SEEK_SET) != offset)
-          || (FDH_READ(fd, entry, entrylength) != entrylength)) {
+        if (FDH_PREAD(fd, entry, entrylength, offset) != entrylength) {
 	    ViceLog(0, ("FreeMetadataEntry: read failed at offset %llu for volume %u\n",
 				offset, V_id(vol)));
 	    code = EIO;
@@ -883,8 +881,7 @@ FreeMetadataEntry( FdHandle_t *callerfd, Volume *vol, afs_uint32 n)
     if (*bp & mask) {
 	*bp &= ~mask;
         entry->timestamp = FT_ApproxTime();
-	if ((FDH_SEEK(fd, offset, SEEK_SET) != offset)
-          || (FDH_WRITE(fd, entry, entrylength) != entrylength)) {
+        if (FDH_PWRITE(fd, entry, entrylength, offset) != entrylength) {
 	    ViceLog(0, ("FreeMetadataEntry: write failed at offset %llu for volume %u\n",
 				offset, V_id(vol)));
 	    code = EIO;
@@ -921,8 +918,7 @@ FreeMetadataEntryChain(Volume *vol, afs_uint32 n, afs_uint32 vN, afs_uint32 vU)
 	goto bad;
     }
     offset = 0;
-    FDH_SEEK(fd, offset, SEEK_SET);
-    bytes = FDH_READ(fd, entry, MAXOSDMETADATAENTRYLEN);
+    bytes = FDH_PREAD(fd, entry, MAXOSDMETADATAENTRYLEN, offset);
     entrylength = entry->length;
     if (bytes < MINOSDMETADATAENTRYLEN || bytes < entrylength) {
 	code = EIO;
@@ -930,9 +926,8 @@ FreeMetadataEntryChain(Volume *vol, afs_uint32 n, afs_uint32 vN, afs_uint32 vU)
     }
     while (n) {
         offset = n * entrylength;
-        if ((FDH_SEEK(fd, offset, SEEK_SET) != offset)
-          ||  (FDH_READ(fd, entry, entrylength) != entrylength)) {
-	    ViceLog(0, ("FreeMetadataEntryChain: FDH_READ failed in volume %u at offset %llu\n",
+        if (FDH_PREAD(fd, entry, entrylength, offset) != entrylength) {
+	    ViceLog(0, ("FreeMetadataEntryChain: FDH_PREAD failed in volume %u at offset %llu\n",
 			V_id(vol), offset));
 	    code = EIO;
 	    goto bad;
@@ -945,9 +940,8 @@ FreeMetadataEntryChain(Volume *vol, afs_uint32 n, afs_uint32 vN, afs_uint32 vU)
 	}
 	entry->used = 0;
 	next = entry->next;
-        if ((FDH_SEEK(fd, offset, SEEK_SET) != offset)
-          ||  (FDH_WRITE(fd, entry, entrylength) != entrylength)) {
-	    ViceLog(0, ("FreeMetadataEntryChain: FDH_WRITE failed in volume %u at offset %llu\n",
+        if (FDH_PWRITE(fd, entry, entrylength, offset) != entrylength) {
+	    ViceLog(0, ("FreeMetadataEntryChain: FDH_PWRITE failed in volume %u at offset %llu\n",
 			V_id(vol), offset));
 	    code = EIO;
 	    goto bad;
@@ -974,8 +968,7 @@ GetOsdEntryLength(FdHandle_t *fd, void **rock)
     *rock = NULL;
     if (!fd)
 	return 0;
-    FDH_SEEK(fd, 0, SEEK_SET);
-    bytes = FDH_READ(fd, tentry, 12);
+    bytes = FDH_PREAD(fd, tentry, 12, 0);
     if (bytes < 12)
 	return 0;
     if (tentry->magic != OSDMETAMAGIC)
@@ -1048,8 +1041,7 @@ SalvageOsdMetadata(FdHandle_t *fd, struct VnodeDiskObject *vd, afs_uint32 vn,
 	return EIO;
     }
     offset = vd->osdMetadataIndex * entrylength;
-    if ((FDH_SEEK(fd, offset, SEEK_SET) != offset)
-      || (FDH_READ(fd, entry, entrylength) != entrylength)) {
+    if (FDH_PREAD(fd, entry, entrylength, offset) != entrylength) {
  	ViceLog(0, ("SalvageOsdMetadata: entry %u not found for %u.%u\n",
 		vd->osdMetadataIndex, vn, vd->uniquifier));
 	goto bad;
@@ -1067,7 +1059,7 @@ bad:
     return EIO;
 }
 
-static afs_uint32
+static afs_int32
 osd_metadata_time(Volume *vol, struct VnodeDiskObject *vd)
 {
     struct osdMetadaEntry entry;
@@ -1084,16 +1076,14 @@ osd_metadata_time(Volume *vol, struct VnodeDiskObject *vd)
 		V_id(vol)));
 	return 0;
     }
-    if ((FDH_SEEK(fd, offset, SEEK_SET) != offset)
-      || (FDH_READ(fd, &entry, sizeof(entry)) != sizeof(entry))) {
+    if (FDH_PREAD(fd, &entry, sizeof(entry), offset) != sizeof(entry)) {
  	ViceLog(0, ("osd_metadata_time: entry not found for %u.%u\n",
 		V_id(vol), 0));
 	goto bad;
     } 
     entrylength = entry.length;
     offset = vd->osdMetadataIndex * entrylength;
-    if ((FDH_SEEK(fd, offset, SEEK_SET) != offset)
-      || (FDH_READ(fd, &entry, sizeof(entry)) != sizeof(entry))) {
+    if (FDH_PREAD(fd, &entry, sizeof(entry), offset) != sizeof(entry)) {
  	ViceLog(0, ("osd_metadata_time: entry not found for %u.%u\n",
 		V_id(vol), vd->osdMetadataIndex));
 	goto bad;
@@ -1126,6 +1116,7 @@ FillMetadataBuffer(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN,
     struct osdMetadaEntry *entry = 0;
     afs_uint32 index, maxlength;
     int bytes;
+    int fd_fd = -1;
 
     mh->length = 0;
     if (!vol || !vd)
@@ -1143,16 +1134,16 @@ FillMetadataBuffer(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN,
     fd = IH_OPEN(vol->osdMetadataHandle);
     if (!fd)
 	return;
+    fd_fd = fd->fd_fd;
     entry = (struct osdMetadaEntry *)malloc(MAXOSDMETADATAENTRYLEN);
     if (!entry) {
 	ViceLog(0, ("FillMetadataBuffer: couldn't alloc entry\n"));
 	goto bad;
     }
-    FDH_SEEK(fd, offset, SEEK_SET);
-    bytes = FDH_READ(fd, entry, MAXOSDMETADATAENTRYLEN); 
+    bytes = FDH_PREAD(fd, entry, MAXOSDMETADATAENTRYLEN, offset); 
     if (bytes < MINOSDMETADATAENTRYLEN || bytes < entry->length) {
-	ViceLog(0, ("FillMetadataBuffer: read failed at offset %llu for volume %u\n",
-			offset, V_id(vol)));
+	ViceLog(0, ("FillMetadataBuffer{%d]: read failed at offset %llu for volume %u\n",
+			fd_fd, offset, V_id(vol)));
 	goto bad;
     }
     entrylength = entry->length;
@@ -1160,27 +1151,26 @@ FillMetadataBuffer(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN,
     while (index) {
 	afs_uint32 tlen;
         offset = index * entrylength;
-        if ((FDH_SEEK(fd, offset, SEEK_SET) != offset)
-          || (FDH_READ(fd, entry, entrylength) != entrylength)) {
-	    ViceLog(0, ("FillMetadataBuffer: read failed at offset %llu for %u.%u.%u\n",
-			offset, V_id(vol), vN, vd->uniquifier));
+        if (FDH_PREAD(fd, entry, entrylength, offset) != entrylength) {
+	    ViceLog(0, ("FillMetadataBuffer[%d]: read failed at offset %llu for %u.%u.%u\n",
+			fd_fd, offset, V_id(vol), vN, vd->uniquifier));
 	    goto bad;
         }
 	if (entry->vnode != vN || entry->unique != vd->uniquifier) {
-	    ViceLog(0, ("FillMetadataBuffer: metadata entry %u doesn't belong to %u.%u.%u (instead to %u.%u.%u)\n",
-			index, V_id(vol), vN, vd->uniquifier,
+	    ViceLog(0, ("FillMetadataBuffer[%d]: metadata entry %u doesn't belong to %u.%u.%u (instead to %u.%u.%u)\n",
+			fd_fd, index, V_id(vol), vN, vd->uniquifier,
 			V_id(vol), entry->vnode, entry->unique));
 	    mh->length = 0;
 	    goto bad;
 	}
 	if (!entry->used)
-	    ViceLog(0, ("FillMetadataBuffer: metadata entry %u of to %u.%u.%u not in use\n",
-			index, V_id(vol), vN, vd->uniquifier));
+	    ViceLog(0, ("FillMetadataBuffer[%d]: metadata entry %u of to %u.%u.%u not in use\n",
+			fd_fd, index, V_id(vol), vN, vd->uniquifier));
         maxlength =  &mh->data[MAX_OSD_METADATA_LENGTH] - bp;
 	tlen = entry->length;
         if (tlen > maxlength) {
-	    ViceLog(0, ("FillMetadataBuffer: metadata too long in volume %u\n",
-			 V_id(vol)));
+	    ViceLog(0, ("FillMetadataBuffer[%d]: metadata too long in volume %u\n",
+			 fd_fd, V_id(vol)));
 	    goto bad;
         }
         memcpy(bp, &entry->data, tlen);
@@ -1197,7 +1187,7 @@ bad:
 }
     
 afs_int32
-GetMetadataByteString(Volume *vol, VnodeDiskObject *vd, char **rock, char **data,
+GetMetadataByteString(Volume *vol, VnodeDiskObject *vd, void **rock, byte **data,
 			 afs_int32 *length, afs_uint32 vN)
 {
     struct metadataBuffer *mh = 0;
@@ -1267,8 +1257,7 @@ FlushMetadataHandle(Volume *vol, struct VnodeDiskObject *vd,
         length = (char *)entry + entrylength - (char *)&entry->data;
 	if (mh->length <= length) {
 	    offset = oldindex * entrylength;
-	    if ((FDH_SEEK(fd, offset, SEEK_SET) != offset) 
-	      || (FDH_READ(fd, entry, entrylength) != entrylength)) {
+	    if (FDH_PREAD(fd, entry, entrylength, offset) != entrylength) {
 	        ViceLog(0, ("FlushMetadataHandle: write failed at offset %llu in volume %u\n",
 			offset, V_id(vol)));
 		code = EIO;
@@ -1281,8 +1270,7 @@ FlushMetadataHandle(Volume *vol, struct VnodeDiskObject *vd,
         	entry->unique = vd->uniquifier;
 		entry->used = 1;
 		entry->timestamp = FT_ApproxTime();
-	        if ((FDH_SEEK(fd, offset, SEEK_SET) != offset) 
-	          || (FDH_WRITE(fd, entry, entrylength) != entrylength)) {
+	        if (FDH_PWRITE(fd, entry, entrylength, offset) != entrylength) {
 	            ViceLog(0, ("FlushMetadataHandle: write failed at offset %llu in volume %u\n",
 				offset, V_id(vol)));
 		    code = EIO;
@@ -1319,8 +1307,7 @@ FlushMetadataHandle(Volume *vol, struct VnodeDiskObject *vd,
 	}
 	if (offset) {
 	    entry->next = index;
-	    if ((FDH_SEEK(fd, offset, SEEK_SET) != offset)
-	      || (FDH_WRITE(fd, entry, entrylength) != entrylength)) {
+	    if (FDH_PWRITE(fd, entry, entrylength, offset) != entrylength) {
 	        ViceLog(0, ("FlushMetadataHandle: write failed at offset %llu in volume %u\n",
 				offset, V_id(vol)));
 		code = EIO;
@@ -1345,8 +1332,7 @@ FlushMetadataHandle(Volume *vol, struct VnodeDiskObject *vd,
 	entry->timestamp = FT_ApproxTime();
 	offset = index * entrylength;
     }
-    if ((FDH_SEEK(fd, offset, SEEK_SET) != offset)
-      || (FDH_WRITE(fd, entry, entrylength) != entrylength)) {
+    if (FDH_PWRITE(fd, entry, entrylength, offset) != entrylength) {
 	ViceLog(0, ("FlushMetadataHandle: write failed at offset %llu in volume %u\n",
 				offset, V_id(vol)));
 	code = EIO;
@@ -1371,15 +1357,13 @@ FlushMetadataHandle(Volume *vol, struct VnodeDiskObject *vd,
     while (oldindex) {
 	afs_int32 tindex;
         offset = oldindex * entrylength;
-        if ((FDH_SEEK(fd, offset, SEEK_SET) != offset)
-          || (FDH_READ(fd, entry, entrylength) != entrylength)) { 
+        if (FDH_PREAD(fd, entry, entrylength, offset) != entrylength) { 
 	    ViceLog(0, ("FlushMetadataHandle: read failed at offset %llu for volume %u\n",
 			offset, V_id(vol)));
 	    goto bad;
 	}
 	entry->used = 0;
-        if ((FDH_SEEK(fd, offset, SEEK_SET) != offset)
-          || (FDH_WRITE(fd, entry, entrylength) != entrylength)) { 
+        if (FDH_PWRITE(fd, entry, entrylength, offset) != entrylength) { 
 	    ViceLog(0, ("FlushMetadataHandle: write failed at offset %llu for volume %u\n",
 			offset, V_id(vol)));
 	    goto bad;
@@ -2135,7 +2119,7 @@ fill_osd_file(Vnode *vn, struct async *a,
 	    }	
 retry:
 	    if (nosds > 1)
-		osd = get_restore_cand(nosds, &osds);
+		osd = get_restore_cand(nosds, &osds[0]);
 	    else
 		osd = osds[0];
 	    if (!osd) {
@@ -3183,7 +3167,7 @@ osd_create_spec_file(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN,
     if (!osds[0]) {
 	ViceLog(1, ("osd_create_file: finding %d OSDs for size %d\n",
 			stripes * copies, size / stripes));
-        code = FindOsdBySize(size/stripes, &osds, &luns, stripes * copies, 0);
+        code = FindOsdBySize(size/stripes, &osds[0], &luns[0], stripes * copies, 0);
         if (code)
 	    return code;
     }
@@ -3356,7 +3340,7 @@ CreateStripedOsdFile(Vnode *vn, afs_uint32 stripes, afs_uint32 stripe_size,
     Volume *vol = vn->volumePtr;
     struct VnodeDiskObject *vd = &vn->disk;
     afs_uint32 vN = vn->vnodeNumber;
-    afs_int32 (*ioroutine)(void *rock, char *buf, afs_int32 len);
+    afs_int32 (*ioroutine)(void *rock, char *buf, afs_uint32 len, afs_uint64 offset);
 
     VN_GET_LEN(oldlength, vn);
     if (oldlength && !vn->disk.osdMetadataIndex) {
@@ -3414,7 +3398,8 @@ ForceCreateStripedOsdFile(Vnode *vn, afs_uint32 stripes, afs_uint32 stripe_size,
     Volume *vol = vn->volumePtr;
     struct VnodeDiskObject *vd = &vn->disk;
     afs_uint32 vN = vn->vnodeNumber;
-    afs_int32 (*ioroutine)(void *rock, char *buf, afs_int32 len);
+    afs_int32 (*ioroutine)(void *rock, char *buf, afs_uint32 len,
+			   afs_uint64 offset);
 
     if ( !force )
 	return CreateStripedOsdFile(vn, stripes, stripe_size, copies, size);
@@ -3747,7 +3732,7 @@ osd_archive(struct Vnode *vn, afs_uint32 Osd, afs_int32 flags)
         } else { 				/* look for another archival osd */ 
 	    afs_uint32 osds[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 	    afs_uint32 luns[8];
-	    code = FindOsdBySize(size, &osds, &luns, need, 1);
+	    code = FindOsdBySize(size, &osds[0], &luns[0], need, 1);
 	    if (!code) {	/* find out which osd to use */
 		for (i=0; i<list.osd_p_fileList_len; i++) {
 	    	    pf = &list.osd_p_fileList_val[i];
@@ -3879,7 +3864,7 @@ osd_archive(struct Vnode *vn, afs_uint32 Osd, afs_int32 flags)
 	    if (nosds == 1)
 		osd = osds[0];
 	    else
-	        osd = get_restore_cand(nosds, &osds);
+	        osd = get_restore_cand(nosds, &osds[0]);
 	    for (i=0; i<list.osd_p_fileList_len; i++) {
 	        pf = &list.osd_p_fileList_val[i];
 	        if (pf->archiveTime && pf->archiveVersion == vd->dataVersion) {
@@ -4107,22 +4092,22 @@ bad:
 }
 
 static afs_int32
-write_local_file(void *rock, char *buf, afs_int32 len)
+write_local_file(void *rock, char *buf, afs_uint32 len, afs_uint64 offset)
 {
     FdHandle_t *fdP = (FdHandle_t *) rock;
     afs_int32 code = 0;
 
-    code = FDH_WRITE(fdP, buf, len);
+    code = FDH_PWRITE(fdP, buf, len, offset);
     return code;
 }
 
 static afs_int32
-read_local_file(void *rock, char *buf, afs_int32 len)
+read_local_file(void *rock, char *buf, afs_uint32 len, afs_uint64 offset)
 {
     FdHandle_t *fdP = (FdHandle_t *) rock;
     afs_int32 code = 0;
 
-    code = FDH_READ(fdP, buf, len);
+    code = FDH_PREAD(fdP, buf, len, offset);
     return code;
 }
 
@@ -4149,7 +4134,8 @@ replace_osd(struct Vnode *vn, afs_uint32 old, afs_int32 new, afs_int32 *result)
     afs_int32 changed = 0;
     afs_uint32 old_lun, new_lun, ip;
     afs_int64 start = 0;
-    afs_int32 (*ioroutine)(void *rock, char *buf, afs_int32 len);
+    afs_int32 (*ioroutine)(void *rock, char *buf, afs_uint32 len,
+			  afs_uint64 offset);
     Inode ino, nearInode = 0;
     FdHandle_t *fdP;
     struct osd_p_file *tf = 0;
@@ -4424,7 +4410,7 @@ done:
 		    osd = new;
 		} else
 	    	    code = FindOsdBySizeAvoid(size, &osd, &new_lun, 1, 
-						&avoid, navoid);
+						&avoid[0], navoid);
 		if (code) 
 		    goto bad;
     		p_id = ((afs_uint64)new_lun << 32) | V_parentId(vol);
@@ -4902,7 +4888,8 @@ get_osd_location(Volume *vol, Vnode *vn, afs_uint32 flag, afs_uint32 user,
  * in the volserver from dump_osd_file() or restore_osd_file().
  */
 static afs_int32
-DataXchange(afs_int32 (*ioroutine)(void *rock, char* buf, afs_uint32 lng),
+DataXchange(afs_int32 (*ioroutine)(void *rock, char* buf, afs_uint32 lng,
+	    afs_uint64 offset),
 	    void *rock, Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN, 
 	    afs_uint64 offset, afs_int64 length, afs_uint64 filelength, 
 	    afs_int32 storing, afs_int32 useArchive, struct asyncError *ae)
@@ -5177,7 +5164,7 @@ retry:
 		int tmpcount;
 		ll = tlen - count;
 		if (storing)
-		    tmpcount = (*ioroutine)(rock, b, ll);
+		    tmpcount = (*ioroutine)(rock, b, ll, offset + count);
 		else
 		    tmpcount = rx_Read(call[m], b, ll);
 		if (tmpcount <= 0) {
@@ -5224,7 +5211,7 @@ retry:
 		    }
 		}
 	    } else {
-	        count = (*ioroutine)(rock, buffer, tlen);
+	        count = (*ioroutine)(rock, buffer, tlen, offset);
 	        if (count != tlen) {
 		    ViceLog(0, ("DataXchange: %s failed for %u.%u.%u\n",
 			storing ? "rx_Write to osd" : "write to client",
@@ -5314,6 +5301,20 @@ bad_xchange:
     return code;
 }
 
+static int
+my_rx_ReadProc(void *rock, char *buf, afs_uint32 nbytes, afs_uint64 offset)
+{
+    struct rx_call *call = (struct rx_call *) rock;
+    return rx_ReadProc(call, buf, nbytes);
+}
+
+static int
+my_rx_WriteProc(void *rock, char *buf, afs_uint32 nbytes, afs_uint64 offset)
+{
+    struct rx_call *call = (struct rx_call *) rock;
+    return rx_WriteProc(call, buf, nbytes);
+}
+
 /*
  *   This routine is called by the fileserver for legacy clients.
  */
@@ -5322,7 +5323,7 @@ xchange_data_with_osd(struct rx_call *acall, Vnode **vnP, afs_uint64 offset,
 			afs_int64 length, afs_uint64 filelength, afs_int32 storing, 
 			afs_uint32 user)
 {
-    afs_int32 (*ioroutine)(void *rock, char *buf, afs_uint32 lng);
+    afs_int32 (*ioroutine)(void *rock, char *buf, afs_uint32 lng, afs_uint64 offset);
     void *rock = (void *) acall;
     afs_int32 code;
     Volume *vol = (*vnP)->volumePtr;
@@ -5332,9 +5333,9 @@ xchange_data_with_osd(struct rx_call *acall, Vnode **vnP, afs_uint64 offset,
 
     memset(&ae, 0, sizeof(ae));
     if (storing)
-	ioroutine = rx_ReadProc;
+	ioroutine = my_rx_ReadProc;
     else
-	ioroutine = rx_WriteProc;
+	ioroutine = my_rx_WriteProc;
     code = DataXchange(ioroutine, rock, (*vnP)->volumePtr, &(*vnP)->disk, 
 			(*vnP)->vnodeNumber, offset, length, filelength, 
 			storing, 0, &ae);
@@ -5581,20 +5582,17 @@ setOsdPolicy(struct Volume *vol, afs_int32 osdPolicy)
 		code = EIO;
                 goto bad;
             }
-            FDH_SEEK(fdP, offset, SEEK_SET);
 	    /* Clear vnodeMagic which becomes osdMetadataIndex or osdPolicyIndex */
-            while (FDH_READ(fdP, vd, sizeof(vnode)) == sizeof(vnode)) {
+            while (FDH_PREAD(fdP, vd, sizeof(vnode), offset) == sizeof(vnode)) {
                 if (vd->type == vFile || vd->type == vDirectory) {
 		    vd->vnodeMagic = 0;
 #ifdef AFS_NAMEI_ENV
 		    vd->vn_ino_hi = vd->uniquifier; /* repair vnode from 1.4-osd */
 #endif
-            	    FDH_SEEK(fdP, offset, SEEK_SET);
-		    if (FDH_WRITE(fdP, vd, sizeof(vnode)) != sizeof(vnode))
+		    if (FDH_PWRITE(fdP, vd, sizeof(vnode), offset) != sizeof(vnode))
                 	ViceLog(0, ("setOsdPolicy: error writing vnode in %u\n", V_id(vol)));
 		}
 		offset += step;
-                FDH_SEEK(fdP, offset, SEEK_SET);
 	    }
 	}
     } else if (V_osdPolicy(vol) && !osdPolicy) { /* OSD volume to normal volume */
@@ -5608,8 +5606,7 @@ setOsdPolicy(struct Volume *vol, afs_int32 osdPolicy)
 		code = EIO;
                 goto bad;
             }
-            FDH_SEEK(fdP, offset, SEEK_SET);
-            while (FDH_READ(fdP, vd, sizeof(vnode)) == sizeof(vnode)) {
+            while (FDH_PREAD(fdP, vd, sizeof(vnode), offset) == sizeof(vnode)) {
                 if (vd->type == vFile) {
 		    if (vd->osdMetadataIndex) {
                 	ViceLog(0, ("setOsdPolicy: cannot reset to zero because volume %u contains still OSD files\n", V_id(vol)));
@@ -5618,7 +5615,6 @@ setOsdPolicy(struct Volume *vol, afs_int32 osdPolicy)
 		    }
 		}
 		offset += step;
-                FDH_SEEK(fdP, offset, SEEK_SET);
 	    }
 	}
 	/* Second loop to set vnodeMagic to normal value */
@@ -5632,19 +5628,16 @@ setOsdPolicy(struct Volume *vol, afs_int32 osdPolicy)
 		code = EIO;
                 goto bad;
             }
-            FDH_SEEK(fdP, offset, SEEK_SET);
-            while (FDH_READ(fdP, vd, sizeof(vnode)) == sizeof(vnode)) {
+            while (FDH_PREAD(fdP, vd, sizeof(vnode), offset) == sizeof(vnode)) {
                 if (vd->type != vNull) {
 		    vd->vnodeMagic = voldata->aVnodeClassInfo[i].magic;
 #ifdef AFS_NAMEI_ENV
 		    vd->vn_ino_hi = vd->uniquifier; /* repair vnode from 1.4-osd */
 #endif
-            	    FDH_SEEK(fdP, offset, SEEK_SET);
-		    if (FDH_WRITE(fdP, vd, sizeof(vnode)) != sizeof(vnode))
+		    if (FDH_PWRITE(fdP, vd, sizeof(vnode), offset) != sizeof(vnode))
                 	ViceLog(0, ("setOsdPolicy: error writing vnode in %u\n", V_id(vol)));
 		}
 		offset += step;
-                FDH_SEEK(fdP, offset, SEEK_SET);
 	    }
 	}
 	/* Remove osdMetadataFile */
@@ -6068,7 +6061,8 @@ clone_metadata(Volume *rwvp, Volume *clvp, afs_foff_t offset, void *rock,
      *  such as osdMetaDataIndex over to the rwvnode.
      */
     if (V_osdPolicy(rwvp) && rwvnode->type == vFile && rwvnode->osdMetadataIndex) {
-	char *rwtrock, *cltrock, *rwtdata, *cltdata;
+	void *rwtrock, *cltrock;
+	byte *rwtdata, *cltdata;
 	afs_uint32 rwtlength, cltlength;
 	afs_uint32 vnodeNumber = offset >> (vcp->logSize -1);
 	afs_int32 code;
@@ -6146,8 +6140,9 @@ clone_clean_up(void **rock)
  * Called from the volserver when dumping a volume to an non-osd volserver.
  */
 afs_int32 
-dump_osd_file(afs_int32 (*ioroutine)(void *rock, char *buf, afs_uint32 lng), 
-			char *rock, Volume *vol, struct VnodeDiskObject *vd,
+dump_osd_file(afs_int32 (*ioroutine)(void *rock, char *buf, afs_uint32 lng,
+			afs_uint64 offset), 
+			void *rock, Volume *vol, struct VnodeDiskObject *vd,
 			afs_uint32 vN, afs_uint64 offset, afs_int64 length)
 {
     afs_int32 code;
@@ -6162,8 +6157,9 @@ dump_osd_file(afs_int32 (*ioroutine)(void *rock, char *buf, afs_uint32 lng),
  * non-osd volserver.
  */
 afs_int32 
-restore_osd_file(afs_int32 (*ioroutine)(char *rock, char *buf, afs_uint32 lng), 
-			char *rock, Volume *vol, struct VnodeDiskObject *vd,
+restore_osd_file(afs_int32 (*ioroutine)(void *rock, char *buf, afs_uint32 lng,
+			afs_uint64 offset), 
+			void *rock, Volume *vol, struct VnodeDiskObject *vd,
 			afs_uint32 vN, afs_uint64 offset, afs_int64 length)
 {
     afs_int32 code;
@@ -6413,8 +6409,7 @@ traverse(Volume *vol, struct sizerangeList *srl, struct osd_infoList *list,
             ViceLog(0, ("Couldn't open metadata file of volume %u\n", V_id(vol)));
             goto bad;
         }
-        FDH_SEEK(fdP, offset, SEEK_SET);
-        while (FDH_READ(fdP, vd, sizeof(vnode)) == sizeof(vnode)) {
+        while (FDH_PREAD(fdP, vd, sizeof(vnode), offset) == sizeof(vnode)) {
             VNDISK_GET_LEN(size, vd);
             switch (vd->type) {
             case vDirectory:
@@ -6588,7 +6583,6 @@ traverse(Volume *vol, struct sizerangeList *srl, struct osd_infoList *list,
                 break;
             }
             offset += step;
-            FDH_SEEK(fdP, offset, SEEK_SET);
         }
         FDH_CLOSE(fdP);
         fdP = 0;
@@ -6740,8 +6734,7 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 	    errors++;
 	    continue;
         }
-	FDH_SEEK(fdP, offset, SEEK_SET);
-	while (FDH_READ(fdP, vd, sizeof(vnode)) == sizeof(vnode)) {
+	while (FDH_PREAD(fdP, vd, sizeof(vnode), offset) == sizeof(vnode)) {
 	    if (vd->type != vNull) {
 		struct afs_stat st;
 		vN = (offset >> (voldata->aVnodeClassInfo[i].logSize - 1)) - 1 + i;
@@ -6771,12 +6764,9 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 			      && vd->osdMetadataIndex) {
 				VNDISK_SET_INO(vd, 0);
 				vd->serverModifyTime = FT_ApproxTime();
-	    			if (FDH_SEEK(fdP, offset, SEEK_SET) == offset) {
-	    			    if (FDH_WRITE(fdP, vd, sizeof(vnode)) == 
-							sizeof(vnode)) {
-					strcat(line, ", repaired.");
-				    }
-				}
+	    			if (FDH_PWRITE(fdP, vd, sizeof(vnode), offset) == 
+					       sizeof(vnode))
+				    strcat(line, ", repaired.");
 			    }
 			    strcat(line, "\n");
 	    		    rx_Write(call, line, strlen(line));
@@ -6804,11 +6794,9 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 				    size = st.st_size;
 				    VNDISK_SET_LEN(vd, size);
 				    vd->serverModifyTime = now;
-	    			    if (FDH_SEEK(fdP, offset, SEEK_SET) == offset) {
-	    			        if (FDH_WRITE(fdP, vd, sizeof(vnode)) == 
-							sizeof(vnode)) {
-					    strcat(line, ", repaired.");
-				        }
+	    			    if (FDH_PWRITE(fdP, vd, sizeof(vnode), offset) == 
+						   sizeof(vnode)) {
+					strcat(line, ", repaired.");
 				    }
 			        }
 			        strcat(line, "\n");
@@ -6840,12 +6828,9 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 #endif
 			    VNDISK_SET_INO(vd, ino);
 			    vd->serverModifyTime = now;
-	    		    if (FDH_SEEK(fdP, offset, SEEK_SET) == offset) {
-	    		        if (FDH_WRITE(fdP, vd, sizeof(vnode)) == 
-						sizeof(vnode)) {
-				    strcat(line, " repaired.");
-			        }
-			    }
+	    		    if (FDH_PWRITE(fdP, vd, sizeof(vnode), offset) == 
+						sizeof(vnode))
+				strcat(line, " repaired.");
 			}
 			strcat(line, "\n");
 	    		rx_Write(call, line, strlen(line));
@@ -7048,11 +7033,10 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 						    }
 						    if (changed || meta_changed) {
 						        vd->serverModifyTime = now;
-	    					        if (FDH_SEEK(fdP, offset, SEEK_SET) == offset) {
-	    			    		            if (FDH_WRITE(fdP, vd, sizeof(vnode)) == 
-							    sizeof(vnode)) 
-							        strcat(line, ", repaired.");
-						        }
+	    			    		        if (FDH_PWRITE(fdP, vd,
+							  sizeof(vnode), offset) == 
+							  sizeof(vnode)) 
+							    strcat(line, ", repaired.");
 						    }
 			    		        }
 					        strcat(line, "\n");
@@ -7082,11 +7066,9 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 					online ? "On-line" : "Wiped",
 					online ? "wiped" : "on-line");
 			    if (flag & SALVAGE_UPDATE) { 
-	    		        if (FDH_SEEK(fdP, offset, SEEK_SET) == offset) {
-	       		            if (FDH_WRITE(fdP, vd, sizeof(vnode)) == 
+	       		        if (FDH_PWRITE(fdP, vd, sizeof(vnode), offset) == 
 					    sizeof(vnode)) 
-					strcat(line, ", repaired");
-				}
+				    strcat(line, ", repaired");
 	    		    }
 			    strcat(line, "\n");
 	    		    rx_Write(call, line, strlen(line));
@@ -7098,7 +7080,6 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 		usedBlocks += size == 0 ? 1 : (size + 1023) >> 10;
 	    }
 	    offset += step;
-	    FDH_SEEK(fdP, offset, SEEK_SET);
 	}
 	FDH_CLOSE(fdP);
 	fdP = 0;
@@ -7194,8 +7175,7 @@ list_objects_on_osd(struct rx_call *call, Volume *vol,  afs_int32 flag,
 	    errors++;
 	    continue;
         }
-	FDH_SEEK(fdP, offset, SEEK_SET);
-	while (FDH_READ(fdP, vd, sizeof(vnode)) == sizeof(vnode)) {
+	while (FDH_PREAD(fdP, vd, sizeof(vnode), offset) == sizeof(vnode)) {
 	    char sizestr[20];
 	    struct  osd_p_fileList fl;
 	    if (vd->type == vNull) {
@@ -7322,7 +7302,6 @@ done:
 	    destroy_osd_p_fileList(&fl);
 next:
 	    offset += step;
-	    FDH_SEEK(fdP, offset, SEEK_SET);
 	}
 	FDH_CLOSE(fdP);
 	fdP = 0;
@@ -7371,7 +7350,7 @@ afs_int32 init_candidates(char **alist)
 }
 
 void
-destroy_candlist(char *rock)
+destroy_candlist(void *rock)
 {
     afs_int32 i;
     struct allcands *l = (struct allcands *)rock;
@@ -7381,7 +7360,7 @@ destroy_candlist(char *rock)
     free(l);
 }
     
-static afs_int32
+int
 is_wipeable(struct osd_p_fileList *l, afs_uint64 size)
 {
     afs_int32 i, j, k;
@@ -7448,8 +7427,7 @@ get_arch_cand(Volume *vol, struct cand *cand, afs_uint64 minsize,
 	code = EIO;
 	goto bad;
     }
-    FDH_SEEK(fdP, offset, SEEK_SET);
-    while (FDH_READ(fdP, vd, sizeof(struct VnodeDiskObject))
+    while (FDH_PREAD(fdP, vd, sizeof(struct VnodeDiskObject), offset)
       == sizeof(struct VnodeDiskObject)) {
 	if (vd->type == vFile && vd->osdMetadataIndex) {
 	    afs_int32 check;
@@ -7538,7 +7516,6 @@ get_arch_cand(Volume *vol, struct cand *cand, afs_uint64 minsize,
 	}
 skip:
 	offset += step;
-	FDH_SEEK(fdP, offset, SEEK_SET);
     }
     code = 0;
 bad:
@@ -7614,7 +7591,8 @@ bad:
     return code;
 }
 
-int init_osdvol (char *version, char **afsosdVersion, struct osd_vol_ops_v0 **osdvol)
+int 
+init_osdvol (char *version, char **afsosdVersion, struct osd_vol_ops_v0 **osdvol)
 {
     static struct osd_vol_ops_v0 osd_vol_ops_v0; 
    

@@ -15,7 +15,7 @@
  * inside the library. So a version mismatch can easily be detected.
  */
  
-#define LIBAFSOSD_VERSION 18
+#define LIBAFSOSD_VERSION 19
 
 /*
  *	Unspecific operations used in general servers provided by AFS/OSD
@@ -57,10 +57,10 @@ struct osd_vol_ops_v0 {
     int (*op_create_simple) (struct Volume *vol, struct VnodeDiskObject *vd,
 			     afs_uint32 vN, afs_uint32 osd, afs_uint32 lun);
     int (*op_dump_getmetadata) (struct Volume *vol, struct VnodeDiskObject *vd,
-			        void **rock, char **data, afs_int32 *length,
+			        void **rock, byte **data, afs_int32 *length,
 			        afs_uint32 vN);
     int (*op_dump_osd_file) (afs_int32 (*ioroutine)(void *rock, char *buf,
-			    	        afs_uint32 lng),
+			    	        afs_uint32 lng, afs_uint64 offset),
                              void *rock, struct Volume *vol,
 			     struct VnodeDiskObject *vd, afs_uint32 vN,
 			     afs_uint64 offset, afs_int64 length);
@@ -69,7 +69,8 @@ struct osd_vol_ops_v0 {
     int (*op_restore_flushmetadata) (struct Volume *vol, struct VnodeDiskObject *vd,
                         afs_uint32 vN, void *mrock, int *lcOk);
     int (*op_restore_osd_file) (afs_int32 (*ioroutine)(void *rock, char *buf,
-			        afs_uint32 lng), void *rock, struct Volume *vol,
+			        afs_uint32 lng, afs_uint64 offset),
+				 void *rock, struct Volume *vol,
 			        struct VnodeDiskObject *vd, afs_uint32 vN,
 			        afs_uint64 offset, afs_int64 length);
     int (*op_restore_set_linkcounts) (struct Volume *vol, struct VnodeDiskObject *old,

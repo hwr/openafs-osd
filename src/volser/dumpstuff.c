@@ -606,8 +606,15 @@ ReadVolumeHeader(struct iod *iodp, VolumeDiskData * vol, Volume *vp,
 		return VOLSERREAD_DUMPERROR;
 	}
     }
-    if (osdvolser && convertToOsd)
-	vol->osdPolicy = 1;
+    if (osdvolser && convertToOsd) {
+	if (!vol->osdPolicy) {
+	    int code;
+	    code = (osdvol->op_setOsdPolicy)(vp, 1);
+	    if (code)
+	        return VOLSERREAD_DUMPERROR;
+	    vol->osdPolicy = 1;
+	}
+    }
     iod_ungetc(iodp, tag);
     return 0;
 }
@@ -1166,6 +1173,13 @@ DumpDumpHeader(struct iod *iodp, Volume * vp,
 }
 
 static int
+my_iod_Write(void *rock, char *buf, afs_uint32 nbytes, afs_uint64 offset)
+{
+    struct iod *iodp = (struct iod *) rock;
+    return iod_Write(iodp, buf, nbytes);
+}
+
+static int
 DumpVnode(struct iod *iodp, struct VnodeDiskObject *v, Volume *vp,
 	  int vnodeNumber, int flag)
 {
@@ -1301,14 +1315,15 @@ DumpVnode(struct iod *iodp, struct VnodeDiskObject *v, Volume *vp,
 	            return VOLSERDUMPERROR;
 	    } else {
     		afs_int64 length;
-    		afs_int32 (*ioroutine)(char *rock, char *buf, afs_int32 len);
+    		afs_int32 (*ioroutine)(void *rock, char *buf, afs_uint32 len,
+				       afs_uint64 offset);
 
     		VNDISK_GET_LEN(length, v);
 		if ((v->vn_length_hi)) 
 	    	    code = DumpDouble(iodp, 'h', v->vn_length_hi, v->length);
 		else 
 	    	    code = DumpInt32(iodp, 'f', v->length);
-    		ioroutine = iod_Write;
+    		ioroutine = my_iod_Write;
     		if (!code)
 		    code = (osdvol->op_dump_osd_file)(ioroutine, iodp, vp, v,
 						   vnodeNumber, 0, length);
@@ -1556,6 +1571,13 @@ RestoreVolume(struct rx_call *call, Volume * avp, int incremental,
 }
 
 static int
+my_rx_ReadProc(void *rock, char *buf, afs_uint32 nbytes, afs_uint64 offset)
+{
+    struct rx_call *call = (struct rx_call *) rock;
+    return rx_ReadProc(call, buf, nbytes);
+}
+
+static int
 ReadVnodes(struct iod *iodp, Volume * vp, int incremental,
 	   afs_foff_t * Lbuf, afs_int32 s1, afs_foff_t * Sbuf, afs_int32 s2,
 	   afs_int32 delo, struct restoreStat *rs)
@@ -1724,7 +1746,7 @@ ReadVnodes(struct iod *iodp, Volume * vp, int incremental,
 		    }
 		    ReadByteString(iodp, (byte *) data, *length);
 		    code = (osdvol->op_restore_flushmetadata)(vp, vnode, vnodeNumber,
-							      rock, 1);
+							      rock, &lcOk);
 	            haveMetadata = 1;
 		    free(rock);
 		    if (code) {
@@ -1787,10 +1809,10 @@ ReadVnodes(struct iod *iodp, Volume * vp, int incremental,
 							 osd_id, lun);
 			if (!code) {
 			    afs_int32 (*ioroutine)(void *rock, char *buf, 
-					afs_int32 lng);
+					afs_uint32 lng, afs_uint64 offset);
 			    afs_uint64 offset = 0;
 
-			    ioroutine = rx_ReadProc;
+			    ioroutine = my_rx_ReadProc;
 			    code = (osdvol->op_restore_osd_file)(ioroutine, iodp->call, 
 							vp, vnode, vnodeNumber, 
 							offset, filesize);
