@@ -392,11 +392,6 @@ extern int ih_condsync(IHandle_t * ihP);
 
 #define IH_CONDSYNC(H) ih_condsync(H)
 
-/* hpss and dcache probably don't have thread-save PIO */
-#ifdef BUILDING_RXOSD
-#undef HAVE_PIO
-#endif
-
 #ifdef HAVE_PIO
 #ifdef AFS_NT40_ENV
 #define OS_PREAD(FD, B, S, O) nt_pread(FD, B, S, O)

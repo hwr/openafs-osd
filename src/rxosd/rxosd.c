@@ -112,33 +112,6 @@
 #endif
 #endif
 
-#include <afs/stds.h>
-#include <rx/xdr.h>
-#include <afs/nfs.h>
-#include <afs/afs_assert.h>
-#include <lwp.h>
-#include <lock.h>
-#include <afs/afsint.h>
-#include <afs/errors.h>
-#include <afs/ihandle.h>
-#include "rxosd.h"
-#include "rxosd_hsm.h"
-#include <afs/vnode.h>
-#include <afs/volume.h>
-#include <rx/rx.h>
-#include <rx/rx_globals.h>
-#include <sys/stat.h>
-#include <afs/cellconfig.h>
-#include <afs/auth.h>
-#include <afs/keys.h>
-#include <afs/partition.h>
-#include <afs/unified_afs.h>
-#include <afs/afsutil.h>
-#include <afs/namei_ops.h>
-#include <ubik.h>
-#include <afs/osddb.h>
-#include "../rxkad/md5.h"
-
 #ifdef O_LARGEFILE
 
 #define afs_stat        stat64
@@ -170,6 +143,33 @@
 #endif /* !AFS_NT40_ENV */
 
 #endif /* !O_LARGEFILE */
+#include <afs/stds.h>
+#include <rx/xdr.h>
+#include <afs/nfs.h>
+#include <afs/afs_assert.h>
+#include <lwp.h>
+#include <lock.h>
+#include <afs/afsint.h>
+#include <afs/errors.h>
+#include <afs/ihandle.h>
+#include "rxosd.h"
+#include "rxosd_hsm.h"
+#include <afs/vnode.h>
+#include <afs/volume.h>
+#include <rx/rx.h>
+#include <rx/rx_globals.h>
+#include <sys/stat.h>
+#include <afs/cellconfig.h>
+#include <afs/auth.h>
+#include <afs/keys.h>
+#include <afs/partition.h>
+#include <afs/unified_afs.h>
+#include <afs/afsutil.h>
+#include <afs/namei_ops.h>
+#include <ubik.h>
+#include <afs/osddb.h>
+#include "../rxkad/md5.h"
+
 
 
 #define AFS_HARDDEADTIME	120
@@ -638,7 +638,7 @@ struct afsconf_dir *confDir = 0;
 extern struct ih_posix_ops *ih_hsm_opsPtr;
 extern afs_int32 dataVersionHigh;
 static void     FiveMinuteCheckLWP();
-static void     CheckFetchProc();
+static void *   CheckFetchProc(void *unused);
 extern int SystemId;
 static struct rx_connection *GetConnection(afs_uint32 ip, afs_uint32 limit,
 					   short port, afs_int32 service);
@@ -1373,7 +1373,7 @@ FindInFetchqueue(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 		 struct fetch_entry **ptr, int anytag)
 {
     struct fetch_entry *f;
-    afs_uint64 mask = (UNIQUEMASK << 32) + RXOSD_VNODEMASK;
+    afs_uint64 mask = ((afs_uint64)UNIQUEMASK << 32) + RXOSD_VNODEMASK;
     
     QUEUE_LOCK;
     for (f=rxosd_fetchq; f; f=f->next) {		
@@ -1608,7 +1608,8 @@ XferData(struct fetch_entry *f)
     pthread_exit(&code);
 }
 
-static void CheckFetchProc()
+static void *
+CheckFetchProc(void *unused)
 {
     XDR xdr;
     struct stat64 stat;
@@ -1621,6 +1622,8 @@ static void CheckFetchProc()
     assert(pthread_attr_init(&tattr) == 0);
     memset(&FetchProc, 0, sizeof(FetchProc));
     if (stat64(AFSDIR_SERVER_RXOSD_FETCHQ_FILEPATH, &stat) == 0) {
+	ViceLog(0, ("%s has length %llu\n", 
+		AFSDIR_SERVER_RXOSD_FETCHQ_FILEPATH, stat.st_size));
 	fetchq_fd = open(AFSDIR_SERVER_RXOSD_FETCHQ_FILEPATH, O_RDWR, 0644);
 	if (fetchq_fd > 0) { 		/* read fetch queue into memory */
 	    afs_lseek(fetchq_fd, 0, SEEK_SET);
@@ -1733,6 +1736,14 @@ restart:
 								O_RDONLY, 0666, 0);
 				if (tfd >= 0) 
 				    fd = ih_fakeopen(f->oh->ih, tfd);
+				else
+                            	    ViceLog(0,("CheckFetchProc could not open %s for %u.%u.%u.%u\n",
+					name.n_path,
+                                	(afs_uint32)(f->d.o.part_id & 0xffffffff),
+                                	(afs_uint32)(f->d.o.obj_id & RXOSD_VNODEMASK),
+                                	(afs_uint32)(f->d.o.obj_id >> RXOSD_UNIQUESHIFT),
+                                	(afs_uint32)(f->d.o.obj_id >> RXOSD_TAGSHIFT)
+                                	& RXOSD_TAGMASK));
 			    }
 			    if (fd) {
 			        FDH_CLOSE(fd);
@@ -3151,11 +3162,11 @@ int examine(struct rx_call *call, t10rock *rock, struct oparmT10 *o,
     if ((mask & WANTS_SIZE) && sizep)
         *sizep = tstat.st_size;
     if ((mask & WANTS_HSM_STATUS) && statusp) {
-        struct fetch_entry *f;
-        f = GetFetchEntry(o);
-        if (f)
-            *statusp = 'm';
-	else if (h.ih_ops->stat_tapecopies) { /* hpss or dcache */
+	struct fetch_entry *f;
+	f = GetFetchEntry(o);
+	if (f) {
+	    *statusp = 'm';
+	} else if (h.ih_ops->stat_tapecopies) { /* hpss or dcache */
 	    time_t before = time(0), after;
 	    char what[2];
 	    result = h.ih_ops->stat_tapecopies(name.n_path, statusp, sizep);
@@ -3303,7 +3314,7 @@ SRXOSD_examine185(struct rx_call *call, afs_uint64 part_id, afs_uint64 obj_id,
 	*size = e.exam_u.e3.size;
 	*linkcount = e.exam_u.e3.linkcount;
 	*mtime = e.exam_u.e3.mtime;
-    } else {
+    } else if (!code) {
 	ViceLog(0,("examine185: Unexpected e.type %d\n", e.type));
 	code = EINVAL;
     }
@@ -3330,7 +3341,7 @@ SRXOSD_examine187(struct rx_call *call, afs_uint64 part_id, afs_uint64 obj_id,
 	*linkcount = e.exam_u.e4.linkcount;
 	*mtime = e.exam_u.e4.mtime;
 	*atime = e.exam_u.e4.atime;
-    } else {
+    } else if (!code) {
 	ViceLog(0,("examine187: Unexpected e.type %d\n", e.type));
 	code = EINVAL;
     }
@@ -3358,7 +3369,7 @@ SRXOSD_examineHSM186(struct rx_call *call, afs_uint64 part_id, afs_uint64 obj_id
 	*linkcount = e.exam_u.e4.linkcount;
 	*mtime = e.exam_u.e4.mtime;
 	*status = e.exam_u.e4.status;
-    } else {
+    } else if (!code) {
 	ViceLog(0,("examineHSM186: Unexpected e.type %d\n", e.type));
 	code = EINVAL;
     }
@@ -3508,47 +3519,6 @@ int writePS(struct rx_call *call, t10rock *rock,
 	goto finis;
     }
     lock_file(fdP, LOCK_EX, mystripe);
-#ifdef USE_VIO
-    while (bytesToXfer > 0) {
-	struct iovec iov[RX_MAXIOVECS];
-	afs_int32 niov;
-        afs_uint32 nbytes;
-        if (firstlen) {
-            nbytes = firstlen;
-            firstlen = 0;
-        } else
-            nbytes = bytesToXfer > bufsize ?  bufsize : bytesToXfer;
-        bytes = rx_Readv(call, iov, &niov, RX_MAXIOVECS, nbytes);
-        if (bytes != nbytes) {
-            ViceLog(0,("only read %d bytes from client %u.%u.%u.%u instead of %d\n", 
-		bytes, 
-		ntohl(call->conn->peer->host) >> 24,
-		(ntohl(call->conn->peer->host) >> 16) & 0xff,
-		(ntohl(call->conn->peer->host) >> 8) & 0xff,
-		ntohl(call->conn->peer->host) & 0xff,
-		nbytes
-		));
-        }
-	total_bytes_rcvd += bytes;
-        if (FDH_SEEK(fdP, toffset, SEEK_SET) < 0){
-            ViceLog(0,("writePS: FDH_SEEK ot offset %llu failed for %u.%u.%u tag %d\n",
-                offset,
-                vid, (afs_uint32)(o->obj_id & RXOSD_VNODEMASK),
-                (afs_uint32)(o->obj_id >> RXOSD_UNIQUESHIFT),
-                (afs_uint32)((o->obj_id >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK)));
-            code = EIO;
-	    goto finis;
-        }
-        if (bytes > 0)
-            written = FDH_WRITEV(fdP, iov, niov);
-        if (bytes != nbytes || bytes != written) {
-            code = EIO;
-	    goto finis;
-        }
-        bytesToXfer -= bytes;
-        toffset += bytes + skip;
-    }
-#else /* USE_VIO */
     buffer = AllocSendBuffer();
 
     while (bytesToXfer > 0) {
@@ -3577,19 +3547,9 @@ int writePS(struct rx_call *call, t10rock *rock,
 	    goto finis;
 	}
 	total_bytes_rcvd += bytes;
-        if (FDH_SEEK(fdP, toffset, SEEK_SET) < 0){
-            ViceLog(0,("writePS: FDH_SEEK to offset %llu failed for %u.%u.%u tag %d\n",
-                offset,
-                vid, (afs_uint32)(o->obj_id & RXOSD_VNODEMASK),
-                (afs_uint32)(o->obj_id >> RXOSD_UNIQUESHIFT),
-                (afs_uint32)((o->obj_id >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK)));
-            FreeSendBuffer((struct afs_buffer *)buffer);
-            code = EIO;
-	    goto finis;
-        }
-        written = FDH_WRITE(fdP, buffer, bytes);
+        written = FDH_PWRITE(fdP, buffer, bytes, toffset);
         if (written != bytes) {
-            ViceLog(0,("writePS: FDH_WRITE of %u bytes at offset %llu failed for %u.%u.%u tag %d\n",
+            ViceLog(0,("writePS: FDH_PWRITE of %u bytes at offset %llu failed for %u.%u.%u tag %d\n",
                 bytes, offset,
                 vid, (afs_uint32)(o->obj_id & RXOSD_VNODEMASK),
                 (afs_uint32)(o->obj_id >> RXOSD_UNIQUESHIFT),
@@ -3602,7 +3562,7 @@ int writePS(struct rx_call *call, t10rock *rock,
         toffset += bytes + skip;
     }
     FreeSendBuffer((struct afs_buffer *)buffer);
-#endif
+
     /* code = FDH_SYNC(fdP); does not a sync, sets only a flag in the ihandle */
     if (atime) {
         namei_t name;
@@ -3830,10 +3790,6 @@ int CopyOnWrite(struct rx_call *call, struct oparmT10 *o, afs_uint64 offs,
     }
     lock_file(fdP, LOCK_SH, 0);
     offset = 0;
-    if (FDH_SEEK(fdP, offset, SEEK_SET) < 0){
-        code = EIO;
-        goto bad;
-    }
     length = tstat.st_size;
     if (size && size < length)
         length = size;
@@ -3862,20 +3818,21 @@ int CopyOnWrite(struct rx_call *call, struct oparmT10 *o, afs_uint64 offs,
 		length));
         while (length) {
             afs_uint32 tlen = length > sendBufSize? sendBufSize : length;
-            bytes = FDH_READ(fdP, buffer, tlen);
+            bytes = FDH_PREAD(fdP, buffer, tlen, offset);
             if (bytes != tlen) {
-                ViceLog(0,("CopyOnWrite: FDH_READ failed for %s.\n",
+                ViceLog(0,("CopyOnWrite: FDH_PREAD failed for %s.\n",
 			sprint_oparmT10(o, string, sizeof(string))));
                 code = EIO;
                 break;
             }
-            bytes = FDH_WRITE(fdP2, buffer, tlen);
+            bytes = FDH_PWRITE(fdP2, buffer, tlen, offset);
             if (bytes != tlen) {
-                ViceLog(0,("CopyOnWrite: FDH_WRITE failed for %s.\n",
+                ViceLog(0,("CopyOnWrite: FDH_PWRITE failed for %s.\n",
 			sprint_oparmT10(new, string, sizeof(string))));
                 code = EIO;
                 break;
             }
+	    offset += tlen;
             length -= tlen;
         }
     }
@@ -3885,28 +3842,28 @@ int CopyOnWrite(struct rx_call *call, struct oparmT10 *o, afs_uint64 offs,
     if (size && size < length)
 	length = size;
     if (length > offs + leng) {		/* copy end of the file */
-	FDH_SEEK(fdP, offs + leng, SEEK_SET);
-	FDH_SEEK(fdP2, offs + leng, SEEK_SET);
+	offset = offs + leng;
 	ViceLog(1, ("CopyOnWrite for %s from %llu to %llu\n",
 		sprint_oparmT10(o, string, sizeof(string)),
 		offs + leng, length));
 	length -= (offs + leng);
         while (length) {
             afs_uint32 tlen = length > sendBufSize? sendBufSize : length;
-            bytes = FDH_READ(fdP, buffer, tlen);
+            bytes = FDH_PREAD(fdP, buffer, tlen, offset);
             if (bytes != tlen) {
-                ViceLog(0,("CopyOnWrite: FDH_READ failed for %s.\n",
+                ViceLog(0,("CopyOnWrite: FDH_PREAD failed for %s.\n",
 			sprint_oparmT10(o, string, sizeof(string))));
                 code = EIO;
                 break;
             }
-            bytes = FDH_WRITE(fdP2, buffer, tlen);
+            bytes = FDH_PWRITE(fdP2, buffer, tlen, offset);
             if (bytes != tlen) {
-                ViceLog(0,("CopyOnWrite: FDH_WRITE failed for %s.\n",
+                ViceLog(0,("CopyOnWrite: FDH_PWRITE failed for %s.\n",
 			sprint_oparmT10(new, string, sizeof(string))));
                 code = EIO;
                 break;
             }
+	    offset += tlen;
             length -= tlen;
         }
     }
@@ -4282,53 +4239,6 @@ readPS(struct rx_call *call, t10rock *rock, struct oparmT10 * o,
 	goto finis;
     }
     if (bytesToXfer > 0) {
-#ifdef USE_IOV
-        while (bytesToXfer > 0) {
-	    struct iovec iov[RX_MAXIOVECS];
-	    afs_int32 niov;
-            afs_uint32 nbytes;
-            if (firstlen) {
-                nbytes = firstlen;
-                firstlen = 0;
-            } else
-                nbytes = bytesToXfer > bufsize ?  bufsize : bytesToXfer;
-            bytes = rx_WritevAlloc(call, iov, &niov, RX_MAXIOVECS, nbytes);
-            if (bytes > 0) {
-                nbytes = bytes;
-            } else {
-                ViceLog(0,("readPS: rx_WritevAlloc returned %dh\n", bytes));
-                code = EIO;
-	        goto finis;
-            }
-            result = FDH_SEEK(fdP, toffset, SEEK_SET);
-            if (result != toffset){
-                ViceLog(0,("readPS: FDH_SEEK ot offset %llu failed for %u.%u.%u tag %d\n",
-                    toffset,
-                    vid, (afs_uint32)(o->obj_id & RXOSD_VNODEMASK),
-                    (afs_uint32)(o->obj_id >> RXOSD_UNIQUESHIFT),
-                    (afs_uint32)((o->obj_id >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK)));
-                code = EIO;
-	        goto finis;
-            }
-            bytes = FDH_READV(fdP, iov, niov);
-            if (bytes != nbytes) {
-                ViceLog(0,("IOV: only read %d bytes instead of %d at offset %llu in %u.%u.%u.%u\n", 
-			bytes, nbytes, toffset,
-			vid, (afs_uint32)(o->obj_id & RXOSD_VNODEMASK),
-                    (afs_uint32)(o->obj_id >> RXOSD_UNIQUESHIFT),
-                    (afs_uint32)((o->obj_id >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK)));
-            }
-            if (bytes > 0)
-                written = rx_Writev(call, iov, niov, bytes);
-            if (bytes != nbytes || bytes != written) {
-                code = EIO;
-	        goto finis;
-            }
-	    total_bytes_sent += bytes;
-            bytesToXfer -= bytes;
-            toffset += bytes + skip;
-        }
-#else /* USE_IOV */
         buffer = AllocSendBuffer();
 
         while (bytesToXfer > 0) {
@@ -4338,18 +4248,7 @@ readPS(struct rx_call *call, t10rock *rock, struct oparmT10 * o,
                 firstlen = 0;
             } else
                 nbytes = bytesToXfer > bufsize ?  bufsize : bytesToXfer;
-            result = FDH_SEEK(fdP, toffset, SEEK_SET);
-            if (result < 0){
-                ViceLog(0,("readPS: FDH_SEEK at offset %llu failed for %u.%u.%u tag %d\n",
-                    toffset,
-                    vid, (afs_uint32)(o->obj_id & RXOSD_VNODEMASK),
-                    (afs_uint32)(o->obj_id >> RXOSD_UNIQUESHIFT),
-                    (afs_uint32)((o->obj_id >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK)));
-		FreeSendBuffer((struct afs_buffer *)buffer);
-                code = EIO;
-	        goto finis;
-            }
-            bytes = FDH_READ(fdP, buffer, nbytes);
+            bytes = FDH_PREAD(fdP, buffer, nbytes, toffset);
             if (bytes != nbytes) {
                 ViceLog(0,("only read %d bytes instead of %d at offset %llu\n", bytes, nbytes, toffset));
             }
@@ -4387,7 +4286,6 @@ readPS(struct rx_call *call, t10rock *rock, struct oparmT10 * o,
             toffset += bytes + skip;
         }
         FreeSendBuffer((struct afs_buffer *)buffer);
-#endif /* USE_IOV */
     }
     ViceLog(1,("readPS for %u.%u.%u tag %d returns 0\n",
                 vid, (afs_uint32)(o->obj_id & RXOSD_VNODEMASK),
@@ -4704,12 +4602,6 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
     }
     lock_file(from_fdP, LOCK_SH, 0);
     offset = 0;
-    if (FDH_SEEK(from_fdP, offset, SEEK_SET) < 0) {
-        ViceLog(0,("copy: FDH_SEEK ot offset %llu failed for %s\n",
-            offset, sprint_oparmT10(from, string, sizeof(string))));
-        code = EIO;
-	goto finis;
-    }
     length = tstat.st_size;
     buffer = AllocSendBuffer();
     if (to_osd) {
@@ -4745,7 +4637,7 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
         while (length) {
 	    afs_uint64 bytesWritten = 0;
             nbytes = length > bufsize ? bufsize : length;
-            bytes = FDH_READ(from_fdP, buffer, nbytes);
+            bytes = FDH_PREAD(from_fdP, buffer, nbytes, offset);
             if (bytes != nbytes) {
                 ViceLog(0,("copy: only read %d bytes instead of %d\n", bytes, nbytes));
                 code = EIO;
@@ -4770,6 +4662,7 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
             }
 	    total_bytes_sent += bytes;
             length -= nbytes;
+	    offset += nbytes;
         }
         if (stat64(name.n_path, &tstat) < 0) {
             ViceLog(0,("copy: 2nd stat64 failed for %s\n",
@@ -4808,22 +4701,16 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
             goto finis;
         }
 	lock_file(to_fdP, LOCK_EX, 0);
-        if (FDH_SEEK(to_fdP, offset, SEEK_SET) < 0){
-            ViceLog(0,("copy: FDH_SEEK ot offset %llu failed for %s\n",
-                    offset, sprint_oparmT10(to, string, sizeof(string))));
-            code = EIO;
-            goto finis;
-        }
         while (length) {
             nbytes = length > bufsize ? bufsize : length;
-            bytes = FDH_READ(from_fdP, buffer, nbytes);
+            bytes = FDH_PREAD(from_fdP, buffer, nbytes, offset);
             if (bytes != nbytes) {
                 ViceLog(0,("copy: only read %d bytes instead of %d of %s\n",
 		        bytes, nbytes, sprint_oparmT10(from, string, sizeof(string))));
                 code = EIO;
                 goto finis;
             }
-            bytes = FDH_WRITE(to_fdP, buffer, nbytes);
+            bytes = FDH_PWRITE(to_fdP, buffer, nbytes, offset);
             if (bytes != nbytes) {
                 ViceLog(0,("copy: only written %d bytes instead of %d to %s\n",
 		        bytes, nbytes, sprint_oparmT10(to, string, sizeof(string))));
@@ -4831,6 +4718,7 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
                 goto finis;
             }
             length -= nbytes;
+	    offset += nbytes;
         }
         /* code = FDH_SYNC(to_fdP); does not a sync, sets only a flag in the ihandle */
     }
@@ -5122,7 +5010,7 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
     char *buf = 0, *bp;
     afs_int32 bytes, tlen, writelen;
     afs_uint32 fullstripes;
-    afs_uint64 length;
+    afs_uint64 length, offset;
     afs_int32 i, j, k;
     afs_uint32 stripe_size;
     MD5_CTX md5;
@@ -5241,6 +5129,7 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
     lock_file(fdP, LOCK_EX, 0);
     gettimeofday(&start, &tz);
     MD5_Init(&md5);
+    offset = 0;
     for (i=0; i<list->osd_segm_descList_len; i++) {
 	struct osd_segm_desc * seg = &list->osd_segm_descList_val[i];
 	length =  seg->length;
@@ -5370,7 +5259,7 @@ retry:
 		bp += tlen;
 	    }
 	    MD5_Update(&md5, buf, writelen);
-	    bytes = FDH_WRITE(fdP, buf, writelen);
+	    bytes = FDH_PWRITE(fdP, buf, writelen, offset);
 	    if (bytes != writelen) {
 		    ViceLog(0,("create_archive: %s written only %d bytes instead of %d\n",
                                 sprint_oparmT10(o, string, sizeof(string)),
@@ -5378,6 +5267,7 @@ retry:
 		    code = EIO;
 		    goto bad;
 	    }
+	    offset += bytes;
 	}
 	free(buf);
 	buf = 0;
@@ -5574,7 +5464,7 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
     char *buf = 0, *bp;
     afs_int32 bytes, tlen, readlen;
     afs_uint32 fullstripes;
-    afs_uint64 length;
+    afs_uint64 length, offset;
     afs_int32 i, j, k;
     afs_uint32 stripe_size;
     afs_uint32 start_sec = time(0);
@@ -5601,8 +5491,18 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
     lun = (afs_uint64)(o->part_id >> 32);
     oh = oh_init(o->part_id, o->obj_id);
     if (HSM || oh->ih->ih_dev == hsmDev) {
-	if (!call) /* only try to open when restore_archive was called internally */
+	if (!call) {  /* only try to open when restore_archive was called internally */
             fd = IH_REOPEN(oh->ih);
+	    if (!fd) {
+                ViceLog(0,("restore_archive: couldn't re-open %s\n",
+				sprint_oparmT10(o, string, sizeof(string))));
+		/* should be safe because it was possible a second before */
+        	fd = IH_OPEN(oh->ih);
+	    	if (!fd) 
+                    ViceLog(0,("restore_archive: also open failed for %s\n",
+				sprint_oparmT10(o, string, sizeof(string))));
+	    }
+	}
     } else
         fd = IH_OPEN(oh->ih);
     if (!fd) {
@@ -5737,12 +5637,12 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 	}
 	length = seg->length;
 	buf = malloc(seg->stripes * stripe_size);
-	FDH_SEEK(fd, 0, SEEK_SET);
+	offset = 0;
 	while (length) {
 	    readlen = seg->stripes * stripe_size;
 	    if (readlen > length)
 		readlen = length;
-	    bytes = FDH_READ(fd, buf, readlen);
+	    bytes = FDH_PREAD(fd, buf, readlen, offset);
 	    if (bytes != readlen) {
 		    ViceLog(0,("restore_archive %s: read only %d bytes instead of %d\n",
 				sprint_oparmT10(o, string, sizeof(string)),
@@ -5750,6 +5650,7 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 		    code = EIO;
 		    goto bad;
 	    }
+	    offset += bytes;
 	    if (output && !(flag & NO_CHECKSUM))
 	        MD5_Update(&md5, buf, readlen);
 	    bp = buf;
@@ -6324,10 +6225,10 @@ Variable(struct rx_call *call, afs_int32 cmd, char *name,
 	    extern int fdCacheSize;
 	    *result = fdCacheSize;
 	    code = 0;
-	} else if (!strcmp(name, "fdMaxCacheSize")) {
-	    extern int fdMaxCacheSize;
-	    *result = fdMaxCacheSize;
-	    code = 0;
+        } else if (!strcmp(name, "fdMaxCacheSize")) {
+            extern int fdMaxCacheSize;
+            *result = fdMaxCacheSize;
+            code = 0;
 	} else
 	    code = ENOENT;
     } else if (cmd == 2) {					/* set */
@@ -6752,7 +6653,6 @@ write_to_hpss(struct rx_call *call, struct oparmT10 *o,
         goto bad;
     }
     lock_file(fdin, LOCK_SH, 0);
-    FDH_SEEK(fdin, 0, SEEK_SET);
 
     gettimeofday(&start, &tz);
     MD5_Init(&md5);
@@ -6764,7 +6664,7 @@ write_to_hpss(struct rx_call *call, struct oparmT10 *o,
 	tlen = hpssBufSize;
 	if (tlen > length)
 	    tlen = length;
-	bytes = FDH_READ(fdin, buf, tlen);	
+	bytes = FDH_PREAD(fdin, buf, tlen, offset);	
 	if (bytes != tlen) {
 	    ViceLog(0,("write_to_hpss: read only %d bytes from %s instead of %d at offset %llu\n",
                 	bytes, sprint_oparmT10(&oin, string, sizeof(string)),
@@ -6776,7 +6676,7 @@ write_to_hpss(struct rx_call *call, struct oparmT10 *o,
 	length -= tlen;
 	writelen += tlen;
 	MD5_Update(&md5, buf, writelen);
-	bytes = FDH_WRITE(fd, buf, writelen);
+	bytes = FDH_PWRITE(fd, buf, writelen, offset);
 	if (bytes != writelen) {
 	    ViceLog(0,("write_to_hpss: written only %d bytes to %s instead of %d at offset %llu\n",
                 	bytes, sprint_oparmT10(o, string, sizeof(string)), writelen, offset));
@@ -6917,7 +6817,7 @@ read_from_hpss(struct rx_call *call, struct oparmT10 *o,
     char *buf = 0;
     afs_int32 bytes, tlen, readlen;
     afs_uint32 fullstripes;
-    afs_uint64 length;
+    afs_uint64 length, offset;
     afs_uint64 tpart_id;
     afs_int32 i, j, k;
     afs_uint32 stripe_size;
@@ -6973,7 +6873,6 @@ read_from_hpss(struct rx_call *call, struct oparmT10 *o,
 	goto bad;
     }
     lock_file(fdout, LOCK_EX, 0);
-    FDH_SEEK(fdout, 0, SEEK_SET);
     gettimeofday(&start, &tz);
     if (output) {
 	memset(output, 0, sizeof(struct osd_cksum));
@@ -6988,13 +6887,13 @@ read_from_hpss(struct rx_call *call, struct oparmT10 *o,
     length =  list->osd_segm_descList_val[0].length;
     if (output)
 	output->size += length;
+    offset = 0;
     buf = malloc(hpssBufSize);
-    FDH_SEEK(fd, 0, SEEK_SET);
     while (length) {
 	readlen = hpssBufSize;
 	if (readlen > length)
 	    readlen = length;
-	bytes = FDH_READ(fd, buf, readlen);
+	bytes = FDH_PREAD(fd, buf, readlen, offset);
 	if (bytes != readlen) {
 	    ViceLog(0,("read_from_hpss %s: read only %d bytes instead of %d\n",
 		       sprint_oparmT10(o, string, sizeof(string)), bytes, readlen));
@@ -7003,7 +6902,7 @@ read_from_hpss(struct rx_call *call, struct oparmT10 *o,
 	}
 	if (output && !(flag & NO_CHECKSUM))
 	    MD5_Update(&md5, buf, readlen);
-	bytes = FDH_WRITE(fdout, buf, readlen);
+	bytes = FDH_PWRITE(fdout, buf, readlen, offset);
 	if (bytes != readlen) {
             ViceLog(0,("read_from_hpss %s: written only %d bytes instead of %d\n",
 		       sprint_oparmT10(&odsc->o.ometa_u.t, string, sizeof(string)),
@@ -7013,6 +6912,7 @@ read_from_hpss(struct rx_call *call, struct oparmT10 *o,
 	}
 	total_bytes_sent += bytes;
 	length -= bytes;
+	offset += bytes;
     }
     /* FDH_SYNC(fdout); does not a sync, sets only a flag in the ihandle */
     unlock_file(fdout, 0);
@@ -7116,7 +7016,7 @@ SRXOSD_read_from_hpss316(struct rx_call *call, afs_uint64 part_id,
     code = convert_osd_segm_desc0List(list, &l);
     if (code)
 	goto bad;
-    code = read_from_hpss(call, &o1, list, 0, &out);
+    code = read_from_hpss(call, &o1, &l, 0, &out);
     output->oid = out.o.ometa_u.t.obj_id;
     output->pid = out.o.ometa_u.t.part_id;
     output->size = out.size;
@@ -7150,7 +7050,7 @@ SRXOSD_online(struct rx_call *call, struct ometa *o, afs_int32 flag, struct exam
 	    code = FindInFetchqueue(call, &o->ometa_u.t, user, &list, 0, NULL, 0);
 	} else { 	/* object presumably on-line */
 	    struct o_handle *oh = oh_init_oparmT10(&o->ometa_u.t);
-	    struct FdHandle_t *fdP;
+	    FdHandle_t *fdP;
 	    fdP = IH_OPEN(oh->ih);
 	    if (fdP)
 		FDH_CLOSE(fdP);
@@ -7187,7 +7087,7 @@ SRXOSD_online317(struct rx_call *call, afs_uint64 part_id, afs_uint64 obj_id,
 	code = FindInFetchqueue(call, &o.ometa_u.t, user, &list, 0, NULL, 0);
     } else { 	/* object presumably on-line */
 	struct o_handle *oh = oh_init_oparmT10(&o.ometa_u.t);
-	struct FdHandle_t *fdP;
+	FdHandle_t *fdP;
 	fdP = IH_OPEN(oh->ih);
 	if (fdP)
 	    FDH_CLOSE(fdP);
@@ -7308,7 +7208,7 @@ SRXOSD_hard_delete(struct rx_call *call, struct ometa *o, afs_uint32 packed_unli
         char name[128];
 
 	if (o->vsn == 1) 
-            oh = oh_init_oparmT10(&o->ometa_u.f);
+            oh = oh_init_oparmT10(&o->ometa_u.t);
 	else if (o->vsn == 2) {
 	    struct oparmT10 o1;
 	    code = convert_ometa_2_1(&o->ometa_u.f, &o1);
@@ -7483,10 +7383,10 @@ sys_error_to_et(afs_int32 in)
 }
 #endif
 
-char *
+int
 threadNum(void)
 {
-    return pthread_getspecific(rx_thread_id_key);
+    return (intptr_t)pthread_getspecific(rx_thread_id_key);
 }
 
 static int
@@ -7523,7 +7423,7 @@ main(int argc, char *argv[])
     int num_listeners = 1;
     int bufSize = 0;        /* temp variable to read in udp socket buf size */
     FILE *debugFile = NULL;
-    short port = OSD_SERVER_PORT; /* == htons(7006); */
+    short port = OSD_SERVER_PORT;
     pthread_t serverPid;
     pthread_attr_t tattr;
 
@@ -7664,8 +7564,8 @@ main(int argc, char *argv[])
 	service = rx_NewServiceHost(HostAddr_NBO, OSD_SERVER_PORT,
 			OSD_SERVICE_ID, "OSD-7006", sc, 4, RXOSD_ExecuteRequest);
     } else {
-        /* Alternative port 7011 */
-        service = rx_NewServiceHost(HostAddr_NBO, OSD_SECOND_SERVER_PORT, 
+    	/* Alternative port 7011 */
+    	service = rx_NewServiceHost(HostAddr_NBO, OSD_SECOND_SERVER_PORT, 
 			OSD_SERVICE_ID, "OSD-7011", sc, 4, RXOSD_ExecuteRequest);
     }
     if (!service)
