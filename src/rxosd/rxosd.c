@@ -1575,7 +1575,8 @@ XferData(struct fetch_entry *f)
 	    free(list.osd_segm_descList_val[i].objList.osd_obj_descList_val);
 	free(list.osd_segm_descList_val);
         if (code) {
-	    f->error = code;
+	    if (code != OSD_WAIT_FOR_TAPE)
+	        f->error = code;
         } else {
 	    struct rx_connection *conn;
 	    f->state = SET_FILE_READY;
