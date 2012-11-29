@@ -371,9 +371,6 @@
 /* define if you have preadv() and pwritev() */
 #undef HAVE_PIOV
 
-/* Define to 1 if you have the `poll' function. */
-#undef HAVE_POLL
-
 /* define if you have POSIX regex library */
 #undef HAVE_POSIX_REGEX
 
