@@ -7202,6 +7202,10 @@ SRXOSD_hard_delete(struct rx_call *call, struct ometa *o, afs_uint32 packed_unli
 	(void) volutil_PartitionName_r(lun, (char *) &tmp, NAMEI_LCOMP_LEN);
 	u.dev = lun;
 	nObjects = namei_ListObjects(&tmp, &DeleteSingleUnlinked, vid, &u);
+	if (nObjects > 0)
+	    code = 0;
+	else
+	    code = ENOENT;
     } else {
         namei_t n;
         struct afs_stat tstat;
