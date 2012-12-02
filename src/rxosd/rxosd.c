@@ -4221,7 +4221,10 @@ readPS(struct rx_call *call, t10rock *rock, struct oparmT10 * o,
 	    }
 	    goto finis;
         }
-        lock_file(fdP, LOCK_SH, mystripe);
+	if (HSM || oh->ih->ih_dev == hsmDev)
+            lock_file(fdP, LOCK_EX, mystripe);
+	else
+            lock_file(fdP, LOCK_SH, mystripe);
     }
     if (code) {
 	code = EIO;
@@ -4600,7 +4603,10 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
         code = EIO;
 	goto finis;
     }
-    lock_file(from_fdP, LOCK_SH, 0);
+    if (HSM || from_oh->ih->ih_dev == hsmDev)
+	lock_file(from_fdP, LOCK_EX, 0);
+    else
+	lock_file(from_fdP, LOCK_SH, 0);
     offset = 0;
     length = tstat.st_size;
     buffer = AllocSendBuffer();
@@ -5520,7 +5526,6 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 	}
 	goto bad;
     }
-    lock_file(fd, LOCK_SH, 0);
     if (call) { 	/* not called from XferData */
 	struct fetch_entry *f;
 	f = GetFetchEntry(o);
@@ -5529,6 +5534,7 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 	    goto bad;
 	}
     }
+    lock_file(fd, LOCK_EX, 0);
     /*
      * Before we start reading from other OSDs look whether this file
      * couldn't be archived directly into HPSS by the OSD it lives on.
@@ -5566,6 +5572,7 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
     }
     if (output && !(flag & NO_CHECKSUM))
         MD5_Init(&md5);
+    oh->ih->ih_ops->lseek(fd->fd_fd, 0, SEEK_SET);
     for (i=0; i<list->osd_segm_descList_len; i++) {
 	struct osd_segm_desc * seg = &list->osd_segm_descList_val[i];
 	length =  seg->length;
@@ -6855,7 +6862,8 @@ read_from_hpss(struct rx_call *call, struct oparmT10 *o,
         code = EIO;
 	goto bad;
     }
-    lock_file(fd, LOCK_SH, 0);
+    lock_file(fd, LOCK_EX, 0);
+    oh->ih->ih_ops->lseek(fd->fd_fd, 0, SEEK_SET);
     odsc = &list->osd_segm_descList_val[0].objList.osd_obj_descList_val[0];
     if (odsc->o.vsn != 1)
     if (odsc->o.vsn != 1) {
