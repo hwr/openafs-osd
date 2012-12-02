@@ -166,8 +166,13 @@ struct ih_posix_ops ih_namei_ops = {
     afs_statfs,
 #endif
     ftruncate,
+#ifdef AFS_AIX53_ENV
+    pread64,
+    pwrite64,
+#else
     pread,
     pwrite,
+#endif
 #ifdef HAVE_PIOV
     preadv,
     pwritev,
