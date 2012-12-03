@@ -1080,6 +1080,10 @@ namei_icreate_open(IHandle_t * lh, char *part, afs_uint32 p1, afs_uint32 p2,
 	return -1;
     }
 
+#if defined(BUILDING_RXOSD)
+restart:
+#endif
+
     if (p2 == -1) {
 	/* Parameters for special file:
 	 * p1 - volume id - goes into owner/group/mode
@@ -1155,6 +1159,29 @@ namei_icreate_open(IHandle_t * lh, char *part, afs_uint32 p1, afs_uint32 p2,
 	    if (fd < 0)
 		goto bad;
 	} else {
+#if defined(BUILDING_RXOSD)
+	    if (open_fd) { /* called from SRXOSD_create_archive */
+		if (errno == EEXIST) {
+		    struct stat64 tstat;
+		    if (tmp.ih_ops->stat64(name.n_path, &tstat) == 0) {
+			if (tstat.st_size == 0) { /* empty file, reuse it */
+			    fd = tmp.ih_ops->open(name.n_path,
+						  O_EXCL | O_TRUNC | O_RDWR,
+						  mode, size);
+			}
+			if (fd < 0) { 
+			    /*
+			     * GerFreeTag set the link count already to one 
+			     * so try next free tag.
+			     */
+			    goto restart;
+			}
+		    } else
+			goto bad;
+		} else
+		    goto bad;
+	    } else
+#endif
 	    goto bad;
 	}
     }
