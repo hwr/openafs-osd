@@ -397,7 +397,7 @@ extern int ih_condsync(IHandle_t * ihP);
 #define OS_PREAD(FD, B, S, O) nt_pread(FD, B, S, O)
 #define OS_PWRITE(FD, B, S, O) nt_pwrite(FD, B, S, O)
 #else
-#ifdef O_LARGEFILE
+#if defined(O_LARGEFILE) || defined(AFS_AIX53_ENV)
 #define OS_PREAD(FD, B, S, O) pread64(FD, B, S, O)
 #define OS_PWRITE(FD, B, S, O) pwrite64(FD, B, S, O)
 #else /* !O_LARGEFILE */
