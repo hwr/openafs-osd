@@ -16,73 +16,6 @@
 #ifdef AFS_NAMEI_ENV
 #include <stdio.h>
 #include <stdlib.h>
-#ifndef AFS_NT40_ENV
-#include <unistd.h>
-#else
-#define DELETE_ZLC
-#include <io.h>
-#include <windows.h>
-#include <winnt.h>
-#include <winbase.h>
-#endif
-#include <errno.h>
-#include <fcntl.h>
-#include <sys/stat.h>
-#ifdef AFS_NT40_ENV
-#include <direct.h>
-#else
-#include <sys/file.h>
-#include <sys/param.h>
-#endif
-#include <dirent.h>
-#include <afs/afs_assert.h>
-#include <string.h>
-#include <lock.h>
-#include <afs/afsutil.h>
-#include <lwp.h>
-#include "nfs.h"
-#include <afs/afsint.h>
-#include "ihandle.h"
-#include "vnode.h"
-#include "volume.h"
-#include "viceinode.h"
-#include "voldefs.h"
-#include "partition.h"
-#include "fssync.h"
-#include "volume_inline.h"
-#include "common.h"
-#include <afs/errors.h>
-#ifdef AFS_NT40_ENV
-#include <afs/errmap_nt.h>
-#endif
-#ifdef AFS_ENABLE_VICEP_ACCESS
-#include <afs/cellconfig.h>
-#include <afs/auth.h>
-#endif
-#if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
-#include <sys/statvfs.h>
-#endif /* AFS_HAVE_STATVFS */
-#ifdef AFS_SUN5_ENV
-#include <unistd.h>
-#include <sys/mnttab.h>
-#include <sys/mntent.h>
-#else
-#ifdef AFS_LINUX22_ENV
-#include <mntent.h>
-#include <sys/statfs.h>
-#else
-#include <fstab.h>
-#endif
-#endif
-
-#if !defined(BUILDING_RXOSD)
-#include "../shlibafsosd/afsosd.h"
-#endif
-
-afs_int32 defaultLinkCount = 5;
-extern int log_open_close;
-
-afs_int32 hsmDev = -1;
 
 /*@+fcnmacros +macrofcndecl@*/
 #ifdef O_LARGEFILE
@@ -127,6 +60,74 @@ afs_int32 hsmDev = -1;
 #endif /* !AFS_NT40_ENV */
 #endif /* !O_LARGEFILE */
 /*@=fcnmacros =macrofcndecl@*/
+
+#ifndef AFS_NT40_ENV
+#include <unistd.h>
+#else
+#define DELETE_ZLC
+#include <io.h>
+#include <windows.h>
+#include <winnt.h>
+#include <winbase.h>
+#endif
+#include <errno.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#ifdef AFS_NT40_ENV
+#include <direct.h>
+#else
+#include <sys/file.h>
+#include <sys/param.h>
+#endif
+#ifdef AFS_ENABLE_VICEP_ACCESS
+#include <afs/cellconfig.h>
+#include <afs/auth.h>
+#endif
+#if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
+#include <sys/statvfs.h>
+#endif /* AFS_HAVE_STATVFS */
+#ifdef AFS_SUN5_ENV
+#include <unistd.h>
+#include <sys/mnttab.h>
+#include <sys/mntent.h>
+#else
+#ifdef AFS_LINUX22_ENV
+#include <mntent.h>
+#include <sys/statfs.h>
+#else
+#include <fstab.h>
+#endif
+#endif
+#include <dirent.h>
+#include <afs/afs_assert.h>
+#include <string.h>
+#include <lock.h>
+#include <afs/afsutil.h>
+#include <lwp.h>
+#include "nfs.h"
+#include <afs/afsint.h>
+#include "ihandle.h"
+#include "vnode.h"
+#include "volume.h"
+#include "viceinode.h"
+#include "voldefs.h"
+#include "partition.h"
+#include "fssync.h"
+#include "volume_inline.h"
+#include "common.h"
+#include <afs/errors.h>
+#ifdef AFS_NT40_ENV
+#include <afs/errmap_nt.h>
+#endif
+
+#if !defined(BUILDING_RXOSD)
+#include "../shlibafsosd/afsosd.h"
+#endif
+
+afs_int32 defaultLinkCount = 16;
+extern int log_open_close;
+
+afs_int32 hsmDev = -1;
 
 #if defined(BUILDING_RXOSD)
 extern int dcache;
@@ -1162,7 +1163,7 @@ restart:
 #if defined(BUILDING_RXOSD)
 	    if (open_fd) { /* called from SRXOSD_create_archive */
 		if (errno == EEXIST) {
-		    struct stat64 tstat;
+		    struct afs_stat tstat;
 		    if (tmp.ih_ops->stat64(name.n_path, &tstat) == 0) {
 			if (tstat.st_size == 0) { /* empty file, reuse it */
 			    fd = tmp.ih_ops->open(name.n_path,
@@ -1174,12 +1175,8 @@ restart:
 			     * GerFreeTag set the link count already to one 
 			     * so try next free tag.
 			     */
-        		    ViceLog(0, ("namei_icreate: set lc=1 for lc 0 file",
-					" %u.%u.%u.%u\n", p1, p2, p3, tag));
 			    goto restart;
-			} else
-        		    ViceLog(0, ("namei_icreate: reusing empty lc 0 file",
-					" %u.%u.%u.%u\n", p1, p2, p3, tag));
+			}
 		    } else
 			goto bad;
 		} else
@@ -1419,7 +1416,8 @@ namei_dec(IHandle_t * ih, Inode ino, int p1)
             	    sprintf((char *)&unlinkname, "%s-unlinked-%d%02d%02d",
                         (char *)&name.n_path, TimeFields->tm_year + 1900,
                         TimeFields->tm_mon + 1, TimeFields->tm_mday);
-                    code = th->ih_ops->rename(name.n_path, &unlinkname);
+                    code = th->ih_ops->rename((const char *)&name.n_path,
+					      (const char *)&unlinkname);
                     ViceLog(0,("SOFT_DELETED: %s\n", unlinkname));
 		}
             } else {
@@ -1999,11 +1997,12 @@ namei_GetLinkCount(FdHandle_t * h, Inode ino, int lockit, int fixup, int nowrite
 	NAMEI_GLC_LOCK;
 	rc = OS_PREAD(h->fd_fd, buf, length, offset);
 	if (rc == length) {
-	    if (shared) {
+	    if (shared) 
                 row |= defaultLinkCount << index;
-		shortrow = row;
-	    } else
-	        row |= 1<<index;
+	    else {
+	        shortrow |= 1<<index;
+		row = shortrow;
+	    }
 	    rc = OS_PWRITE(h->fd_fd, buf, length, offset);
 	}
 	NAMEI_GLC_UNLOCK;
@@ -2325,7 +2324,8 @@ ListViceInodes(char *devname, char *mountedOn, FILE *inodeFile,
  */
 int
 namei_ListObjects(char *mountedOn,
-               int (*judgeInode) (struct ViceInodeInfo * info, int vid, void *rock),
+               int (*judgeInode) (struct ViceInodeInfo * info, afs_uint32 vid,
+				  void *rock),
                int singleVolumeNumber,  void *rock)
 {
     int ninodes;
