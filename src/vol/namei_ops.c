@@ -1174,8 +1174,12 @@ restart:
 			     * GerFreeTag set the link count already to one 
 			     * so try next free tag.
 			     */
+        		    ViceLog(0, ("namei_icreate: set lc=1 for lc 0 file",
+					" %u.%u.%u.%u\n", p1, p2, p3, tag));
 			    goto restart;
-			}
+			} else
+        		    ViceLog(0, ("namei_icreate: reusing empty lc 0 file",
+					" %u.%u.%u.%u\n", p1, p2, p3, tag));
 		    } else
 			goto bad;
 		} else
