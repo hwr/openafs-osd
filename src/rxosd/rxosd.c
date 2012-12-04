@@ -1726,7 +1726,8 @@ restart:
 			    FdHandle_t *fd = 0;
 			    QUEUE_UNLOCK;
 			    SplitInt64(f->d.o.part_id, lun, vid);
-    			    f->oh = oh_init_oparmT10(&f->d.o);
+			    if (!f->oh)
+    			        f->oh = oh_init_oparmT10(&f->d.o);
 			    if (f->oh) {
 				int tfd;
 				namei_t name;
@@ -2638,22 +2639,29 @@ SRXOSD_create110(struct rx_call *call, afs_uint64 part_id, afs_uint64 from_id,
 afs_int32
 incdec(struct rx_call *call, struct oparmT10 *o, afs_int32 diff)
 {
-    struct o_handle *oh = 0;
-    struct o_handle *lh = 0;
-    FdHandle_t *fdP;
+    struct o_handle *oh = NULL;
+    struct o_handle *lh = NULL;
+    FdHandle_t *fdP = NULL;
     Inode linkinode, inode = 0;
     afs_uint32 vid, vnode, unique, lun;
-    afs_int32 code = 0;
+    afs_int32 lc, code = 0;
     char string[FIDSTRLEN];
 
     extract_oparmT10(o, &lun, &vid, &vnode, &unique, NULL);
-    ViceLog(1,("incdec %s %d in lun %u from %u.%u.%u.%u\n",
+    if (call) {
+        ViceLog(1,("incdec %s %d in lun %u from %u.%u.%u.%u\n",
                 sprint_oparmT10(o, string, sizeof(string)),
                 diff, lun,
                 (ntohl(call->conn->peer->host) >> 24) & 0xff,
                 (ntohl(call->conn->peer->host) >> 16) & 0xff,
                 (ntohl(call->conn->peer->host) >> 8) & 0xff,
                 ntohl(call->conn->peer->host) & 0xff));
+    } else { 			/* called from SRXOSD_bulkincdec */
+        ViceLog(1,("incdec %s %d in lun %u\n",
+                sprint_oparmT10(o, string, sizeof(string)),
+                diff, lun));
+    }
+
     if (diff != -1 && diff != 1) {
         code = EINVAL;
 	goto finis;
@@ -2665,72 +2673,71 @@ incdec(struct rx_call *call, struct oparmT10 *o, afs_int32 diff)
         code = EIO;
 	goto finis;
     }
-    ViceLog(2,("incdec %s %d in lun %u after getlinkhandle\n",
-                sprint_oparmT10(o, string, sizeof(string)), diff, lun));
     inode = o->obj_id;
+    fdP = IH_OPEN(lh->ih);
+    if (!fdP) {
+        ViceLog(0,("incdec: IH_OPEN for linktable failed for %s\n",
+			sprint_oparmT10(o, string, sizeof(string))));
+        code = EIO;
+	goto finis;
+    }
+    lc = namei_GetLinkCount(fdP, inode, 0, 0, 0);
+    if (lc < 0) { 	/* something wrong with link table */
+        ViceLog(0,("incdec: lc = %d probably broken linktable for %s\n",
+			lc, sprint_oparmT10(o, string, sizeof(string))));
+        code = EIO;
+	goto finis;
+    }
+    if (lc == 0) { 
+	/* Either an already deleted file or the link table is too short */
+	struct afs_stat tstat;
+	namei_t name;
+	IHandle_t h;
+    	memset(&h, 0, sizeof(h));
+    	h.ih_vid = o->part_id & RXOSD_VOLIDMASK;
+    	h.ih_dev = o->part_id >> RXOSD_LUNSHIFT;
+    	h.ih_ino = o->obj_id;
+    	namei_HandleToName(&name, &h);
+    	code = h.ih_ops->stat64(name.n_path, &tstat);
+	if (code) { 	/* file probaly already deleted or never existed */
+            code = ENOENT;
+	    goto finis;
+	}
+    }
     if (diff < 0) {
+	if (lc == 0) { /* perhaps link table damaged (too short) */
+	    code = namei_SetNonZLC(fdP, inode);
+            ViceLog(0,("incdec: namei_SetNonZLC returnd &d for %s after lc == 0\n",
+                code, sprint_oparmT10(o, string, sizeof(string))));
+	    code = 0;	/* fake success to allow more link counts to be corrected */
+	}
         oh = oh_init_oparmT10(o);
-        ViceLog(2,("incdec %s %d in lun %u after oh_init_oparmT10\n",
-                sprint_oparmT10(o, string, sizeof(string)), diff, lun));
         if (oh == NULL) {
-	    oh_release(lh);
 	    ViceLog(0,("incdec: oh_init for the file %s failed.\n",
                 sprint_oparmT10(o, string, sizeof(string))));
 	    code = EIO;
 	    goto finis;
         }
         oh_free(oh);
-        ViceLog(2,("incdec %s %d in lun %u after oh_free\n",
-                sprint_oparmT10(o, string, sizeof(string)), diff, lun));
         code = IH_DEC(lh->ih, inode, vid);
-        ViceLog(2,("incdec %s %d in lun %u after IH_DEC\n",
-                sprint_oparmT10(o, string, sizeof(string)),
-                diff, lun));
         if (code)  {
             ViceLog(0,("incdec: IH_DEC failed for %s with %d.\n",
                 	sprint_oparmT10(o, string, sizeof(string)), code));
        }
     } else {
-	afs_int32 lc;
-        fdP = IH_OPEN(lh->ih);
-        if (!fdP) {
-            ViceLog(0,("incdec: IH_OPEN for linktable failed for %s\n",
-			sprint_oparmT10(o, string, sizeof(string))));
-            oh_release(lh);
-            code = EIO;
-	    goto finis;
-        }
-        lc = namei_GetLinkCount(fdP, inode, 0, 0, 0);
-	if (lc == 0) {		/* perhaps an already deleted file */
-	    struct afs_stat tstat;
-	    namei_t name;
-	    IHandle_t h;
-    	    memset(&h, 0, sizeof(h));
-    	    h.ih_vid = o->part_id & RXOSD_VOLIDMASK;
-    	    h.ih_dev = o->part_id >> RXOSD_LUNSHIFT;
-    	    h.ih_ino = o->obj_id;
-    	    namei_HandleToName(&name, &h);
-    	    code = h.ih_ops->stat64(name.n_path, &tstat);
-	    FDH_CLOSE(fdP);
-	    if (code) {
-                oh_release(lh);
-                code = ENOENT;
-	        goto finis;
-	    }
-	}
 	code = IH_INC(lh->ih, inode, vid);
-        ViceLog(2,("incdec %s %d in lun %u after IH_INC\n",
-                sprint_oparmT10(o, string, sizeof(string)), diff, lun));
 	if (code) {
             ViceLog(0,("incdec: IH_INC failed for %s with %d returning EIO.\n",
                 	sprint_oparmT10(o, string, sizeof(string)), code));
 	    code = EIO;
 	}
     }
-    ViceLog(2,("incdec %s %d in lun %u before oh_release\n",
-                sprint_oparmT10(o, string, sizeof(string)), diff, lun));
-    oh_release(lh);
+
 finis:
+    if (fdP)
+	FDH_CLOSE(fdP);
+    if (lh)
+        oh_release(lh);
     ViceLog(1,("incdec %s %d in lun %u returns %d\n",
                 sprint_oparmT10(o, string, sizeof(string)),
                 diff, lun, code));
@@ -2789,10 +2796,6 @@ finis:
 afs_int32 
 SRXOSD_bulkincdec(struct rx_call *call, struct osd_incdecList *list)
 {
-    struct o_handle *lh = 0;
-    Inode linkinode, inode = 0;
-    afs_uint32 vid;
-    afs_uint64 part_id = 0;
     afs_int32 code, i;
     SETTHREADACTIVE(6, call, &list->osd_incdecList_val[0].m);
 
@@ -2817,52 +2820,17 @@ SRXOSD_bulkincdec(struct rx_call *call, struct osd_incdecList *list)
 	    code = EINVAL;
 	    goto finis;
 	}
-	if (part_id != otP->part_id) {	/* initialize part_id */
-	    if (lh)
-		oh_release(lh);
-	    part_id = otP->part_id;
-	    vid = (afs_uint32)(part_id & 0xffffffff);
-	    getlinkhandle(&lh, part_id);
-            if (!lh) {
-                ViceLog(0,("bulkincdec: oh_init failed.\n"));
-                code = EIO;
-		goto finis;
-            }
-	}
-        inode = otP->obj_id;
-	if (list->osd_incdecList_val[i].todo == 1) {
-	    code = IH_INC(lh->ih, inode, vid);
-	    if (code < 0) {
-                ViceLog(0,("bulkincdec: IH_INC failed for %u.%u.%u.%u with %d.\n",
-			vid, (afs_uint32)(inode & RXOSD_VNODEMASK), 
-			(afs_uint32)(inode >> RXOSD_UNIQUESHIFT), 
-			(afs_uint32)(inode >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK,
-			code));
-		oh_release(lh);
-                code = EIO;
-		goto finis;
-	    }
+	code = incdec(NULL, otP, list->osd_incdecList_val[i].todo);
+	if (!code)
 	    list->osd_incdecList_val[i].done = 1;
-        } else if (list->osd_incdecList_val[i].todo == -1) {
-            code = IH_DEC(lh->ih, inode, vid);
-	    if (code < 0) /* we ignore errors during decr, but trace them */
-                ViceLog(0,("bulkincdec: IH_DEC failed for %u.%u.%u.%u with %d.\n",
-			vid, (afs_uint32)(inode & RXOSD_VNODEMASK), 
-			(afs_uint32)(inode >> RXOSD_UNIQUESHIFT), 
-			(afs_uint32)(inode >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK,
-			code));
-	    else
-	        list->osd_incdecList_val[i].done = -1;
-        } else {
-	    oh_release(lh);
-	    code = EINVAL;
+	else if (list->osd_incdecList_val[i].todo > 0) { 
+            code = EIO;
 	    goto finis;
 	}
     }
     code = 0;
+
 finis:
-    if (lh)
-        oh_release(lh);
     SETTHREADINACTIVE();
     return code;
 }/* RXOSD_bulkincdec */
@@ -2870,10 +2838,7 @@ finis:
 afs_int32 
 SRXOSD_bulkincdec152(struct rx_call *call, osd_incdec0List *list)
 {
-    struct o_handle *lh = 0;
-    Inode linkinode, inode = 0;
-    afs_uint32 vid;
-    afs_uint64 part_id = 0;
+    struct oparmT10 ot;
     afs_int32 code, i;
     SETTHREADACTIVE_OLD(152, call, list->osd_incdec0List_val[0].pid, 0);
 
@@ -2886,49 +2851,18 @@ SRXOSD_bulkincdec152(struct rx_call *call, osd_incdec0List *list)
     }
 
     for (i=0; i<list->osd_incdec0List_len; i++) {
-	if (part_id != list->osd_incdec0List_val[i].pid) {
-	    if (lh)
-		oh_release(lh);
-	    part_id = list->osd_incdec0List_val[i].pid;
-	    getlinkhandle(&lh, part_id);
-            if (!lh) {
-                ViceLog(0,("bulkincdec: oh_init failed.\n"));
-                code = EIO;
-		goto finis;
-            }
-	}
-        inode = list->osd_incdec0List_val[i].oid;
-	if (list->osd_incdec0List_val[i].todo == 1) {
-	    code = IH_INC(lh->ih, inode, vid);
-	    if (code < 0) {
-                ViceLog(0,("bulkincdec: IH_INC failed for %u.%u.%u.%u with %d.\n",
-			vid, (afs_uint32)(inode & RXOSD_VNODEMASK), 
-			(afs_uint32)(inode >> RXOSD_UNIQUESHIFT), 
-			(afs_uint32)(inode >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK,
-			code));
-		oh_release(lh);
-                code = EIO;
-		goto finis;
-	    }
+	ot.part_id = list->osd_incdec0List_val[i].pid;
+	ot.obj_id = list->osd_incdec0List_val[i].oid;
+	code = incdec(NULL, &ot, list->osd_incdec0List_val[i].todo);
+	if (!code)
 	    list->osd_incdec0List_val[i].done = 1;
-        } else if (list->osd_incdec0List_val[i].todo == -1) {
-            code = IH_DEC(lh->ih, inode, vid);
-	    if (code < 0) /* we ignore errors during decr, but trace them */
-                ViceLog(0,("bulkincdec: IH_DEC failed for %u.%u.%u.%u with %d.\n",
-			vid, (afs_uint32)(inode & RXOSD_VNODEMASK), 
-			(afs_uint32)(inode >> RXOSD_UNIQUESHIFT), 
-			(afs_uint32)(inode >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK,
-			code));
-	    else
-	        list->osd_incdec0List_val[i].done = -1;
-        } else {
-	    oh_release(lh);
-	    code = EINVAL;
+	else if (list->osd_incdec0List_val[i].todo > 0) { 
+            code = EIO;
 	    goto finis;
 	}
     }
-    oh_release(lh);
     code = 0;
+
 finis:
 
     SETTHREADINACTIVE();
@@ -4221,7 +4155,7 @@ readPS(struct rx_call *call, t10rock *rock, struct oparmT10 * o,
 	    }
 	    goto finis;
         }
-	if (HSM || oh->ih->ih_dev == hsmDev)
+	if (HSM || oh->ih->ih_dev == hsmDev) 
             lock_file(fdP, LOCK_EX, mystripe);
 	else
             lock_file(fdP, LOCK_SH, mystripe);
@@ -4604,9 +4538,9 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
 	goto finis;
     }
     if (HSM || from_oh->ih->ih_dev == hsmDev)
-	lock_file(from_fdP, LOCK_EX, 0);
+        lock_file(from_fdP, LOCK_EX, 0);
     else
-	lock_file(from_fdP, LOCK_SH, 0);
+        lock_file(from_fdP, LOCK_SH, 0);
     offset = 0;
     length = tstat.st_size;
     buffer = AllocSendBuffer();
@@ -6865,7 +6799,6 @@ read_from_hpss(struct rx_call *call, struct oparmT10 *o,
     lock_file(fd, LOCK_EX, 0);
     oh->ih->ih_ops->lseek(fd->fd_fd, 0, SEEK_SET);
     odsc = &list->osd_segm_descList_val[0].objList.osd_obj_descList_val[0];
-    if (odsc->o.vsn != 1)
     if (odsc->o.vsn != 1) {
 	ViceLog(0, ("read_from_hpss: objcct_desc contained ometa with vsn %d\n", 
 		odsc->o.vsn));
@@ -7576,12 +7509,12 @@ main(int argc, char *argv[])
 	service = rx_NewServiceHost(HostAddr_NBO, OSD_SERVER_PORT,
 			OSD_SERVICE_ID, "OSD-7006", sc, 4, RXOSD_ExecuteRequest);
     } else {
-    	/* Alternative port 7011 */
-    	service = rx_NewServiceHost(HostAddr_NBO, OSD_SECOND_SERVER_PORT, 
+        /* Alternative port 7011 */
+        service = rx_NewServiceHost(HostAddr_NBO, OSD_SECOND_SERVER_PORT, 
 			OSD_SERVICE_ID, "OSD-7011", sc, 4, RXOSD_ExecuteRequest);
     }
     if (!service)
-	ViceLog(0,("Failed to initialize RX on port 7006"));
+	ViceLog(0,("Failed to initialize RX on secondary port (7006 or 7011)\n"));
 	
     rx_SetMinProcs(service, 2);
     rx_SetMaxProcs(service, lwps/2);
