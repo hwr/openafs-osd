@@ -7191,7 +7191,7 @@ SRXOSD_relink(struct rx_call *call, struct ometa *o, afs_uint32 packed_unlinkdat
     struct o_handle *oh = NULL;
     struct unlinkParms u;
 
-    SETTHREADACTIVE(29, call, o);
+    SETTHREADACTIVE(30, call, o);
     if (call && !afsconf_SuperUser(confDir, call, (char *)0)) {
         code = EACCES;
 	goto finis;
