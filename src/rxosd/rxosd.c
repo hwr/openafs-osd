@@ -7182,6 +7182,67 @@ finis:
     return code;
 }
 
+afs_int32
+SRXOSD_relink(struct rx_call *call, struct ometa *o, afs_uint32 packed_unlinkdata,
+		   afs_int32 flag)
+{
+    afs_int32 code;
+    afs_uint32 year, month, day;
+    struct o_handle *oh = NULL;
+    struct unlinkParms u;
+
+    SETTHREADACTIVE(29, call, o);
+    if (call && !afsconf_SuperUser(confDir, call, (char *)0)) {
+        code = EACCES;
+	goto finis;
+    }
+    u.year = packed_unlinkdata >> 9;
+    u.month = (packed_unlinkdata >> 5) & 15;
+    u.day = packed_unlinkdata & 31;
+    u.flag = flag;
+    if (flag) {
+	ViceLog(0, ("SRXOSD_relink: unknown flag %d, aborting\n", flag));
+	code = EINVAL;
+    } else {
+        namei_t n;
+        struct afs_stat tstat;
+        char name[128];
+
+	if (o->vsn == 1) 
+            oh = oh_init_oparmT10(&o->ometa_u.t);
+	else if (o->vsn == 2) {
+	    struct oparmT10 o1;
+	    code = convert_ometa_2_1(&o->ometa_u.f, &o1);
+            oh = oh_init_oparmT10(&o1);
+	} else {
+	    code = EINVAL;
+	    goto finis;
+	}
+	if (!oh) {
+	    code = EIO;
+	    goto finis;
+	}
+	namei_HandleToName(&n, oh->ih);
+	sprintf(&name, "%s-unlinked-%04u%02u%02u", n.n_path, u.year, u.month, u.day);
+	code = (oh->ih->ih_ops->stat64)(name, &tstat);
+	if (code) {
+	    code = ENOENT;
+	    goto finis;
+	}
+	code = (oh->ih->ih_ops->stat64)(n.n_path, &tstat);
+	if (!code) {
+	    code = EEXIST;
+	    goto finis;
+	}
+	code = (oh->ih->ih_ops->rename)(name, n.n_path);
+    }
+finis:
+    if (oh)
+	oh_release(oh);
+    SETTHREADINACTIVE();
+    return code;
+}
+
 #ifdef notdef
 static int sys2et[512];
 

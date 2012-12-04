@@ -2029,7 +2029,7 @@ init_osddb_client()
     memset(&serverconns, 0, sizeof(serverconns));
     code = ugen_ClientInit(0, AFSDIR_CLIENT_ETC_DIRPATH, cellp, localauth, &cstruct, 
 				0, "osddb", 1, 13,
-				(char *)0, 10, server, OSDDB_SERVER_PORT, 
+				(char *)0, 10, server, OSDDB_SERVER_PORT,
 				OSDDB_SERVICE_ID);
     if (!code)
         osddb_client = cstruct;
@@ -3925,6 +3925,48 @@ hard_delete(struct cmd_syndesc *as, void *rock)
 }
 
 afs_int32
+relinkCmd(struct cmd_syndesc *as, void *rock)
+{
+    afs_int32 code, fields;
+    afs_int32 flag = 0;
+    afs_uint32 year, month, day, packed;
+    char junk[80];
+
+    if (as->parms[3].items) 					/* -localauth */
+	localauth = 1;
+    if (as->parms[4].items) 					/* -cell */
+        cellp = as->parms[6].items->data;
+
+    thost = as->parms[0].items->data;
+
+    if (as->parms[1].items) {					/* -fid */
+        if (fill_ometa(as->parms[1].items->data))  {
+            fprintf(stderr, "Invalid fid: %s\n", 
+		        as->parms[1].items->data);
+	    return EINVAL;     
+        }
+    }
+    fields = sscanf(as->parms[2].items->data, "%04u%02u%02u%s",
+			&year, &month, &day, &junk);
+    if (fields != 3 ||
+      year < 2005 || month == 0 || month > 12 || day == 0 || day > 31) {
+        fprintf(stderr, "Invalid unlinkdate: %s, format is 'yyyymmdd'\n", 
+		    as->parms[2].items->data);
+	return EINVAL;     
+    }
+    packed = (year << 9) + (month << 5) + day;	
+
+    scan_osd_or_host();
+    GetConnection();
+    code = RXOSD_relink(Conn, &Oprm, packed, flag);
+    if (code)
+	fprintf(stderr, "RXOSD_relink returns %d\n", code);
+    else
+	fprintf(stderr, "done.\n");
+    return code;
+}
+
+afs_int32
 remove_fetch(struct cmd_syndesc *as, void *rock)
 {
     afs_int32 code, what, result;
@@ -4435,6 +4477,16 @@ int main (int argc, char **argv)
 	        "osd or server name or IP-address");
     cmd_AddParm(ts, "-fid", CMD_SINGLE, CMD_REQUIRED,
 	        "file-id: volume.vnode.uniquifier[.tag]");
+    cmd_AddParm(ts, "-localauth", CMD_FLAG, CMD_OPTIONAL,
+	        "get ticket from server key-file ");
+    cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
+
+    ts = cmd_CreateSyntax("relink", relinkCmd, NULL, "restore an unlinked file");
+    cmd_AddParm(ts, "-osd", CMD_SINGLE, CMD_REQUIRED,
+	        "osd or server name or IP-address");
+    cmd_AddParm(ts, "-fid", CMD_SINGLE, CMD_OPTIONAL,
+	        "file-id: volume.vnode.uniquifier[.tag]");
+    cmd_AddParm(ts, "-unlinkdate", CMD_SINGLE, CMD_REQUIRED, "as yyyymmdd");
     cmd_AddParm(ts, "-localauth", CMD_FLAG, CMD_OPTIONAL,
 	        "get ticket from server key-file ");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
