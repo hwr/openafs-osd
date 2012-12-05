@@ -1677,20 +1677,13 @@ ReadVnodes(struct iod *iodp, Volume * vp, int incremental,
 		acl_NtohACL(VVnodeDiskACL(vnode));
 		break;
 	    case 'd': 
-		if (osdvol && vnode->type == vDirectory) {
-		    afs_int32 dummy;
-		    if (!ReadInt32(iodp, &dummy)) 
-                        return VOLSERREAD_DUMPERROR;
-		    vnode->osdPolicyIndex = dummy;
-		} else    /* should not happen */
-		    return VOLSERREAD_DUMPERROR;
-	        break;
 	    case 'P':	/* old stuff */ 
 		if (osdvol && vnode->type == vDirectory) {
 		    afs_int32 dummy;
 		    if (!ReadInt32(iodp, &dummy)) 
                         return VOLSERREAD_DUMPERROR;
-		    vnode->osdPolicyIndex = dummy;
+		    if (V_osdPolicy(vp))
+		        vnode->osdPolicyIndex = dummy;
 		} else    /* should not happen */
 		    return VOLSERREAD_DUMPERROR;
 	        break;
@@ -1826,8 +1819,6 @@ ReadVnodes(struct iod *iodp, Volume * vp, int incremental,
 			}
 			lcOk = 1;
 			haveMetadata = 1;
-			if (!(V_osdPolicy(vp)))
-			    V_osdPolicy(vp) = 1;
 		        VNDISK_SET_LEN(vnode, filesize);
 		    } else {
   		        ino =
