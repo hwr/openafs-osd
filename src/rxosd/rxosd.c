@@ -5096,6 +5096,7 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
 	    }
 	}
 	for (j=0; j<seg->stripes; j++) {
+	    afs_uint32 currOsd;
 	    for (k=0; k<seg->objList.osd_obj_descList_len; k++) {
 		struct osd_obj_desc *obj = &seg->objList.osd_obj_descList_val[k];
 		if (obj->stripe == j) {
@@ -5105,6 +5106,7 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
 		    struct RWparm p;
 		    struct rx_endp endp;
 		    struct rx_connection *tcon = NULL;
+		    currOsd = obj->o.ometa_u.t.osd_id;
 		    code = fillRxEndpoint(obj->o.ometa_u.t.osd_id, &endp, NULL, 0);
 		    if (!code) {
 			afs_uint32 ip;
@@ -5112,8 +5114,11 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
 			memcpy(&ip, endp.ip.addr.addr_val, 4);
     			tcon = GetConnection(ip, 1, htons(port), endp.service);
 		    }
-		    if (!tcon) 
+		    if (!tcon) {
+			ViceLog(0, ("create_archive: GetConnection failed to osd %u\n",
+				    currOsd));
 			continue;
+		    }
 retry:
 		    rcall[j] = rx_NewCall(tcon);
 		    if (!rcall[j])
@@ -5169,8 +5174,9 @@ retry:
 		}
 	    }
 	    if (!rcall[j]) {
-		ViceLog(0,("create_archive: %s no connection to remote osd\n",
-                                sprint_oparmT10(o, string, sizeof(string))));
+		ViceLog(0,("create_archive: %s no connection to osd %u\n",
+                                sprint_oparmT10(o, string, sizeof(string)),
+				currOsd));
 		if (!code)
 		    code = EIO;
 		goto bad;
