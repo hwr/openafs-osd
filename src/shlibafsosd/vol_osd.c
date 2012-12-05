@@ -6387,15 +6387,16 @@ traverse(Volume *vol, struct sizerangeList *srl, struct osd_infoList *list,
     afs_int32 only_non_osd_volumes = operation & 8;
     afs_int32 only_old_singles = operation & 0x10000;
     afs_uint32 now = FT_ApproxTime();
+    afs_uint32 policy = V_osdPolicy(vol);
 
-    if (only_osd_volumes && V_osdPolicy(vol) == 0)
+    if (only_osd_volumes && policy) == 0)
         return 0;
-    if (only_non_osd_volumes && V_osdPolicy(vol) != 0)
+    if (only_non_osd_volumes && policy != 0)
         return 0;
-    if (policy_statistics && V_osdPolicy(vol) == 0)
+    if (policy_statistics && policy == 0)
         return 0;
-    if ( policy_statistics && V_osdPolicy(vol) && V_osdPolicy(vol) != 1 ) {
-        info = findInfo(list, V_osdPolicy(vol) );
+    if (policy_statistics && policy && policy != 1) {
+        info = findInfo(list, policy);
         if ( !info )
             info = &list->osd_infoList_val[0];
         info->fids1++;
@@ -6465,7 +6466,7 @@ traverse(Volume *vol, struct sizerangeList *srl, struct osd_infoList *list,
                 if (vd->osdMetadataIndex) {
                     struct  osd_p_fileList fl;
                     vN = (offset >> (voldata->aVnodeClassInfo[i].logSize - 1)) - 1 + i;
-		    if (V_osdPolicy(vol) == 0) {
+		    if (policy == 0) {
 			if (vd->vnodeMagic == voldata->aVnodeClassInfo[i].magic)
 			    break;
                         ViceLog(0, ("traverse: %u.%u.%u is an OSD file in a volume without osdPolicy\n",
