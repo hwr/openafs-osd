@@ -1789,7 +1789,7 @@ VolSetInfo(struct rx_call *acid, afs_int32 atrans,
 	td->updateDate = astatus->updateDate;
     if (astatus->spare2 != -1)
 	td->volUpdateCounter = (unsigned int)astatus->spare2;
-    if (astatus->filequota > 0)
+    if (astatus->filequota != -1)
         td->maxfiles = astatus->filequota;
     if (astatus->osdPolicy != -1) {
 	if (osdvol) {
