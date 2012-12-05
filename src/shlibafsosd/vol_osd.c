@@ -6389,7 +6389,7 @@ traverse(Volume *vol, struct sizerangeList *srl, struct osd_infoList *list,
     afs_uint32 now = FT_ApproxTime();
     afs_uint32 policy = V_osdPolicy(vol);
 
-    if (only_osd_volumes && policy) == 0)
+    if (only_osd_volumes && policy == 0)
         return 0;
     if (only_non_osd_volumes && policy != 0)
         return 0;
