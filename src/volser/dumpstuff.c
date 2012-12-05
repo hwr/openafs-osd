@@ -582,20 +582,22 @@ ReadVolumeHeader(struct iod *iodp, VolumeDiskData * vol, Volume *vp,
 		afs_int32 newOsdPolicy, code;
 	        if (!ReadInt32(iodp, &newOsdPolicy))
 		    return VOLSERREAD_DUMPERROR;
-		if (!V_osdPolicy(vp) && newOsdPolicy) {
-		    code = (osdvol->op_setOsdPolicy)(vp, newOsdPolicy);
-		    if (code)
-		        return VOLSERREAD_DUMPERROR;
-		    vol->osdPolicy =newOsdPolicy;
-		} else if (V_osdPolicy(vp) && !newOsdPolicy) {
-		    /*
-		     * There could still be osd files which may be removed
-		     * while the vnodes are processed. So we can convert the
-		     * volume only at the end.
-		     */
-		    *clearOsdPolicy = 1;
-		} else
-		    vol->osdPolicy = newOsdPolicy;
+		if (osdvol) { /* only if we were started with -libafsosd  */
+		    if (!V_osdPolicy(vp) && newOsdPolicy) {
+		        code = (osdvol->op_setOsdPolicy)(vp, newOsdPolicy);
+		        if (code)
+		            return VOLSERREAD_DUMPERROR;
+		        vol->osdPolicy =newOsdPolicy;
+		    } else if (V_osdPolicy(vp) && !newOsdPolicy) {
+		        /*
+		         * There could still be osd files which may be removed
+		         * while the vnodes are processed. So we can convert the
+		         * volume only at the end.
+		         */
+		        *clearOsdPolicy = 1;
+		    } else
+		        vol->osdPolicy = newOsdPolicy;
+		}
 	    }
 	    break;
 	case 0x7e:
@@ -606,7 +608,7 @@ ReadVolumeHeader(struct iod *iodp, VolumeDiskData * vol, Volume *vp,
 		return VOLSERREAD_DUMPERROR;
 	}
     }
-    if (osdvolser && convertToOsd) {
+    if (osdvol && convertToOsd) {
 	if (!vol->osdPolicy) {
 	    int code;
 	    code = (osdvol->op_setOsdPolicy)(vp, 1);
