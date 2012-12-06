@@ -5614,7 +5614,7 @@ afs_int32 osd_parms(struct cmd_syndesc *as, void *arock)
         code = RXAFS_StartAsyncFetch2(RXConn, &Fid, &p, &a, &transId,
 				     &expires, &OutStatus, &CallBack);
         if (!code) {
-	     RXAFS_EndAsyncFetch(RXConn, &Fid, transId, 0, 0);
+	     RXAFS_EndAsyncFetch1(RXConn, &Fid, transId, 0, 0);
 #ifdef NEW_OSD_FILE
 	    f = a.async_u.l1.osd_fileList_val;
 #else
