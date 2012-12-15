@@ -165,7 +165,6 @@
 #include <afs/partition.h>
 #include <afs/unified_afs.h>
 #include <afs/afsutil.h>
-#include <afs/namei_ops.h>
 #include <ubik.h>
 #include <afs/osddb.h>
 #include "../rxkad/md5.h"
@@ -173,15 +172,8 @@
 
 
 #define AFS_HARDDEADTIME	120
-
-#define MAXCONSOLE 5
-#define CONSOLENAME "opcons"
-#define NEWCONNECT "NEWCONNECT"
-#define TOTAL 0
 #define FIDSTRLEN 64
-
 #define BIGTIME	(0x7FFFFFFF)	/* Should be max u_int, rather than max int */
-
 #define DONTPANIC 0
 #define PANIC 1
 
@@ -243,6 +235,10 @@ extern off_t afs_lseek(int FD, off_t O, int F);
 #endif /* !O_LARGEFILE */
 /*@=fcnmacros =macrofcndecl@*/
 
+extern Inode namei_icreate_open(IHandle_t * lh, char *part, afs_uint32 p1,
+                           afs_uint32 p2, afs_uint32 p3, afs_uint32 p4,
+                           afs_uint64 size, int *open_fd);
+
 int check_dsmls(FILE *cmd_stdin, FILE *cmd_stdout, char *rock);
 #ifdef AFS_AIX53_ENV
 int HSM = 1;
@@ -261,6 +257,7 @@ extern afs_int32 hsmDev;
 char *principal = NULL;
 char *keytab = NULL;
 int dontTrustHPSS = 0;
+extern struct ih_posix_ops ih_namei_ops;
 
 struct MHhost {
     struct MHhost *next;
@@ -320,7 +317,6 @@ int o_cache_used = 0;
 int o_cache_entries = 0;
 int o_MaxCacheSize = 0;
 int oldRxosds = 1; /* As long as still 1.4x rxosds exist in the cell */
-
 
 struct o_handle *oh_init(afs_uint64 p, afs_uint64 o)
 {
@@ -2430,14 +2426,8 @@ afs_int32
 volume_groups(struct rx_call *call, struct ometa *o)
 {
     int code = 0;
-    afs_uint32 count, lun;
-    afs_uint32 nvolumes;
-    DIR *dirp1 = 0, *dirp2 = 0;
-    struct dirent *dp1 = 0, *dp2 = 0;
-    afs_uint32 buflen = 0, *vid;
-    int i, more = 1;
+    afs_uint32 count = 0;
     XDR xdr;
-    char *buf = 0;
     
     ViceLog(1,("volume_groups\n")); 
     if (!afsconf_SuperUser(confDir, call, (char *)0)) {
@@ -2445,17 +2435,18 @@ volume_groups(struct rx_call *call, struct ometa *o)
 	goto finis;
     }
     /* first count the volumes */
-    if (o->vsn == 2) 
-	lun = o->ometa_u.f.lun;
-    else if (o->vsn == 1)
-        lun = o->ometa_u.t.part_id >> 32;
-    else
+    if (o->vsn == 1)
+        code = traverse_osd(call, o->ometa_u.t.part_id, 6,
+			 INVENTORY_SPECIAL | INVENTORY_ONLY_SPECIAL, &count);
+    else if (o->vsn == 2) {
+	afs_uint64 part_id = (afs_uint64)o->ometa_u.f.lun << 32;
+        code = traverse_osd(call, part_id, 7,
+			 INVENTORY_SPECIAL | INVENTORY_ONLY_SPECIAL, &count);
+    } else
 	return EINVAL;
 
-    code = namei_ListVolumeGroups(lun, &count, &dirp1, &dirp2, &dp1, &dp2, 
-		(char *) 0, &buflen);
     if (code) {
-	ViceLog(0,("volume_groups: namei_ListVolumeGroups failed with code %d\n", code));
+	ViceLog(0,("volume_groups: traverse_osd failed with code %d\n", code));
 	goto finis; 
     }
     xdrrx_create(&xdr, call, XDR_ENCODE);
@@ -2464,46 +2455,15 @@ volume_groups(struct rx_call *call, struct ometa *o)
 	goto finis;
     }
     /* now get the volume ids */
-    buf = AllocSendBuffer();
-    nvolumes = count;
-    while (nvolumes && more) {
-	count = 0;
-	buflen = sendBufSize;
-        code = namei_ListVolumeGroups(lun, &count, &dirp1, &dirp2, &dp1, &dp2,
-				buf, &buflen);
-	if (!code) 
-	    more = 0;
-	if (code && code != 1) {
-	    ViceLog(0,("volume_groups: namei_ListVolumeGroups failed with code %d\n", code));
-	    break;
-	}
-	vid = (afs_uint32 *)buf;
-	nvolumes -= count;
-	for (; count>0 ; count--) {
-	    if (o->vsn == 1) {
-                if (!xdr_afs_uint32(&xdr, vid)) {
-	            ViceLog(0,("volume_groups: xdr_uint32 failed\n"));
-	            more = 0;
-		    break;
-	        }
-	    } else if (o->vsn == 2) {
-		afs_uint64 rwvol = *vid;
-                if (!xdr_afs_uint64(&xdr, &rwvol)) {
-	            ViceLog(0,("volume_groups: xdr_uint64 failed\n"));
-	            more = 0;
-		    break;
-	        }
-	    }
-            vid++;
-	}
+    if (o->vsn == 1)
+        code = traverse_osd(call, o->ometa_u.t.part_id, 6,
+			 INVENTORY_SPECIAL | INVENTORY_ONLY_SPECIAL, NULL);
+    else {
+	afs_uint64 part_id = (afs_uint64)o->ometa_u.f.lun << 32;
+        code = traverse_osd(call, part_id, 7,
+			 INVENTORY_SPECIAL | INVENTORY_ONLY_SPECIAL, NULL);
     }
 
-    if (dirp1)
-	closedir(dirp1);
-    if (dirp2)
-	closedir(dirp2);
-    if (buf)
-    	FreeSendBuffer((struct afs_buffer *)buf);
 finis:
     return code;
 }/* volume_groups */
@@ -2869,88 +2829,505 @@ finis:
     return code;
 }
 
-int ListSingleObject(struct ViceInodeInfo * info, int vid, XDR *xdr) {
-    if (info->u.vnode.volumeId == vid 
-    && info->u.vnode.vnodeNumber != RXOSD_VNODEMASK) {
-	xdr_afs_uint64(xdr, &info->inodeNumber);
-	xdr_afs_uint64(xdr, &info->byteCount);
-	xdr_afs_uint32(xdr, &info->linkCount);
-    }	
-    return 0;
-}
+struct unlinkParms {
+    afs_uint32 packed;
+    afs_uint32 year;
+    afs_uint32 month;
+    afs_uint32 day;
+    afs_int32 flag;
+    afs_uint32 dev;
+};
 
-int ListSingleObjectOparm2(struct ViceInodeInfo * info, int vid, XDR *xdr) {
-    struct oparmFree o2;
-    struct oparmT10 o1;
-
-    memset(&o2, 0, sizeof(o2));
-    o1.part_id = info->u.vnode.volumeId; /* identical with info->param[0] */
-    o1.obj_id = info->inodeNumber;
-    convert_ometa_1_2(&o1, &o2);
-    o2.spare[1] = info->u.param[1];
-    o2.spare[2] = info->u.param[2];
-    o2.spare[3] = info->u.param[3];
-    xdr_oparmFree(xdr, &o2);
-    xdr_afs_uint64(xdr, &info->byteCount);
-    xdr_afs_int32(xdr, &info->linkCount);
-    return 0;
-}
-
-int ListSingleObjectOparm1(struct ViceInodeInfo * info, int vid, XDR *xdr) {
-    struct oparmT10 o1;
-
-    o1.part_id = info->u.vnode.volumeId;
-    o1.obj_id = info->inodeNumber;
-    xdr_oparmT10(xdr, &o1);
-    xdr_afs_uint64(xdr, &info->byteCount);
-    xdr_afs_uint32(xdr, &info->linkCount);
-    return 0;
-}
-
-afs_int32
-List(struct rx_call *call, struct ometa *o)
+static afs_int32
+delete_unlinked(void *rock, char *path,  afs_uint32 unlinked, IHandle_t *ih)
 {
-    afs_uint32 vid, lun;
-    afs_uint32 nObjects;
+    struct unlinkParms *u = (struct unlinkParms *) rock;
     afs_int32 code = 0;
-    char tmp[NAMEI_LCOMP_LEN];
-    XDR xdr;
+    afs_uint32 year, month, day;
+
+    year = unlinked >> 9;
+    month = (unlinked >> 5) & 15;
+    day = unlinked & 31;
+
+    if (!(u->flag & HARD_DELETE_EXACT) && !(u->flag & HARD_DELETE_OLDER)) {
+	ViceLog(0, ("delete_unlinked: invalid flag 0x%x\n", u->flag));
+	goto skip;
+    }
+    if ((u->flag & HARD_DELETE_EXACT) && u->packed != unlinked)
+        goto skip;
+
+    /* check that values are reasonable */
+    if (year < 2005 || year > u->year)
+        goto skip;
+    if (month == 0 || month > 12)
+        goto skip;
+    /* skip to young files */
+    if ((u->flag & HARD_DELETE_OLDER) && unlinked >= u->packed)
+        goto skip;
+
+    code = (ih->ih_ops->unlink)(path);
+    if (code) 
+	ViceLog(0, ("delete_unlinked: unlink %s returns %d\n", path, code));
+	
+skip:	    
+    return code;
+}
+ 
+static afs_int32
+send_inv1(XDR *xdr, struct inventory *inv,  afs_uint64 p_id, afs_uint64 o_id,
+	  struct afs_stat *tstat, afs_int32 lc, afs_uint32 unlinked, void* rock)
+{
+    afs_int32 code = 0;
+    struct inventory1 *inv1;
+
+    inv1 = &inv->inventory_u.inv1;
+    memset(inv1, 0, sizeof(struct inventory1));
+    inv1->o.part_id = p_id;
+    inv1->o.obj_id = o_id;
+    inv1->size = tstat->st_size;
+    inv1->atime = tstat->st_atime;
+    inv1->mtime = tstat->st_mtime;
+    inv1->lc = lc;
+    inv1->unlinked = unlinked;
+    if (!xdr_inventory(xdr, inv))
+	code = EIO;
+    return code;
+}
+
+static afs_int32
+send_inv2(XDR *xdr, struct inventory *inv,  afs_uint64 p_id, afs_uint64 o_id,
+	  struct afs_stat *tstat, afs_int32 lc, afs_uint32 unlinked, void* rock)
+{
+    afs_int32 code = 0;
+    struct inventory2 *inv2;
+
+    inv2 = &inv->inventory_u.inv2;
+    memset(inv2, 0, sizeof(struct inventory2));
+    inv2->o.rwvol = p_id & RXOSD_VOLIDMASK;
+    inv2->o.lun = p_id >> RXOSD_LUNSHIFT;
+    if (o_id & RXOSD_VNODEMASK == RXOSD_VNODEMASK) { /* vol. special file */
+	inv2->o.vN = (o_id & RXOSD_VNODEMASK);
+        inv2->o.tag = (o_id >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK;
+        inv2->o.unique = o_id >> RXOSD_UNIQUESHIFT;
+    } else {
+        inv2->o.vN = (o_id & RXOSD_VNODEMASK);
+        inv2->o.tag = (o_id >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK;
+        inv2->o.unique = (o_id >> RXOSD_UNIQUESHIFT) & RXOSD_UNIQUEMASK;
+        inv2->o.myStripe = (o_id >> RXOSD_STRIPESHIFT);
+        inv2->o.nStripes = 1 << ((o_id >> RXOSD_NSTRIPESSHIFT) & RXOSD_NSTRIPESMASK);
+        if (inv2->o.nStripes > 1) {
+	    int i;
+            i = ((o_id >> RXOSD_STRIPESIZESHIFT) & RXOSD_STRIPESIZEMASK);
+            inv2->o.stripeSize = 4096 << i;
+        }
+    }
+    inv2->size = tstat->st_size;
+    inv2->atime = tstat->st_atime;
+    inv2->mtime = tstat->st_mtime;
+    inv2->lc = lc;
+    inv2->unlinked = unlinked;
+    if (!xdr_inventory(xdr, inv))
+	code = EIO;
+    return code;
+}
+
+static afs_int32
+send_inv3(XDR *xdr, struct inventory *inv,  afs_uint64 p_id, afs_uint64 o_id,
+	  struct afs_stat *tstat, afs_int32 lc, afs_uint32 unlinked, void* rock)
+{
+    afs_int32 code = 0;
+    struct inventory3 *inv3;
+
+    inv3 = &inv->inventory_u.inv3;
+    memset(inv3, 0, sizeof(struct inventory3));
+    inv3->o.part_id = p_id;
+    inv3->o.obj_id = o_id;
+    inv3->size = tstat->st_size;
+    inv3->lc = lc;
+    if (!xdr_inventory3(xdr, inv3))
+	code = EIO;
+    return code;
+}
+
+static afs_int32
+send_inv4(XDR *xdr, struct inventory *inv,  afs_uint64 p_id, afs_uint64 o_id,
+	  struct afs_stat *tstat, afs_int32 lc, afs_uint32 unlinked, void* rock)
+{
+    afs_int32 code = 0;
+    struct inventory4 *inv4;
+
+    inv4 = &inv->inventory_u.inv4;
+    memset(inv4, 0, sizeof(struct inventory4));
+    inv4->o.rwvol = p_id & RXOSD_VOLIDMASK;
+    inv4->o.lun = p_id >> RXOSD_LUNSHIFT;
+    if (o_id & RXOSD_VNODEMASK == RXOSD_VNODEMASK) { /* vol. special file */
+	inv4->o.vN = (o_id & RXOSD_VNODEMASK);
+        inv4->o.tag = (o_id >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK;
+        inv4->o.unique = o_id >> RXOSD_UNIQUESHIFT;
+    } else {
+        inv4->o.vN = (o_id & RXOSD_VNODEMASK);
+        inv4->o.tag = (o_id >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK;
+        inv4->o.unique = (o_id >> RXOSD_UNIQUESHIFT) & RXOSD_UNIQUEMASK;
+        inv4->o.myStripe = (o_id >> RXOSD_STRIPESHIFT);
+        inv4->o.nStripes = 1 << ((o_id >> RXOSD_NSTRIPESSHIFT) & RXOSD_NSTRIPESMASK);
+        if (inv4->o.nStripes > 1) {
+	    int i;
+            i = ((o_id >> RXOSD_STRIPESIZESHIFT) & RXOSD_STRIPESIZEMASK);
+            inv4->o.stripeSize = 4096 << i;
+        }
+        inv4->o.spare[1] = unlinked;
+        inv4->o.spare[2] = tstat->st_mtime;
+        inv4->o.spare[3] = tstat->st_ctime;
+    }
+    inv4->size = tstat->st_size;
+    inv4->lc = lc;
+    if (!xdr_inventory4(xdr, inv4))
+	code = EIO;
+    return code;
+}
+
+static afs_int32
+send_inv5(XDR *xdr, struct inventory *inv,  afs_uint64 p_id, afs_uint64 o_id,
+	  struct afs_stat *tstat, afs_int32 lc, afs_uint32 unlinked, void* rock)
+{
+    afs_int32 code = 0;
+    struct inventory5 *inv5;
+
+    inv5 = &inv->inventory_u.inv5;
+    memset(inv5, 0, sizeof(struct inventory5));
+    inv5->obj_id = o_id;
+    inv5->size = tstat->st_size;
+    inv5->lc = lc;
+    if (!xdr_inventory5(xdr, inv5))
+	code = EIO;
+    return code;
+}
+
+static afs_int32
+send_inv6(XDR *xdr, struct inventory *inv,  afs_uint64 p_id, afs_uint64 o_id,
+	  struct afs_stat *tstat, afs_int32 lc, afs_uint32 unlinked, void* rock)
+{
+    afs_int32 code = 0;
+    struct inventory6 *inv6;
     
+    if (!p_id)			/* no EOF required here */
+	return 0;
+    if (((o_id >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK) != 6)
+	return 0;		/* only link table */
+    if (rock) {
+	afs_uint32 *count = (afs_uint32 *)rock;
+	(*count)++;
+	return 0;
+    }
+    inv6 = &inv->inventory_u.inv6;
+    memset(inv6, 0, sizeof(struct inventory6));
+    inv6->vid = (afs_uint32) (p_id & RXOSD_VOLIDMASK);
+    if (!xdr_inventory6(xdr, inv6))
+	code = EIO;
+    return code;
+}
+
+static afs_int32
+send_inv7(XDR *xdr, struct inventory *inv,  afs_uint64 p_id, afs_uint64 o_id,
+	  struct afs_stat *tstat, afs_int32 lc, afs_uint32 unlinked, void* rock)
+{
+    afs_int32 code = 0;
+    struct inventory7 *inv7;
+    
+    if (!p_id)			/* no EOF required here */
+	return 0;
+    if (((o_id >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK) != 6)
+	return 0;		/* only link table */
+    if (rock) {
+	afs_uint32 *count = (afs_uint32 *)rock;
+	(*count)++;
+	return 0;
+    }
+    inv7 = &inv->inventory_u.inv7;
+    memset(inv7, 0, sizeof(struct inventory7));
+    inv7->vid = p_id & RXOSD_VOLIDMASK;
+    if (!xdr_inventory7(xdr, inv7))
+	code = EIO;
+    return code;
+}
+
+static afs_int32
+send_inv(XDR *xdr, struct inventory *inv, afs_uint64 p_id, afs_uint64 o_id,
+	 struct afs_stat *tstat, afs_int32 lc, afs_uint32 unlinked, void* rock)
+{
+    afs_int32 code;
+    switch (inv->type) {
+    case 1:
+	code = send_inv1(xdr, inv, p_id, o_id, tstat, lc, unlinked, rock);
+	break;
+    case 2:
+	code = send_inv2(xdr, inv, p_id, o_id, tstat, lc, unlinked, rock);
+	break;
+    case 3:
+	code = send_inv3(xdr, inv, p_id, o_id, tstat, lc, unlinked, rock);
+	break;
+    case 4:
+	code = send_inv4(xdr, inv, p_id, o_id, tstat, lc, unlinked, rock);
+	break;
+    case 5:
+	code = send_inv5(xdr, inv, p_id, o_id, tstat, lc, unlinked, rock);
+	break;
+    case 6:
+	code = send_inv6(xdr, inv, p_id, o_id, tstat, lc, unlinked, rock);
+	break;
+    case 7:
+	code = send_inv7(xdr, inv, p_id, o_id, tstat, lc, unlinked, rock);
+	break;
+    case 99:	/* after delete_unlinked */
+	code = 0;
+	break;
+    default:
+	code = EINVAL;
+    }
+    return code;
+}
+
+/*
+ * Find all objects and send their details over the wire
+ */
+afs_int32
+traverse_osd(struct rx_call *call, afs_uint64 part_id, afs_int32 type,
+	     afs_uint32 flag, void *rock)
+{
+    struct o_handle *lh = NULL;
+    FdHandle_t *fdP = NULL;
+    IHandle_t myIH;
+    int code = 0, i;
+    afs_uint32 cand = 0;
+    afs_uint32 nvolumes;
+    DIR *dirp1 = NULL;
+    DIR *dirp2 = NULL;
+    DIR *dirp3 = NULL;
+    DIR *dirp4 = NULL;
+    DIR *dirp5 = NULL;
+    struct dirent *dp2;
+    char path2[80];
+    struct dirent *dp3;
+    char path3[80];
+    struct dirent *dp1;
+    char path1[80];
+    struct inventory inv;
+    struct inventory1 *inv1;
+    afs_uint64 p_id, o_id;
+    afs_uint32 volume;
+    afs_uint32 lun;
+    namei_t name;
+    struct afs_stat tstat;
+    XDR xdr;
+
     if (!afsconf_SuperUser(confDir, call, (char *)0)) {
-        code = EACCES;
+        return EACCES;
+    }
+    memset(&inv, 0, sizeof(inv));
+    inv.type = type;
+    volume = (afs_uint32)(part_id & RXOSD_VOLIDMASK);
+    lun = (afs_uint32)(part_id >> RXOSD_LUNSHIFT);
+    volutil_PartitionName_r(lun, path1, 80);
+    memset(&myIH, 0, sizeof(myIH));
+    myIH.ih_dev = lun;
+    myIH.ih_vid = volume;
+    myIH.ih_ino = 0;
+    myIH.ih_ops = &ih_namei_ops;
+    xdrrx_create(&xdr, call, XDR_ENCODE);
+    if (!(flag & INVENTORY_ONLY_SPECIAL))
+        namei_HandleToName(&name, &myIH); /* to fill myIH.ih_ops */
+    strcat(path1, "/AFSIDat");
+    if (volume) {
+	sprintf(path3, "%s/%s/%s", path1, name.n_voldir1, name.n_voldir2);
+        dirp3 = IH_OPENDIR(path3, &myIH);
+        if (!dirp3) {
+	    code = EIO;
+	    goto finis;
+        }
+	p_id = volume;
+	goto single_volume;
+    }
+    dirp1 = IH_OPENDIR(path1, &myIH);
+    if (!dirp1) {
+	code = EIO;
 	goto finis;
     }
-    if (o->vsn == 2) {
-	vid = o->ometa_u.f.rwvol;
-	lun = o->ometa_u.f.lun;
-    } else if (o->vsn == 1) {
-        vid = o->ometa_u.t.part_id & 0xffffffff;
-        lun = o->ometa_u.t.part_id >> 32;
-    } else if (o->vsn == 0) { /* fake to support old rpc calls */
-        vid = o->ometa_u.t.part_id & 0xffffffff;
-        lun = o->ometa_u.t.part_id >> 32;
-    } else
-	return EINVAL;
+    while (dp1 = IH_READDIR(dirp1, &myIH)) {
+	if (*dp1->d_name == '.') 
+	    continue;
+	(void)strcpy(path2, path1);
+	(void)strcat(path2, "/");
+	(void)strcat(path2, dp1->d_name);
+	dirp2 = IH_OPENDIR(path2, &myIH);
+	if (!dirp2)
+	    continue; 
+	while (dp2 = IH_READDIR(dirp2, &myIH)) {
+	    if (*dp2->d_name == '.') 
+	    	continue;
+	    (void)strcpy(path3, path2);
+	    (void)strcat(path3, "/");
+	    (void)strcat(path3, dp2->d_name);
+	    dirp3 = IH_OPENDIR(path3, &myIH);
+	    if (!dirp3)
+		continue; 
+	    p_id = flipbase64_to_int64(dp2->d_name);
+single_volume:
+	    p_id |= (afs_uint64)lun << 32;
+    	    code = getlinkhandle(&lh, p_id);
+    	    fdP = IH_OPEN(lh->ih);
+    	    if (!fdP) {
+        	ViceLog(0,("inventory: IH_OPEN for linktable failed for %u\n",
+			(afs_uint32)p_id));
+        	code = EIO;
+		goto finis;
+    	    }
+	    while (dp3 = IH_READDIR(dirp3, &myIH)) {
+		struct dirent *dp4;
+		char path4[80];
+		if (*dp3->d_name == '.') 
+		    continue;
+		(void)strcpy(path4, path3);
+		(void)strcat(path4, "/");
+		(void)strcat(path4, dp3->d_name);
+		if (!strcmp(dp3->d_name, "special")) {
+		    if (!(flag & INVENTORY_SPECIAL))
+			continue;
+		    dirp4 = opendir(path4);
+		    if (!dirp4)
+			continue;
+		    while (dp4 = readdir(dirp4)) {
+			char path5[80];
 
-    (void) volutil_PartitionName_r(lun, (char *) &tmp, NAMEI_LCOMP_LEN);
-    xdrrx_create(&xdr, call, XDR_ENCODE);
-    if (o->vsn == 2) {
-	struct oparmFree o2;
-        nObjects = namei_ListObjects(&tmp, &ListSingleObjectOparm2, vid, &xdr);
-	memset(&o2, 0, sizeof(o2));
-	xdr_oparmFree(&xdr, &o2);
-    } else if (o->vsn == 1) {
-	struct oparmT10 o1;
-        nObjects = namei_ListObjects(&tmp, &ListSingleObjectOparm1, vid, &xdr);
-	memset(&o1, 0, sizeof(o1));
-	xdr_oparmT10(&xdr, &o1);
-    } else {
-        afs_uint64 empty = 0;
-        nObjects = namei_ListObjects(&tmp, &ListSingleObject, vid, &xdr);
-        xdr_afs_uint64(&xdr, &empty);
+    		        if (*dp4->d_name == '.') 
+			    continue;
+		        (void)strcpy(path5, path4);
+		        (void)strcat(path5, "/");
+		        (void)strcat(path5, dp4->d_name);
+			if (afs_stat(path5, &tstat) != 0) {
+			    ViceLog(0,("inventory: stat of %s failed\n", path5));
+			    continue;
+			}
+	    		o_id = flipbase64_to_int64(dp4->d_name);
+			code = send_inv(&xdr, &inv, p_id, o_id, &tstat, 1, 0, rock);
+			if (code)
+			    goto finis;
+		    }
+		    closedir(dirp4);
+		    dirp4 = NULL;
+		    continue;
+		} 
+		if (flag & INVENTORY_ONLY_SPECIAL)
+		    continue;
+		dirp4 = IH_OPENDIR(path4, &myIH);
+		if (!dirp4)
+		    continue;
+	   	while (dp4 = IH_READDIR(dirp4, &myIH)) {
+		    struct dirent *dp5;
+		    char path5[80];
+    		    if (*dp4->d_name == '.') 
+			continue;
+		    (void)strcpy(path5, path4);
+		    (void)strcat(path5, "/");
+		    (void)strcat(path5, dp4->d_name);
+		    dirp5 = IH_OPENDIR(path5, &myIH);
+		    if (!dirp5) 
+			continue;
+		    while (dp5 = IH_READDIR(dirp5, &myIH)) {
+			char *p;
+			afs_uint32 unlinked = 0;
+			afs_int32 lc;
+			char path6[80];
+
+  	    	        if (*dp5->d_name == '.') 
+			    continue;
+			(void)strcpy(path6, path5);
+			(void)strcat(path6, "/");
+			(void)strcat(path6, dp5->d_name);
+			if (IH_STAT(path6, &tstat, &myIH) < 0) {
+			    ViceLog(0,("inventory: stat of %s failed\n", path6));
+			    continue;
+			}
+			p = strstr(dp5->d_name, "-unlinked-");
+			if (p) {
+			    int year, month, day;
+			    unlinked = 1;
+			    i = sscanf(p, "-unlinked-%4d%2d%2d", &year, &month, &day);
+			    if (i == 3)
+				unlinked = (year << 9) + (month << 5) + day;
+			    *p = 0;
+			}
+			if (unlinked && !(flag & INVENTORY_UNLINKED))
+			    continue;
+			if (!unlinked && (flag & INVENTORY_ONLY_UNLINKED))
+			    continue;
+	    		o_id = flipbase64_to_int64(dp5->d_name);
+			if (unlinked)
+			    lc = -1;
+			else
+    			    lc = namei_GetLinkCount(fdP, o_id, 0, 0, 0);
+			if (unlinked && rock && type == 99)
+			    code = delete_unlinked(rock, path6, unlinked, &myIH);
+			else
+			    code = send_inv(&xdr, &inv, p_id, o_id, &tstat,
+                                        lc, unlinked, rock);
+			if (code)
+			    goto finis;
+		    }
+		    IH_CLOSEDIR(dirp5, &myIH);
+		    dirp5 = NULL;
+		}
+		IH_CLOSEDIR(dirp4, &myIH);
+		dirp4 = NULL;
+	    }
+	    IH_CLOSEDIR(dirp3, &myIH);
+	    dirp3 = NULL;
+	    FDH_CLOSE(fdP);
+	    oh_release(lh);
+	    if (volume)
+		goto done;
+	}
+	IH_CLOSEDIR(dirp2, &myIH);
+	dirp2 = NULL;
     }
-    
+    IH_CLOSEDIR(dirp1, &myIH);
+    dirp1 = NULL;
+done:
+    /* send empty entry as EOF marker */
+    send_inv(&xdr, &inv, 0, 0, &tstat, 0, 0, rock);
 finis:
+    if (dirp5)
+	IH_CLOSEDIR(dirp5, &myIH);
+    if (dirp4)
+	IH_CLOSEDIR(dirp4, &myIH);
+    if (dirp3)
+	IH_CLOSEDIR(dirp3, &myIH);
+    if (dirp2)
+	IH_CLOSEDIR(dirp2, &myIH);
+    if (dirp1)
+	IH_CLOSEDIR(dirp1, &myIH);
+    return code;
+}
+ 
+/*
+ * Find all objects and send their details over the wire
+ */
+afs_int32
+SRXOSD_inventory(struct rx_call *call, struct ometa *o, afs_uint32 flag)
+{
+    afs_int32 code;
+    SETTHREADACTIVE(31, call, NULL);
+
+    if (o->vsn == 1) {
+        code = traverse_osd(call, o->ometa_u.t.part_id, 1, flag, NULL);
+    } else if (o->vsn == 2) {
+	oparmT10 o1;
+	code = convert_ometa_2_1(&o->ometa_u.f, &o1);
+	if (!code)
+            code = traverse_osd(call, o1.part_id, 2, flag, NULL);
+    } else
+	code = EINVAL;
+
+    SETTHREADINACTIVE();
     return code;
 }
 
@@ -2964,7 +3341,16 @@ SRXOSD_listobjects(struct rx_call *call, struct ometa *o)
     afs_int32 code;
     SETTHREADACTIVE(7, call, o);
 
-    code = List(call, o);
+    if (o->vsn == 1) {
+        code = traverse_osd(call, o->ometa_u.t.part_id, 3, 0, NULL);
+    } else if (o->vsn == 2) {
+	oparmT10 o1;
+	code = convert_ometa_2_1(&o->ometa_u.f, &o1);
+	if (!code)
+            code = traverse_osd(call, o1.part_id, 4,
+				INVENTORY_UNLINKED | INVENTORY_SPECIAL , NULL);
+    } else
+	code = EINVAL;
     SETTHREADINACTIVE();
     return code;
 }
@@ -2973,12 +3359,9 @@ afs_int32
 SRXOSD_list170(struct rx_call *call, afs_uint64 part_id, afs_uint64 start_id)
 {
     afs_int32 code;
-    struct ometa o;
     SETTHREADACTIVE_OLD(170, call, part_id, 0);
 
-    o.vsn = 0;
-    o.ometa_u.t.part_id = part_id;
-    code = List(call, &o);
+    code = traverse_osd(call, part_id, 5, 0, NULL);
     SETTHREADINACTIVE();
     return code;
 }
@@ -5112,7 +5495,7 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
 			afs_uint32 ip;
 			short port = endp.port;
 			memcpy(&ip, endp.ip.addr.addr_val, 4);
-    			tcon = GetConnection(ip, 1, htons(port), endp.service);
+    			tcon = GetConnection(ip, 2, htons(port), endp.service);
 		    }
 		    if (!tcon) {
 			ViceLog(0, ("create_archive: GetConnection failed to osd %u\n",
@@ -5174,7 +5557,7 @@ retry:
 		}
 	    }
 	    if (!rcall[j]) {
-		ViceLog(0,("create_archive: %s no connection to osd %u\n",
+		ViceLog(0,("create_archive: %s no connection to  osd %u\n",
                                 sprint_oparmT10(o, string, sizeof(string)),
 				currOsd));
 		if (!code)
@@ -5844,8 +6227,6 @@ wipe_candidates(struct rx_call *call, afs_uint32 lun, afs_uint32 maxcand,
 			continue;
 		    while (dp5 = readdir(dirp5)) {
 			afs_int64 tweight;
-   			DIR *dirp6;
-			struct dirent *dp6;
 			char path6[80];
 			struct afs_stat tstat;
   	    	        if (*dp5->d_name == '.') 
@@ -7047,76 +7428,8 @@ finis:
     return code;
 }
 
-struct unlinkParms {
-    afs_uint32 packed;
-    afs_uint32 year;
-    afs_uint32 month;
-    afs_uint32 day;
-    afs_int32 flag;
-    afs_uint32 dev;
-};
-
-int
-DeleteSingleUnlinked(struct ViceInodeInfo * info, int vid, struct unlinkParms *u)
-{
-    afs_int32 code;
-    afs_uint32 year, month, day;
-    IHandle_t *ih = NULL;
-    namei_t n;
-    struct afs_stat tstat;
-    char name[128];
-
-    if (vid != info->u.vnode.volumeId)		/* just a little redundancy */
-	goto skip;
-    if (info->linkCount != -1)
-	goto skip;
-    year = info->u.param[1] >> 9;
-    month = (info->u.param[1] >> 5) & 15;
-    day = info->u.param[1] & 31;
-
-    if (!(u->flag & HARD_DELETE_EXACT) && !(u->flag & HARD_DELETE_OLDER)) {
-	ViceLog(0, ("DeleteSingleUnlinked: invalid flag 0x%x\n", u->flag));
-	goto skip;
-    }
-    if ((u->flag & HARD_DELETE_EXACT) && info->u.param[1] != u->packed)
-        goto skip;
-
-    /* check that values are reasonable */
-    if (year < 2005 || year > u->year)
-        goto skip;
-    if (month == 0 || month > 12)
-        goto skip;
-    if (year == u->year && month > u->month)
-        goto skip;
-    if (day == 0)
-        goto skip;
-    if (year == u->year && month == u->month && day > u->day)
-        goto skip;
-
-    /* skip to young files */
-    if ((u->flag & HARD_DELETE_OLDER) && info->u.param[1] >= u->packed)
-        goto skip;
-    IH_INIT(ih, u->dev, vid, info->inodeNumber);
-    namei_HandleToName(&n, ih);
-    sprintf(&name, "%s-unlinked-%04u%02u%02u", n.n_path, year, month, day);
-    code = (ih->ih_ops->stat64)(name, &tstat);
-    if (code) {
-	ViceLog(0, ("DeleteSingleUnlinked: stat64 %s returns %d\n", name, code));
-	goto skip;
-    }
-
-    code = (ih->ih_ops->unlink)(name);
-    if (code) 
-	ViceLog(0, ("DeleteSingleUnlinked: unlink %s returns %d\n", name, code));
-	
-skip:	    
-    if (ih)
-	IH_RELEASE(ih);
-    return 0;
-}
- 
 afs_int32
-SRXOSD_hard_delete(struct rx_call *call, struct ometa *o, afs_uint32 packed_unlinkdata,
+SRXOSD_hard_delete(struct rx_call *call, struct ometa *o, afs_uint32 packed_unlinkdate,
 		   afs_int32 flag)
 {
     afs_int32 code;
@@ -7125,34 +7438,28 @@ SRXOSD_hard_delete(struct rx_call *call, struct ometa *o, afs_uint32 packed_unli
     struct unlinkParms u;
 
     SETTHREADACTIVE(29, call, o);
-    if (call && !afsconf_SuperUser(confDir, call, (char *)0)) {
-        code = EACCES;
-	goto finis;
-    }
-    u.year = packed_unlinkdata >> 9;
-    u.month = (packed_unlinkdata >> 5) & 15;
-    u.day = packed_unlinkdata & 31;
+    u.year = packed_unlinkdate >> 9;
+    u.month = (packed_unlinkdate >> 5) & 15;
+    u.day = packed_unlinkdate & 31;
     u.flag = flag;
+    u.packed = packed_unlinkdate;
     if (flag & WHOLE_VOLUME) {
         afs_uint32 vid, lun;
 	char tmp[NAMEI_LCOMP_LEN];
 	afs_int32 nObjects;
 
-        if (o->vsn == 2) {
-            vid = o->ometa_u.f.rwvol;
-            lun = o->ometa_u.f.lun;
-        } else if (o->vsn == 1) {
-            vid = o->ometa_u.t.part_id & 0xffffffff;
-            lun = o->ometa_u.t.part_id >> 32;
+        if (o->vsn == 1) {
+            code = traverse_osd(call, o->ometa_u.t.part_id, 99, 
+				INVENTORY_UNLINKED | INVENTORY_ONLY_UNLINKED, &u); 
+        } else if (o->vsn == 2) {
+	    struct oparmT10 o1;
+	    code = convert_ometa_2_1(&o->ometa_u.f, &o1);
+	    if (code)
+		goto finis;
+            code = traverse_osd(call, o1.part_id, 99, 
+				INVENTORY_UNLINKED | INVENTORY_ONLY_UNLINKED, &u);
         } else
             return EINVAL;
-	(void) volutil_PartitionName_r(lun, (char *) &tmp, NAMEI_LCOMP_LEN);
-	u.dev = lun;
-	nObjects = namei_ListObjects(&tmp, &DeleteSingleUnlinked, vid, &u);
-	if (nObjects > 0)
-	    code = 0;
-	else
-	    code = ENOENT;
     } else {
         namei_t n;
         struct afs_stat tstat;
@@ -7248,6 +7555,7 @@ finis:
     SETTHREADINACTIVE();
     return code;
 }
+
 
 #ifdef notdef
 static int sys2et[512];
@@ -7576,8 +7884,8 @@ main(int argc, char *argv[])
 	service = rx_NewServiceHost(HostAddr_NBO, OSD_SERVER_PORT,
 			OSD_SERVICE_ID, "OSD-7006", sc, 4, RXOSD_ExecuteRequest);
     } else {
-        /* Alternative port 7011 */
-        service = rx_NewServiceHost(HostAddr_NBO, OSD_SECOND_SERVER_PORT, 
+    	/* Alternative port 7011 */
+    	service = rx_NewServiceHost(HostAddr_NBO, OSD_SECOND_SERVER_PORT, 
 			OSD_SERVICE_ID, "OSD-7011", sc, 4, RXOSD_ExecuteRequest);
     }
     if (!service)

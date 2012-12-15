@@ -565,6 +565,7 @@ extern afs_sfsize_t ih_size(FD_t);
 #define IH_OPENDIR(N, H) ((H)->ih_ops->opendir)(N)
 #define IH_READDIR(D, H) ((H)->ih_ops->readdir)(D)
 #define IH_CLOSEDIR(D, H) ((H)->ih_ops->closedir)(D)
+#define IH_STAT(N, S, H) ((H)->ih_ops->stat64)(N, S)
 #define FDH_PREAD(H, B, S, O) ((H)->fd_ih->ih_ops->pread)((H)->fd_fd, B, S, O)
 #define FDH_PWRITE(H, B, S, O) ((H)->fd_ih->ih_ops->pwrite)((H)->fd_fd, B, S, O)
 #define FDH_TRUNC(H, L) ((H)->fd_ih->ih_ops->ftruncate)((H)->fd_fd, L)

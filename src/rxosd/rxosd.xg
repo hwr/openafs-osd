@@ -274,13 +274,24 @@ online		(IN struct ometa *o,
 hard_delete 	(IN struct ometa *o,
 		 IN afs_uint32 packed_unlinkdate,
 		 IN afs_int32 flag) = 29;
+
 /***************************************************************************
  * relink an unlinked object in HSM osd */
-
 
 relink 		(IN struct ometa *o,
 		 IN afs_uint32 packed_unlinkdate,
 		 IN afs_int32 flag) = 30;
+
+/***************************************************************************
+ * inventory of all objects in an OSD */
+
+%#define INVENTORY_UNLINKED	1
+%#define INVENTORY_ONLY_UNLINKED 2
+%#define INVENTORY_SPECIAL	4
+%#define INVENTORY_ONLY_SPECIAL	8
+
+inventory	(IN struct ometa *o,
+		 IN afs_uint32 flag) split = 31;
 
 /************************************************ 
  * Legacy interface for old clients and servers *

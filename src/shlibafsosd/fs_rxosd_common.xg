@@ -443,4 +443,66 @@ case 7:
 case 8:
 	struct exam_out8 e8;
 };
+ 
+struct inventory1 {
+    struct oparmT10 o;
+    afs_uint64 size;
+    afs_int32 lc;
+    afs_uint32 mtime;
+    afs_uint32 atime;
+    afs_uint32 unlinked;
+};
+
+struct inventory2 {
+    struct oparmFree o;
+    afs_uint64 size;
+    afs_int32 lc;
+    afs_uint32 mtime;
+    afs_uint32 atime;
+    afs_uint32 unlinked;
+};
+
+struct inventory3 {		/* used with "osd objects ... " */
+    struct oparmT10 o;
+    afs_uint64 size;
+    afs_int32 lc;
+};
+  
+struct inventory4 {		/* used with "osd objects ... -unlinked " */
+    struct oparmFree o;
+    afs_uint64 size;
+    afs_int32 lc;
+};
+ 
+struct inventory5 {		/* used with old "osd objects" */
+    afs_uint64 obj_id;
+    afs_uint64 size;
+    afs_int32 lc;
+};
+
+struct inventory6 {		/* used with "osd volumes" */
+    afs_uint32 vid;
+};
+
+struct inventory7 {		/* used with "osd volumes " */
+    afs_uint64 vid;
+};
+
+union inventory switch(afs_int32 type) {
+case 1:
+    struct inventory1 inv1;
+case 2:
+    struct inventory2 inv2;
+case 3:
+    struct inventory3 inv3;
+case 4:
+    struct inventory4 inv4;
+case 5:
+    struct inventory5 inv5;
+case 6:
+    struct inventory6 inv6;
+case 7:
+    struct inventory7 inv7;
+};
+
 %#endif

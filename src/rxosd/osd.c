@@ -3966,6 +3966,168 @@ relinkCmd(struct cmd_syndesc *as, void *rock)
     return code;
 }
 
+#define RXOSD_VOLIDMASK         0xffffffff
+#define RXOSD_LUNSHIFT          32
+#define RXOSD_VNODEMASK         0x03ffffff
+#define RXOSD_TAGMASK           0x7
+#define RXOSD_TAGSHIFT          26
+#define RXOSD_UNIQUEMASK        0xffffff
+#define RXOSD_UNIQUESHIFT       32
+#define RXOSD_STRIPESHIFT       61
+#define RXOSD_STRIPEMASK        0x7
+#define RXOSD_NSTRIPESSHIFT     59
+#define RXOSD_NSTRIPESMASK      0x3
+#define RXOSD_STRIPESIZESHIFT   56
+#define RXOSD_STRIPESIZEMASK    0x7
+#define RXOSD_STRIPEINFOSHIFT   56
+
+afs_int32
+inventoryCmd(struct cmd_syndesc *as, void *rock)
+{
+    afs_int32 code, fields;
+    afs_int32 i, flag = 0;
+    struct ometa o;
+    struct rx_call *call;
+    afs_uint32 volume = 0;
+    struct inventory inv;
+    char date1[T_MAX_CELLCONTENT_LEN];
+    char date2[T_MAX_CELLCONTENT_LEN];
+    XDR xdr;
+    afs_uint64 totalbytes = 0;
+    afs_uint64 u64, unlinkedbytes = 0;
+    afs_uint32 totalobjs = 0;
+    afs_uint32 unlinkedobjs = 0;
+    afs_int32 type = 1;
+    char *unit[6] = {"bytes", "KB", "MB", "GB", "TB", "PB"};
+
+    thost = as->parms[0].items->data;
+    if (as->parms[1].items)					/* -volume */
+        code = util_GetInt32(as->parms[1].items->data, &volume);
+    if (as->parms[2].items)					/* -unlinked */
+	flag |= INVENTORY_UNLINKED;
+    if (as->parms[3].items)					/* -onlyunlinked */
+	flag |= (INVENTORY_UNLINKED | INVENTORY_ONLY_UNLINKED);
+    if (as->parms[4].items)					/* -special */
+	flag |= INVENTORY_SPECIAL;
+    if (as->parms[5].items)					/* -onlyspecial */
+	flag |= (INVENTORY_SPECIAL | INVENTORY_ONLY_SPECIAL);
+    if (as->parms[6].items) 					/* -localauth */
+	localauth = 1;
+    if (as->parms[7].items) 					/* -cell */
+        cellp = as->parms[7].items->data;
+
+    scan_osd_or_host();
+    memset(&o, 0, sizeof(o));
+    o.vsn = 1;
+    o.ometa_u.t.part_id = ((afs_uint64)lun << 32) | (afs_uint64)volume;
+    GetConnection();
+    call = rx_NewCall(Conn);
+    code = StartRXOSD_inventory(call, &o, flag);
+    xdrrx_create(&xdr, call, XDR_DECODE);
+    while (xdr_inventory(&xdr, &inv)) {
+	if (inv.type == 1) {
+	    struct inventory1 *inv1 = &inv.inventory_u.inv1;
+	    if (!(inv1->o.part_id))
+		break;
+	     
+	    totalbytes += inv1->size;
+	    totalobjs++;
+            sprintDate(date1,&inv1->mtime);
+            sprintDate(date2,&inv1->atime);
+	    if (inv1->o.obj_id & RXOSD_VNODEMASK == (afs_uint64)RXOSD_VNODEMASK) {
+		afs_uint32 rwvol, unique, tag;
+		rwvol = (afs_uint32)(inv1->o.part_id & RXOSD_VOLIDMASK);
+		unique = (afs_uint32)(inv1->o.obj_id >> RXOSD_UNIQUESHIFT);
+		tag = (afs_uint32)((inv1->o.obj_id >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK);
+        	printf("%u.%u.%u.%u ", 
+                    (afs_uint32)(inv1->o.part_id & RXOSD_VOLIDMASK),
+                    (afs_uint32)(inv1->o.obj_id & RXOSD_VNODEMASK),
+                    unique, tag);
+ 		switch (tag) {
+		case 1:
+		    printf("Volume Info for %u with RW %u  length %llu\n",
+				rwvol, unique, inv1->size);
+		    break;
+		case 2:
+		    printf("Large Vnodes of %u with RW %u  length %llu\n",
+				rwvol, unique, inv1->size);
+		    break;
+		case 3:
+		    printf("Small Vnodes of %u with RW %u  length %llu\n",
+				rwvol, unique, inv1->size);
+		    break;
+		case 5:
+		    printf("Osd Metadata for %u with RW %u  length %llu\n",
+				rwvol, unique, inv1->size);
+		    break;
+		case 6:
+		    printf("Link Table   for %u with RW %u  length %llu\n",
+				rwvol, unique, inv1->size);
+		    break;
+		default:
+		    printf("funny special file %d  length %llu\n",
+				tag, inv1->size);
+		    break;
+		}
+		continue;
+	    }
+	    printf("%u.%u.%u.%u len %llu lc %d mtime %s atime %s",
+                (afs_uint32)(inv1->o.part_id & RXOSD_VOLIDMASK),
+                (afs_uint32)(inv1->o.obj_id & RXOSD_VNODEMASK),
+                (afs_uint32)((inv1->o.obj_id >> RXOSD_UNIQUESHIFT) & RXOSD_UNIQUEMASK),
+                (afs_uint32)((inv1->o.obj_id >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK),
+		inv1->size, inv1->lc, date1, date2);
+	    if (inv1->unlinked) {
+		unlinkedbytes += inv1->size;
+		unlinkedobjs++;
+		printf(" unlinked %04u%02u%02u\n", inv1->unlinked >> 9,
+			(inv1->unlinked >> 5) & 15,
+			inv1->unlinked & 31); 
+	    } else
+		printf("\n");
+	}
+    }
+    code = EndRXOSD_inventory(call);
+    if (!code)
+	code = rx_Error(call);
+    rx_EndCall(call, code);
+    if (code) {
+	fprintf(stderr, "RXOSD_inventory returned %d\n", code);
+	return code;
+    }
+    printf("Totally %u objects with %llu bytes", totalobjs, totalbytes);
+    i = 0;
+    u64 = totalbytes;
+    while (u64 >= 1024) {
+	i++;
+	u64 >>= 10;
+    }
+    if (volume)
+        printf(" (%llu %s) for volume %u\n", u64, unit[i], volume);
+    else
+        printf(" (%llu %s)\n", u64, unit[i]);
+    if (flag & INVENTORY_UNLINKED && !(flag & INVENTORY_ONLY_UNLINKED)) {
+        i = totalbytes - unlinkedobjs;
+        u64 = totalbytes - unlinkedbytes;
+        printf("\t%u good objects with %llu bytes", i, u64);
+	i=0;
+        while (u64 >= 1024) {
+	    i++;
+	    u64 >>= 10;
+        }
+        printf(" (%llu %s)\n", u64, unit[i]);
+        printf("\t%u unlinked objects with %llu bytes", unlinkedobjs, unlinkedbytes);
+	i=0;
+        u64 =  unlinkedbytes;
+        while (u64 >= 1024) {
+	    i++;
+	    u64 >>= 10;
+        }
+        printf(" (%llu %s)\n", u64, unit[i]);
+    }
+    return code;
+}
+
 afs_int32
 remove_fetch(struct cmd_syndesc *as, void *rock)
 {
@@ -4331,7 +4493,7 @@ int main (int argc, char **argv)
     cmd_AddParm(ts, "-location", CMD_SINGLE, CMD_OPTIONAL, "max 3 characters");
     cmd_AddParm(ts, "-newestwiped", CMD_SINGLE, CMD_OPTIONAL, "seconds since 1970");
     cmd_AddParm(ts, "-hsmaccess", CMD_SINGLE, CMD_OPTIONAL, "whether OSD has direct access to HSM system (0|1)");
-    cmd_AddParm(ts, "-port", CMD_SINGLE, CMD_OPTIONAL, "OSD port number (default 7011)");
+    cmd_AddParm(ts, "-port", CMD_SINGLE, CMD_OPTIONAL, "OSD port number (default 7006)");
     cmd_AddParm(ts, "-service", CMD_SINGLE, CMD_OPTIONAL, "OSD service id (default 900)");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
     cmd_AddParm(ts, "-localauth", CMD_FLAG, CMD_OPTIONAL, "");
@@ -4487,6 +4649,23 @@ int main (int argc, char **argv)
     cmd_AddParm(ts, "-fid", CMD_SINGLE, CMD_OPTIONAL,
 	        "file-id: volume.vnode.uniquifier[.tag]");
     cmd_AddParm(ts, "-unlinkdate", CMD_SINGLE, CMD_REQUIRED, "as yyyymmdd");
+    cmd_AddParm(ts, "-localauth", CMD_FLAG, CMD_OPTIONAL,
+	        "get ticket from server key-file ");
+    cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
+
+    ts = cmd_CreateSyntax("inventory", inventoryCmd, NULL, "list contents of OSD");
+    cmd_AddParm(ts, "-osd", CMD_SINGLE, CMD_REQUIRED,
+	        "osd or server name or IP-address");
+    cmd_AddParm(ts, "-volume", CMD_SINGLE, CMD_OPTIONAL,
+	        "volume id");
+    cmd_AddParm(ts, "-unlinked", CMD_FLAG, CMD_OPTIONAL,
+	        "also unliked files");
+    cmd_AddParm(ts, "-onlyunlinked", CMD_FLAG, CMD_OPTIONAL,
+	        "only unliked files");
+    cmd_AddParm(ts, "-special", CMD_FLAG, CMD_OPTIONAL,
+	        "also special files");
+    cmd_AddParm(ts, "-onlyspecial", CMD_FLAG, CMD_OPTIONAL,
+	        "only special files");
     cmd_AddParm(ts, "-localauth", CMD_FLAG, CMD_OPTIONAL,
 	        "get ticket from server key-file ");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");

@@ -1090,7 +1090,11 @@ ih_sync_all(void) {
 
 		fdP = IH_OPEN(ihP);
 		if (fdP) {
+#ifdef BUILDING_RXOSD
+		    ihP->ih_ops->fsync(fdP->fd_fd);
+#else
 		    OS_SYNC(fdP->fd_fd);
+#endif
 		    FDH_CLOSE(fdP);
 		}
 
