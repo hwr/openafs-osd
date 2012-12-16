@@ -50,6 +50,11 @@ void DebugEvent0(char *a)
     if (!Debug && !ISLOGONTRACE(TraceOption))
         return;
 
+    if (Debug & 2) {
+        OutputDebugString(a);
+        OutputDebugString("\r\n");
+    }
+
     h = RegisterEventSource(NULL, AFS_LOGON_EVENT_NAME);
     if (h != INVALID_HANDLE_VALUE) {
         ptbuf[0] = a;
@@ -61,22 +66,29 @@ void DebugEvent0(char *a)
 #define MAXBUF_ 512
 void DebugEvent(char *b,...)
 {
-    HANDLE h; char *ptbuf[1],buf[MAXBUF_+1];
+    HANDLE h;
+    char *ptbuf[1], buf[MAXBUF_+1];
     va_list marker;
 
     if (!Debug && !ISLOGONTRACE(TraceOption))
         return;
 
+    va_start(marker,b);
+    StringCbVPrintf(buf, MAXBUF_+1,b,marker);
+    buf[MAXBUF_] = '\0';
+
+    if (Debug & 2) {
+        OutputDebugString(buf);
+        OutputDebugString("\r\n");
+    }
+
     h = RegisterEventSource(NULL, AFS_LOGON_EVENT_NAME);
     if (h != INVALID_HANDLE_VALUE) {
-        va_start(marker,b);
-        StringCbVPrintf(buf, MAXBUF_+1,b,marker);
-        buf[MAXBUF_] = '\0';
         ptbuf[0] = buf;
         ReportEvent(h, EVENTLOG_INFORMATION_TYPE, 0, 1008, NULL, 1, 0, (const char **)ptbuf, NULL);
         DeregisterEventSource(h);
-        va_end(marker);
     }
+    va_end(marker);
 }
 
 static HANDLE hInitMutex = NULL;
@@ -207,14 +219,17 @@ DWORD MapAuthError(DWORD code)
     switch (code) {
         /* Unfortunately, returning WN_NO_NETWORK results in the MPR abandoning
          * logon scripts for all credential managers, although they will still
-         * receive logon notifications.  Since we don't want this, we return
-         * WN_SUCCESS.  This is highly undesirable, but we also don't want to
-         * break other network providers.
+         * receive logon notifications.
+         *
+         * Instead return WN_NET_ERROR (ERROR_UNEXP_NET_ERR) to indicate a
+         * problem with this network.
          */
- /* case KTC_NOCM:
+    case KTC_NOCM:
     case KTC_NOCMRPC:
-    return WN_NO_NETWORK; */
-    default: return WN_SUCCESS;
+        return WN_NET_ERROR;
+
+    default:
+        return WN_SUCCESS;
   }
 }
 
@@ -1145,10 +1160,12 @@ DWORD APIENTRY NPLogonNotify(
 	HANDLE h;
 	char *ptbuf[1];
 
+        DebugEvent("Integrated login failed: %s", reason);
+
 	StringCbPrintf(msg, sizeof(msg), "Integrated login failed: %s", reason);
 
 	if (ISLOGONINTEGRATED(opt.LogonOption) && interactive && !opt.failSilently)
-	    MessageBox(hwndOwner, msg, "AFS Logon", MB_OK);
+	    MessageBox(hwndOwner, msg, "AFS Logon", MB_OK|MB_ICONWARNING|MB_SYSTEMMODAL);
 
 	h = RegisterEventSource(NULL, AFS_LOGON_EVENT_NAME);
 	ptbuf[0] = msg;
@@ -1172,6 +1189,8 @@ DWORD APIENTRY NPLogonNotify(
     if (opt.theseCells) free(opt.theseCells);
     if (opt.smbName) free(opt.smbName);
     if (opt.realm) free(opt.realm);
+
+    SecureZeroMemory(password, sizeof(password));
 
     DebugEvent("AFS AfsLogon - Exit","Return Code[%x]",code);
     return code;
@@ -1251,6 +1270,14 @@ VOID AFS_Startup_Event( PWLX_NOTIFICATION_INFO pInfo )
                      &LSPtype, (LPBYTE)&TraceOption, &LSPsize);
 
     RegCloseKey (NPKey);
+
+    (void) RegOpenKeyEx(HKEY_LOCAL_MACHINE, AFSREG_CLT_SVC_PROVIDER_SUBKEY,
+                         0, KEY_QUERY_VALUE, &NPKey);
+    LSPsize=sizeof(Debug);
+    RegQueryValueEx(NPKey, REG_CLIENT_DEBUG_PARM, NULL,
+                     &LSPtype, (LPBYTE)&Debug, &LSPsize);
+
+    RegCloseKey (NPKey);
     DebugEvent0("AFS_Startup_Event");
 }
 
@@ -1287,11 +1314,11 @@ VOID AFS_Logoff_Event( PWLX_NOTIFICATION_INFO pInfo )
 	    size_t szlen = 0;
 
 	    StringCchLengthW(pInfo->UserName, MAX_USERNAME_LENGTH, &szlen);
-	    WideCharToMultiByte(CP_UTF8, 0, pInfo->UserName, szlen,
+	    WideCharToMultiByte(CP_UTF8, 0, pInfo->UserName, (int)szlen,
 				 username, sizeof(username), NULL, NULL);
 
 	    StringCchLengthW(pInfo->Domain, MAX_DOMAIN_LENGTH, &szlen);
-	    WideCharToMultiByte(CP_UTF8, 0, pInfo->Domain, szlen,
+	    WideCharToMultiByte(CP_UTF8, 0, pInfo->Domain, (int)szlen,
 				 domain, sizeof(domain), NULL, NULL);
 
 	    GetDomainLogonOptions(NULL, username, domain, &opt);
@@ -1384,11 +1411,11 @@ VOID AFS_Logon_Event( PWLX_NOTIFICATION_INFO pInfo )
 	DebugEvent0("AFS_Logon_Event - pInfo UserName and Domain");
 
         StringCchLengthW(pInfo->UserName, MAX_USERNAME_LENGTH, &szlen);
-        WideCharToMultiByte(CP_UTF8, 0, pInfo->UserName, szlen,
+        WideCharToMultiByte(CP_UTF8, 0, pInfo->UserName, (int)szlen,
                             username, sizeof(username), NULL, NULL);
 
         StringCchLengthW(pInfo->Domain, MAX_DOMAIN_LENGTH, &szlen);
-        WideCharToMultiByte(CP_UTF8, 0, pInfo->Domain, szlen,
+        WideCharToMultiByte(CP_UTF8, 0, pInfo->Domain, (int)szlen,
                             domain, sizeof(domain), NULL, NULL);
 
 	DebugEvent0("AFS_Logon_Event - Calling GetDomainLogonOptions");

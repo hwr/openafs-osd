@@ -117,48 +117,12 @@ typedef struct uio uio_t;
  */
 typedef void * bypass_page_t;
 
-#define copy_page(pp, pageoff, rxiov, iovno, iovoff, auio, curiov)      \
-    do { \
-        int dolen = auio->uio_iov[curiov].iov_len - pageoff; \
-        memcpy(((char *)pp) + pageoff,                 \
-               ((char *)rxiov[iovno].iov_base) + iovoff, dolen);        \
-        auio->uio_resid -= dolen; \
-    } while(0)
-
-#define copy_pages(pp, pageoff, rxiov, iovno, iovoff, auio, curiov)     \
-    do { \
-        int dolen = rxiov[iovno].iov_len - iovoff; \
-        memcpy(((char *)pp) + pageoff,                          \
-               ((char *)rxiov[iovno].iov_base) + iovoff, dolen);        \
-        auio->uio_resid -= dolen;       \
-    } while(0)
-
 #define unlock_and_release_pages(auio)
 #define release_full_page(pp, pageoff)
 
 #else /* UKERNEL */
 
 typedef struct page * bypass_page_t;
-
-#define copy_page(pp, pageoff, rxiov, iovno, iovoff, auio, curiov)      \
-    do { \
-        char *address;                                          \
-        int dolen = auio->uio_iov[curiov].iov_len - pageoff; \
-        address = kmap_atomic(pp, KM_USER0); \
-        memcpy(address + pageoff, \
-               (char *)(rxiov[iovno].iov_base) + iovoff, dolen);        \
-        kunmap_atomic(address, KM_USER0); \
-    } while(0)
-
-#define copy_pages(pp, pageoff, rxiov, iovno, iovoff, auio, curiov)     \
-    do { \
-        char *address; \
-        int dolen = rxiov[iovno].iov_len - iovoff; \
-        address = kmap_atomic(pp, KM_USER0); \
-        memcpy(address + pageoff, \
-               (char *)(rxiov[iovno].iov_base) + iovoff, dolen);        \
-        kunmap_atomic(address, KM_USER0); \
-    } while(0)
 
 #define unlock_and_release_pages(auio) \
     do { \

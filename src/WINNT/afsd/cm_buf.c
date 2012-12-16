@@ -765,9 +765,8 @@ afs_uint32 buf_CleanLocked(cm_scache_t *scp, cm_buf_t *bp, cm_req_t *reqp,
              * to determine if it is appropriate to fill a full chunk of data
              * when storing to the file server.
              */
-            code = (*cm_buf_opsp->Writep)(scp, &offset,
-                                          bp->dirty_length,
-                                          flags, bp->userp, reqp);
+            code = (*cm_buf_opsp->Writep)(scp, &offset, bp->dirty_length, flags,
+                                          bp->userp ? bp->userp : cm_rootUserp, reqp);
             osi_Log3(buf_logp, "buf_CleanLocked I/O on scp 0x%p buf 0x%p, done=%d", scp, bp, code);
         }
         lock_ObtainMutex(&bp->mx);
@@ -780,7 +779,6 @@ afs_uint32 buf_CleanLocked(cm_scache_t *scp, cm_buf_t *bp, cm_req_t *reqp,
             code == CM_ERROR_READONLY || code == CM_ERROR_NOSUCHPATH){
 	    _InterlockedAnd(&bp->flags, ~CM_BUF_DIRTY);
 	    _InterlockedOr(&bp->flags, CM_BUF_ERROR);
-            bp->dirty_offset = 0;
             bp->dirty_length = 0;
 	    bp->error = code;
 	    bp->dataVersion = CM_BUF_VERSION_BAD;
@@ -1562,7 +1560,6 @@ long buf_Truncate(cm_scache_t *scp, cm_user_t *userp, cm_req_t *reqp,
             if (LargeIntegerLessThanOrEqualTo(*sizep, bufp->offset)) {
                 /* truncating the entire page */
                 _InterlockedAnd(&bufp->flags, ~CM_BUF_DIRTY);
-                bufp->dirty_offset = 0;
                 bufp->dirty_length = 0;
                 bufp->dataVersion = CM_BUF_VERSION_BAD;	/* known bad */
                 bufp->dirtyCounter++;
@@ -1655,7 +1652,6 @@ long buf_FlushCleanPages(cm_scache_t *scp, cm_user_t *userp, cm_req_t *reqp)
                 _InterlockedAnd(&bp->flags, ~CM_BUF_DIRTY);
                 _InterlockedOr(&bp->flags, CM_BUF_ERROR);
                 bp->error = CM_ERROR_BADFD;
-                bp->dirty_offset = 0;
                 bp->dirty_length = 0;
                 bp->dataVersion = CM_BUF_VERSION_BAD;	/* known bad */
                 bp->dirtyCounter++;
@@ -1785,7 +1781,6 @@ long buf_CleanVnode(struct cm_scache *scp, cm_user_t *userp, cm_req_t *reqp)
                      */
                     _InterlockedAnd(&bp->flags, ~CM_BUF_DIRTY);
                     _InterlockedOr(&bp->flags, CM_BUF_ERROR);
-                    bp->dirty_offset = 0;
                     bp->dirty_length = 0;
                     bp->error = code;
                     bp->dataVersion = CM_BUF_VERSION_BAD;
@@ -1991,7 +1986,6 @@ long buf_CleanDirtyBuffers(cm_scache_t *scp)
 	    lock_ObtainMutex(&bp->mx);
 	    _InterlockedAnd(&bp->cmFlags, ~CM_BUF_CMSTORING);
 	    _InterlockedAnd(&bp->flags, ~CM_BUF_DIRTY);
-            bp->dirty_offset = 0;
             bp->dirty_length = 0;
 	    _InterlockedOr(&bp->flags, CM_BUF_ERROR);
 	    bp->error = VNOVNODE;

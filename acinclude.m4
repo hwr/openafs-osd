@@ -382,7 +382,10 @@ case $system in
 		MKAFS_OSTYPE=SOLARIS
                 AC_MSG_RESULT(sun4)
 	        AC_PATH_PROG(SOLARISCC, [cc], ,
-		    [/opt/SUNWspro/bin:/opt/SunStudioExpress/bin])
+		    [/opt/SUNWspro/bin:/opt/SunStudioExpress/bin:/opt/solarisstudio12.3/bin:/opt/solstudio12.2/bin:/opt/sunstudio12.1/bin])
+		if test "x$SOLARISCC" = "x" ; then
+		    AC_MSG_FAILURE(Could not find the solaris cc program.  Please define the environment variable SOLARISCC to specify the path.)
+		fi
 		SOLARIS_UFSVFS_HAS_DQRWLOCK
 		SOLARIS_FS_HAS_FS_ROLLED
 		SOLARIS_SOLOOKUP_TAKES_SOCKPARAMS
@@ -478,13 +481,13 @@ else
 			vm=${v#*.}
 			AFS_SYSNAME="amd64_obsd${vM}${vm}"
 			;;
-		i?86-*-freebsd?.*)
+		i?86-*-freebsd*.*)
 			v=${host#*freebsd}
 			vM=${v%.*}
 			vm=${v#*.}
 			AFS_SYSNAME="i386_fbsd_${vM}${vm}"
 			;;
-		x86_64-*-freebsd?.*)
+		x86_64-*-freebsd*.*)
 			v=${host#*freebsd}
 			vM=${v%.*}
 			vm=${v#*.}
@@ -581,14 +584,6 @@ else
 		i?86-apple-darwin11.*)
 			AFS_SYSNAME="x86_darwin_110"
 			OSXSDK="macosx10.7"
-			;;
-		x86_64-apple-darwin12.*)
-			AFS_SYSNAME="x86_darwin_120"
-			OSXSDK="macosx10.8"
-			;;
-		i?86-apple-darwin12.*)
-			AFS_SYSNAME="x86_darwin_120"
-			OSXSDK="macosx10.8"
 			;;
 		sparc-sun-solaris2.5*)
 			AFS_SYSNAME="sun4x_55"
@@ -821,6 +816,7 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 		 AC_CHECK_LINUX_STRUCT([backing_dev_info], [name],
 				       [backing-dev.h])
 		 AC_CHECK_LINUX_STRUCT([ctl_table], [ctl_name], [sysctl.h])
+		 AC_CHECK_LINUX_STRUCT([dentry_operations], [d_automount], [dcache.h])
 		 AC_CHECK_LINUX_STRUCT([inode], [i_alloc_sem], [fs.h])
 		 AC_CHECK_LINUX_STRUCT([inode], [i_blkbits], [fs.h])
 		 AC_CHECK_LINUX_STRUCT([inode], [i_blksize], [fs.h])
@@ -829,6 +825,8 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 		 AC_CHECK_LINUX_STRUCT([file_operations], [flock], [fs.h])
 		 AC_CHECK_LINUX_STRUCT([file_operations], [sendfile], [fs.h])
 		 AC_CHECK_LINUX_STRUCT([file_system_type], [mount], [fs.h])
+		 AC_CHECK_LINUX_STRUCT([filename], [name], [fs.h])
+		 AC_CHECK_LINUX_STRUCT([key_type], [preparse], [key-type.h])
 		 AC_CHECK_LINUX_STRUCT([nameidata], [path], [namei.h])
 		 AC_CHECK_LINUX_STRUCT([proc_dir_entry], [owner], [proc_fs.h])
 		 AC_CHECK_LINUX_STRUCT([super_block], [s_bdi], [fs.h])
@@ -868,6 +866,9 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 #include <linux/page-flags.h>],
 				     [struct page *_page;
                                       int bchecked = PageFsMisc(_page);])
+		 AC_CHECK_LINUX_FUNC([clear_inode],
+				     [#include <linux/fs.h>],
+				     [clear_inode(NULL);])
 		 AC_CHECK_LINUX_FUNC([current_kernel_time],
 				     [#include <linux/time.h>],
 			             [struct timespec s;
@@ -933,6 +934,10 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
                  AC_CHECK_LINUX_FUNC([noop_fsync],
                                      [#include <linux/fs.h>],
                                      [void *address = &noop_fsync; printk("%p\n", address)];)
+		 AC_CHECK_LINUX_FUNC([kthread_run],
+				     [#include <linux/kernel.h>
+				      #include <linux/kthread.h>],
+				     [kthread_run(NULL, NULL, "test");])
 
 		 dnl Consequences - things which get set as a result of the
 		 dnl                above tests
@@ -983,6 +988,13 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 		 LINUX_D_COUNT_IS_INT
 		 LINUX_IOP_MKDIR_TAKES_UMODE_T
 		 LINUX_IOP_CREATE_TAKES_UMODE_T
+		 LINUX_EXPORT_OP_ENCODE_FH_TAKES_INODES
+		 LINUX_KMAP_ATOMIC_TAKES_NO_KM_TYPE
+		 LINUX_DENTRY_OPEN_TAKES_PATH
+		 LINUX_D_ALIAS_IS_HLIST
+		 LINUX_IOP_I_CREATE_TAKES_BOOL
+		 LINUX_DOP_D_REVALIDATE_TAKES_UNSIGNED
+		 LINUX_IOP_LOOKUP_TAKES_UNSIGNED
 
 		 dnl If we are guaranteed that keyrings will work - that is
 		 dnl  a) The kernel has keyrings enabled
@@ -1374,7 +1386,7 @@ AC_CHECK_FUNCS(snprintf strlcat strlcpy flock getrlimit strnlen tsearch)
 AC_CHECK_FUNCS(setprogname getprogname sigaction mkstemp vsnprintf strerror strcasestr)
 AC_CHECK_FUNCS(setvbuf vsyslog getcwd)
 AC_CHECK_FUNCS(regcomp regexec regerror)
-AC_CHECK_FUNCS(fseeko64 ftello64 pread preadv pwrite pwritev preadv64 pwritev64)
+AC_CHECK_FUNCS(fseeko64 ftello64 poll pread preadv pwrite pwritev preadv64 pwritev64)
 AC_CHECK_FUNCS([setenv unsetenv])
 
 case $AFS_SYSNAME in

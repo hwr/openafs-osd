@@ -16,51 +16,6 @@
 #ifdef AFS_NAMEI_ENV
 #include <stdio.h>
 #include <stdlib.h>
-
-/*@+fcnmacros +macrofcndecl@*/
-#ifdef O_LARGEFILE
-#ifdef S_SPLINT_S
-#endif /*S_SPLINT_S */
-#define afs_stat		stat64
-#define afs_fstat		fstat64
-#ifdef AFS_NT40_ENV
-#define afs_open                nt_open
-#else
-#define afs_open		open64
-#endif
-#define afs_fopen		fopen64
-#ifndef AFS_NT40_ENV
-#if AFS_HAVE_STATVFS64
-# define afs_statvfs    statvfs64
-#elif AFS_HAVE_STATFS64
-#  define afs_statfs    statfs64
-#elif AFS_HAVE_STATVFS
-#   define afs_statvfs  statvfs
-#else
-#   define afs_statfs   statfs
-#endif /* !AFS_HAVE_STATVFS64 */
-#endif /* !AFS_NT40_ENV */
-#else /* !O_LARGEFILE */
-#ifdef S_SPLINT_S
-#endif /*S_SPLINT_S */
-#define afs_stat		stat
-#define afs_fstat		fstat
-#ifdef AFS_NT40_ENV
-#define afs_open                nt_open
-#else
-#define afs_open		open
-#endif
-#define afs_fopen		fopen
-#ifndef AFS_NT40_ENV
-#if AFS_HAVE_STATVFS
-#define afs_statvfs     statvfs
-#else /* !AFS_HAVE_STATVFS */
-#define afs_statfs      statfs
-#endif /* !AFS_HAVE_STATVFS */
-#endif /* !AFS_NT40_ENV */
-#endif /* !O_LARGEFILE */
-/*@=fcnmacros =macrofcndecl@*/
-
 #ifndef AFS_NT40_ENV
 #include <unistd.h>
 #else
@@ -78,25 +33,6 @@
 #else
 #include <sys/file.h>
 #include <sys/param.h>
-#endif
-#ifdef AFS_ENABLE_VICEP_ACCESS
-#include <afs/cellconfig.h>
-#include <afs/auth.h>
-#endif
-#if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
-#include <sys/statvfs.h>
-#endif /* AFS_HAVE_STATVFS */
-#ifdef AFS_SUN5_ENV
-#include <unistd.h>
-#include <sys/mnttab.h>
-#include <sys/mntent.h>
-#else
-#ifdef AFS_LINUX22_ENV
-#include <mntent.h>
-#include <sys/statfs.h>
-#else
-#include <fstab.h>
-#endif
 #endif
 #include <dirent.h>
 #include <afs/afs_assert.h>
@@ -120,71 +56,31 @@
 #include <afs/errmap_nt.h>
 #endif
 
-#if !defined(BUILDING_RXOSD)
-#include "../shlibafsosd/afsosd.h"
-#endif
-
-afs_int32 defaultLinkCount = 16;
-extern int log_open_close;
-
-afs_int32 hsmDev = -1;
-
-#if defined(BUILDING_RXOSD)
-extern int dcache;
-/*
- * HPSS needs to know the size of a file to be created in order to choose
- * the best ClassOfService. For other filesystems we don't need the size.
- */
-int myOpen(const char *path, int flags, mode_t mode, afs_uint64 size)
-{
-    return open(path, flags, mode);
-}
-
-struct ih_posix_ops ih_namei_ops = {
-    myOpen,
-    close,
-    read,
-    readv,
-    write,
-    writev,
-    lseek64,
-    fsync,
-    unlink,
-    mkdir,
-    rmdir,
-    chmod,
-    chown,
-    stat64,
-    fstat64,
-    rename,
-    opendir,
-    readdir,
-    closedir,
-    link,
-#if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
-    afs_statvfs,
+/*@+fcnmacros +macrofcndecl@*/
+#ifdef O_LARGEFILE
+#ifdef S_SPLINT_S
+#endif /*S_SPLINT_S */
+#define afs_stat		stat64
+#define afs_fstat		fstat64
+#ifdef AFS_NT40_ENV
+#define afs_open                nt_open
 #else
-    afs_statfs,
+#define afs_open		open64
 #endif
-    ftruncate,
-#ifdef AFS_AIX53_ENV
-    pread64,
-    pwrite64,
+#define afs_fopen		fopen64
+#else /* !O_LARGEFILE */
+#ifdef S_SPLINT_S
+#endif /*S_SPLINT_S */
+#define afs_stat		stat
+#define afs_fstat		fstat
+#ifdef AFS_NT40_ENV
+#define afs_open                nt_open
 #else
-    pread,
-    pwrite,
+#define afs_open		open
 #endif
-#ifdef HAVE_PIOV
-    preadv,
-    pwritev,
-#else
-    NULL,
-    NULL,
-#endif
-    NULL
-};
-struct ih_posix_ops *ih_hsm_opsPtr = &ih_namei_ops;
-#endif /* BUILDING_RXOSD */
+#define afs_fopen		fopen
+#endif /* !O_LARGEFILE */
+/*@=fcnmacros =macrofcndecl@*/
 
 #ifndef LOCK_SH
 #define   LOCK_SH   1    /* shared lock */
@@ -224,27 +120,6 @@ emul_flock(int fd, int cmd)
 
 #define flock(f,c)      emul_flock(f,c)
 #endif
-
-#ifdef BUILDING_RXOSD
-extern void lock_file(FdHandle_t *fdP, afs_int32 type, afs_int32 mystripe);
-extern void unlock_file(FdHandle_t *fdP, afs_int32 mystripe);
-
-int rxosdlock(FdHandle_t *fdP,int cmd)
-{
-    if (cmd & LOCK_UN) {
-        unlock_file(fdP, 0);
-    } else {
-        lock_file(fdP, cmd, 0);
-    }
-    return 0;
-}
-
-#define FLOCK(f,c) rxosdlock(f,c)
-#else
-#define FLOCK(f,c) flock(f->fd_fd,c)
-#endif
-
-extern char *volutil_PartitionName_r(int volid, char *buf, int buflen);
 
 int Testing=0;
 
@@ -356,7 +231,6 @@ static void
 namei_HandleToInodeDir(namei_t * name, IHandle_t * ih)
 {
     size_t offset;
-    int vno;
 
     memset(name, '\0', sizeof(*name));
 
@@ -370,18 +244,8 @@ namei_HandleToInodeDir(namei_t * name, IHandle_t * ih)
      */
     volutil_PartitionName_r(ih->ih_dev, name->n_base, sizeof(name->n_base));
     offset = VICE_PREFIX_SIZE + (ih->ih_dev > 25 ? 2 : 1);
-#if defined(BUILDING_RXOSD)
-    ih->ih_ops = &ih_namei_ops;
-    vno = (int)(ih->ih_ino & NAMEI_VNODEMASK);
-    if (ih->ih_dev == hsmDev && vno != NAMEI_VNODESPECIAL) {
-        offset = 0;	/* Path will be prefixed later in interface routines */
-        ih->ih_ops = ih_hsm_opsPtr;
-    } else
-#endif /* BUILDING_RXOSD */
-    {
-        name->n_base[offset] = OS_DIRSEPC;
-        offset++;
-    }
+    name->n_base[offset] = OS_DIRSEPC;
+    offset++;
     strlcpy(name->n_base + offset, INODEDIR, sizeof(name->n_base) - offset);
     strlcpy(name->n_path, name->n_base, sizeof(name->n_path));
 }
@@ -522,7 +386,6 @@ namei_ViceREADME(char *partition)
 	(void)write(fd, VICE_README, strlen(VICE_README));
 	close(fd);
     }
-
     return (errno);
 }
 #endif
@@ -562,62 +425,30 @@ namei_CreateDataDirectories(namei_t * name, int *created)
     return 0;
 }
 #else
-#if defined(BUILDING_RXOSD)
-#define create_dir(h) \
-do { \
-    if ((h->ih_ops->mkdir)(tmp, 0700)<0) { \
-        if (errno != EEXIST) \
-            return -1; \
-    } \
-    else { \
-        *created = 1; \
-    } \
-} while (0)
-
-#define create_nextdir(A, h) \
-do { \
-         strcat(tmp, "/"); strcat(tmp, A); create_dir(h);  \
-} while(0)
-#else /* BUILDING_RXOSD */
 #define create_dir() \
 do { \
     if (mkdir(tmp, 0700)<0) { \
-        if (errno != EEXIST) \
-            return -1; \
+	if (errno != EEXIST) \
+	    return -1; \
     } \
     else { \
-        *created = 1; \
+	*created = 1; \
     } \
 } while (0)
 
 #define create_nextdir(A) \
 do { \
-         strcat(tmp, "/"); strcat(tmp, A); create_dir();  \
+	 strcat(tmp, OS_DIRSEP); strcat(tmp, A); create_dir();  \
 } while(0)
-#endif /* BUILDING_RXOSD */
 
 static int
-#if defined(BUILDING_RXOSD)
-namei_CreateDataDirectories(namei_t * name, int *created, IHandle_t *h)
-#else
 namei_CreateDataDirectories(namei_t * name, int *created)
-#endif
 {
     char tmp[256];
 
     *created = 0;
 
     strlcpy(tmp, name->n_base, sizeof(tmp));
-#if defined(BUILDING_RXOSD)
-    create_dir(h);
-
-    create_nextdir(name->n_voldir1, h);
-    create_nextdir(name->n_voldir2, h);
-    create_nextdir(name->n_dir1, h);
-    if (name->n_dir2[0]) {
-        create_nextdir(name->n_dir2, h);
-    }
-#else
     create_dir();
 
     create_nextdir(name->n_voldir1);
@@ -626,7 +457,6 @@ namei_CreateDataDirectories(namei_t * name, int *created)
     if (name->n_dir2[0]) {
 	create_nextdir(name->n_dir2);
     }
-#endif
     return 0;
 }
 #endif
@@ -862,7 +692,7 @@ CheckOGM(namei_t *name, FdHandle_t *fdP, int p1)
 #else /* AFS_NT40_ENV */
 /* SetOGM - set owner group and mode bits from parm and tag */
 static int
-SetOGM(FD_t fd, int parm, int tag, int special)
+SetOGM(FD_t fd, int parm, int tag)
 {
 /*
  * owner - low 15 bits of parm.
@@ -873,15 +703,6 @@ SetOGM(FD_t fd, int parm, int tag, int special)
 
     owner = parm & 0x7fff;
     group = (parm >> 15) & 0x7fff;
-#ifdef BUILDING_RXOSD
-    if (!special) {
-        if (fd >= 10000) /* in rxosd_hpss.c increased by 10000 */
-	    /* We don't change owner and group for files in HPSS */
-	    return 0;
-        owner = 0;
-        group = 0;
-    }
-#endif
     if (fchown(fd, owner, group) < 0)
 	return -1;
 
@@ -1059,8 +880,7 @@ bad:
 }
 #else /* !AFS_NT40_ENV */
 Inode
-namei_icreate_open(IHandle_t * lh, char *part, afs_uint32 p1, afs_uint32 p2,
-	 	   afs_uint32 p3, afs_uint32 p4, afs_uint64 size, int *open_fd)
+namei_icreate(IHandle_t * lh, char *part, afs_uint32 p1, afs_uint32 p2, afs_uint32 p3, afs_uint32 p4)
 {
     namei_t name;
     int fd = INVALID_FD;
@@ -1069,7 +889,7 @@ namei_icreate_open(IHandle_t * lh, char *part, afs_uint32 p1, afs_uint32 p2,
     IHandle_t tmp;
     FdHandle_t *fdP;
     FdHandle_t tfd;
-    int tag, mode;
+    int tag;
     int ogm_parm;
 
     memset((void *)&tmp, 0, sizeof(IHandle_t));
@@ -1080,10 +900,6 @@ namei_icreate_open(IHandle_t * lh, char *part, afs_uint32 p1, afs_uint32 p2,
 	errno = EINVAL;
 	return -1;
     }
-
-#if defined(BUILDING_RXOSD)
-restart:
-#endif
 
     if (p2 == -1) {
 	/* Parameters for special file:
@@ -1113,10 +929,8 @@ restart:
 	}
 	/* If GetFreeTag succeeds, it atomically sets link count to 1. */
 	tag = GetFreeTag(lh, p2);
-	if (tag < 0) {
-	    code = EIO;
+	if (tag < 0)
 	    goto bad;
-	}
 
 	tmp.ih_vid = p1;
 	tmp.ih_ino = (Inode) p2;
@@ -1128,76 +942,23 @@ restart:
     }
 
     namei_HandleToName(&name, &tmp);
-#if defined(BUILDING_RXOSD)
-    mode = 0;
-    if (p2 != -1 && tmp.ih_dev == hsmDev)
-	mode = 0600;
-    if (dcache && p2 != -1)
-        mode |= S_IWUSR;
-    fd = tmp.ih_ops->open(name.n_path, O_CREAT | O_EXCL | O_TRUNC | O_RDWR,
-				  mode, size);
-#else /* BUILDING_RXOSD */
     fd = afs_open(name.n_path, O_CREAT | O_EXCL | O_TRUNC | O_RDWR, 0);
-#endif /* BUILDING_RXOSD */
     if (fd < 0) {
-        if (errno == ENOTDIR
-#if defined(BUILDING_RXOSD)
-          || errno == 10001
-          || errno == EIO
-#endif
-          || errno == ENOENT) {
-#if defined(BUILDING_RXOSD)
-            if (namei_CreateDataDirectories(&name, &created_dir, &tmp) < 0)
-                goto bad;
-            fd = tmp.ih_ops->open(name.n_path, O_CREAT | O_EXCL | O_TRUNC | O_RDWR,
-				  mode, size);
-#else
+	if (errno == ENOTDIR || errno == ENOENT) {
 	    if (namei_CreateDataDirectories(&name, &created_dir) < 0)
 		goto bad;
 	    fd = afs_open(name.n_path, O_CREAT | O_EXCL | O_TRUNC | O_RDWR,
 			  0);
-#endif
 	    if (fd < 0)
 		goto bad;
 	} else {
-#if defined(BUILDING_RXOSD)
-	    if (open_fd) { /* called from SRXOSD_create_archive */
-		if (errno == EEXIST) {
-		    struct afs_stat tstat;
-		    if (tmp.ih_ops->stat64(name.n_path, &tstat) == 0) {
-			if (tstat.st_size == 0) { /* empty file, reuse it */
-			    fd = tmp.ih_ops->open(name.n_path,
-						  O_EXCL | O_TRUNC | O_RDWR,
-						  mode, size);
-			}
-			if (fd < 0) { 
-			    /*
-			     * GerFreeTag set the link count already to one 
-			     * so try next free tag.
-			     */
-			    goto restart;
-			}
-		    } else
-			goto bad;
-		} else
-		    goto bad;
-	    } else
-#endif
 	    goto bad;
 	}
     }
-#if defined(BUILDING_RXOSD)
-    if (log_open_close) {
-        ViceLog(0, ("namei_icreate: opened %s as fd %d\n", name.n_path, fd));
-    }
-    if (p2 == -1)
-#endif
-    {
-        if (SetOGM(fd, ogm_parm, tag, p2 == -1) < 0) {
-            close(fd);
-            fd = INVALID_FD;
-            goto bad;
-        }
+    if (SetOGM(fd, ogm_parm, tag) < 0) {
+	close(fd);
+	fd = INVALID_FD;
+	goto bad;
     }
 
     if (p2 == (afs_uint32)-1 && p3 == VI_LINKTABLE) {
@@ -1209,18 +970,9 @@ restart:
     }
 
   bad:
-    if (fd >= 0) {
-        if (open_fd)
-            *open_fd = fd;
-        else {
-#if defined(BUILDING_RXOSD)
-	    if (log_open_close) {
-    	        ViceLog(0, ("namei_icreate: fd %d closed\n", fd));
-	    }
-#endif
-            close(fd);
-	}
-    }
+    if (fd >= 0)
+	close(fd);
+
 
     if (code || (fd < 0)) {
 	if (p2 != -1) {
@@ -1233,17 +985,7 @@ restart:
     }
     return (code || (fd < 0)) ? (Inode) - 1 : tmp.ih_ino;
 }
-
-Inode
-namei_icreate(IHandle_t * lh, char *part, afs_uint32 p1, afs_uint32 p2, afs_uint32 p3,
-              afs_uint32 p4)
-{
-    Inode ino;
-
-    ino = namei_icreate_open(lh, part, p1, p2, p3, p4, 0, NULL);
-    return ino;
-}
-#endif /* !AFS_NT40_ENV */
+#endif
 
 /* namei_iopen */
 FD_t
@@ -1254,22 +996,7 @@ namei_iopen(IHandle_t * h)
 
     /* Convert handle to file name. */
     namei_HandleToName(&name, h);
-#if defined(BUILDING_RXOSD)
-    fd = (h->ih_ops->open)((char *)name.n_path, O_RDWR, 0666, 0);
-    if (log_open_close && fd >= 0) {
-	if (h->ih_ops->fstat64) {
-	    struct afs_stat tstat;
-	    (h->ih_ops->fstat64)(fd, &tstat);
-            ViceLog(0,("namei_iopen: opened %s as fd %d file length %llu\n",
-		    name.n_path, fd, tstat.st_size));
-	} else {
-            ViceLog(0,("namei_iopen: opened %s as fd %d file length unknown\n",
-		    name.n_path, fd));
-	}
-    }
-#else
     fd = afs_open((char *)&name.n_path, O_RDWR, 0666);
-#endif
     return fd;
 }
 
@@ -1380,55 +1107,11 @@ namei_dec(IHandle_t * ih, Inode ino, int p1)
 	}
 	if (count == 0) {
 	    IHandle_t *th;
-	    FdHandle_t *tfdP = NULL;
-#ifdef BUILDING_RXOSD
-	    int do_unlink = 1;
-            struct afs_stat st;
-            char unlinkname[128];
-            time_t t;
-            struct timeval now;
-            struct tm *TimeFields;
-
-            gettimeofday(&now, 0);
-            t = now.tv_sec;
-            TimeFields = localtime(&t);
-#endif
 	    IH_INIT(th, ih->ih_dev, ih->ih_vid, ino);
-#if defined(BUILDING_RXOSD)
-	    tfdP = IH_REOPEN(th);	/* Avoid tape fetch for the file */
-#else
-	    tfdP = IH_OPEN(th);
-#endif
 
 	    namei_HandleToName(&name, th);
-#if defined(BUILDING_RXOSD)
-	    if (th->ih_ops->open != myOpen) /* true for HPSS and DCACHE */
-		do_unlink = 0;
-#ifdef AFS_AIX53_ENV
-		do_unlink = 0;	/* hack to identify our TSM/HSM system */
-#endif
-	    if (do_unlink)
-                code = th->ih_ops->unlink(name.n_path);
-	    else if (th->ih_ops->stat64(name.n_path, &st) == 0) {
-		if (st.st_size == 0) /* don't bother with empty file */
-                    code = th->ih_ops->unlink(name.n_path);
-                else {
-            	    sprintf((char *)&unlinkname, "%s-unlinked-%d%02d%02d",
-                        (char *)&name.n_path, TimeFields->tm_year + 1900,
-                        TimeFields->tm_mon + 1, TimeFields->tm_mday);
-                    code = th->ih_ops->rename((const char *)&name.n_path,
-					      (const char *)&unlinkname);
-                    ViceLog(0,("SOFT_DELETED: %s\n", unlinkname));
-		}
-            } else {
-		ViceLog(0,("namei_dec: file doesn't exist %s\n", name.n_path));
-	    } 
-#else /* BUILDING_RXOSD */
-	    code = OS_UNLINK(name.n_path);
-#endif
-	    if (tfdP)
-	        FDH_REALLYCLOSE(tfdP);
 	    IH_RELEASE(th);
+	    code = OS_UNLINK(name.n_path);
 	}
 	FDH_CLOSE(fdP);
     }
@@ -1460,19 +1143,11 @@ namei_inc(IHandle_t * h, Inode ino, int p1)
 	code = -1;
     else {
 	count++;
-#ifdef BUILDING_RXOSD
-	if (count > 31) {
-	    errno = OS_ERROR(EINVAL);
-	    code = -1;
-	    count = 31;
-	}
-#else
 	if (count > 7) {
 	    errno = OS_ERROR(EINVAL);
 	    code = -1;
 	    count = 7;
 	}
-#endif
 	if (namei_SetLinkCount(fdP, ino, count, 1) < 0)
 	    code = -1;
     }
@@ -1491,24 +1166,13 @@ namei_replace_file_by_hardlink(IHandle_t *hLink, IHandle_t *hTarget)
     afs_int32 code;
     namei_t nameLink;
     namei_t nameTarget;
-    FdHandle_t *fdP;
 
     /* Convert handle to file name. */
     namei_HandleToName(&nameLink, hLink);
     namei_HandleToName(&nameTarget, hTarget);
-    fdP =IH_OPEN(hLink);
-    if (fdP)
-	FDH_REALLYCLOSE(fdP);
-#if defined(BUILDING_RXOSD)
-    (hLink->ih_ops->unlink)(nameLink.n_path);
-    if (hTarget->ih_ops->hardlink)
-        code = (hTarget->ih_ops->hardlink)(nameTarget.n_path, nameLink.n_path);
-    else
-        code = EIO;
-#else
+
     OS_UNLINK(nameLink.n_path);
     code = link(nameTarget.n_path, nameLink.n_path);
-#endif
     return code;
 }
 
@@ -1522,11 +1186,7 @@ namei_copy_on_write(IHandle_t *h)
     afs_foff_t offset;
 
     namei_HandleToName(&name, h);
-#if defined(BUILDING_RXOSD)
-    if ((h->ih_ops->stat64)(name.n_path, &tstat) < 0)
-#else
     if (afs_stat(name.n_path, &tstat) < 0)
-#endif
 	return EIO;
     if (tstat.st_nlink > 1) {                   /* do a copy on write */
 	char path[259];
@@ -1537,60 +1197,38 @@ namei_copy_on_write(IHandle_t *h)
 	fdP = IH_OPEN(h);
 	if (!fdP)
 	    return EIO;
-	size = tstat.st_size;
 	afs_snprintf(path, sizeof(path), "%s-tmp", name.n_path);
-#if defined(BUILDING_RXOSD)
-	fd = (h->ih_ops->open)(path, O_CREAT | O_EXCL | O_TRUNC | O_RDWR, 0, size);
-#else
 	fd = afs_open(path, O_CREAT | O_EXCL | O_TRUNC | O_RDWR, 0);
-#endif
 	if (fd < 0) {
 	    FDH_CLOSE(fdP);
 	    return EIO;
 	}
 	buf = malloc(8192);
 	if (!buf) {
-#if defined(BUILDING_RXOSD)
-	    (h->ih_ops->close)(fd);
-	    (h->ih_ops->unlink)(path);
-#else
 	    close(fd);
 	    OS_UNLINK(path);
-#endif
 	    FDH_CLOSE(fdP);
 	    return ENOMEM;
 	}
+	size = tstat.st_size;
 	offset = 0;
 	while (size) {
 	    tlen = size > 8192 ? 8192 : size;
 	    if (FDH_PREAD(fdP, buf, tlen, offset) != tlen)
 		break;
-#if defined(BUILDING_RXOSD)
-	    if ((h->ih_ops->write)(fd, buf, tlen) != tlen)
-#else
 	    if (write(fd, buf, tlen) != tlen)
-#endif
 		break;
 	    size -= tlen;
 	    offset += tlen;
 	}
-#if defined(BUILDING_RXOSD)
-	(h->ih_ops->close)(fd);
-#else
 	close(fd);
-#endif
 	FDH_REALLYCLOSE(fdP);
 	free(buf);
 	if (size)
 	    code = EIO;
 	else {
-#if defined(BUILDING_RXOSD)
-            (h->ih_ops->unlink)(name.n_path);
-            code = (h->ih_ops->rename)(path, name.n_path);
-#else
 	    OS_UNLINK(name.n_path);
 	    code = rename(path, name.n_path);
-#endif
 	}
     }
     return code;
@@ -1718,148 +1356,11 @@ namei_copy_on_write(IHandle_t *h)
  * # else
  * Note that we allow only 5 volumes per file, giving 15 bits used in the
  * short.
-
- *
- * The before said is valid for local partitions. These link tables have a
- * version number == 1.
- *
- * For shared residencies (MR-AFS) or rxosd object storage more volumes can
- * participate:
- *      2 RW volumes (the 2nd during a move operation)
- *      1 BK volume
- *     13 RO volumes
- *      1 clone during move
- * ----------
- *     17 volumes == highest possible link count: requires 5 bits
- *
- *      The number of file versions in shared residencies SHOULD not exceed 6:
- *      1 RW volume
- *      1 BK volume
- *      1 clone during move
- *      1 RO
- *      1 RO-old during vos release
- *      1 may be an old RO which was not reachable during the last vos release.
- *
- *      Therefor we take 32 bit as row consisting of 6 columns each
- *      5 bits wide.
- *
- * This type of link table has version number 2
  * # endif
  */
 #define LINKTABLE_WIDTH 2
 #define LINKTABLE_SHIFT 1	/* log 2 = 1 */
 
-#if defined(BUILDING_RXOSD)
-int
-GetLinkTableVersion(FdHandle_t *fh)
-{
-    if (!fh || !fh->fd_ih) {
-        ViceLog(0, ("GetLinkTableVersion: no pointer to linkHandle\n"));
-        errno = EINVAL;
-        return -1;
-    }
-    if (!(fh->fd_ih->ih_flags & IH_LINKTABLE_VERSIONS)) {
-        afs_uint32 header[2];
-        afs_uint64 offset = 0;
-        if (OS_SEEK(fh->fd_fd, offset, SEEK_SET) != -1) {
-            if (read(fh->fd_fd, &header, 8) != 8) {
-                ViceLog(0, ("GetLinkTableVersion: read failed\n"));
-                errno = EINVAL;
-                return -1;
-            }
-        }
-        if (header[0] != LINKTABLEMAGIC) {
-    	    namei_t name;
-	    int code, fd, ogm_parm, tag;
-	    struct afs_stat tstat;
-	    char badlinktable[128];
-            time_t t;
-            struct timeval now;
-            struct tm *TimeFields;
-            gettimeofday(&now, 0);
-            t = now.tv_sec;
-            TimeFields = localtime(&t);
-            ViceLog(0, ("GetLinkTableVersion: no magic found in lun %u, linktable recreated: %u needs vos salvage\n", fh->fd_ih->ih_dev, fh->fd_ih->ih_vid));
-	    namei_HandleToName(&name, fh->fd_ih);
-            sprintf((char *)&badlinktable, "%s-bad-%d%02d%02d-%02d:%02d:%02d",
-                        (char *)&name.n_path, TimeFields->tm_year + 1900,
-                        TimeFields->tm_mon + 1, TimeFields->tm_mday,
-			TimeFields->tm_hour, TimeFields->tm_min, TimeFields->tm_sec);
-	    if (afs_stat(name.n_path, &tstat) >= 0) {
-		GetOGMFromStat(&tstat, &ogm_parm, &tag);
-                code = rename(name.n_path, badlinktable);
-	        if (code == 0) {
-	            fd = afs_open(name.n_path, O_CREAT | O_EXCL | O_TRUNC | O_RDWR, 0);
-	            close(fh->fd_fd);
-	            fh->fd_fd = fd;
-	            header[0] = LINKTABLEMAGIC;
-	            header[1] = 2;
-	            write(fd, &header, sizeof(header));
-        	    SetOGM(fd, ogm_parm, tag, 1);
-	        } else {
-		   errno = EINVAL;
-		   return -1;
-	        }
-	    } else {
-		errno = EINVAL;
-		return -1;
-	    }
-        }
-        if (header[1] == 1)
-            fh->fd_ih->ih_flags |= IH_LINKTABLE_V1;
-        else if (header[1] == 2)
-            fh->fd_ih->ih_flags |= IH_LINKTABLE_V2;
-        else {
-            ViceLog(0, ("GetLinkTableVersion: unknown version: %d\n",
-                        header[1]));
-            errno = EINVAL;
-            return -1;
-        }
-    }
-    if (fh->fd_ih->ih_flags & IH_LINKTABLE_V2)
-        return 1;
-    return 0;
-}
-
-static int
-namei_GetLCOffsetAndIndexFromIno(Inode ino, FdHandle_t *fd, afs_foff_t * offset, int *length, int *index, int *mask)
-{
-    afs_uint64 toff = ino & NAMEI_VNODEMASK;
-    int tindex;
-    int shared;
-
-    if (ino == 0) {                     /* linktable itself */
-        shared = 0;                     /* only called from VCreateVolume */
-    } else
-        shared = GetLinkTableVersion(fd);
-
-    if (shared) {
-        *mask = 0x1f;                     /*    5 bits */
-        *length = 4;                      /*    4 bytes */
-
-    } else {
-        *mask = 0x7;                      /*    3 bits */
-        *length = 2;                      /*    2 bytes */
-    }
-    tindex = (int)((ino>>NAMEI_TAGSHIFT) & *mask);
-    if (toff == NAMEI_VNODESPECIAL) {
-        *offset = 8;
-        if (tindex == 6)
-            *index = 0;
-        else
-            *index = -1;
-        return shared;
-    }
-    if (shared) {
-        *offset = (toff << 2) + 8;        /*  * 4 + sizeof stamp */
-        *index = (tindex << 2) + tindex;  /*  * 5 */
-    } else {
-        *offset = (toff << 1) + 8;        /*  * 2 + sizeof stamp */
-        *index = (tindex << 1) + tindex;  /*  * 3 */
-    }
-    return shared;
-}
-#else /* BUILDING_RXOSD */
 /**
  * compute namei link table file and bit offset from inode number.
  *
@@ -1878,7 +1379,6 @@ namei_GetLCOffsetAndIndexFromIno(Inode ino, afs_foff_t * offset, int *index)
     *offset = (afs_foff_t) ((toff << LINKTABLE_SHIFT) + 8);	/* * 2 + sizeof stamp */
     *index = (tindex << 1) + tindex;
 }
-#endif /* BUILDING_RXOSD */
 
 #ifdef AFS_PTHREAD_ENV
 /* XXX do static initializers work for WINNT/pthread? */
@@ -1911,83 +1411,49 @@ pthread_mutex_t _namei_glc_lock = PTHREAD_MUTEX_INITIALIZER;
 int
 namei_GetLinkCount(FdHandle_t * h, Inode ino, int lockit, int fixup, int nowrite)
 {
-    afs_uint32 row = 0;
-    unsigned short shortrow = 0;
-    int shared = 0;
+    unsigned short row = 0;
     afs_foff_t offset;
     ssize_t rc;
-    int length, index, mask, junk;
-    char *buf;
+    int index;
 
     /* there's no linktable yet. the salvager will create one later */
     if (h->fd_fd == INVALID_FD && fixup)
        return 1;
-#if defined(BUILDING_RXOSD)
-    shared = namei_GetLCOffsetAndIndexFromIno(ino, h, &offset, &length,
-                                                        &index, &mask);
-    if (shared < 0) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    if (offset == 8 && index != 0) /* volume special file != link table */
-        return 1;
-
-    if (h->fd_fd == -1) {  /* no link table there (from salvager) */
-        return 0;
-    }
-    if (shared)
-        buf = (char *) &row;
-    else
-        buf = (char *) &shortrow;
-#else /* BUILDING_RXOSD */
     namei_GetLCOffsetAndIndexFromIno(ino, &offset, &index);
-    buf = (char *)&shortrow;
-    length = sizeof(shortrow);
-    mask = NAMEI_TAGMASK;
-#endif
 
     if (lockit) {
 	if (FDH_LOCKFILE(h, offset) != 0)
 	    return -1;
     }
 
-    rc = OS_PREAD(h->fd_fd, buf, length, offset);
+    rc = FDH_PREAD(h, (char*)&row, sizeof(row), offset);
     if (rc == -1)
 	goto bad_getLinkByte;
 
-    if ((rc == 0 || !((row >> index) & mask)) && fixup && nowrite) {
+    if ((rc == 0 || !((row >> index) & NAMEI_TAGMASK)) && fixup && nowrite)
         return 1;
-    }
     if (rc == 0 && fixup) {
 	/*
 	 * extend link table and write a link count of 1 for ino
-         * or when shared a link count of 3 for ino
 	 *
 	 * in order to make MT-safe, truncation (extension really)
 	 * must happen under a mutex
 	 */
 	NAMEI_GLC_LOCK;
-        if (FDH_SIZE(h) >= offset+length) {
+        if (FDH_SIZE(h) >= offset+sizeof(row)) {
 	    NAMEI_GLC_UNLOCK;
 	    goto bad_getLinkByte;
 	}
-        FDH_TRUNC(h, offset+length);
-	if (shared)
-            row = defaultLinkCount << index;
-	else
-	    shortrow = 1 << index;
-	rc = OS_PWRITE(h->fd_fd, buf, length, offset);
+        FDH_TRUNC(h, offset+sizeof(row));
+        row = 1 << index;
+	rc = FDH_PWRITE(h, (char *)&row, sizeof(row), offset);
 	NAMEI_GLC_UNLOCK;
     }
-    if (rc != length) {
+    if (rc != sizeof(row)) {
 	goto bad_getLinkByte;
     }
 
-    if (!shared)
-        row = shortrow;
-
-    if (fixup && !((row >> index) & mask)) {
+    if (fixup && !((row >> index) & NAMEI_TAGMASK)) {
 	/*
 	 * fix up zlc
 	 *
@@ -1995,22 +1461,17 @@ namei_GetLinkCount(FdHandle_t * h, Inode ino, int lockit, int fixup, int nowrite
 	 * under a mutex.  thus, we repeat the read inside the lock.
 	 */
 	NAMEI_GLC_LOCK;
-	rc = OS_PREAD(h->fd_fd, buf, length, offset);
-	if (rc == length) {
-	    if (shared) 
-                row |= defaultLinkCount << index;
-	    else {
-	        shortrow |= 1<<index;
-		row = shortrow;
-	    }
-	    rc = OS_PWRITE(h->fd_fd, buf, length, offset);
+	rc = FDH_PREAD(h, (char *)&row, sizeof(row), offset);
+	if (rc == sizeof(row)) {
+	    row |= 1<<index;
+	    rc = FDH_PWRITE(h, (char *)&row, sizeof(row), offset);
 	}
 	NAMEI_GLC_UNLOCK;
-        if (rc != length)
+        if (rc != sizeof(row))
 	    goto bad_getLinkByte;
     }
 
-    return ((row >> index) & mask);
+    return (int)((row >> index) & NAMEI_TAGMASK);
 
   bad_getLinkByte:
     if (lockit)
@@ -2030,14 +1491,10 @@ GetFreeTag(IHandle_t * ih, int vno)
 {
     FdHandle_t *fdP;
     afs_foff_t offset;
-    int length, shift, mask, maxindex;
     int col;
     int coldata;
-    unsigned short shortrow;
-    afs_uint32 row;
+    short row;
     ssize_t nBytes;
-    int shared = 0;
-    char *buf;
 
 
     fdP = IH_OPEN(ih);
@@ -2050,54 +1507,30 @@ GetFreeTag(IHandle_t * ih, int vno)
 	return -1;
     }
 
-#if defined(BUILDING_RXOSD)
-    shared = GetLinkTableVersion(fdP);
-    if (shared <0)
-        goto badGetFreeTag;
-#endif
-    if (shared) { /* used for storage systems shared by multiple files servers*/
-        buf = (char *) &row;            /* 32 bit  length */
-        length = 4;                     /*  4 byte length */
-        offset = (vno << 2) + 8;
-        shift = 5;                      /* 5 bit (max 31) linkcount */
-        mask = 0x1f;
-        maxindex = 6;                   /* 6 file versions */
-    } else {                 /* used for normal OpenAFS fileserver partitions */
-        buf = (char *) &shortrow;       /* 16 bit  length */
-        length = 2;                     /*  2 byte length */
-        offset = (vno << 1) + 8;
-        shift = 3;                      /* 3 bit (max 7) linkcount */
-        mask = 0x7;
-        maxindex = 5;                   /* 5 file versions */
-    }
+    offset = (vno << LINKTABLE_SHIFT) + 8;	/* * 2 + sizeof stamp */
 
-    nBytes = OS_PREAD(fdP->fd_fd, buf, length, offset);
-    if (!shared)
-	row = shortrow;
-    if (nBytes != length) {
+    nBytes = FDH_PREAD(fdP, (char *)&row, sizeof(row), offset);
+    if (nBytes != sizeof(row)) {
 	if (nBytes != 0)
 	    goto badGetFreeTag;
 	row = 0;
     }
 
     /* Now find a free column in this row and claim it. */
-    for (col = 0; col < maxindex; col++) {
-	coldata = mask << (col * shift);
+    for (col = 0; col < NAMEI_MAXVOLS; col++) {
+	coldata = 7 << (col * 3);
 	if ((row & coldata) == 0)
 	    break;
     }
-    if (col >= maxindex) {
+    if (col >= NAMEI_MAXVOLS) {
 	errno = ENOSPC;
 	goto badGetFreeTag;
     }
 
-    coldata = 1 << (col * shift);
+    coldata = 1 << (col * 3);
     row |= coldata;
 
-    if (!shared)
-	shortrow = row;
-
-    if (OS_PWRITE(fdP->fd_fd, buf, length, offset) != length) {
+    if (FDH_PWRITE(fdP, (char *)&row, sizeof(row), offset) != sizeof(row)) {
 	goto badGetFreeTag;
     }
     FDH_SYNC(fdP);
@@ -2121,38 +1554,12 @@ int
 namei_SetLinkCount(FdHandle_t * fdP, Inode ino, int count, int locked)
 {
     afs_foff_t offset;
-    int shared, length, index, mask, junk;
-    unsigned short shortrow;
-    afs_uint32 row;
-    char *buf;
+    int index;
+    unsigned short row;
+    int bytesRead;
     ssize_t nBytes = -1;
 
-#if defined(BUILDING_RXOSD)
-    shared = namei_GetLCOffsetAndIndexFromIno(ino, fdP, &offset, &length,
-                                                &index, &mask);
-    if (offset == 8 && index != 0) return 0;
-    if (shared)
-        buf = (char *)&row;
-    else
-        buf = (char *)&shortrow;
-#else
     namei_GetLCOffsetAndIndexFromIno(ino, &offset, &index);
-    shared = 0;
-    length = 2;
-    mask = NAMEI_TAGMASK;
-    buf = (char *)&shortrow;
-#endif
-
-    /* be sure it fits in the bits of the entry */
-    if (count > mask) {
-	Log("SetLinkCount: count %d for %u.%u.%u.%u doesn't fit in 0x%x using instead %d\n",
-	    count, fdP->fd_ih->ih_vid,
-	    (afs_uint32) ino & NAMEI_VNODEMASK,
-	    (afs_uint32) (ino >> NAMEI_UNIQSHIFT),
-	    (afs_uint32) (ino >> NAMEI_TAGSHIFT) & 7,
-	     mask, mask);
-	count = mask;
-    }
 
     if (!locked) {
 	if (FDH_LOCKFILE(fdP, offset) != 0) {
@@ -2160,10 +1567,8 @@ namei_SetLinkCount(FdHandle_t * fdP, Inode ino, int count, int locked)
 	}
     }
 
-    nBytes = OS_PREAD(fdP->fd_fd, buf, length, offset);
-    if (!shared)
-	row = shortrow;
-    if (nBytes != length) {
+    nBytes = FDH_PREAD(fdP, (char *)&row, sizeof(row), offset);
+    if (nBytes != sizeof(row)) {
 	if (nBytes != 0) {
 	    errno = OS_ERROR(EBADF);
 	    goto bad_SetLinkCount;
@@ -2171,14 +1576,12 @@ namei_SetLinkCount(FdHandle_t * fdP, Inode ino, int count, int locked)
 	row = 0;
     }
 
-    junk = mask << index;
+    bytesRead = 7 << index;
     count <<= index;
-    row &= ~junk;
-    row |= count;
-    if (!shared)
-        shortrow = row;
+    row &= (unsigned short)~bytesRead;
+    row |= (unsigned short)count;
 
-    if (OS_PWRITE(fdP->fd_fd, buf, length, offset) != length) {
+    if (FDH_PWRITE(fdP, (char *)&row, sizeof(short), offset) != sizeof(short)) {
 	errno = OS_ERROR(EBADF);
 	goto bad_SetLinkCount;
     }
@@ -2197,7 +1600,7 @@ namei_SetLinkCount(FdHandle_t * fdP, Inode ino, int count, int locked)
 
 /* ListViceInodes - write inode data to a results file. */
 static int DecodeInode(char *dpath, char *name, struct ViceInodeInfo *info,
-		       IHandle_t *ih);
+		       unsigned int volid);
 static int DecodeVolumeName(char *name, unsigned int *vid);
 static int namei_ListAFSSubDirs(IHandle_t * dirIH,
 				int (*write_fun) (FILE *,
@@ -2319,91 +1722,6 @@ ListViceInodes(char *devname, char *mountedOn, FILE *inodeFile,
     return 0;
 }
 
-#if defined(BUILDING_RXOSD)
-/* inamei_ListObjects
- */
-int
-namei_ListObjects(char *mountedOn,
-               int (*judgeInode) (struct ViceInodeInfo * info, afs_uint32 vid,
-				  void *rock),
-               int singleVolumeNumber,  void *rock)
-{
-    int ninodes;
-
-    ninodes =
-        namei_ListAFSFiles(mountedOn, WriteInodeInfo, (FILE *)0, judgeInode,
-                           singleVolumeNumber, rock);
-    return ninodes;
-}
-
-/* namei_ListVolumeGroups
- * Collect all RW-volume ids
- *
- */
-int
-namei_ListVolumeGroups(afs_uint32 dev, afs_uint32 *nvolumes,
-                   DIR **dirp1, DIR **dirp2,
-                   struct dirent **dp1, struct dirent ** dp2,
-                   char *buf, afs_uint32 *buflen)
-{
-    IHandle_t ih;
-    namei_t name;
-    int code;
-    afs_uint32 vid;
-    char path2[512];
-    afs_uint32 * p = (afs_uint32 *) buf;
-    int still = *buflen / sizeof(afs_uint32);
-
-    memset((void *)&ih, 0, sizeof(IHandle_t));
-    ih.ih_dev = dev;
-
-    *nvolumes = 0;
-    namei_HandleToInodeDir(&name, &ih);
-    if (!dirp1 || !dirp2 || !dp1 || !dp2)
-        return EINVAL;
-    if (!(*dirp1))
-        *dirp1 = IH_OPENDIR(name.n_path, &ih);
-    if (*dirp1) {
-        if (!*dp1)
-            *dp1 = IH_READDIR(*dirp1, &ih);
-        while (*dp1) {
-            if (*(*dp1)->d_name != '.') {
-                (void)strcpy(path2, name.n_path);
-                (void)strcat(path2, "/");
-                (void)strcat(path2, (*dp1)->d_name);
-                if (!(*dirp2))
-                    *dirp2 = IH_OPENDIR(path2, &ih);
-                if (*dirp2) {
-                    if (!*dp2)
-                        *dp2 = IH_READDIR(*dirp2, &ih);
-                    while (*dp2) {
-                        if (*(*dp2)->d_name != '.') {
-                            if (!DecodeVolumeName((*dp2)->d_name, &vid)) {
-                                (*nvolumes)++;
-                                if (p) {
-                                    *p = vid;
-                                    p++;
-                                    still--;
-                                    if (still == 0)
-                                        return 1;
-                                }
-                            }
-                        }
-                        *dp2 = IH_READDIR(*dirp2, &ih);
-                    }
-                    IH_CLOSEDIR(*dirp2, &ih);
-                    *dirp2 = NULL;
-                }
-            }
-            *dp1 = IH_READDIR(*dirp1, &ih);
-        }
-        IH_CLOSEDIR(*dirp1, &ih);
-        *dirp1 = NULL;
-    }
-    *buflen = (char *)p - buf;
-    return 0;
-}
-#endif /* BUILDING_RXOSD */
 
 /**
  * Collect all the matching AFS files on the drive.
@@ -2453,10 +1771,6 @@ namei_ListAFSFiles(char *dev,
 #else
     ih.ih_dev = volutil_GetPartitionID(dev);
 #endif
-#if defined(BUILDING_RXOSD)
-    ih.ih_ops = &ih_namei_ops;
-#endif
-    ih.ih_ino = namei_MakeSpecIno(ih.ih_vid, VI_LINKTABLE);
 
     if (singleVolumeNumber) {
 	ih.ih_vid = singleVolumeNumber;
@@ -2477,7 +1791,6 @@ namei_ListAFSFiles(char *dev,
 #ifdef AFS_NT40_ENV
 	    /* Heirarchy is one level on Windows */
 	    if (!DecodeVolumeName(dp1->d_name, &ih.ih_vid)) {
-    		ih.ih_ino = namei_MakeSpecIno(ih.ih_vid, VI_LINKTABLE);
 		ninodes +=
 		    namei_ListAFSSubDirs(&ih, writeFun, fp, judgeFun,
 					 0, rock);
@@ -2493,7 +1806,6 @@ namei_ListAFSFiles(char *dev,
 		    if (*dp2->d_name == '.')
 			continue;
 		    if (!DecodeVolumeName(dp2->d_name, &ih.ih_vid)) {
-    			ih.ih_ino = namei_MakeSpecIno(ih.ih_vid, VI_LINKTABLE);
 			ninodes +=
 			    namei_ListAFSSubDirs(&ih, writeFun, fp, judgeFun,
 						 0, rock);
@@ -2561,7 +1873,7 @@ _namei_examine_special(char * path1,
     struct ViceInodeInfo info;
     afs_uint32 inode_vgid;
 
-    if (DecodeInode(path1, dname, &info, myIH) < 0) {
+    if (DecodeInode(path1, dname, &info, myIH->ih_vid) < 0) {
 	ret = 0;
 	goto error;
     }
@@ -2591,7 +1903,7 @@ _namei_examine_special(char * path1,
 			   "%s" OS_DIRSEP "%s", path1, dname);
 	linkHandle->fd_fd = afs_open(path2, Testing ? O_RDONLY : O_RDWR, 0666);
 	info.linkCount =
-	    namei_GetLinkCount(linkHandle, (Inode) 0, 0, 1, Testing);
+	    namei_GetLinkCount(linkHandle, (Inode) 0, 1, 1, Testing);
     }
 
     if (!judgeFun ||
@@ -2655,16 +1967,13 @@ _namei_examine_reg(char * path3,
     int dirl; /* Windows-only (one level hash dir) */
 #endif
 
-    if (DecodeInode(path3, dname, &info, myIH) < 0) {
+    if (DecodeInode(path3, dname, &info, myIH->ih_vid) < 0) {
 	goto error;
     }
 
-#ifdef BUILDING_RXOSD
-  if (!info.linkCount) {	/* Only if it's not a xxx-unlinked-yyyymmdd file */
-#endif
     info.linkCount =
 	namei_GetLinkCount(linkHandle,
-			    info.inodeNumber, 0, 1, Testing);
+			    info.inodeNumber, 1, 1, Testing);
     if (info.linkCount == 0) {
 #ifdef DELETE_ZLC
 	Log("Found 0 link count file %s" OS_DIRSEP "%s, deleting it.\n", path3, dname);
@@ -2681,9 +1990,6 @@ _namei_examine_reg(char * path3,
 #endif
 	goto error;
     }
-#ifdef BUILDING_RXOSD
-  }
-#endif
 
     if (!judgeFun ||
 	(*judgeFun) (&info, singleVolumeNumber, rock)) {
@@ -3053,7 +2359,7 @@ namei_ListAFSSubDirs(IHandle_t * dirIH,
 		     afs_uint32 singleVolumeNumber, void *rock)
 {
     int code = 0, ret = 0;
-    IHandle_t myIH = *dirIH, lth;
+    IHandle_t myIH = *dirIH;
     namei_t name;
     char path1[512], path3[512];
     DIR *dirp1, *dirp3;
@@ -3073,15 +2379,7 @@ namei_ListAFSSubDirs(IHandle_t * dirIH,
     struct rx_queue resultlist;
 #endif
 
-#if defined(BUILDING_RXOSD)
-    /* link table in local partition not in HPSS or DCACHE */
-    if (dirIH->ih_dev == hsmDev)
-        myIH.ih_ino = NAMEI_VNODESPECIAL;
-#endif
     namei_HandleToVolDir(&name, &myIH);
-#if defined(BUILDING_RXOSD)
-     myIH.ih_ino = 0;	/* we put in before NAMEI_VNODESPECIAL, just clear it */
-#endif
     strlcpy(path1, name.n_path, sizeof(path1));
 
     /* Do the directory containing the special files first to pick up link
@@ -3090,15 +2388,7 @@ namei_ListAFSSubDirs(IHandle_t * dirIH,
     (void)strcat(path1, OS_DIRSEP);
     (void)strcat(path1, NAMEI_SPECDIR);
 
-    memset(&lth, 0, sizeof(lth));
-    lth.ih_dev = myIH.ih_dev;
-    lth.ih_vid = myIH.ih_vid;
-    lth.ih_ino = namei_MakeSpecIno(lth.ih_vid, VI_LINKTABLE);
-#if defined(BUILDING_RXOSD)
-    lth.ih_ops = &ih_namei_ops;
-#endif
     linkHandle.fd_fd = INVALID_FD;
-    linkHandle.fd_ih = &lth;
 #ifdef AFS_SALSRV_ENV
     osi_Assert(pthread_once(&wq_once, _namei_wq_keycreate) == 0);
 
@@ -3180,9 +2470,9 @@ namei_ListAFSSubDirs(IHandle_t * dirIH,
 
     work.special = 0;
 
-    dirp1 = IH_OPENDIR(path1, &myIH);
+    dirp1 = opendir(path1);
     if (dirp1) {
-	while ((dp1 = IH_READDIR(dirp1, &myIH))) {
+	while ((dp1 = readdir(dirp1))) {
 #ifndef AFS_NT40_ENV
 	    if (*dp1->d_name == '.')
 		continue;
@@ -3193,9 +2483,9 @@ namei_ListAFSSubDirs(IHandle_t * dirIH,
 #ifndef AFS_NT40_ENV /* This level missing on Windows */
 	    /* Now we've got a next level subdir. */
 	    afs_snprintf(path2, sizeof(path2), "%s" OS_DIRSEP "%s", path1, dp1->d_name);
-	    dirp2 = IH_OPENDIR(path2, &myIH);
+	    dirp2 = opendir(path2);
 	    if (dirp2) {
-		while ((dp2 = IH_READDIR(dirp2, &myIH))) {
+		while ((dp2 = readdir(dirp2))) {
 		    if (*dp2->d_name == '.')
 			continue;
 
@@ -3207,9 +2497,9 @@ namei_ListAFSSubDirs(IHandle_t * dirIH,
 		    afs_snprintf(path3, sizeof(path3), "%s" OS_DIRSEP "%s", path1,
 				 dp1->d_name);
 #endif
-		    dirp3 = IH_OPENDIR(path3, &myIH);
+		    dirp3 = opendir(path3);
 		    if (dirp3) {
-			while ((dp3 = IH_READDIR(dirp3, &myIH))) {
+			while ((dp3 = readdir(dirp3))) {
 #ifndef AFS_NT40_ENV
 			    if (*dp3->d_name == '.')
 				continue;
@@ -3217,11 +2507,11 @@ namei_ListAFSSubDirs(IHandle_t * dirIH,
 
 #ifdef AFS_SALSRV_ENV
 			    if (error) {
-				IH_CLOSEDIR(dirp3, &myIH);
+				closedir(dirp3);
 #ifndef AFS_NT40_ENV
-				IH_CLOSEDIR(dirp2, &myIH);
+				closedir(dirp2);
 #endif
-				IH_CLOSEDIR(dirp1, &myIH);
+				closedir(dirp1);
 				ret = -1;
 				goto error;
 			    }
@@ -3233,11 +2523,11 @@ namei_ListAFSSubDirs(IHandle_t * dirIH,
 
 			    switch (code) {
 			    case -1:
-				IH_CLOSEDIR(dirp3, &myIH);
+				closedir(dirp3);
 #ifndef AFS_NT40_ENV
-				IH_CLOSEDIR(dirp2, &myIH);
+				closedir(dirp2);
 #endif
-				IH_CLOSEDIR(dirp1, &myIH);
+				closedir(dirp1);
 				ret = -1;
 				goto error;
 
@@ -3248,15 +2538,15 @@ namei_ListAFSSubDirs(IHandle_t * dirIH,
 				break;
 			    }
 			}
-			IH_CLOSEDIR(dirp3, &myIH);
+			closedir(dirp3);
 		    }
 #ifndef AFS_NT40_ENV /* This level missing on Windows */
 		}
-		IH_CLOSEDIR(dirp2, &myIH);
+		closedir(dirp2);
 	    }
 #endif
 	}
-	IH_CLOSEDIR(dirp1, &myIH);
+	closedir(dirp1);
     }
 
 #ifdef AFS_SALSRV_ENV
@@ -3334,7 +2624,8 @@ DecodeVolumeName(char *name, unsigned int *vid)
  */
 #ifdef AFS_NT40_ENV
 static int
-DecodeInode(char *dpath, char *name, struct ViceInodeInfo *info, IHandle_t *ih)
+DecodeInode(char *dpath, char *name, struct ViceInodeInfo *info,
+	    unsigned int volid)
 {
     char fpath[512];
     int tag, vno;
@@ -3344,7 +2635,6 @@ DecodeInode(char *dpath, char *name, struct ViceInodeInfo *info, IHandle_t *ih)
     char stmp[16];
     FdHandle_t linkHandle;
     char dirl;
-    afs_uint32 volid = ih->ih_vid;
 
     afs_snprintf(fpath, sizeof(fpath), "%s" OS_DIRSEP "%s", dpath, name);
 
@@ -3410,54 +2700,26 @@ DecodeInode(char *dpath, char *name, struct ViceInodeInfo *info, IHandle_t *ih)
 }
 #else
 static int
-DecodeInode(char *dpath, char *name, struct ViceInodeInfo *info, IHandle_t *ih)
+DecodeInode(char *dpath, char *name, struct ViceInodeInfo *info,
+	    unsigned int volid)
 {
     char fpath[512];
     struct afs_stat status;
     int parm, tag;
     lb64_string_t check;
-    afs_uint32 volid = ih->ih_vid;
-#if defined(BUILDING_RXOSD)
-    afs_int32 i, year, month, day;
-    char *p;
-#endif
 
     afs_snprintf(fpath, sizeof(fpath), "%s" OS_DIRSEP "%s", dpath, name);
 
-#if defined(BUILDING_RXOSD)
-    if ((ih->ih_ops->stat64)(fpath, &status) < 0) {
-#else
     if (afs_stat(fpath, &status) < 0) {
-#endif
 	return -1;
     }
 
     info->byteCount = status.st_size;
-#ifdef BUILDING_RXOSD
-    info->linkCount = 0;
-    p = strstr(name, "-unlinked-");
-    if (p) {
-	i = sscanf(p, "-unlinked-%4d%2d%2d", &year, &month, &day);
-	if (i == 3) {
-	    info->u.param[0] = volid;
-	    info->u.param[1] = (year << 9) + (month << 5) + day;
-	    info->u.param[2] = status.st_mtime;
-	    info->u.param[3] = status.st_ctime;
-	    info->linkCount = -1;
-	    *p = 0;
-	}
-    }
-#endif
     info->inodeNumber = (Inode) flipbase64_to_int64(name);
 
     int64_to_flipbase64(check, info->inodeNumber);
     if (strcmp(name, check))
 	return -1;
-
-#ifdef BUILDING_RXOSD
-    if (info->linkCount < 0)
-	return 0;
-#endif
 
     GetOGMFromStat(&status, &parm, &tag);
     if ((info->inodeNumber & NAMEI_INODESPECIAL) == NAMEI_INODESPECIAL) {
@@ -3485,7 +2747,7 @@ DecodeInode(char *dpath, char *name, struct ViceInodeInfo *info, IHandle_t *ih)
 
 #ifdef FSSYNC_BUILD_CLIENT
 static afs_int32
-convertVolumeInfo(FD_t fdr, FD_t fdw, afs_uint32 vid, int osdSeen)
+convertVolumeInfo(FD_t fdr, FD_t fdw, afs_uint32 vid)
 {
     struct VolumeDiskData vd;
     char *p;
@@ -3495,11 +2757,6 @@ convertVolumeInfo(FD_t fdr, FD_t fdw, afs_uint32 vid, int osdSeen)
 	Log("1 convertVolumeInfo: read failed for %lu with code %d\n",
 	    afs_printable_uint32_lu(vid),
 	    errno);
-	return -1;
-    }
-    if (vd.osdPolicy && !osdSeen) {
-	Log("1 convertVolumeInfo: %lu is an osd-Volume without metadata file\n",
-	    afs_printable_uint32_lu(vid));
 	return -1;
     }
     vd.restoredFromId = vd.id;	/* remember the RO volume here */
@@ -3517,11 +2774,11 @@ convertVolumeInfo(FD_t fdr, FD_t fdw, afs_uint32 vid, int osdSeen)
      * by setting it to copyDate, if copyDate is older. Since, we know the
      * volume is at least as old as copyDate. */
     if (vd.copyDate < vd.creationDate) {
-        vd.creationDate = vd.copyDate;
+	vd.creationDate = vd.copyDate;
     } else {
-        /* If copyDate is newer, just make copyDate and creationDate the same,
-         * for consistency with other RWs */
-        vd.copyDate = vd.creationDate;
+	/* If copyDate is newer, just make copyDate and creationDate the same,
+	 * for consistency with other RWs */
+	vd.copyDate = vd.creationDate;
     }
 
     p = strrchr(vd.name, '.');
@@ -3539,7 +2796,6 @@ convertVolumeInfo(FD_t fdr, FD_t fdw, afs_uint32 vid, int osdSeen)
 }
 #endif
 
-#ifndef BUILDING_RXOSD
 /*
  * Convert a RO-volume into a RW-volume
  *
@@ -3561,7 +2817,7 @@ convertVolumeInfo(FD_t fdr, FD_t fdw, afs_uint32 vid, int osdSeen)
  */
 
 int
-namei_ConvertROtoRWvolume(char *pname, afs_uint32 volumeId, afs_uint32 *newId)
+namei_ConvertROtoRWvolume(char *pname, afs_uint32 volumeId)
 {
     int code = 0;
 #ifdef FSSYNC_BUILD_CLIENT
@@ -3570,14 +2826,12 @@ namei_ConvertROtoRWvolume(char *pname, afs_uint32 volumeId, afs_uint32 *newId)
     char smallName[64];
     char largeName[64];
     char infoName[64];
-    char osdName[64];
     IHandle_t t_ih;
     IHandle_t *ih;
     char infoSeen = 0;
     char smallSeen = 0;
     char largeSeen = 0;
     char linkSeen = 0;
-    char osdSeen = 0;
     FD_t fd, fd2;
     char *p;
     DIR *dirp;
@@ -3586,6 +2840,8 @@ namei_ConvertROtoRWvolume(char *pname, afs_uint32 volumeId, afs_uint32 *newId)
     struct DiskPartition64 *partP;
     struct ViceInodeInfo info;
     struct VolumeDiskHeader h;
+    char *rwpart, *rwname;
+    Error ec;
 # ifdef AFS_DEMAND_ATTACH_FS
     int locktype = 0;
 # endif /* AFS_DEMAND_ATTACH_FS */
@@ -3615,6 +2871,19 @@ namei_ConvertROtoRWvolume(char *pname, afs_uint32 volumeId, afs_uint32 *newId)
 	goto done;
     }
 
+    /* check for existing RW on any partition on this server; */
+    /* if found, return EXDEV - invalid cross-device link */
+    VOL_LOCK;
+    VGetVolumePath(&ec, h.parent, &rwpart, &rwname);
+    if (ec == 0) {
+	Log("1 namei_ConvertROtoRWvolume: RW volume %lu already exists on server partition %s.\n",
+	    afs_printable_uint32_lu(h.parent), rwpart);
+	code = EXDEV;
+	VOL_UNLOCK;
+	goto done;
+    }
+    VOL_UNLOCK;
+
     FSYNC_VolOp(volumeId, pname, FSYNC_VOL_BREAKCBKS, 0, NULL);
 
     ino = namei_MakeSpecIno(h.parent, VI_LINKTABLE);
@@ -3637,7 +2906,7 @@ namei_ConvertROtoRWvolume(char *pname, afs_uint32 volumeId, afs_uint32 *newId)
 	if (*dp->d_name == '.')
 	    continue;
 #endif
-	if (DecodeInode(dir_name, dp->d_name, &info, ih) < 0) {
+	if (DecodeInode(dir_name, dp->d_name, &info, ih->ih_vid) < 0) {
 	    Log("1 namei_ConvertROtoRWvolume: DecodeInode failed for %s" OS_DIRSEP "%s\n",
 		dir_name, dp->d_name);
 	    closedir(dirp);
@@ -3673,9 +2942,6 @@ namei_ConvertROtoRWvolume(char *pname, afs_uint32 volumeId, afs_uint32 *newId)
 	} else if (info.u.param[2] == VI_LARGEINDEX) {	/* large vnodes file */
 	    strlcpy(largeName, dp->d_name, sizeof(largeName));
 	    largeSeen = 1;
-        } else if (info.u.param[2] == VI_OSDMETADATA) { /* OSD metadata file */
-            strcpy(osdName, dp->d_name);
-            osdSeen = 1;
 	} else {
 	    closedir(dirp);
 	    Log("1 namei_ConvertROtoRWvolume: unknown type %d of special file found : %s" OS_DIRSEP "%s\n", info.u.param[2], dir_name, dp->d_name);
@@ -3690,11 +2956,6 @@ namei_ConvertROtoRWvolume(char *pname, afs_uint32 volumeId, afs_uint32 *newId)
 	code = -1;
 	goto done;
     }
-    if (!osdvol && osdSeen) {
-	Log("1 namei_ConvertROtoRWvolume: osdMetadata file in %s, but volserver is started without -libafsosd\n", dir_name);
-	code = -1;
-	goto done;
-    }
 
     /*
      * If we come here then there was only a RO-volume and we can safely
@@ -3704,7 +2965,6 @@ namei_ConvertROtoRWvolume(char *pname, afs_uint32 volumeId, afs_uint32 *newId)
     memset(&t_ih, 0, sizeof(t_ih));
     t_ih.ih_dev = ih->ih_dev;
     t_ih.ih_vid = ih->ih_vid;
-    *newId = ih->ih_vid;
 
     (void)afs_snprintf(oldpath, sizeof oldpath, "%s" OS_DIRSEP "%s", dir_name,
 		       infoName);
@@ -3724,7 +2984,7 @@ namei_ConvertROtoRWvolume(char *pname, afs_uint32 volumeId, afs_uint32 *newId)
 	code = -1;
 	goto done;
     }
-    code = convertVolumeInfo(fd, fd2, ih->ih_vid, osdSeen);
+    code = convertVolumeInfo(fd, fd2, ih->ih_vid);
     OS_CLOSE(fd);
     if (code) {
 	OS_CLOSE(fd2);
@@ -3732,7 +2992,7 @@ namei_ConvertROtoRWvolume(char *pname, afs_uint32 volumeId, afs_uint32 *newId)
 	code = -1;
 	goto done;
     }
-    SetOGM(fd2, ih->ih_vid, 1, 1);
+    SetOGM(fd2, ih->ih_vid, 1);
     OS_CLOSE(fd2);
 
     t_ih.ih_ino = namei_MakeSpecIno(ih->ih_vid, VI_SMALLINDEX);
@@ -3745,7 +3005,7 @@ namei_ConvertROtoRWvolume(char *pname, afs_uint32 volumeId, afs_uint32 *newId)
 	code = -1;
 	goto done;
     }
-    SetOGM(fd, ih->ih_vid, 2, 1);
+    SetOGM(fd, ih->ih_vid, 2);
     OS_CLOSE(fd);
 #ifdef AFS_NT40_ENV
     MoveFileEx(n.n_path, newpath, MOVEFILE_WRITE_THROUGH);
@@ -3764,7 +3024,7 @@ namei_ConvertROtoRWvolume(char *pname, afs_uint32 volumeId, afs_uint32 *newId)
 	code = -1;
 	goto done;
     }
-    SetOGM(fd, ih->ih_vid, 3, 1);
+    SetOGM(fd, ih->ih_vid, 3);
     OS_CLOSE(fd);
 #ifdef AFS_NT40_ENV
     MoveFileEx(n.n_path, newpath, MOVEFILE_WRITE_THROUGH);
@@ -3773,25 +3033,6 @@ namei_ConvertROtoRWvolume(char *pname, afs_uint32 volumeId, afs_uint32 *newId)
     OS_UNLINK(newpath);
 #endif
 
-    if (osdvol) {
-        t_ih.ih_ino = namei_MakeSpecIno(ih->ih_vid, VI_OSDMETADATA);
-        namei_HandleToName(&n, &t_ih);
-        (void)afs_snprintf(newpath, sizeof newpath, "%s" OS_DIRSEP "%s", dir_name, osdName);
-        fd = afs_open(newpath, O_RDWR, 0);
-        if (fd == INVALID_FD) {
-            Log("1 namei_ConvertROtoRWvolume: could not open osd metadata file: %s\n",newpath);
-            return -1;
-        }
-        SetOGM(fd, ih->ih_vid, 5, 1);
-        OS_CLOSE(fd);
-#ifdef AFS_NT40_ENV
-        MoveFileEx(n.n_path, newpath, MOVEFILE_WRITE_THROUGH);
-#else
-        link(newpath, n.n_path);
-        OS_UNLINK(newpath);
-#endif
-    }
-
     OS_UNLINK(oldpath);
 
     h.id = h.parent;
@@ -3799,8 +3040,6 @@ namei_ConvertROtoRWvolume(char *pname, afs_uint32 volumeId, afs_uint32 *newId)
     h.smallVnodeIndex_hi = h.id;
     h.largeVnodeIndex_hi = h.id;
     h.linkTable_hi = h.id;
-    if (osdvol)
-        h.OsdMetadata_hi = h.id;
 
     if (VCreateVolumeDiskHeader(&h, partP)) {
         Log("1 namei_ConvertROtoRWvolume: Couldn't write header for RW-volume %lu\n",
@@ -3827,7 +3066,6 @@ namei_ConvertROtoRWvolume(char *pname, afs_uint32 volumeId, afs_uint32 *newId)
 
     return code;
 }
-#endif /* BUILDING_RXOSD */
 
 /* PrintInode
  *

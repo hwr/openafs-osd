@@ -2035,7 +2035,7 @@ static int
 PartialCopyOnWrite(Vnode * targetptr, Volume * volptr, afs_foff_t off, 
 			afs_fsize_t len, afs_fsize_t total)
 {
-    Inode ino, nearInode;
+    Inode ino, nearInode AFS_UNUSED;
     ssize_t rdlen;
     ssize_t wrlen;
     afs_fsize_t size;
@@ -2698,7 +2698,7 @@ Alloc_NewVnode(Vnode * parentptr, DirHandle * dir, Volume * volptr,
     Error errorCode = 0;		/* Error code returned back */
     Error temp;
     Inode inode = 0;
-    Inode nearInode;		/* hint for inode allocation in solaris */
+    Inode nearInode AFS_UNUSED;		/* hint for inode allocation in solaris */
     afs_ino_str_t stmp;
 
     if ((errorCode =
@@ -7221,7 +7221,7 @@ SRXAFS_XStatsVersion(struct rx_call * a_call, afs_int32 * a_versionP)
 static void
 FillPerfValues(struct afs_PerfStats *a_perfP)
 {				/*FillPerfValues */
-    afs_uint32 hi, lo;
+    afs_uint32 hi AFS_UNUSED, lo;
     int dir_Buffers;		/*# buffers in use by dir package */
     int dir_Calls;		/*# read calls in dir package */
     int dir_IOs;		/*# I/O ops in dir package */

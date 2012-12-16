@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -12,9 +12,9 @@
 
 #include <sys/types.h>
 #if !defined(AFS_NT40_ENV)
-# if !defined(AFS_FBSD80_ENV) || !defined(KERNEL) || defined(UKERNEL)
-#include <sys/ioctl.h>
-#endif /* AFS_FBSD80_ENV */
+# if (!defined(AFS_FBSD80_ENV) && !defined(AFS_LINUX26_ENV)) || !defined(KERNEL) || defined(UKERNEL)
+#  include <sys/ioctl.h>
+# endif
 #endif /* AFS_NT40_ENV */
 #if (defined(__sun) && defined(__SVR4)) || defined(AFS_DFBSD_ENV) || defined(AFS_USR_DFBSD_ENV)
 # include <sys/ioccom.h>

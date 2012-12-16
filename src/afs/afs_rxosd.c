@@ -848,7 +848,7 @@ handleError(struct rxosd_Variables *v, afs_int32 i, afs_int32 error)
             RX_AFS_GUNLOCK();
 	    return error;
 	}
-        afs_ServerDown(ts->addr);	
+        afs_ServerDown(ts->addr, error);	
         ForceNewConnections(ts->addr);
         afs_PutServer(ts, WRITE_LOCK);
         RX_AFS_GUNLOCK();
@@ -1644,7 +1644,7 @@ retry:
 		    	    v->areq->busyCount = 0;
 			    goto retry;
 			}
-			afs_ServerDown(ts->addr);
+			afs_ServerDown(ts->addr, code);
 		   	if (!afs_soft_mounted)
 		    	    sawDown = 1;
 		    }

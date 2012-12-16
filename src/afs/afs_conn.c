@@ -82,6 +82,7 @@ afs_pickSecurityObject(struct afs_conn *conn, int *secLevel)
          * allocation. We should implement locking on unixuser
          * structures to fix this properly, but for now, this is easier. */
         ticket = afs_osi_Alloc(MAXKTCTICKETLEN);
+	osi_Assert(ticket != NULL);
         memcpy(ticket, conn->user->stp, conn->user->stLen);
         memcpy(&ct, &conn->user->ct, sizeof(ct));
 
@@ -148,6 +149,7 @@ afs_ConnSrv(struct VenusFid *afid, struct vrequest *areq, afs_int32 service,
 
     /* First is always lowest rank, if it's up */
     if ((tv->status[0] == not_busy) && tv->serverHost[0]
+	&& tv->serverHost[0]->addr
 	&& !(tv->serverHost[0]->addr->sa_flags & SRVR_ISDOWN) &&
 	!(((areq->idleError > 0) || (areq->tokenError > 0))
 	  && (areq->skipserver[0] == 1)))
@@ -293,7 +295,8 @@ afs_ConnBySAsrv(struct srvAddr *sap, unsigned short aport, afs_int32 service,
 	 * gets set, marking the time of its ``birth''.
 	 */
 	UpgradeSToWLock(&afs_xconn, 37);
-	tc = (struct afs_conn *)afs_osi_Alloc(sizeof(struct afs_conn));
+	tc = afs_osi_Alloc(sizeof(struct afs_conn));
+	osi_Assert(tc != NULL);
 	memset(tc, 0, sizeof(struct afs_conn));
 
 	tc->user = tu;

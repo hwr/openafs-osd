@@ -457,7 +457,7 @@ urecovery_Interact(void *dummy)
     struct ubik_server *bestServer[MAX_UBIK_DBASES];
     struct ubik_server *ts;
     int dbok, doingRPC, now;
-    afs_int32 lastProbeTime, lastDBVCheck;
+    afs_int32 lastProbeTime;
     /* if we're the sync site, the best db version we've found yet */
     static struct ubik_version bestDBVersion[MAX_UBIK_DBASES];
     struct ubik_version tversion;
@@ -470,7 +470,7 @@ urecovery_Interact(void *dummy)
     char hoststr[16];
 #ifndef OLD_URECOVERY
     char pbuffer[1028];
-    int flen, fd = -1;
+    int fd = -1;
     afs_int32 pass;
 #endif
 
@@ -479,7 +479,6 @@ urecovery_Interact(void *dummy)
     for (i=0; i<MAX_UBIK_DBASES; i++)
         urecovery_state[i] = 0;
     lastProbeTime = 0;
-    lastDBVCheck = 0;
     while (1) {
 main_continue:
 	/* Run through this loop every 4 seconds */
@@ -575,7 +574,6 @@ main_continue:
 		     */
 		    urecovery_state[i] &= ~UBIK_RECHAVEDB;
 	        }
-	        lastDBVCheck = FT_ApproxTime();
 	        urecovery_state[i] |= UBIK_RECFOUNDDB;
 	        urecovery_state[i] &= ~UBIK_RECSENTDB;
 	    }
@@ -642,7 +640,6 @@ main_continue:
 		    goto FetchEndCall;
 	        }
 #ifndef OLD_URECOVERY
-	        flen = length;
 	        afs_snprintf(pbuffer, sizeof(pbuffer), "%s.DB%s%d.TMP", ubik_dbase[i]->pathName, (file<0)?"SYS":"", (file<0)?-file:file);
 	        fd = open(pbuffer, O_CREAT | O_RDWR | O_TRUNC, 0600);
 	        if (fd < 0) {

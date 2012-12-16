@@ -62,7 +62,7 @@
 	} while(0)
 	
 extern int cacheDiskType;
-extern afs_uint32 afs_protocols;
+afs_uint32 afs_protocols = RX_FILESERVER | RX_OSD;
 extern afs_int32 afs_soft_mounted;
 
 #ifndef AFS_NOSTATS
@@ -619,6 +619,7 @@ afs_CacheStoreDCaches(struct vcache *avc, struct dcache **dclist,
 
     if (!code) {
 	code = (*ops->close)(rock, OutStatus, doProcessFS);
+	/* if this succeeds, dv has been bumped. */
 	if (*doProcessFS) {
 	    hadd32(*anewDV, 1);
 	}
@@ -626,6 +627,10 @@ afs_CacheStoreDCaches(struct vcache *avc, struct dcache **dclist,
     }
     if (ops)
 	code = (*ops->destroy)(&rock, code);
+
+    /* if we errored, can't trust this. */
+    if (code)
+	*doProcessFS = 0;
     return code;
 }
 
@@ -920,6 +925,37 @@ rxfs_fetchMemRead(void *r, afs_uint32 tlen, afs_uint32 *bytesread)
 }
 
 #if defined(AFS_CACHE_BYPASS) && defined(AFS_LINUX24_ENV)
+static void
+afs_bypass_copy_page(bypass_page_t pp, int pageoff, struct iovec *rxiov,
+        int iovno, int iovoff, struct uio *auio, int curiov, int partial)
+{
+    char *address;
+    int dolen;
+
+    if (partial)
+        dolen = auio->uio_iov[curiov].iov_len - pageoff;
+    else
+        dolen = rxiov[iovno].iov_len - iovoff;
+
+#if !defined(UKERNEL)
+# if defined(KMAP_ATOMIC_TAKES_NO_KM_TYPE)
+    address = kmap_atomic(pp);
+# else
+    address = kmap_atomic(pp, KM_USER0);
+# endif
+#else
+    address = pp;
+#endif
+    memcpy(address + pageoff, (char *)(rxiov[iovno].iov_base) + iovoff, dolen);
+#if !defined(UKERNEL)
+# if defined(KMAP_ATOMIC_TAKES_NO_KM_TYPE)
+    kunmap_atomic(address);
+# else
+    kunmap_atomic(address, KM_USER0);
+# endif
+#endif
+}
+
 afs_int32
 rxfs_fetchBypassCacheRead(void *r, afs_uint32 size, afs_uint32 *bytesread)
 {
@@ -964,23 +1000,17 @@ rxfs_fetchBypassCacheRead(void *r, afs_uint32 size, afs_uint32 *bytesread)
 	    pp = (struct page *)bparms->auio->uio_iov[curpage].iov_base;
 	    if (pageoff + (rxiov[iovno].iov_len - iovoff) <= PAGE_CACHE_SIZE) {
 		/* Copy entire (or rest of) current iovec into current page */
-		if (pp) {
-		    address = kmap_atomic(pp, KM_USER0);
-		    memcpy(address + pageoff, rxiov[iovno].iov_base + iovoff,
-				rxiov[iovno].iov_len - iovoff);
-		    kunmap_atomic(address, KM_USER0);
-		}
+		if (pp) 
+		    afs_bypass_copy_page(pp, pageoff, rxiov, iovno, iovoff,
+					 bparms->auio, curpage, 0);
 		pageoff += rxiov[iovno].iov_len - iovoff;
 		iovno++;
 		iovoff = 0;
 	    } else {
 		/* Copy only what's needed to fill current page */
-		if (pp) {
-		    address = kmap_atomic(pp, KM_USER0);
-		    memcpy(address + pageoff, rxiov[iovno].iov_base + iovoff,
-				PAGE_CACHE_SIZE - pageoff);
-		    kunmap_atomic(address, KM_USER0);
-		}
+		if (pp)
+		    afs_bypass_copy_page(pp, pageoff, rxiov, iovno, iovoff,
+					 bparms->auio, curpage, 1);
 		iovoff += PAGE_CACHE_SIZE - pageoff;
 		pageoff = PAGE_CACHE_SIZE;
 	    }

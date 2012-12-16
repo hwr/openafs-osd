@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -48,7 +48,7 @@
 		      afs_FirstCSize = afs_OtherCSize = (1 << chunk);  }
 
 /*
- * Functions exported by a cache type 
+ * Functions exported by a cache type
  */
 
 struct afs_cacheOps {
@@ -63,8 +63,7 @@ struct afs_cacheOps {
 		  int noLock);
     int (*vwrite) (struct vcache * avc, struct uio * auio, int aio,
 		   afs_ucred_t * acred, int noLock);
-    struct dcache *(*GetDSlot) (afs_int32 aslot,
-				struct dcache * tmpdc);
+    struct dcache *(*GetDSlot) (afs_int32 aslot, int indexvalid, int datavalid);
     struct volume *(*GetVolSlot) (void);
     int (*HandleLink) (struct vcache * avc, struct vrequest * areq);
 };
@@ -75,11 +74,21 @@ struct afs_cacheOps {
 #define	afs_CFileRead(file, offset, data, size) (*(afs_cacheType->fread))(file, offset, data, size)
 #define	afs_CFileWrite(file, offset, data, size) (*(afs_cacheType->fwrite))(file, offset, data, size)
 #define	afs_CFileClose(handle)		(*(afs_cacheType->close))(handle)
-#define	afs_GetDSlot(slot, adc)		(*(afs_cacheType->GetDSlot))(slot, adc)
 #define	afs_GetVolSlot()		(*(afs_cacheType->GetVolSlot))()
 #define	afs_HandleLink(avc, areq)	(*(afs_cacheType->HandleLink))(avc, areq)
 
-/* These memcpys should get optimised to simple assignments when afs_dcache_id_t 
+/* Use afs_GetValidDSlot to get a dcache from a dcache slot number when we
+ * know the dcache contains data we want (e.g. it's on the hash table) */
+#define	afs_GetValidDSlot(slot)	(*(afs_cacheType->GetDSlot))(slot, 1, 1)
+/* Use afs_GetUnusedDSlot when loading a dcache entry that is on the free or
+ * discard lists (the dcache does not contain valid data, but we know the
+ * dcache entry itself exists). */
+#define	afs_GetUnusedDSlot(slot)	(*(afs_cacheType->GetDSlot))(slot, 1, 0)
+/* Use afs_GetNewDSlot only when initializing dcache slots (the given slot
+ * number may not exist at all). */
+#define	afs_GetNewDSlot(slot)	(*(afs_cacheType->GetDSlot))(slot, 0, 0)
+
+/* These memcpys should get optimised to simple assignments when afs_dcache_id_t
  * is simple */
 static_inline void afs_copy_inode(afs_dcache_id_t *dst, afs_dcache_id_t *src) {
     memcpy(dst, src, sizeof(afs_dcache_id_t));
@@ -89,7 +98,7 @@ static_inline void afs_reset_inode(afs_dcache_id_t *i) {
     memset(i, 0, sizeof(afs_dcache_id_t));
 }
 
-/* We need to have something we can output as the 'inode' for fstrace calls. 
+/* We need to have something we can output as the 'inode' for fstrace calls.
  * This is a hack */
 static_inline int afs_inode2trace(afs_dcache_id_t *i) {
     return i->mem;

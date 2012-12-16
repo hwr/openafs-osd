@@ -372,8 +372,8 @@ afs_int32 copyVnodes(struct Msg *m, Volume *vol, Volume *newvol,
                  */ 
 		IHandle_t *newh = 0;
 		IHandle_t *h = 0;
+		Inode nearInode AFS_UNUSED;
 #if defined(NEARINODE_HINT) && !defined(AFS_NAMEI_ENV)
-		Inode nearInode;
 		V_pref(vol,nearInode)
 #endif
 

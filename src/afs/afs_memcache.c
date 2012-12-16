@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- *
+ * 
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -35,8 +35,9 @@ afs_InitMemCache(int blkCount, int blkSize, int flags)
 	memCacheBlkSize = blkSize;
 
     memMaxBlkNumber = blkCount;
-    memCache = (struct memCacheEntry *)
+    memCache = 
 	afs_osi_Alloc(memMaxBlkNumber * sizeof(struct memCacheEntry));
+    osi_Assert(memCache != NULL);
 
     for (index = 0; index < memMaxBlkNumber; index++) {
 	char *blk;
@@ -52,7 +53,8 @@ afs_InitMemCache(int blkCount, int blkSize, int flags)
 #if defined(AFS_HAVE_VXFS)
     afs_InitDualFSCacheOps((struct vnode *)0);
 #endif
-
+    for (index = 0; index < blkCount; index++)
+	afs_InitCacheFile(NULL, 0);
     return 0;
 
   nomem:
@@ -87,7 +89,7 @@ afs_MemCacheOpen(afs_dcache_id_t *ainode)
 }
 
 /*
- * this routine simulates a read in the Memory Cache
+ * this routine simulates a read in the Memory Cache 
  */
 int
 afs_MemReadBlk(struct osi_file *fP, int offset, void *dest,
@@ -117,7 +119,7 @@ afs_MemReadBlk(struct osi_file *fP, int offset, void *dest,
 }
 
 /*
- * this routine simulates a readv in the Memory Cache
+ * this routine simulates a readv in the Memory Cache 
  */
 int
 afs_MemReadvBlk(struct memCacheEntry *mceP, int offset,
@@ -169,7 +171,7 @@ afs_MemReadUIO(afs_dcache_id_t *ainode, struct uio *uioP)
     return code;
 }
 
-int
+int 
 afs_MemExtendEntry(struct memCacheEntry *mceP, afs_uint32 size)
 {
     ObtainWriteLock(&mceP->afs_memLock, 560);
@@ -308,7 +310,7 @@ afs_MemCacheClearChunkEnd(afs_dcache_id_t *ainode)
 	ReleaseWriteLock(&mceP->afs_memLock);
     }
 }
-
+    
 void
 shutdown_memcache(void)
 {

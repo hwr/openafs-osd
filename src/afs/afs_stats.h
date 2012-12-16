@@ -658,6 +658,8 @@ struct afs_CMCallStats {
     afs_int32 C_BPrefetchNoCache;	/* afs_daemons.c */
     afs_int32 C_afs_ReadNoCache;	/* osi_vnodeops.c */
     afs_int32 C_SRXAFSCB_GetDCacheEntry; /* afs_callback.c */
+
+    afs_int32 C_CheckRxosdServer;  /* afs_server.c */
 };
 
 struct afs_CMMeanStats {

@@ -1646,6 +1646,7 @@ afs_set_serveruuid(long parm2, long parm3, long parm4, long parm5)
 			afs_visiblePart[i].path);
 	if (i == nServerUuids)
                 nServerUuids++;
+	afs_protocols |= VICEP_ACCESS;
     } else
 	code = EFAULT;
 	
@@ -1698,6 +1699,7 @@ afs_set_visible_osd(long parm2, long parm3, long parm4, long parm5)
 			afs_visibleOsd[i].path);
 	    if (i == afs_nVisibleOsds)
                 afs_nVisibleOsds++;
+	    afs_protocols |= VICEP_ACCESS;
         } else
 	    code = EFAULT;
     }

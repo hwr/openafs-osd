@@ -330,7 +330,6 @@ afs_PrefetchNoCache(struct vcache *avc,
     afs_int32 code = 0;    
     struct afs_conn *tc;
     struct rx_connection *rxconn;
-    afs_int32 i;
     struct afs_FetchOutput *tcallspec;
 			
     auio = bparms->auio;
@@ -344,7 +343,6 @@ afs_PrefetchNoCache(struct vcache *avc,
 	tc = afs_Conn(&avc->f.fid, areq, SHARED_LOCK /* ignored */, &rxconn);
 	if (tc) { 
 	    avc->callback = tc->srvr->server;
-	    i = osi_Time();
 	    ObtainReadLock(&avc->lock);
 	    code = afs_FetchProc(tc, rxconn, NULL, areq, bparms->offset, NULL,
 					avc, bparms->length, 

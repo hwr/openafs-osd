@@ -48,7 +48,7 @@
 
 afs_int32 afs_maxvcount = 0;	/* max number of vcache entries */
 afs_int32 afs_vcount = 0;	/* number of vcache in use now */
-afs_uint32 afs_protocols = RX_OSD;     /* Allow per default RXOSD access */
+extern afs_uint32 afs_protocols;
 
 #ifdef AFS_SGI_ENV
 int afsvnumbers = 0;
@@ -157,6 +157,9 @@ afs_FlushVCache(struct vcache *avc, int *slept)
 	refpanic("LRU vs. Free inconsistency");
     }
 #endif
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
+    afs_close_vicep_file(avc, NULL, 0);
+#endif
     avc->f.states |= CVFlushed;
     /* pull the entry out of the lruq and put it on the free list */
     QRemove(&avc->vlruq);
@@ -180,9 +183,6 @@ afs_FlushVCache(struct vcache *avc, int *slept)
 
     /* remove entry from the volume hash table */
     QRemove(&avc->vhashq);
-#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
-    afs_close_vicep_file(avc, NULL, 0);
-#endif
 
     if (avc->mvid)
 	osi_FreeSmallSpace(avc->mvid);
@@ -209,8 +209,6 @@ afs_FlushVCache(struct vcache *avc, int *slept)
     vn_reinit(AFSTOV(avc));
 #endif
     afs_FreeAllAxs(&(avc->Access));
-    if (!afs_shuttingdown)
-	afs_QueueVCB(avc, slept);
     ObtainWriteLock(&afs_xcbhash, 460);
     afs_DequeueCallback(avc);	/* remove it from queued callbacks list */
     avc->f.states &= ~(CStatd | CUnique);
@@ -219,6 +217,9 @@ afs_FlushVCache(struct vcache *avc, int *slept)
 	osi_dnlc_purgedp(avc);	/* if it (could be) a directory */
     else
 	osi_dnlc_purgevp(avc);
+
+    if (!afs_shuttingdown)
+	afs_QueueVCB(avc, slept);
 
     /*
      * Next, keep track of which vnodes we've deleted for create's
@@ -312,9 +313,8 @@ afs_AllocCBR(void)
 	    afs_stats_cmperf.CallBackFlushes++;
 	} else {
 	    /* try allocating */
-	    tsp =
-		(struct afs_cbr *)afs_osi_Alloc(AFS_NCBRS *
-						sizeof(struct afs_cbr));
+	    tsp = afs_osi_Alloc(AFS_NCBRS * sizeof(struct afs_cbr));
+	    osi_Assert(tsp != NULL);
 	    for (i = 0; i < AFS_NCBRS - 1; i++) {
 		tsp[i].next = &tsp[i + 1];
 	    }
@@ -382,6 +382,7 @@ afs_FlushVCBs(afs_int32 lockit)
 	return code;
     treq.flags |= O_NONBLOCK;
     tfids = afs_osi_Alloc(sizeof(struct AFSFid) * AFS_MAXCBRSCALL);
+    osi_Assert(tfids != NULL);
 
     if (lockit)
 	ObtainWriteLock(&afs_xvcb, 273);
@@ -673,9 +674,8 @@ afs_ShakeLooseVCaches(afs_int32 anumber)
 	uq = QPrev(tq);
 	if (tvc->f.states & CVFlushed) {
 	    refpanic("CVFlushed on VLRU");
-	    /* In the other path, this was 2 * afs_cacheStats */
-	} else if (!afsd_dynamic_vcaches && i++ > afs_maxvcount) {
-	    refpanic("Exceeded pool of AFS vnodes(VLRU cycle?)");
+	} else if (!afsd_dynamic_vcaches && i++ > afs_vcount) {
+	    refpanic("Found too many AFS vnodes on VLRU (VLRU cycle?)");
 	} else if (QNext(uq) != tq) {
 	    refpanic("VLRU inconsistent");
 	} else if (tvc->f.states & CVInit) {
@@ -693,10 +693,11 @@ afs_ShakeLooseVCaches(afs_int32 anumber)
 	    i = 0;
 	    continue;	/* start over - may have raced. */
 	}
-	if (tq == uq) {
+	if (uq == &VLRU) {
 	    if (anumber && !defersleep) {
 		defersleep = 1;
-		tq = VLRU.prev;
+		uq = VLRU.prev;
+		i = 0;
 		continue;
 	    }
 	    break;
@@ -803,18 +804,18 @@ afs_FlushAllVCaches(void)
 
  retry:
     for (i = 0; i < VCSIZE; i++) {
-        for (tvc = afs_vhashT[i]; tvc; tvc = nvc) {
-            int slept;
+	for (tvc = afs_vhashT[i]; tvc; tvc = nvc) {
+	    int slept;
 
-            nvc = tvc->hnext;
-            if (afs_FlushVCache(tvc, &slept)) {
-                afs_warn("Failed to flush vcache 0x%lx\n", (unsigned long)(uintptrsz)tvc);
-            }
-            if (slept) {
-                goto retry;
-            }
-            tvc = nvc;
-        }
+	    nvc = tvc->hnext;
+	    if (afs_FlushVCache(tvc, &slept)) {
+		afs_warn("Failed to flush vcache 0x%lx\n", (unsigned long)(uintptrsz)tvc);
+	    }
+	    if (slept) {
+		goto retry;
+	    }
+	    tvc = nvc;
+	}
     }
 
     ReleaseWriteLock(&afs_xvcache);
@@ -1421,13 +1422,10 @@ afs_ProcessFS(struct vcache *avc,
 	      struct AFSFetchStatus *astat, struct vrequest *areq)
 {
     afs_size_t length;
-#ifdef AFS_DARWIN80_ENV
-    int fixup = 0;
-#endif
     AFS_STATCNT(afs_ProcessFS);
 
     if (astat->InterfaceVersion == DONT_PROCESS_FS)
-        return;
+	return;
 #ifdef AFS_64BIT_CLIENT
     FillInt64(length, astat->Length_hi, astat->Length);
 #else /* AFS_64BIT_CLIENT */
@@ -1460,32 +1458,17 @@ afs_ProcessFS(struct vcache *avc,
     avc->f.m.Group = astat->Group;
     avc->f.m.LinkCount = astat->LinkCount;
     if (astat->FileType == File) {
-#ifdef AFS_DARWIN80_ENV
-        if (avc->f.m.Type != VREG)
-            fixup = 1;
-#endif
 	vSetType(avc, VREG);
 	avc->f.m.Mode |= S_IFREG;
+	fillVcacheProtocol(avc, astat);
     } else if (astat->FileType == Directory) {
-#ifdef AFS_DARWIN80_ENV
-        if (avc->f.m.Type != VDIR)
-            fixup = 1;
-#endif
 	vSetType(avc, VDIR);
 	avc->f.m.Mode |= S_IFDIR;
     } else if (astat->FileType == SymbolicLink) {
 	if (afs_fakestat_enable && (avc->f.m.Mode & 0111) == 0) {
-#ifdef AFS_DARWIN80_ENV
-            if (avc->f.m.Type != VDIR)
-                fixup = 1;
-#endif
 	    vSetType(avc, VDIR);
 	    avc->f.m.Mode |= S_IFDIR;
 	} else {
-#ifdef AFS_DARWIN80_ENV
-            if (avc->f.m.Type != VLNK)
-                fixup = 1;
-#endif
 	    vSetType(avc, VLNK);
 	    avc->f.m.Mode |= S_IFLNK;
 	}
@@ -1493,12 +1476,7 @@ afs_ProcessFS(struct vcache *avc,
 	    avc->mvstat = 1;
 	}
     }
-#ifdef AFS_DARWIN80_ENV
-    if (fixup)
-	printf("found mistyped vnode!\n");
-#endif
     avc->f.anyAccess = astat->AnonymousAccess;
-    fillVcacheProtocol(avc, astat);
 #ifdef badidea
     if ((astat->CallerAccess & ~astat->AnonymousAccess))
 	/*   USED TO SAY :
@@ -1547,7 +1525,6 @@ afs_RemoteLookup(struct VenusFid *afid, struct vrequest *areq,
 		 struct AFSVolSync *tsyncp)
 {
     afs_int32 code;
-    afs_uint32 start;
     struct afs_conn *tc;
     struct rx_connection *rxconn;
     struct AFSFetchStatus OutDirStatus;
@@ -1559,7 +1536,6 @@ afs_RemoteLookup(struct VenusFid *afid, struct vrequest *areq,
 	if (tc) {
 	    if (serverp)
 		*serverp = tc->srvr->server;
-	    start = osi_Time();
 	    XSTATS_START_TIME(AFS_STATS_FS_RPCIDX_XLOOKUP);
 	    RX_AFS_GUNLOCK();
 	    code =
@@ -1818,14 +1794,11 @@ afs_GetVCache(struct VenusFid *afid, struct vrequest *areq,
 	    } else {
 	        code = afs_FetchStatus(tvc, afid, areq, &OutStatus);
 #if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
-                if (!code && visible && OutStatus.FileType == File) {
-                    tvc->f.states |= CPartVisible;
-                    afs_Trace3(afs_iclSetp, CM_TRACE_WASHERE,
-                           ICL_TYPE_STRING, __FILE__,
-                           ICL_TYPE_INT32, __LINE__, ICL_TYPE_INT32, 0);
-                }
+		if (!code && visible && OutStatus.FileType == File) {
+		    tvc->f.states |= CPartVisible;
+		}
 #endif
-            }
+	    }
 
 	    /* For the NFS translator's benefit, make sure
 	     * non-directory vnodes always have their parent FID set
@@ -1992,12 +1965,9 @@ afs_LookupVCache(struct VenusFid *afid, struct vrequest *areq,
 	    *tvc->mvid = tvp->dotdot;
 	}
 #if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
-        if (tvp->states & VPartVisible && (afs_protocols & VICEP_ACCESS)) {
-            tvc->f.states |= CPartVisible;
-            afs_Trace3(afs_iclSetp, CM_TRACE_WASHERE,
-                       ICL_TYPE_STRING, __FILE__,
-                       ICL_TYPE_INT32, __LINE__, ICL_TYPE_INT32, 0);
-        }
+	if (tvp->states & VPartVisible && (afs_protocols & VICEP_ACCESS)) {
+	    tvc->f.states |= CPartVisible;
+	}
 #endif
     }
 
@@ -2341,6 +2311,49 @@ afs_UpdateStatus(struct vcache *avc, struct VenusFid *afid,
     	afs_PutVolume(volp, READ_LOCK);
 }
 
+void
+afs_BadFetchStatus(struct afs_conn *tc)
+{
+    int addr = ntohl(tc->srvr->sa_ip);
+    afs_warn("afs: Invalid AFSFetchStatus from server %u.%u.%u.%u\n",
+             (addr >> 24) & 0xff, (addr >> 16) & 0xff, (addr >> 8) & 0xff,
+             (addr) & 0xff);
+    afs_warn("afs: This suggests the server may be sending bad data that "
+             "can lead to availability issues or data corruption. The "
+             "issue has been avoided for now, but it may not always be "
+             "detectable. Please upgrade the server if possible.\n");
+}
+
+/**
+ * Check if a given AFSFetchStatus structure is sane.
+ *
+ * @param[in] tc The server from which we received the status
+ * @param[in] status The status we received
+ *
+ * @return whether the given structure is valid or not
+ *  @retval 0 the structure is fine
+ *  @retval nonzero the structure looks like garbage; act as if we received
+ *                  the returned error code from the server
+ */
+int
+afs_CheckFetchStatus(struct afs_conn *tc, struct AFSFetchStatus *status)
+{
+    if (status->errorCode ||
+        status->InterfaceVersion != 1 ||
+        !(status->FileType > Invalid && status->FileType <= SymbolicLink) ||
+        status->ParentVnode == 0 || status->ParentUnique == 0) {
+
+	afs_warn("afs: FetchStatus ec %u iv %u ft %u pv %u pu %u\n",
+	         (unsigned)status->errorCode, (unsigned)status->InterfaceVersion,
+	         (unsigned)status->FileType, (unsigned)status->ParentVnode,
+	         (unsigned)status->ParentUnique);
+	afs_BadFetchStatus(tc);
+
+	return VBUSY;
+    }
+    return 0;
+}
+
 /*!
  * Must be called with avc write-locked
  * don't absolutely have to invalidate the hint unless the dv has
@@ -2371,6 +2384,10 @@ afs_FetchStatus(struct vcache * avc, struct VenusFid * afid,
 	    RX_AFS_GLOCK();
 
 	    XSTATS_END_TIME;
+
+	    if (code == 0) {
+		code = afs_CheckFetchStatus(tc, Outsp);
+	    }
 
 	} else
 	    code = -1;
@@ -2958,7 +2975,8 @@ afs_vcacheInit(int astatSize)
 
 #if !defined(AFS_LINUX22_ENV)
     /* Allocate and thread the struct vcache entries */
-    tvp = (struct vcache *)afs_osi_Alloc(astatSize * sizeof(struct vcache));
+    tvp = afs_osi_Alloc(astatSize * sizeof(struct vcache));
+    osi_Assert(tvp != NULL);
     memset(tvp, 0, sizeof(struct vcache) * astatSize);
 
     Initial_freeVCList = tvp;

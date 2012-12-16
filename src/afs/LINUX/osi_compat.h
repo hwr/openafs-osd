@@ -333,7 +333,11 @@ afs_get_dentry_from_fh(struct super_block *afs_cacheSBp, afs_dcache_id_t *ainode
 static inline int
 afs_get_fh_from_dentry(struct dentry *dp, afs_ufs_dcache_id_t *ainode, int *max_lenp) {
     if (dp->d_sb->s_export_op->encode_fh)
+#if defined(EXPORT_OP_ENCODE_FH_TAKES_INODES)
+        return dp->d_sb->s_export_op->encode_fh(dp->d_inode, &ainode->raw[0], max_lenp, NULL);
+#else
         return dp->d_sb->s_export_op->encode_fh(dp, &ainode->raw[0], max_lenp, 0);
+#endif
 #if defined(NEW_EXPORT_OPS)
     /* If fs doesn't provide an encode_fh method, assume the default INO32 type */
     *max_lenp = sizeof(struct fid)/4;
@@ -440,5 +444,57 @@ afs_get_dentry_ref(struct path *path, struct vfsmount **mnt, struct dentry **dpp
     path_release(nd);
 #endif
 }
+
+#if defined(STRUCT_TASK_STRUCT_HAS_CRED)
+static inline struct file *
+afs_dentry_open(struct dentry *dp, struct vfsmount *mnt, int flags, const struct cred *creds) {
+#if defined(DENTRY_OPEN_TAKES_PATH)
+    struct path path;
+    struct file *filp;
+    path.mnt = mnt;
+    path.dentry = dp;
+    filp = dentry_open(&path, flags, creds);
+    return filp;
+#else
+    return dentry_open(dp, mntget(mnt), flags, creds);
+#endif
+}
+#endif
+
+#if !defined(STRUCT_FILENAME_HAS_NAME)
+typedef char *afs_name_t;
+
+static inline char *
+afs_name_to_string(afs_name_t s) {
+    return (char *)s;
+}
+
+static inline void
+afs_putname(afs_name_t name) {
+    putname((char *)name);
+}
+
+static inline void
+afs_set_name(afs_name_t name, char *string) {
+    name = string;
+}
+#else
+typedef struct filename *afs_name_t;
+
+static inline char *
+afs_name_to_string(afs_name_t s) {
+    return (char *)s->name;
+}
+
+static inline void
+afs_putname(afs_name_t name) {
+    kmem_cache_free(names_cachep, (void *)name);
+}
+
+static inline void
+afs_set_name(afs_name_t aname, char *string) {
+    aname->name = string;
+}
+#endif
 
 #endif /* AFS_LINUX_OSI_COMPAT_H */

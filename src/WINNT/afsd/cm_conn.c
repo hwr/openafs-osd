@@ -225,7 +225,7 @@ cm_SetServerBusyStatus(cm_serverRef_t *serversp, cm_server_t *serverp)
     for (tsrp = serversp; tsrp; tsrp=tsrp->next) {
         if (tsrp->status == srv_deleted)
             continue;
-        if (tsrp->server == serverp && tsrp->status == srv_not_busy) {
+        if (cm_ServerEqual(tsrp->server, serverp) && tsrp->status == srv_not_busy) {
             tsrp->status = srv_busy;
             break;
         }
@@ -662,24 +662,57 @@ cm_Analyze(cm_conn_t *connp,
 
             if (cm_ServerEqual(tsrp->server, serverp)) {
                 /* REDIRECT */
-                if (errorCode == VMOVED || errorCode == VNOVOL) {
-                    osi_Log2(afsd_logp, "volume %d not present on server %s",
+                switch (errorCode) {
+                case VMOVED:
+                    osi_Log2(afsd_logp, "volume %u moved from server %s",
                              fidp->volume, osi_LogSaveString(afsd_logp,addr));
                     tsrp->status = srv_deleted;
                     if (fidp)
                         cm_RemoveVolumeFromServer(serverp, fidp->volume);
-                } else {
-                    osi_Log2(afsd_logp, "volume %d instance on server %s marked offline",
-                             fidp->volume, osi_LogSaveString(afsd_logp,addr));
+                    break;
+                case VNOVOL:
+                    /*
+                     * The 1.6.0 and 1.6.1 file servers send transient VNOVOL errors which
+                     * are no indicative of the volume not being present.  For example,
+                     * VNOVOL can be sent during a transition to a VBUSY state prior to
+                     * salvaging or when cloning a .backup volume instance.  As a result
+                     * the cache manager must attempt at least one retry when a VNOVOL is
+                     * receive but there are no changes to the volume location information.
+                     */
+                    if (reqp->vnovolError > 0 && cm_ServerEqual(reqp->errorServp, serverp)) {
+                        osi_Log2(afsd_logp, "volume %u not present on server %s",
+                                  fidp->volume, osi_LogSaveString(afsd_logp,addr));
+                        tsrp->status = srv_deleted;
+                        if (fidp)
+                            cm_RemoveVolumeFromServer(serverp, fidp->volume);
+                    } else {
+                        osi_Log2(afsd_logp, "VNOVOL received for volume %u from server %s",
+                                 fidp->volume, osi_LogSaveString(afsd_logp,addr));
+                        if (replicated) {
+                            cm_SetServerBusyStatus(serversp, serverp);
+                        } else {
+                            Sleep(2000);
+                        }
+                    }
+                    break;
+                case VOFFLINE:
+                    osi_Log2(afsd_logp, "VOFFLINE received for volume %u from server %s",
+                              fidp->volume, osi_LogSaveString(afsd_logp,addr));
                     tsrp->status = srv_offline;
+                    break;
+                default:
+                    osi_Log3(afsd_logp, "volume %u exists on server %s with status %u",
+                             fidp->volume, osi_LogSaveString(afsd_logp,addr), tsrp->status);
                 }
-                /* break; */
-            } else {
-                osi_Log3(afsd_logp, "volume %d exists on server %s with status %u",
-                         fidp->volume, osi_LogSaveString(afsd_logp,addr), tsrp->status);
             }
         }
         lock_ReleaseWrite(&cm_serverLock);
+
+        /* Remember that the VNOVOL error occurred */
+        if (errorCode == VNOVOL) {
+            reqp->errorServp = serverp;
+            reqp->vnovolError++;
+        }
 
         /* Free the server list before cm_ForceUpdateVolume is called */
         if (free_svr_list) {
@@ -745,7 +778,7 @@ cm_Analyze(cm_conn_t *connp,
             LogEvent(EVENTLOG_WARNING_TYPE, MSG_RX_HARD_DEAD_TIME_EXCEEDED, addr);
             osi_Log1(afsd_logp, "cm_Analyze: hardDeadTime or idleDeadtime exceeded addr[%s]",
                      osi_LogSaveString(afsd_logp,addr));
-            reqp->tokenIdleErrorServp = serverp;
+            reqp->errorServp = serverp;
             reqp->idleError++;
         }
 
@@ -838,8 +871,9 @@ cm_Analyze(cm_conn_t *connp,
                         ((serverp->addr.sin_addr.s_addr & 0xff0000)>> 16),
                         ((serverp->addr.sin_addr.s_addr & 0xff000000)>> 24));
 
-            LogEvent(EVENTLOG_WARNING_TYPE, MSG_SERVER_REPORTS_VNOSERVICE, addr);
-            osi_Log1(afsd_logp, "Server %s reported volume %d in cell %s as not in service.",
+            LogEvent(EVENTLOG_WARNING_TYPE, MSG_SERVER_REPORTS_VNOSERVICE,
+                     addr, fidp->volume, cellp->name);
+            osi_Log3(afsd_logp, "Server %s reported rpc to volume %d in cell %s as not serviced.",
                      osi_LogSaveString(afsd_logp,addr), fidp->volume, cellp->name);
         }
 
@@ -912,7 +946,7 @@ cm_Analyze(cm_conn_t *connp,
         }
 
         if (replicated && serverp) {
-            reqp->tokenIdleErrorServp = serverp;
+            reqp->errorServp = serverp;
             reqp->tokenError = errorCode;
 
             if (timeLeft > 2)
@@ -988,7 +1022,7 @@ cm_Analyze(cm_conn_t *connp,
 
         if (serverp) {
             if (reqp->flags & CM_REQ_NEW_CONN_FORCED) {
-                reqp->tokenIdleErrorServp = serverp;
+                reqp->errorServp = serverp;
                 reqp->tokenError = errorCode;
             } else {
                 reqp->flags |= CM_REQ_NEW_CONN_FORCED;
@@ -1036,7 +1070,7 @@ cm_Analyze(cm_conn_t *connp,
                   errorCode, s);
 
         if (serverp) {
-            reqp->tokenIdleErrorServp = serverp;
+            reqp->errorServp = serverp;
             reqp->tokenError = errorCode;
             retry = 1;
         }
@@ -1049,7 +1083,7 @@ cm_Analyze(cm_conn_t *connp,
          * and force the use of another server.
          */
         if (serverp) {
-            reqp->tokenIdleErrorServp = serverp;
+            reqp->errorServp = serverp;
             reqp->tokenError = errorCode;
             retry = 1;
         }
@@ -1245,15 +1279,15 @@ long cm_ConnByMServers(cm_serverRef_t *serversp, afs_uint32 replicated, cm_user_
             continue;
 
         tsp = tsrp->server;
-        if (reqp->tokenIdleErrorServp) {
+        if (reqp->errorServp) {
             /*
              * search the list until we find the server
              * that failed last time.  When we find it
              * clear the error, skip it and try the one
              * in the list.
              */
-            if (tsp == reqp->tokenIdleErrorServp)
-                reqp->tokenIdleErrorServp = NULL;
+            if (tsp == reqp->errorServp)
+                reqp->errorServp = NULL;
             continue;
         }
         if (tsp) {
@@ -1474,21 +1508,21 @@ long cm_ConnByServer(cm_server_t *serverp, cm_user_t *userp, afs_uint32 replicat
         cm_GetServer(serverp);
         tcp = malloc(sizeof(*tcp));
         memset(tcp, 0, sizeof(*tcp));
-        tcp->nextp = serverp->connsp;
-        serverp->connsp = tcp;
         cm_HoldUser(userp);
         tcp->userp = userp;
         lock_InitializeMutex(&tcp->mx, "cm_conn_t mutex", LOCK_HIERARCHY_CONN);
-        lock_ObtainMutex(&tcp->mx);
         tcp->serverp = serverp;
         tcp->cryptlevel = rxkad_clear;
         cm_NewRXConnection(tcp, ucellp, serverp, replicated);
         tcp->refCount = 1;
-        lock_ReleaseMutex(&tcp->mx);
+        tcp->nextp = serverp->connsp;
+        serverp->connsp = tcp;
         lock_ReleaseWrite(&cm_connLock);
+        lock_ReleaseMutex(&userp->mx);
     } else {
         lock_ReleaseRead(&cm_connLock);
       haveconn:
+        lock_ReleaseMutex(&userp->mx);
         InterlockedIncrement(&tcp->refCount);
 
         lock_ObtainMutex(&tcp->mx);
@@ -1500,14 +1534,13 @@ long cm_ConnByServer(cm_server_t *serverp, cm_user_t *userp, afs_uint32 replicat
                 osi_Log0(afsd_logp, "cm_ConnByServer replace connection due to token update");
             else
                 osi_Log0(afsd_logp, "cm_ConnByServer replace connection due to crypt change");
-	    tcp->flags &= ~CM_CONN_FLAG_FORCE_NEW;
+            tcp->flags &= ~CM_CONN_FLAG_FORCE_NEW;
             rx_SetConnSecondsUntilNatPing(tcp->rxconnp, 0);
             rx_DestroyConnection(tcp->rxconnp);
             cm_NewRXConnection(tcp, ucellp, serverp, replicated);
         }
         lock_ReleaseMutex(&tcp->mx);
     }
-    lock_ReleaseMutex(&userp->mx);
 
     /* return this pointer to our caller */
     osi_Log1(afsd_logp, "cm_ConnByServer returning conn 0x%p", tcp);

@@ -22,9 +22,6 @@ extern int namei_unlink(char *name);
 extern Inode namei_MakeSpecIno(int volid, int type);
 extern Inode namei_icreate(IHandle_t * lh, char *part, afs_uint32 p1,
 			   afs_uint32 p2, afs_uint32 p3, afs_uint32 p4);
-extern Inode namei_icreate_open(IHandle_t * lh, char *part, afs_uint32 p1,
-			   afs_uint32 p2, afs_uint32 p3, afs_uint32 p4,
-			   afs_uint64 size, int *open_fd);
 extern FD_t namei_iopen(IHandle_t * h);
 extern int namei_irelease(IHandle_t * h);
 afs_sfsize_t namei_iread(IHandle_t * h, afs_foff_t offset, char *buf,
@@ -51,9 +48,6 @@ int ListViceInodes(char *devname, char *mountedOn, FILE *inodeFile,
 		   afs_uint32 singleVolumeNumber, int *forcep, int forceR,
 		   char *wpath, void *rock);
 
-#ifndef FSSYNC_BUILD_CLIENT
-extern int convertVolumeInfo(FD_t fdr, FD_t fdw, afs_uint32 vid, int osdSeen);
-#endif
 #define NAMEI_LCOMP_LEN 32
 #define NAMEI_PATH_LEN 256
 
@@ -82,7 +76,7 @@ typedef struct {
 #endif
 
 void namei_HandleToName(namei_t * name, IHandle_t * h);
-int namei_ConvertROtoRWvolume(char *pname, afs_uint32 volumeId, afs_uint32 *newId);
+int namei_ConvertROtoRWvolume(char *pname, afs_uint32 volumeId);
 int namei_replace_file_by_hardlink(IHandle_t *hLink, IHandle_t *hTarget);
 
 # ifdef AFS_SALSRV_ENV

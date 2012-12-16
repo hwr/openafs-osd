@@ -328,18 +328,20 @@ FSYNC_sync(void * args)
 #if defined(HAVE_POLL) && defined(AFS_PTHREAD_ENV)
         int nfds;
         GetHandler(FSYNC_readfds, MAXHANDLERS, POLLIN|POLLPRI, &nfds);
-        if (poll(FSYNC_readfds, nfds, -1) >=1)
+        if (poll(FSYNC_readfds, nfds, 10000) >=1)
 	    CallHandler(FSYNC_readfds, nfds, POLLIN|POLLPRI);
 #else
 	int maxfd;
+#ifdef AFS_PTHREAD_ENV
 	struct timeval s_timeout;
+#endif
 	GetHandler(&FSYNC_readfds, &maxfd);
-	s_timeout.tv_sec = SYNC_SELECT_TIMEOUT;
-	s_timeout.tv_usec = 0;
 	/* Note: check for >= 1 below is essential since IOMGR_select
 	 * doesn't have exactly same semantics as select.
 	 */
 #ifdef AFS_PTHREAD_ENV
+	s_timeout.tv_sec = SYNC_SELECT_TIMEOUT;
+	s_timeout.tv_usec = 0;
 	if (select(maxfd + 1, &FSYNC_readfds, NULL, NULL, &s_timeout) >= 1)
 #else /* AFS_PTHREAD_ENV */
 	if (IOMGR_Select(maxfd + 1, &FSYNC_readfds, NULL, NULL, NULL) >= 1)

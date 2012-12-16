@@ -513,6 +513,8 @@ VOptDefaults(ProgramType pt, VolumePackageOptions *opts)
     opts->canUseSALVSYNC = 0;
 
     opts->interrupt_rxcall = NULL;
+    opts->usage_threshold = 128;
+    opts->usage_rate_limit = 5;
 
 #ifdef FAST_RESTART
     opts->unsafe_attach = 1;
@@ -3059,6 +3061,9 @@ attach_volume_header(Error *ec, Volume *vp, struct DiskPartition64 *partp,
     }
 
     if (*ec) {
+        VOL_LOCK;
+        FreeVolumeHeader(vp);
+        VOL_UNLOCK;
 	return;
     }
     if (retry) {
@@ -3190,11 +3195,11 @@ attach2(Error * ec, VolId volumeId, char *path, struct DiskPartition64 *partp,
     /* have we read in the header successfully? */
     int read_header = 0;
 
+#ifdef AFS_DEMAND_ATTACH_FS
     /* should we FreeVolume(vp) instead of VCheckFree(vp) in the error
      * cleanup? */
     int forcefree = 0;
 
-#ifdef AFS_DEMAND_ATTACH_FS
     /* in the case of an error, to what state should the volume be
      * transitioned? */
     VolState error_state = VOL_STATE_ERROR;
@@ -3347,11 +3352,11 @@ attach2(Error * ec, VolId volumeId, char *path, struct DiskPartition64 *partp,
     VOL_LOCK;
     vp->nextVnodeUnique = V_uniquifier(vp);
 
-    if (VCanUnsafeAttach() && VolumeWriteable(vp) && V_inUse(vp) == fileServer
+    if (VCanUnsafeAttach() && VolumeWriteable(vp) && V_inUse(vp) == fileServer 
       && !V_needsSalvaged(vp)) {
 	Log("VAttachVolume: clearing inUse flag in volume %s to avoid salvage.\n",
 	    path);
- 	V_inUse(vp) = 0;
+	V_inUse(vp) = 0;
     }
 
     if (VShouldCheckInUse(mode) && V_inUse(vp) && VolumeWriteable(vp)) {
@@ -3388,10 +3393,10 @@ attach2(Error * ec, VolId volumeId, char *path, struct DiskPartition64 *partp,
 	VRequestSalvage_r(ec, vp, SALVSYNC_ERROR, VOL_SALVAGE_NO_OFFLINE);
 	VChangeState_r(vp, VOL_STATE_ERROR);
 	vp->nUsers = 0;
+	forcefree = 1;
 #endif /* AFS_DEMAND_ATTACH_FS */
 	Log("VAttachVolume: volume %s is junk; it should be destroyed at next salvage\n", path);
 	*ec = VNOVOL;
-	forcefree = 1;
 	goto locked_error;
     }
 
@@ -3500,7 +3505,7 @@ attach2(Error * ec, VolId volumeId, char *path, struct DiskPartition64 *partp,
 	}
     } else {
 #ifdef AFS_DEMAND_ATTACH_FS
-	if ((mode != V_PEEK) && (mode != V_SECRETLY))
+	if ((mode != V_PEEK) && (mode != V_SECRETLY) && (mode != V_READONLY))
 	    V_inUse(vp) = programType;
 #endif /* AFS_DEMAND_ATTACH_FS */
 	V_checkoutMode(vp) = mode;
@@ -3542,6 +3547,7 @@ locked_error:
     if (read_header) {
 	VReleaseVolumeHandles_r(vp);
     }
+
  error_notbroken:
 #ifdef AFS_DEMAND_ATTACH_FS
     VCheckSalvage(vp);
@@ -4036,18 +4042,18 @@ GetVolume(Error * ec, Error * client_ec, VolId volumeId, Volume * hint,
 	 *   - VOL_STATE_SHUTTING_DOWN
 	 */
 	if ((V_attachState(vp) == VOL_STATE_ERROR) ||
-	    (V_attachState(vp) == VOL_STATE_SHUTTING_DOWN) ||
-	    (V_attachState(vp) == VOL_STATE_GOING_OFFLINE)) {
+	    (V_attachState(vp) == VOL_STATE_SHUTTING_DOWN)) {
 	    *ec = VNOVOL;
 	    vp = NULL;
 	    break;
 	}
 
 	/*
-	 * short circuit with VOFFLINE for VOL_STATE_UNATTACHED and
+	 * short circuit with VOFFLINE for VOL_STATE_UNATTACHED/GOING_OFFLINE and
 	 *                    VNOVOL   for VOL_STATE_DELETED
 	 */
        if ((V_attachState(vp) == VOL_STATE_UNATTACHED) ||
+	   (V_attachState(vp) == VOL_STATE_GOING_OFFLINE) ||
            (V_attachState(vp) == VOL_STATE_DELETED)) {
 	   if (vp->specialStatus) {
 	       *ec = vp->specialStatus;
@@ -4100,9 +4106,17 @@ GetVolume(Error * ec, Error * client_ec, VolId volumeId, Volume * hint,
 		    if (!vp->pending_vol_op) {
 			endloop = 1;
 		    }
+		    if (vp->specialStatus) {
+			*ec = vp->specialStatus;
+		    }
 		    break;
+
 		default:
-		    *ec = VNOVOL;
+		    if (vp->specialStatus) {
+			*ec = vp->specialStatus;
+		    } else {
+			*ec = VNOVOL;
+		    }
 		    endloop = 1;
 		}
 		if (endloop) {
@@ -4114,14 +4128,7 @@ GetVolume(Error * ec, Error * client_ec, VolId volumeId, Volume * hint,
 
 	if (VIsSalvaging(vp) || (*ec == VSALVAGING)) {
 	    if (client_ec) {
-		/* see CheckVnode() in afsfileprocs.c for an explanation
-		 * of this error code logic */
-		afs_uint32 now = FT_ApproxTime();
-		if ((vp->stats.last_salvage + (10 * 60)) >= now) {
-		    *client_ec = VBUSY;
-		} else {
-		    *client_ec = VRESTARTING;
-		}
+		*client_ec = VOFFLINE;
 	    }
 	    *ec = VSALVAGING;
 	    vp = NULL;
@@ -4522,6 +4529,7 @@ VOffline(Volume * vp, char *message)
 void
 VDetachVolume_r(Error * ec, Volume * vp)
 {
+#ifdef FSSYNC_BUILD_CLIENT
     VolumeId volume;
     struct DiskPartition64 *tpartp;
     int notifyServer = 0;
@@ -4545,6 +4553,8 @@ VDetachVolume_r(Error * ec, Volume * vp)
 # endif
     tpartp = vp->partition;
     volume = V_id(vp);
+#endif /* FSSYNC_BUILD_CLIENT */
+    *ec = 0;                   /* always "succeeds" */
     DeleteVolumeFromHashTable(vp);
     vp->shuttingDown = 1;
 #ifdef AFS_DEMAND_ATTACH_FS
@@ -6587,10 +6597,17 @@ VBumpVolumeUsage_r(Volume * vp)
     if (now - V_dayUseDate(vp) > OneDay)
 	VAdjustVolumeStatistics_r(vp);
     /*
-     * Save the volume header image to disk after every 128 bumps to dayUse.
+     * Save the volume header image to disk after a threshold of bumps to dayUse,
+     * at most every usage_rate_limit seconds.
      */
-    if ((V_dayUse(vp)++ & 127) == 0) {
+
+    V_dayUse(vp)++;
+    vp->usage_bumps_outstanding++;
+    if (vp->usage_bumps_outstanding >= vol_opts.usage_threshold
+        && vp->usage_bumps_next_write <= now) {
 	Error error;
+	vp->usage_bumps_outstanding = 0;
+	vp->usage_bumps_next_write = now + vol_opts.usage_rate_limit;
 	VUpdateVolume_r(&error, vp, VOL_UPDATE_WAIT);
     }
 }
@@ -8688,7 +8705,7 @@ VVByPListWait_r(struct DiskPartition64 * dp)
 void
 VPrintCacheStats_r(void)
 {
-    afs_uint32 get_hi, get_lo, load_hi, load_lo;
+    afs_uint32 get_hi AFS_UNUSED, get_lo, load_hi AFS_UNUSED, load_lo;
     struct VnodeClassInfo *vcp;
     vcp = &VnodeClassInfo[vLarge];
     Log("Large vnode cache, %d entries, %d allocs, %d gets (%d reads), %d writes\n", vcp->cacheSize, vcp->allocs, vcp->gets, vcp->reads, vcp->writes);

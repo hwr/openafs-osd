@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -419,7 +419,7 @@ initLightObject(char *a_name, int a_x, int a_y, int a_width,
  *------------------------------------------------------------------------*/
 
 int
-justify_light(char *a_srcbuff, char *a_dstbuff, int a_dstwidth, 
+justify_light(char *a_srcbuff, char *a_dstbuff, int a_dstwidth,
 	      int a_justification, int a_rightTrunc)
 {				/*justify_light */
 
@@ -447,7 +447,7 @@ justify_light(char *a_srcbuff, char *a_dstbuff, int a_dstwidth,
      * we automatically shorten up.
      */
     if (a_dstwidth > GATOR_LABEL_CHARS) {
-	/* 
+	/*
 	 * if (afsmon_debug) {
 	 * fprintf(debugFD,
 	 * "[%s] Dest width (%d) > gtx buflen (%d), shrinking dest width\n",
@@ -537,7 +537,7 @@ justify_light(char *a_srcbuff, char *a_dstbuff, int a_dstwidth,
  *
  * Description:
  *	Call the exit routine. This function is mapped
- *	to the keys Q and  in all the frames and is called by the 
+ *	to the keys Q and  in all the frames and is called by the
  * 	gtx input server.
  *----------------------------------------------------------------------*/
 
@@ -575,8 +575,8 @@ int
 ovw_refresh(int a_pageNum,	/* page to refresh overview display */
 	    int a_updateType)	/* OVW_UPDATE_FS = update fs column only,
 				 * OVW_UPDATE_CM = update cm column only,
-				 * OVW_UPDATE_BOTH = update fs & cm columns. Note that 
-				 * we do not want to update a column until the 
+				 * OVW_UPDATE_BOTH = update fs & cm columns. Note that
+				 * we do not want to update a column until the
 				 * corresponding probe cycle has completed */
 {				/* ovw_refresh */
 
@@ -600,7 +600,7 @@ ovw_refresh(int a_pageNum,	/* page to refresh overview display */
 	fflush(debugFD);
     }
 
-    /* if the data is not yet available  ie., not one probe cycle has 
+    /* if the data is not yet available  ie., not one probe cycle has
      * completed, do nothing */
 
     if ((a_updateType & OVW_UPDATE_FS) && !fs_Data_Available)
@@ -1036,7 +1036,6 @@ create_ovwFrame_objects(void)
     int hostLines;		/* number of lines of host names to display */
     struct onode **ovw_fsNames_o_Ptr;	/* index to list of fs names onodes */
     struct onode **ovw_cmNames_o_Ptr;	/* index to list of cm names onodes */
-    int code;
     int i;
 
     if (afsmon_debug) {
@@ -1066,8 +1065,8 @@ create_ovwFrame_objects(void)
 	sprintf(errMsg, "[ %s ] Failed to create initMsg_o onode\n", rn);
 	afsmon_Exit(250);
     }
-    code = gtxframe_AddToList(ovwFrame, initMsg_o);
-    code = gator_light_set(initMsg_o, HIGHLIGHT);
+    gtxframe_AddToList(ovwFrame, initMsg_o);
+    gator_light_set(initMsg_o, HIGHLIGHT);
     initMsg_on = 1;
 
 
@@ -1079,8 +1078,8 @@ create_ovwFrame_objects(void)
 	sprintf(errMsg, "[ %s ] Failed to create command onode\n", rn);
 	afsmon_Exit(265);
     }
-    code = gtxframe_AddToList(ovwFrame, ovw_cmd_o);
-    code = gator_light_set(ovw_cmd_o, HIGHLIGHT);
+    gtxframe_AddToList(ovwFrame, ovw_cmd_o);
+    gator_light_set(ovw_cmd_o, HIGHLIGHT);
 
     /* create the program name object */
 
@@ -1089,8 +1088,8 @@ create_ovwFrame_objects(void)
 	sprintf(errMsg, "[ %s ] Failed to create programName onode\n", rn);
 	afsmon_Exit(255);
     }
-    code = gtxframe_AddToList(ovwFrame, ovw_progName_o);
-    code = gator_light_set(ovw_progName_o, HIGHLIGHT);
+    gtxframe_AddToList(ovwFrame, ovw_progName_o);
+    gator_light_set(ovw_progName_o, HIGHLIGHT);
 
     /* create the page number object */
 
@@ -1101,8 +1100,8 @@ create_ovwFrame_objects(void)
 	sprintf(errMsg, "[ %s ] Failed to create pageNumber onode\n", rn);
 	afsmon_Exit(260);
     }
-    code = gtxframe_AddToList(ovwFrame, ovw_pageNum_o);
-    code = gator_light_set(ovw_pageNum_o, HIGHLIGHT);
+    gtxframe_AddToList(ovwFrame, ovw_pageNum_o);
+    gator_light_set(ovw_pageNum_o, HIGHLIGHT);
 
     /* create the probe number object */
     ovw_probeNum_o =
@@ -1112,8 +1111,8 @@ create_ovwFrame_objects(void)
 	sprintf(errMsg, "[ %s ] Failed to create probe number onode\n", rn);
 	afsmon_Exit(270);
     }
-    code = gtxframe_AddToList(ovwFrame, ovw_probeNum_o);
-    code = gator_light_set(ovw_probeNum_o, HIGHLIGHT);
+    gtxframe_AddToList(ovwFrame, ovw_probeNum_o);
+    gator_light_set(ovw_probeNum_o, HIGHLIGHT);
 
     /* create the numFS monitored object */
     ovw_numFS_o = initLightObject("", 0, 2, FC_NUMHOSTS_O_WIDTH, afsmon_win);
@@ -1121,7 +1120,7 @@ create_ovwFrame_objects(void)
 	sprintf(errMsg, "[ %s ] Failed to create numFS onode\n", rn);
 	afsmon_Exit(275);
     }
-    code = gtxframe_AddToList(ovwFrame, ovw_numFS_o);
+    gtxframe_AddToList(ovwFrame, ovw_numFS_o);
 
     /* create the numCM monitored object */
     ovw_numCM_o =
@@ -1130,7 +1129,7 @@ create_ovwFrame_objects(void)
 	sprintf(errMsg, "[ %s ] Failed to create numCM_o onode\n", rn);
 	afsmon_Exit(280);
     }
-    code = gtxframe_AddToList(ovwFrame, ovw_numCM_o);
+    gtxframe_AddToList(ovwFrame, ovw_numCM_o);
 
     /* create the number-of-FS-alerts object */
     ovw_FSalerts_o =
@@ -1139,7 +1138,7 @@ create_ovwFrame_objects(void)
 	sprintf(errMsg, "[ %s ] Failed to create FSalerts_o onode\n", rn);
 	afsmon_Exit(285);
     }
-    code = gtxframe_AddToList(ovwFrame, ovw_FSalerts_o);
+    gtxframe_AddToList(ovwFrame, ovw_FSalerts_o);
 
     /* create the number-of-CM-alerts object */
     ovw_CMalerts_o =
@@ -1148,7 +1147,7 @@ create_ovwFrame_objects(void)
 	sprintf(errMsg, "[ %s ] Failed to create CMalerts_o onode\n", rn);
 	afsmon_Exit(290);
     }
-    code = gtxframe_AddToList(ovwFrame, ovw_CMalerts_o);
+    gtxframe_AddToList(ovwFrame, ovw_CMalerts_o);
 
     /* create file-server-name and cache-manager-names objects */
     ovw_numHosts_perPage = maxY - OVW_NUM_FIXED_LINES;
@@ -1180,7 +1179,7 @@ create_ovwFrame_objects(void)
 	 * fflush(debugFD);
 	 * }
 	 */
-	code = gtxframe_AddToList(ovwFrame, *ovw_fsNames_o_Ptr);
+	gtxframe_AddToList(ovwFrame, *ovw_fsNames_o_Ptr);
 	ovw_fsNames_o_Ptr++;
 
     }
@@ -1206,7 +1205,7 @@ create_ovwFrame_objects(void)
 	    sprintf(errMsg, "[ %s ] Failed to create a CM name onode\n", rn);
 	    afsmon_Exit(310);
 	}
-	code = gtxframe_AddToList(ovwFrame, *ovw_cmNames_o_Ptr);
+	gtxframe_AddToList(ovwFrame, *ovw_cmNames_o_Ptr);
 	ovw_cmNames_o_Ptr++;
     }
 
@@ -1357,9 +1356,9 @@ resolve_CmdLine(char *a_buffer,	    /* buffer to copy command line */
  *	The data in the file server & cache manager frames are displayed
  *	in two objects, one below the other. If the data is too long to
  *	fit in the first object it will overflow into the next. This is
- *	to conserve real estate on the screen. This function copies the 
+ *	to conserve real estate on the screen. This function copies the
  *	contents of the source buffer adjusted to the two objects if the
- *	probe had succeded. Otherwise it enters "--" in the first object 
+ *	probe had succeded. Otherwise it enters "--" in the first object
  *	blanks out the second. If the object needs to be highlightned
  *	(due to a threshold crossing) it is done.
  *
@@ -1524,7 +1523,7 @@ display_Server_label(char *a_srcBuf,
 	part[i][j] = '\0';
     }
 
-    /* 
+    /*
      * if (afsmon_debug) {
      * fprintf(debugFD,"[ %s ] LABELS %s -> %s %s %s\n",
      * rn, a_srcBuf, part[0], part[1], part[2]);
@@ -1562,12 +1561,12 @@ display_Server_label(char *a_srcBuf,
  *
  * Description:
  *	Refresh the File Servers screen with the given page number starting
- *	at the given left-column number. The appropriate contents of 
- *	prev_fsData are displayed. 
+ *	at the given left-column number. The appropriate contents of
+ *	prev_fsData are displayed.
  *	First the status labels at the four corners of the screen are
  *	updated. Next the column labels are updated and then each row
  *	of statistics.
- *	
+ *
  * Returns:
  *	Success: 0
  *	Failure: Exits afsmoitor on a severe error.
@@ -1596,7 +1595,7 @@ fs_refresh(int a_pageNum,	/* page to display */
     int code;
     int fsIdx;
     int labelIdx;
-    int dataIndex;		/* index to the data[] field of 
+    int dataIndex;		/* index to the data[] field of
 				 * struct fs_Display_Data */
 
     if (afsmon_debug) {
@@ -1606,7 +1605,7 @@ fs_refresh(int a_pageNum,	/* page to display */
     }
 
 
-    /* if the data is not yet available, ie., not one probe cycle has 
+    /* if the data is not yet available, ie., not one probe cycle has
      * completed, do nothing */
 
     if (!fs_Data_Available)
@@ -1657,7 +1656,7 @@ fs_refresh(int a_pageNum,	/* page to display */
     /* command line */
 
     /* figure out what we need to show in the prompt & set the page type */
-    /* the fs_pageType variable is in turn used by the keyboard handler 
+    /* the fs_pageType variable is in turn used by the keyboard handler
      * routines to call fs_refresh() with the correct parameters */
 
     fs_pageType = resolve_CmdLine(cmdLine, 1 /* fs frame */ , a_pageNum,
@@ -1789,7 +1788,7 @@ fs_refresh(int a_pageNum,	/* page to display */
 	     * overflow flag is set and highlight if so. if the probe had failed
 	     * enter "--" is all columns */
 
-	    /* each host has two rows of slots for datums. get the pointers to 
+	    /* each host has two rows of slots for datums. get the pointers to
 	     * both the arrays */
 
 	    firstSlot_o_Ptr = tmp_fs_lines_P->data_o[0];
@@ -1903,7 +1902,7 @@ Switch_fs_2_ovw(void *d1, void *d2)
  * Switch_fs_2_cm()
  *
  * Description:
- *	Switch from the File Server screen to the Cache Managers screen. 
+ *	Switch from the File Server screen to the Cache Managers screen.
  *----------------------------------------------------------------------*/
 int
 Switch_fs_2_cm(void *d1, void *d2)
@@ -1919,7 +1918,7 @@ Switch_fs_2_cm(void *d1, void *d2)
  * Switch_fs_next()
  *
  * Description:
- *	Switch to next page of file server screen 
+ *	Switch to next page of file server screen
  *----------------------------------------------------------------------*/
 int
 Switch_fs_next(void *d1, void *d2)
@@ -1936,7 +1935,7 @@ Switch_fs_next(void *d1, void *d2)
  * Switch_fs_last()
  *
  * Description:
- *	Switch to last page of file server screen 
+ *	Switch to last page of file server screen
  *----------------------------------------------------------------------*/
 int
 Switch_fs_last(void *d1, void *d2)
@@ -1953,7 +1952,7 @@ Switch_fs_last(void *d1, void *d2)
  * Switch_fs_prev()
  *
  * Description:
- *	Switch to previous page of file server screen 
+ *	Switch to previous page of file server screen
  *----------------------------------------------------------------------*/
 int
 Switch_fs_prev(void *d1, void *d2)
@@ -1969,7 +1968,7 @@ Switch_fs_prev(void *d1, void *d2)
  * Switch_fs_first()
  *
  * Description:
- *	Switch to first page of file server screen 
+ *	Switch to first page of file server screen
  *----------------------------------------------------------------------*/
 int
 Switch_fs_first(void *d1, void *d2)
@@ -1985,7 +1984,7 @@ Switch_fs_first(void *d1, void *d2)
  * Switch_fs_left()
  *
  * Description:
- *	Scroll left on the file server screen 
+ *	Scroll left on the file server screen
  *----------------------------------------------------------------------*/
 int
 Switch_fs_left(void *d1, void *d2)
@@ -2002,7 +2001,7 @@ Switch_fs_left(void *d1, void *d2)
  * Switch_fs_leftmost()
  *
  * Description:
- *	Scroll to first column on  the file server screen 
+ *	Scroll to first column on  the file server screen
  *----------------------------------------------------------------------*/
 int
 Switch_fs_leftmost(void *d1, void *d2)
@@ -2018,7 +2017,7 @@ Switch_fs_leftmost(void *d1, void *d2)
  * Switch_fs_right()
  *
  * Description:
- *	Scroll right on the file server screen 
+ *	Scroll right on the file server screen
  *----------------------------------------------------------------------*/
 int
 Switch_fs_right(void *d1, void *d2)
@@ -2034,7 +2033,7 @@ Switch_fs_right(void *d1, void *d2)
  * Switch_fs_rightmost()
  *
  * Description:
- *	Scroll to last column on the file server screen 
+ *	Scroll to last column on the file server screen
  *----------------------------------------------------------------------*/
 int
 Switch_fs_rightmost(void *d1, void *d2)
@@ -2080,7 +2079,6 @@ create_FSframe_objects(void)
     struct onode **fsLabels_o_Ptr;
     int x_pos;
     int y_pos;
-    int code;
     int i;
     int j;
     int numBytes;
@@ -2100,13 +2098,13 @@ create_FSframe_objects(void)
 	sprintf(errMsg, "[ %s ] Failed to create fs command onode\n", rn);
 	afsmon_Exit(340);
     }
-    code = gtxframe_AddToList(fsFrame, fs_cmd_o);
-    code = gator_light_set(fs_cmd_o, HIGHLIGHT);
+    gtxframe_AddToList(fsFrame, fs_cmd_o);
+    gator_light_set(fs_cmd_o, HIGHLIGHT);
 
     /* we already have the dimensions for the frame - same as the ovw frame */
     /* use the ovw program name object for the fs screen too */
 
-    code = gtxframe_AddToList(fsFrame, ovw_progName_o);
+    gtxframe_AddToList(fsFrame, ovw_progName_o);
 
 
     /* create the page number object */
@@ -2118,8 +2116,8 @@ create_FSframe_objects(void)
 	sprintf(errMsg, "[ %s ] Failed to create pageNumber onode\n", rn);
 	afsmon_Exit(335);
     }
-    code = gtxframe_AddToList(fsFrame, fs_pageNum_o);
-    code = gator_light_set(fs_pageNum_o, HIGHLIGHT);
+    gtxframe_AddToList(fsFrame, fs_pageNum_o);
+    gator_light_set(fs_pageNum_o, HIGHLIGHT);
 
     /* create the probe number object */
     fs_probeNum_o =
@@ -2130,8 +2128,8 @@ create_FSframe_objects(void)
 	sprintf(errMsg, "[ %s ] Failed to create fs probeNum onode\n", rn);
 	afsmon_Exit(345);
     }
-    code = gtxframe_AddToList(fsFrame, fs_probeNum_o);
-    code = gator_light_set(fs_probeNum_o, HIGHLIGHT);
+    gtxframe_AddToList(fsFrame, fs_probeNum_o);
+    gator_light_set(fs_probeNum_o, HIGHLIGHT);
 
 
     /* create the numFS monitored object */
@@ -2144,7 +2142,7 @@ create_FSframe_objects(void)
 		"[ %s ] Failed to create numFS onode for the fs frame\n", rn);
 	afsmon_Exit(350);
     }
-    code = gtxframe_AddToList(fsFrame, fs_numFS_o);
+    gtxframe_AddToList(fsFrame, fs_numFS_o);
 
     /* create the "more columns to left" indicator */
     fs_leftArrows_o =
@@ -2155,7 +2153,7 @@ create_FSframe_objects(void)
 		rn);
 	afsmon_Exit(355);
     }
-    code = gtxframe_AddToList(fsFrame, fs_leftArrows_o);
+    gtxframe_AddToList(fsFrame, fs_leftArrows_o);
 
     /* create the "more columns to right" indicator */
     fs_rightArrows_o =
@@ -2167,7 +2165,7 @@ create_FSframe_objects(void)
 		rn);
 	afsmon_Exit(360);
     }
-    code = gtxframe_AddToList(fsFrame, fs_rightArrows_o);
+    gtxframe_AddToList(fsFrame, fs_rightArrows_o);
 
 
 
@@ -2199,7 +2197,7 @@ create_FSframe_objects(void)
 	afsmon_Exit(365);
     }
 
-    /* for each line of server statistics allocate memory to store two arrays 
+    /* for each line of server statistics allocate memory to store two arrays
      * of data onodes */
 
     fs_lines_Ptr = fs_lines;
@@ -2230,7 +2228,7 @@ create_FSframe_objects(void)
 	    sprintf(errMsg, "[ %s ] Failed to create an FS name onode\n", rn);
 	    afsmon_Exit(375);
 	}
-	code = gtxframe_AddToList(fsFrame, fs_lines_Ptr->host_o);
+	gtxframe_AddToList(fsFrame, fs_lines_Ptr->host_o);
 
 	/* if (afsmon_debug) {
 	 * fprintf(debugFD,"[ %s ] Addr of host_o = %d for line %d\n",
@@ -2261,7 +2259,7 @@ create_FSframe_objects(void)
 			    "[ %s ] Failed to create an FS data onode\n", rn);
 		    afsmon_Exit(380);
 		}
-		code = gtxframe_AddToList(fsFrame, *fs_data_o_Ptr);
+		gtxframe_AddToList(fsFrame, *fs_data_o_Ptr);
 
 		fs_data_o_Ptr++;
 	    }			/* for each column */
@@ -2300,7 +2298,7 @@ create_FSframe_objects(void)
 			rn);
 		afsmon_Exit(390);
 	    }
-	    code = gtxframe_AddToList(fsFrame, *fsLabels_o_Ptr);
+	    gtxframe_AddToList(fsFrame, *fsLabels_o_Ptr);
 	    fsLabels_o_Ptr++;
 	}
 
@@ -2322,7 +2320,7 @@ create_FSframe_objects(void)
     keymap_BindToString(fsFrame->keymap, "Q", afsmonExit_gtx, NULL, NULL);
     keymap_BindToString(fsFrame->keymap, "", afsmonExit_gtx, NULL, NULL);
 
-    /* o = overview, c = cm, n = next, p = prev, l = left, r = right 
+    /* o = overview, c = cm, n = next, p = prev, l = left, r = right
      * N = last page, P = first page, L = leftmost col, R = rightmost col */
 
     keymap_BindToString(fsFrame->keymap, "o", Switch_fs_2_ovw, NULL, NULL);
@@ -2346,12 +2344,12 @@ create_FSframe_objects(void)
  *
  * Description:
  *	Refresh the Cache Managers screen with the given page number starting
- *	at the given left-column number. The appropriate contents of 
- *	prev_cmData are displayed. 
+ *	at the given left-column number. The appropriate contents of
+ *	prev_cmData are displayed.
  *	First the status labels at the four corners of the screen are
  *	updated. Next the column labels are updated and then each row
  *	of statistics.
- *	
+ *
  * Returns:
  *	Success: 0
  *	Failure: Exits afsmoitor on a severe error.
@@ -2379,7 +2377,7 @@ cm_refresh(int a_pageNum,		/* page to display */
     int code;
     int cmIdx;
     int labelIdx;
-    int dataIndex;		/* index to the data[] field of 
+    int dataIndex;		/* index to the data[] field of
 				 * struct cm_Display_Data */
 
     if (afsmon_debug) {
@@ -2389,7 +2387,7 @@ cm_refresh(int a_pageNum,		/* page to display */
     }
 
 
-    /* if the data is not yet available, ie., not one probe cycle has 
+    /* if the data is not yet available, ie., not one probe cycle has
      * completed, do nothing */
 
     if (!cm_Data_Available)
@@ -2440,7 +2438,7 @@ cm_refresh(int a_pageNum,		/* page to display */
     /* command line */
 
     /* figure out what we need to show in the prompt & set the page type */
-    /* the cm_pageType variable is in turn used by the keyboard handler 
+    /* the cm_pageType variable is in turn used by the keyboard handler
      * routines to call cm_refresh() with the correct parameters */
 
     cm_pageType = resolve_CmdLine(cmdLine, 2 /* cm frame */ , a_pageNum,
@@ -2572,7 +2570,7 @@ cm_refresh(int a_pageNum,		/* page to display */
 	     * overflow flag is set and highlight if so. if the probe had failed
 	     * enter "--" is all columns */
 
-	    /* each host has two rows of slots for datums. get the pointers to 
+	    /* each host has two rows of slots for datums. get the pointers to
 	     * both the arrays */
 
 	    firstSlot_o_Ptr = tmp_cm_lines_P->data_o[0];
@@ -2685,7 +2683,7 @@ Switch_cm_2_ovw(void *d1, void *d2)
  * Switch_cm_2_fs()
  *
  * Description:
- *	Switch from the Cache Manager screen to the File Servers screen 
+ *	Switch from the Cache Manager screen to the File Servers screen
  *----------------------------------------------------------------------*/
 int
 Switch_cm_2_fs(void *d1, void *d2)
@@ -2701,7 +2699,7 @@ Switch_cm_2_fs(void *d1, void *d2)
  * Switch_cm_next()
  *
  * Description:
- *	Switch to next page of cache managers screen 
+ *	Switch to next page of cache managers screen
  *----------------------------------------------------------------------*/
 int
 Switch_cm_next(void *d1, void *d2)
@@ -2718,7 +2716,7 @@ Switch_cm_next(void *d1, void *d2)
  * Switch_cm_last()
  *
  * Description:
- *	Switch to last page of file server screen 
+ *	Switch to last page of file server screen
  *----------------------------------------------------------------------*/
 int
 Switch_cm_last(void *d1, void *d2)
@@ -2735,7 +2733,7 @@ Switch_cm_last(void *d1, void *d2)
  * Switch_cm_prev()
  *
  * Description:
- *	Switch to previous page of cache managers screen 
+ *	Switch to previous page of cache managers screen
  *----------------------------------------------------------------------*/
 int
 Switch_cm_prev(void *d1, void *d2)
@@ -2751,7 +2749,7 @@ Switch_cm_prev(void *d1, void *d2)
  * Switch_cm_first()
  *
  * Description:
- *	Switch to first page of cache managers screen 
+ *	Switch to first page of cache managers screen
  *----------------------------------------------------------------------*/
 int
 Switch_cm_first(void *d1, void *d2)
@@ -2767,7 +2765,7 @@ Switch_cm_first(void *d1, void *d2)
  * Switch_cm_left()
  *
  * Description:
- *	Scroll left on the cache managers screen 
+ *	Scroll left on the cache managers screen
  *----------------------------------------------------------------------*/
 int
 Switch_cm_left(void *d1, void *d2)
@@ -2784,7 +2782,7 @@ Switch_cm_left(void *d1, void *d2)
  * Switch_cm_leftmost()
  *
  * Description:
- *	Scroll to first column on  the cache managers screen 
+ *	Scroll to first column on  the cache managers screen
  *----------------------------------------------------------------------*/
 int
 Switch_cm_leftmost(void *d1, void *d2)
@@ -2800,7 +2798,7 @@ Switch_cm_leftmost(void *d1, void *d2)
  * Switch_cm_right()
  *
  * Description:
- *	Scroll right on the cache managers screen 
+ *	Scroll right on the cache managers screen
  *----------------------------------------------------------------------*/
 int
 Switch_cm_right(void *d1, void *d2)
@@ -2816,7 +2814,7 @@ Switch_cm_right(void *d1, void *d2)
  * Switch_cm_rightmost()
  *
  * Description:
- *	Scroll to last column on the cache managers screen 
+ *	Scroll to last column on the cache managers screen
  *----------------------------------------------------------------------*/
 int
 Switch_cm_rightmost(void *d1, void *d2)
@@ -2861,7 +2859,6 @@ create_CMframe_objects(void)
     struct onode **cmLabels_o_Ptr;
     int x_pos;
     int y_pos;
-    int code;
     int i;
     int j;
     int numBytes;
@@ -2882,14 +2879,14 @@ create_CMframe_objects(void)
 	sprintf(errMsg, "[ %s ] Failed to create cm command onode\n", rn);
 	afsmon_Exit(420);
     }
-    code = gtxframe_AddToList(cmFrame, cm_cmd_o);
-    code = gator_light_set(cm_cmd_o, HIGHLIGHT);
+    gtxframe_AddToList(cmFrame, cm_cmd_o);
+    gator_light_set(cm_cmd_o, HIGHLIGHT);
 
 
     /* we already have the dimensions for the frame - same as the ovw frame */
     /* use the ovw program name object for the cm screen too */
 
-    code = gtxframe_AddToList(cmFrame, ovw_progName_o);
+    gtxframe_AddToList(cmFrame, ovw_progName_o);
 
 
     /* create the page number object */
@@ -2901,8 +2898,8 @@ create_CMframe_objects(void)
 	sprintf(errMsg, "[ %s ] Failed to create pageNumber onode\n", rn);
 	afsmon_Exit(415);
     }
-    code = gtxframe_AddToList(cmFrame, cm_pageNum_o);
-    code = gator_light_set(cm_pageNum_o, HIGHLIGHT);
+    gtxframe_AddToList(cmFrame, cm_pageNum_o);
+    gator_light_set(cm_pageNum_o, HIGHLIGHT);
 
     /* create the probe number object */
     cm_probeNum_o =
@@ -2913,8 +2910,8 @@ create_CMframe_objects(void)
 	sprintf(errMsg, "[ %s ] Failed to create cm probeNum onode\n", rn);
 	afsmon_Exit(425);
     }
-    code = gtxframe_AddToList(cmFrame, cm_probeNum_o);
-    code = gator_light_set(cm_probeNum_o, HIGHLIGHT);
+    gtxframe_AddToList(cmFrame, cm_probeNum_o);
+    gator_light_set(cm_probeNum_o, HIGHLIGHT);
 
 
     /* create the numCM monitored object */
@@ -2927,7 +2924,7 @@ create_CMframe_objects(void)
 		"[ %s ] Failed to create numCM onode for the cm frame\n", rn);
 	afsmon_Exit(430);
     }
-    code = gtxframe_AddToList(cmFrame, cm_numCM_o);
+    gtxframe_AddToList(cmFrame, cm_numCM_o);
 
     /* create the "more columns to left" indicator */
     cm_leftArrows_o =
@@ -2938,7 +2935,7 @@ create_CMframe_objects(void)
 		rn);
 	afsmon_Exit(435);
     }
-    code = gtxframe_AddToList(cmFrame, cm_leftArrows_o);
+    gtxframe_AddToList(cmFrame, cm_leftArrows_o);
 
     /* create the "more columns to right" indicator */
     cm_rightArrows_o =
@@ -2950,7 +2947,7 @@ create_CMframe_objects(void)
 		rn);
 	afsmon_Exit(440);
     }
-    code = gtxframe_AddToList(cmFrame, cm_rightArrows_o);
+    gtxframe_AddToList(cmFrame, cm_rightArrows_o);
 
 
 
@@ -2982,7 +2979,7 @@ create_CMframe_objects(void)
 	afsmon_Exit(445);
     }
 
-    /* for each line of server statistics allocate memory to store two arrays 
+    /* for each line of server statistics allocate memory to store two arrays
      * of data onodes */
 
     cm_lines_Ptr = cm_lines;
@@ -3013,7 +3010,7 @@ create_CMframe_objects(void)
 	    sprintf(errMsg, "[ %s ] Failed to create an CM name onode\n", rn);
 	    afsmon_Exit(455);
 	}
-	code = gtxframe_AddToList(cmFrame, cm_lines_Ptr->host_o);
+	gtxframe_AddToList(cmFrame, cm_lines_Ptr->host_o);
 
 	/* if (afsmon_debug) {
 	 * fprintf(debugFD,"[ %s ] Addr of host_o = %d for line %d\n",
@@ -3044,7 +3041,7 @@ create_CMframe_objects(void)
 			    "[ %s ] Failed to create an CM data onode\n", rn);
 		    afsmon_Exit(460);
 		}
-		code = gtxframe_AddToList(cmFrame, *cm_data_o_Ptr);
+		gtxframe_AddToList(cmFrame, *cm_data_o_Ptr);
 
 		cm_data_o_Ptr++;
 	    }			/* for each column */
@@ -3083,7 +3080,7 @@ create_CMframe_objects(void)
 			rn);
 		afsmon_Exit(470);
 	    }
-	    code = gtxframe_AddToList(cmFrame, *cmLabels_o_Ptr);
+	    gtxframe_AddToList(cmFrame, *cmLabels_o_Ptr);
 	    cmLabels_o_Ptr++;
 	}
 
@@ -3104,7 +3101,7 @@ create_CMframe_objects(void)
     keymap_BindToString(cmFrame->keymap, "Q", afsmonExit_gtx, NULL, NULL);
     keymap_BindToString(cmFrame->keymap, "", afsmonExit_gtx, NULL, NULL);
 
-    /* o = overview, c = cm, n = next, p = prev, l = left, r = right 
+    /* o = overview, c = cm, n = next, p = prev, l = left, r = right
      * N = last page, P = first page, L = leftmost col, R = rightmost col */
 
     keymap_BindToString(cmFrame->keymap, "o", Switch_cm_2_ovw, NULL, NULL);

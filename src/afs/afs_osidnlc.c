@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -24,7 +24,7 @@
  *    cache larger names, perhaps by using a better,longer key (SHA) and discarding
  *    the actual name itself.
  *    precompute a key and stuff for \sys, and combine the HandleAtName function with
- *    this, since we're looking at the name anyway.  
+ *    this, since we're looking at the name anyway.
  */
 
 struct afs_lock afs_xdnlc;
@@ -190,10 +190,9 @@ struct vcache *
 osi_dnlc_lookup(struct vcache *adp, char *aname, int locktype)
 {
     struct vcache *tvc;
-    int LRUme;
     unsigned int key, skey;
     char *ts = aname;
-    struct nc *tnc, *tnc1 = 0;
+    struct nc *tnc;
     int safety;
 #ifdef AFS_DARWIN80_ENV
     vnode_t tvp;
@@ -218,7 +217,6 @@ osi_dnlc_lookup(struct vcache *adp, char *aname, int locktype)
 	if ( /* (tnc->key == key)  && */ (tnc->dirp == adp)
 	    && (!strcmp((char *)tnc->name, aname))) {
 	    tvc = tnc->vp;
-	    tnc1 = tnc;
 	    break;
 	} else if (tnc->next == nameHash[skey]) {	/* end of list */
 	    break;
@@ -232,7 +230,6 @@ osi_dnlc_lookup(struct vcache *adp, char *aname, int locktype)
 	}
     }
 
-    LRUme = 0;			/* (tnc != nameHash[skey]); */
     ReleaseReadLock(&afs_xdnlc);
 
     if (!tvc) {
@@ -243,7 +240,7 @@ osi_dnlc_lookup(struct vcache *adp, char *aname, int locktype)
 #ifdef  AFS_DARWIN80_ENV
 	    ||(tvc->f.states & CDeadVnode)
 #endif
-	    )      
+	    )
 	{
 	    ReleaseReadLock(&afs_xvcache);
 	    dnlcstats.misses++;
@@ -273,18 +270,18 @@ osi_dnlc_lookup(struct vcache *adp, char *aname, int locktype)
 	ReleaseReadLock(&afs_xvcache);
 
 #ifdef	notdef
-	/* 
+	/*
 	 * XX If LRUme ever is non-zero change the if statement around because
 	 * aix's cc with optimizer on won't necessarily check things in order XX
 	 */
 	if (LRUme && (0 == NBObtainWriteLock(&afs_xdnlc))) {
 	    /* don't block to do this */
 	    /* tnc might have been moved during race condition, */
-	    /* but it's always in a legit hash chain when a lock is granted, 
-	     * or else it's on the freelist so prev == NULL, 
+	    /* but it's always in a legit hash chain when a lock is granted,
+	     * or else it's on the freelist so prev == NULL,
 	     * so at worst this is redundant */
-	    /* Now that we've got it held, and a lock on the dnlc, we 
-	     * should check to be sure that there was no race, and 
+	    /* Now that we've got it held, and a lock on the dnlc, we
+	     * should check to be sure that there was no race, and
 	     * bail out if there was. */
 	    if (tnc->prev) {
 		/* special case for only two elements on list - relative ordering
@@ -380,11 +377,11 @@ osi_dnlc_remove(struct vcache *adp, char *aname, struct vcache *avc)
     return 0;
 }
 
-/*! 
+/*!
  * Remove anything pertaining to this directory.  I can invalidate
  * things without the lock, since I am just looking through the array,
  * but to move things off the lists or into the freelist, I need the
- * write lock 
+ * write lock
  *
  * \param adp vcache entry for the directory to be purged.
  * \return 0
@@ -427,8 +424,8 @@ osi_dnlc_purgedp(struct vcache *adp)
     return 0;
 }
 
-/*! 
- * Remove anything pertaining to this file 
+/*!
+ * Remove anything pertaining to this file
  *
  * \param File vcache entry.
  * \return 0
