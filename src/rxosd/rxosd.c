@@ -3174,12 +3174,14 @@ traverse_osd(struct rx_call *call, afs_uint64 part_id, afs_int32 type,
 single_volume:
 	    p_id |= (afs_uint64)lun << 32;
     	    code = getlinkhandle(&lh, p_id);
-    	    fdP = IH_OPEN(lh->ih);
-    	    if (!fdP) {
-        	ViceLog(0,("inventory: IH_OPEN for linktable failed for %u\n",
-			(afs_uint32)p_id));
-        	code = EIO;
-		goto finis;
+	    if (code)
+        	ViceLog(0,("inventory: getlinkhandle for %u failed with %d\n",
+			(afs_uint32)p_id, code));
+	    else {
+    	        fdP = IH_OPEN(lh->ih);
+    	        if (!fdP)
+        	    ViceLog(0,("inventory: IH_OPEN for linktable failed for %u\n",
+			    (afs_uint32)p_id));
     	    }
 	    while (dp3 = IH_READDIR(dirp3, &myIH)) {
 		struct dirent *dp4;
@@ -3261,9 +3263,8 @@ single_volume:
 			if (!unlinked && (flag & INVENTORY_ONLY_UNLINKED))
 			    continue;
 	    		o_id = flipbase64_to_int64(dp5->d_name);
-			if (unlinked)
-			    lc = -1;
-			else
+			lc = -1;
+			if (fdP && !unlinked)
     			    lc = namei_GetLinkCount(fdP, o_id, 0, 0, 0);
 			if (unlinked && rock && type == 99)
 			    code = delete_unlinked(rock, path6, unlinked, &myIH);
@@ -3281,8 +3282,12 @@ single_volume:
 	    }
 	    IH_CLOSEDIR(dirp3, &myIH);
 	    dirp3 = NULL;
-	    FDH_CLOSE(fdP);
+	    if (fdP) {
+	        FDH_CLOSE(fdP);
+		fdP = NULL;
+	    }
 	    oh_release(lh);
+	    lh = NULL;
 	    if (volume)
 		goto done;
 	}
@@ -3305,6 +3310,10 @@ finis:
 	IH_CLOSEDIR(dirp2, &myIH);
     if (dirp1)
 	IH_CLOSEDIR(dirp1, &myIH);
+    if (fdP)
+        FDH_CLOSE(fdP);
+    if (lh)
+	oh_release(lh);
     return code;
 }
  
@@ -7880,12 +7889,12 @@ main(int argc, char *argv[])
     rx_SetCheckReach(service, 1);
 
     if (port == OSD_SECOND_SERVER_PORT) {
-	/* Alternative port 7006 */
-	service = rx_NewServiceHost(HostAddr_NBO, OSD_SERVER_PORT,
-			OSD_SERVICE_ID, "OSD-7006", sc, 4, RXOSD_ExecuteRequest);
+       /* Alternative port 7006 */
+       service = rx_NewServiceHost(HostAddr_NBO, OSD_SERVER_PORT,
+                       OSD_SERVICE_ID, "OSD-7006", sc, 4, RXOSD_ExecuteRequest);
     } else {
-    	/* Alternative port 7011 */
-    	service = rx_NewServiceHost(HostAddr_NBO, OSD_SECOND_SERVER_PORT, 
+        /* Alternative port 7011 */
+        service = rx_NewServiceHost(HostAddr_NBO, OSD_SECOND_SERVER_PORT, 
 			OSD_SERVICE_ID, "OSD-7011", sc, 4, RXOSD_ExecuteRequest);
     }
     if (!service)
