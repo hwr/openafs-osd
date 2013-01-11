@@ -6089,7 +6089,10 @@ SRXOSD_restore_archive(struct rx_call *call, struct ometa *o, afs_uint32 user,
     SETTHREADEXCLUSIVEACTIVE(18, call, o);
 
     if (MyThreadEntry < 0) {	/* Already another thread doing the same */
-	return EINVAL;
+        memset(output, 0, sizeof(struct osd_cksum));
+        output->o = *o;
+        output->c.type = 1;
+        return OSD_WAIT_FOR_TAPE;
     }
 
     if (o->vsn == 1) {
@@ -6122,6 +6125,11 @@ SRXOSD_restore_archive251(struct rx_call *call, afs_uint64 part_id,
     struct osd_cksum out;
     SETTHREADEXCLUSIVEACTIVE_OLD(251, call, part_id, obj_id);
 			
+    if (MyThreadEntry < 0) {    /* Already another thread doing the same */
+        memset(output, 0, sizeof(struct osd_md5));
+        return OSD_WAIT_FOR_TAPE;
+    }
+
     o.part_id = part_id;
     o.obj_id = obj_id;
     code = convert_osd_segm_desc0List(list, &l);
