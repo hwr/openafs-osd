@@ -259,9 +259,9 @@ copyDir(struct Msg *m, IHandle_t *inh, IHandle_t *outh)
     infdP = IH_OPEN(inh);
     if (!infdP) {
 	sprintf(m->line, "Couldn't open input directory %u.%u.%u\n", 
-		    infdP->fd_ih->ih_vid,
-		    (afs_uint32)(infdP->fd_ih->ih_ino & NAMEI_VNODEMASK),
-		    (afs_uint32)(infdP->fd_ih->ih_ino >> NAMEI_UNIQSHIFT));
+		    inh->ih_vid,
+		    (afs_uint32)(inh->ih_ino & NAMEI_VNODEMASK),
+		    (afs_uint32)(inh->ih_ino >> NAMEI_UNIQSHIFT));
 	inform(m, 1);
 	return EIO;
     }
@@ -277,9 +277,9 @@ copyDir(struct Msg *m, IHandle_t *inh, IHandle_t *outh)
     outfdP = IH_OPEN(outh);
     if (!outfdP) {
 	sprintf(m->line, "Couldn't open output directory %u.%u.%u\n", 
-		    outfdP->fd_ih->ih_vid,
-		    (afs_uint32)(outfdP->fd_ih->ih_ino & NAMEI_VNODEMASK),
-		    (afs_uint32)(outfdP->fd_ih->ih_ino >> NAMEI_UNIQSHIFT));
+		    outh->ih_vid,
+		    (afs_uint32)(outh->ih_ino & NAMEI_VNODEMASK),
+		    (afs_uint32)(outh->ih_ino >> NAMEI_UNIQSHIFT));
 	inform(m, 1);
 	FDH_REALLYCLOSE(infdP);
 	return EIO;
@@ -292,9 +292,9 @@ copyDir(struct Msg *m, IHandle_t *inh, IHandle_t *outh)
         tlen = size > 2048 ? 2048 : size;
         if (FDH_PREAD(infdP, tbuf, tlen, offset) != tlen) {
        	    sprintf(m->line, "Couldn't read directory %u.%u.%u\n", 
-		    infdP->fd_ih->ih_vid,
-		    (afs_uint32)(infdP->fd_ih->ih_ino & NAMEI_VNODEMASK),
-		    (afs_uint32)(infdP->fd_ih->ih_ino >> NAMEI_UNIQSHIFT));
+		    inh->ih_vid,
+		    (afs_uint32)(inh->ih_ino & NAMEI_VNODEMASK),
+		    (afs_uint32)(inh->ih_ino >> NAMEI_UNIQSHIFT));
 	    inform(m, 1);
 	    FDH_REALLYCLOSE(infdP);
 	    FDH_REALLYCLOSE(outfdP);
@@ -303,9 +303,9 @@ copyDir(struct Msg *m, IHandle_t *inh, IHandle_t *outh)
 	}
 	if (FDH_PWRITE(outfdP, tbuf, tlen, offset) != tlen) {
 	    sprintf(m->line, "Couldn't write directory %u.%u.%u\n", 
-		    outfdP->fd_ih->ih_vid,
-		    (afs_uint32)(outfdP->fd_ih->ih_ino & NAMEI_VNODEMASK),
-		    (afs_uint32)(outfdP->fd_ih->ih_ino >> NAMEI_UNIQSHIFT));
+		    outh->ih_vid,
+		    (afs_uint32)(outh->ih_ino & NAMEI_VNODEMASK),
+		    (afs_uint32)(outh->ih_ino >> NAMEI_UNIQSHIFT));
 	    inform(m, 1);
 	    FDH_REALLYCLOSE(infdP);
 	    FDH_REALLYCLOSE(outfdP);
