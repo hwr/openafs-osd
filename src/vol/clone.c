@@ -52,8 +52,6 @@
 #include "../shlibafsosd/afsosd.h"
 #include "common.h"
 
-extern struct osd_vol_ops_v0 *osdvol;
-
 int (*vol_PollProc) (void) = 0;	/* someone must init this */
 
 #define ERROR_EXIT(code) do { \

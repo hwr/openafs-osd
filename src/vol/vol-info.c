@@ -68,7 +68,6 @@
 
 #include "../shlibafsosd/afsosd.h"
 int osdvolume = 0;
-struct osd_vol_ops_v0 *osdvol = NULL;
 
 int DumpVnodes = 0;		/* Dump everything, i.e. summary of all vnodes */
 int DumpInodeNumber = 0;	/* Dump inode numbers with vnodes */

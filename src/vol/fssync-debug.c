@@ -67,8 +67,6 @@
 #ifdef AFS_NT40_ENV
 #include <pthread.h>
 #endif
-#include "../shlibafsosd/afsosd.h"
-struct osd_vol_ops_v0 *osdvol = NULL;
 
 int VolumeChanged; /* hack to make dir package happy */
 
@@ -1097,10 +1095,7 @@ VnQuery(struct cmd_syndesc * as, void * rock)
 	printf("\t\tauthor            = %u\n", v.disk.author);
 	printf("\t\towner             = %u\n", v.disk.owner);
 	printf("\t\tparent            = %u\n", v.disk.parent);
-	if (osdvol)
-	    printf("\t\tosdMetadataIndex = %u\n", v.disk.osdMetadataIndex);
-	else
-	    printf("\t\tvnodeMagic        = %u\n", v.disk.vnodeMagic);
+	printf("\t\tvnodeMagic        = %u\n", v.disk.vnodeMagic);
 
 	printf("\t\tlock = {\n");
 	printf("\t\t\tlockCount   = %d\n", v.disk.lock.lockCount);

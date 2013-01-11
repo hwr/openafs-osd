@@ -71,7 +71,6 @@
 #include "../shlibafsosd/afsosd.h"
 
 struct osd_volser_ops_v0 *osdvolser = NULL;
-struct osd_vol_ops_v0 *osdvol = NULL;
 
 extern struct timeval statisticStart;
 extern afs_uint64 total_bytes_rcvd;

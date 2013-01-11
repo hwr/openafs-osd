@@ -220,7 +220,6 @@ struct vol_data_v0 vol_data_v0 = {
     NULL
 };
 
-struct osd_vol_ops_v0 *osdvol = NULL;
 struct osd_vol_ops_v0 *osdvolsave = NULL;
 
 /*@+fcnmacros +macrofcndecl@*/

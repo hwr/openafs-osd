@@ -63,9 +63,6 @@
 #ifdef AFS_NT40_ENV
 #include <pthread.h>
 #endif
-#include "../shlibafsosd/afsosd.h"
-
-struct osd_vol_ops_v0 *osdvol = NULL;
 
 int VolumeChanged; /* hack to make dir package happy */
 
@@ -203,6 +200,7 @@ common_prolog(struct cmd_syndesc * as, struct state * state)
     } else {
 	state->reason = SALVSYNC_REASON_WHATEVER;
     }
+
     if ((ti = as->parms[COMMON_PARMS_OFFSET+1].items)) {	/* -programtype */
 	if (!strcmp(ti->data, "fileServer")) {
 	    programType = fileServer;

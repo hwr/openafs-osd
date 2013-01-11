@@ -118,7 +118,6 @@
 #include "../shlibafsosd/afsosd.h"
 
 struct osd_viced_ops_v0 *osdviced = NULL;
-struct osd_vol_ops_v0 *osdvol = NULL;
 
 extern void SetDirHandle(DirHandle * dir, Vnode * vnode);
 extern void FidZap(DirHandle * file);

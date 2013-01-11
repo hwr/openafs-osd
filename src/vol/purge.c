@@ -51,8 +51,6 @@
 #include "common.h"
 #include "../shlibafsosd/afsosd.h"
 
-extern struct osd_vol_ops_v0 *osdvol;
-
 /* forward declarations */
 static int ObliterateRegion(Volume * avp, VnodeClass aclass, StreamHandle_t * afile,
 				afs_foff_t * aoffset);

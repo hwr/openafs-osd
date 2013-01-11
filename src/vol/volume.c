@@ -136,6 +136,8 @@
 #endif
 #include "../shlibafsosd/afsosd.h"
 
+struct osd_vol_ops_v0 *osdvol = NULL;
+
 #ifdef O_LARGEFILE
 #define afs_stat	stat64
 #define afs_fstat	fstat64
@@ -4706,6 +4708,8 @@ VReleaseVolumeHandles_r(Volume * vp)
 	IH_CONDSYNC(vp->vnodeIndex[vLarge].handle);
 	IH_CONDSYNC(vp->vnodeIndex[vSmall].handle);
 	IH_CONDSYNC(vp->diskDataHandle);
+	if (osdvol && vp->osdMetadataHandle)
+	    IH_CONDSYNC(vp->osdMetadataHandle);
 #ifdef AFS_NT40_ENV
 	IH_CONDSYNC(vp->linkHandle);
 #endif /* AFS_NT40_ENV */
@@ -4714,6 +4718,8 @@ VReleaseVolumeHandles_r(Volume * vp)
     IH_RELEASE(vp->vnodeIndex[vLarge].handle);
     IH_RELEASE(vp->vnodeIndex[vSmall].handle);
     IH_RELEASE(vp->diskDataHandle);
+    if (osdvol && vp->osdMetadataHandle)
+	IH_RELEASE(vp->osdMetadataHandle);
     IH_RELEASE(vp->linkHandle);
 
 #ifdef AFS_DEMAND_ATTACH_FS
