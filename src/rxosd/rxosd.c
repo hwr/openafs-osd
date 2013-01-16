@@ -1714,9 +1714,10 @@ restart:
                             f->error = EIO;
                         }
                         if (f->error) {
-                           f->state = ABORTED;
+                            f->state = ABORTED;
                             FetchProc[i].pid = 0;
                             FetchProc[i].request = 0;
+			    f->refcnt--;
 			} else {
 			    afs_uint32 lun, vid;
 			    FdHandle_t *fd = 0;
@@ -6499,7 +6500,7 @@ SRXOSD_modify_fetchq(struct rx_call *call, struct ometa *o, afs_int32 what,
 	}
         if (f) {				/* still in fetch queue */
 	    /*
-	     *  We should not try to dereference f because we are bot
+	     *  We should not try to dereference f because we are not
 	     *  protected by a lock. RemoveFromFetchqueue first checks
 	     *  f is still in the queue before doing anything.
 	     */
