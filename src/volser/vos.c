@@ -68,7 +68,7 @@
 #include "vsutils_prototypes.h"
 #include "lockprocs_prototypes.h"
 #ifdef AFS_RXOSD_SUPPORT
-#include <afs/osddb.h>
+#include "../rxosd/osddb.h"
 #endif
 
 #ifdef HAVE_POSIX_REGEX
