@@ -66,7 +66,7 @@
 #define afs_open	open
 #endif /* !O_LARGEFILE */
 
-#include "../shlibafsosd/afsosd.h"
+#include "../rxosd/afsosd.h"
 int osdvolume = 0;
 
 int DumpVnodes = 0;		/* Dump everything, i.e. summary of all vnodes */

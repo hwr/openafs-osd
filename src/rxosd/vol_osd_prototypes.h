@@ -78,7 +78,7 @@ extern afs_int32 fill_sorted(char *l, afs_int32 i, char *rock,
 				void prog(char *rock, AFSFid *fid, afs_uint32 w, 
 				afs_uint32 b));
 extern afs_int32 get_wipe_cand(Volume *vol, char *list);
-extern afs_int32 get_arch_cand(Volume *vol, struct cand *cand, afs_uint64 minsize,
+extern afs_int32 get_arch_cand(Volume *vol, struct hsmcand *cand, afs_uint64 minsize,
                 		afs_uint64 maxsize, afs_int32 copies, 
 				afs_int32 maxcand, afs_uint32 *candidates, 
 				afs_int32 *minweight, afs_uint32 osd, 

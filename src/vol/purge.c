@@ -49,7 +49,7 @@
 #include "daemon_com.h"
 #include "fssync.h"
 #include "common.h"
-#include "../shlibafsosd/afsosd.h"
+#include "../rxosd/afsosd.h"
 
 /* forward declarations */
 static int ObliterateRegion(Volume * avp, VnodeClass aclass, StreamHandle_t * afile,

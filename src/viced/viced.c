@@ -92,7 +92,7 @@
 #include "sys/lock.h"
 #endif
 #include <rx/rx_globals.h>
-#include "../shlibafsosd/afsosd.h"
+#include "../rxosd/afsosd.h"
 
 #ifdef O_LARGEFILE
 #define afs_stat	stat64

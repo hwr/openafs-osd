@@ -31,7 +31,7 @@ LIBACL=../libacl
 UTIL=../util
 DIR=../dir
 VOL=../vol
-LIBAFSOSD=../shlibafsosd
+RXOSD=${srcdir}/../rxosd
 FSINT=../fsint
 
 SALVAGEDOBJS=salvaged.o vol-salvage.o physio.o
@@ -77,7 +77,7 @@ salvager.o: ${VOL}/salvager.c
 vol-salvage.o: ${VOL}/vol-salvage.c
 	${CCRULE}
 
-libafsosd.o: ${LIBAFSOSD}/libafsosd.c
+libafsosd.o: ${RXOSD}/libafsosd.c
 	${CCRULE} -DBUILD_SALVAGER
 
 physio.o: ${VOL}/physio.c
@@ -115,7 +115,7 @@ s_salvsync-client.o: ${VOL}/salvsync-client.c
 	${SCCRULE}
 s_daemon_com.o: ${VOL}/daemon_com.c
 	${SCCRULE}
-s_libafsosd.o: ${LIBAFSOSD}/libafsosd.c
+s_libafsosd.o: ${RXOSD}/libafsosd.c
 	${SCCRULE} -DBUILD_SALVAGER
 
 fssync-debug.o: ${VOL}/fssync-debug.c

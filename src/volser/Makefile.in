@@ -150,13 +150,13 @@ volprocs.o: volprocs.c ${VINCLS} ${RINCLS} ${INTINCLS}
 dumpstuff.o: dumpstuff.c ${VINCLS} ${RINCLS} ${INTINCLS}
 voldump.o: voldump.c ${VINCLS} ${RINCLS}
 vos.o: vos.c ${VINCLS} ${RINCLS} ${INTINCLS} AFS_component_version_number.c
-vsprocs.o: vsprocs.c ${VINCLS} ${RINCLS} ${INTINCLS} ../shlibafsosd/volserosd.h
-	$(CC) $(CFLAGS) -I../shlibafsosd -c ${srcdir}/vsprocs.c
+vsprocs.o: vsprocs.c ${VINCLS} ${RINCLS} ${INTINCLS} ../rxosd/volserosd.h
+	$(CC) $(CFLAGS) -I../rxosd -c ${srcdir}/vsprocs.c
 physio.o: physio.c ${VINCLS}
 common.o: common.c ${VINCLS}
 lockprocs.o: lockprocs.c ${VINCLS} ${INTINCLS} ${RINCLS}
 vol_split.o: vol_split.c ${VINCLS} ${INTINCLS} ${RINCLS}
-volosdprocs.o: volosdprocs.c ${VINCLS} ${INTINCLS} ${RINCLS} ../shlibafsosd/volserosd.h
+volosdprocs.o: volosdprocs.c ${VINCLS} ${INTINCLS} ${RINCLS} ../rxosd/volserosd.h
 
 #
 # Installation targets

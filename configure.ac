@@ -175,7 +175,6 @@ src/log/Makefile \
 src/log/test/Makefile \
 src/lwp/Makefile \
 src/lwp/test/Makefile \
-src/osddb/Makefile \
 src/packaging/Debian/changelog \
 src/packaging/MacOS/OpenAFS-debug.Description.plist \
 src/packaging/MacOS/OpenAFS-debug.Info.plist \
@@ -207,7 +206,6 @@ src/scout/Makefile \
 src/sgistuff/Makefile \
 src/shlibafsauthent/Makefile \
 src/shlibafshpss/Makefile \
-src/shlibafsosd/Makefile \
 src/shlibafsrpc/Makefile \
 src/sys/Makefile \
 src/tbutc/Makefile \

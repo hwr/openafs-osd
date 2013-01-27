@@ -17,6 +17,7 @@
 #include <sys/file.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <afs/stds.h>
 #include <afs/cellconfig.h>
 #include <afs/dirpath.h>
 #include <afs/afsutil.h>

@@ -134,7 +134,7 @@
 #if !defined(offsetof)
 #include <stddef.h>
 #endif
-#include "../shlibafsosd/afsosd.h"
+#include "../rxosd/afsosd.h"
 
 struct osd_vol_ops_v0 *osdvol = NULL;
 

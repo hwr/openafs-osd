@@ -172,8 +172,8 @@ AFSAOBJS = \
 AFSRXOSDOBJS = \
 	Krxosd.cs.o \
 	Krxosd.xdr.o \
-	Kviceosd.cs.o \
-	Kviceosd.xdr.o 
+	Kvicedosd.cs.o \
+	Kvicedosd.xdr.o 
 
 # These next two allow nfs and nonfs builds to occur in the same directory.
 AFSNFSOBJS = \
@@ -466,12 +466,12 @@ Krxosd.xdr.o: $(TOP_OBJDIR)/src/rxosd/Krxosd.xdr.c
 	$(CRULE_NOOPT)
 rxosd.h: $(TOP_OBJDIR)/src/rxosd/rxosd.h
 	$(CP) -p $(TOP_OBJDIR)/src/rxosd/rxosd.h ./
-Kviceosd.cs.o: $(TOP_OBJDIR)/src/shlibafsosd/Kviceosd.cs.c vicedosd.h
+Kvicedosd.cs.o: $(TOP_OBJDIR)/src/rxosd/Kvicedosd.cs.c vicedosd.h
 	$(CRULE_NOOPT)
-Kviceosd.xdr.o: $(TOP_OBJDIR)/src/shlibafsosd/Kviceosd.xdr.c vicedosd.h
+Kvicedosd.xdr.o: $(TOP_OBJDIR)/src/rxosd/Kvicedosd.xdr.c vicedosd.h
 	$(CRULE_NOOPT)
-vicedosd.h: $(TOP_OBJDIR)/src/shlibafsosd/vicedosd.h
-	$(CP) -p $(TOP_OBJDIR)/src/shlibafsosd/vicedosd.h ./
+vicedosd.h: $(TOP_OBJDIR)/src/rxosd/vicedosd.h
+	$(CP) -p $(TOP_OBJDIR)/src/rxosd/vicedosd.h ./
 
 # Files which do not contain NFS translator code.
 CFLAGS-afs_call.o= -DAFS_NONFSTRANS

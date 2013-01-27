@@ -44,7 +44,7 @@
 #undef VICE
 #include "afs/prs_fs.h"
 #include <afs/afsint.h>
-#include "../shlibafsosd/vicedosd.h"
+#include "../rxosd/vicedosd.h"
 #include <afs/auth.h>
 #include <afs/cellconfig.h>
 #include <ubik.h>
@@ -69,8 +69,8 @@
 #ifdef AFS_RXOSD_SUPPORT
 #include <pwd.h>
 #include <afs/rxosd.h>
-#include "../shlibafsosd/vol_osd.h"
-#include <afs/osddb.h>
+#include "../rxosd/vol_osd.h"
+#include "../rxosd/osddb.h"
 
 #ifdef NEW_OSD_FILE
 #define osd_obj osd_obj1

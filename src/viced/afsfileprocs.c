@@ -115,7 +115,7 @@
 #include <afs/audit.h>
 #include <afs/afsutil.h>
 #include <afs/dir.h>
-#include "../shlibafsosd/afsosd.h"
+#include "../rxosd/afsosd.h"
 
 struct osd_viced_ops_v0 *osdviced = NULL;
 

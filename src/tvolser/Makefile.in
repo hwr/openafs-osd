@@ -29,7 +29,7 @@ VOL=${srcdir}/../vol
 FSINT=${srcdir}/../fsint
 VOLSER=${srcdir}/../volser
 RX=${srcdir}/../rx
-LIBAFSOSD=${srcdir}/../shlibafsosd
+RXOSD=${srcdir}/../rxosd
 
 VOLSEROBJS=volmain.o volprocs.o physio.o voltrans.o volerr.o volint.cs.o dumpstuff.o  volint.ss.o volint.xdr.o vscommon.o vol_split.o
 
@@ -216,7 +216,7 @@ ihandle.o: ${VOL}/ihandle.c
 namei_ops.o: ${VOL}/namei_ops.c
 	${COMPILE}
 
-libafsosd.o: ${LIBAFSOSD}/libafsosd.c
+libafsosd.o: ${RXOSD}/libafsosd.c
 	${COMPILE} 
 
 vos.o: ${VOLSER}/vos.c

@@ -202,7 +202,7 @@ Vnodes with 0 inode pointers in RW volumes are now deleted.
 #ifdef AFS_NT40_ENV
 #include <pthread.h>
 #endif
-#include "../shlibafsosd/afsosd.h"
+#include "../rxosd/afsosd.h"
 
 struct vol_data_v0 vol_data_v0 = {
     NULL,

@@ -29,7 +29,7 @@ UTIL=${srcdir}/../util
 DIR=${srcdir}/../dir
 VOL=${srcdir}/../vol
 FSINT=${srcdir}/../fsint
-LIBAFSOSD=${srcdir}/../shlibafsosd
+RXOSD=${srcdir}/../rxosd
 
 VICEDOBJS=viced.o afsfileprocs.o host.o physio.o callback.o serialize_state.o	
 
@@ -176,7 +176,7 @@ nuke.o: ${VOL}/nuke.c
 devname.o: ${VOL}/devname.c
 	${CCRULE}
 
-libafsosd.o: ${LIBAFSOSD}/libafsosd.c
+libafsosd.o: ${RXOSD}/libafsosd.c
 	${CCRULE} -DBUILDING_FILESERVER 
 
 # only for darwin?

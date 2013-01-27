@@ -66,7 +66,7 @@
 /*@printflike@*/ extern void Log(const char *format, ...);
 /*@printflike@*/ extern void Abort(const char *format, ...);
 
-#include "../shlibafsosd/afsosd.h"
+#include "../rxosd/afsosd.h"
 int convertToOsd = 0;
 #ifdef AFS_PTHREAD_ENV
 int libafsosd = 0;

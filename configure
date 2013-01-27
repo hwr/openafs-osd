@@ -711,6 +711,7 @@ XBSA_CFLAGS
 USE_UNIX_SOCKETS
 HSM_INC
 HSM_LIB
+LIBAFSOSDMINOR
 WITH_OBJECT_STORAGE
 PTHREAD_LIBS
 MPS
@@ -18910,6 +18911,11 @@ $as_echo "#define AFS_RXOSD_SUPPORT 1" >>confdefs.h
 else
         WITH_OBJECT_STORAGE="NO"
 fi
+
+
+LIBAFSOSDMINOR=`grep LIBAFSOSD_VERSION ${srcdir}/src/rxosd/afsosd.h | awk '{print $3}'`
+echo LIBAFSOSDMINOR = $LIBAFSOSDMINOR
+
 
 
 if test "$enable_vicep_access" = "yes"; then

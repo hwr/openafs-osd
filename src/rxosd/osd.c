@@ -29,7 +29,7 @@
 #include <rx/xdr.h>
 #include "rxosd.h"
 #include <ubik.h>
-#include <afs/osddb.h>
+#include "osddb.h"
 #include <afs/ptint.h>
 
 extern char *pp_input;

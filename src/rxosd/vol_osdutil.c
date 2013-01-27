@@ -29,7 +29,7 @@
 #include <afs/afsint.h>
 #include <afs/auth.h>
 #include "vol_osd.h"
-#include <afs/osddb.h>
+#include "osddb.h"
 #include "../vol/nfs.h"
 #include <afs/errors.h>
 #include "lock.h"
@@ -60,7 +60,7 @@
 #else /* !O_LARGEFILE */
 #define afs_open	open
 #endif /* !O_LARGEFILE */
-#include <afs/rxosd.h>
+#include "rxosd.h"
 
 
 #define MAX_OSD_METADATA_LENGTH 2040

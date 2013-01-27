@@ -47,15 +47,15 @@
 #include <strings.h>
 #endif
 #include "osddb.h"
-#include "../osddb/volint.h"
+#include "volint.h"
 #include "osddbuser.h"
 #ifdef BUILD_SHLIBAFSOSD
 #include <afs/ihandle.h>
 #define COMPILING_OSDDBUSER 1
-#include "../shlibafsosd/afsosd.h"
+#include "afsosd.h"
 #endif
 #ifdef BUILD_LIBAFSOSD_A
-#include "../shlibafsosd/afsosd.h"
+#include "afsosd.h"
 #endif
 
 #ifdef AFS_PTHREAD_ENV

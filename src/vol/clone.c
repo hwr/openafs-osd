@@ -49,7 +49,7 @@
 #include "partition.h"
 #include "viceinode.h"
 #include "vol_prototypes.h"
-#include "../shlibafsosd/afsosd.h"
+#include "../rxosd/afsosd.h"
 #include "common.h"
 
 int (*vol_PollProc) (void) = 0;	/* someone must init this */

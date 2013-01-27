@@ -121,11 +121,11 @@
 #include "rxosd.h"
 #include "afsosd.h"
 #include "vol_osd_inline.h"
-#include <afs/osddbuser.h>
+#include "osddbuser.h"
 
 private int oldRxosdsPresent = 0;
 
-private char *libraryVersion = "OpenAFS 1.6.0-osd";
+private char *libraryVersion = "OpenAFS 1.6.2-osd";
 private char *openafsVersion = NULL;
 #ifdef BUILD_SALVAGER
 extern void Log(const char *format, ...);
@@ -5375,8 +5375,9 @@ xchange_data_with_osd(struct rx_call *acall, Vnode **vnP, afs_uint64 offset,
 	    a.type = 2;
 	    a.async_u.l2.osd_file2List_len = 1;
 	    a.async_u.l2.osd_file2List_val = &file;
+	    /* this will create a file copy with flag = BEING_RESTORED */
             code = fill_osd_file(*vnP, &a, storing, &fileno, user);
-            if (!code) {
+            if (!code) { /* file already on-line */
 	        int i;
 	        for (i=0; i<file.segmList.osd_segm2List_len; i++) {
 		    struct osd_segm2 *s = & file.segmList.osd_segm2List_val[i];

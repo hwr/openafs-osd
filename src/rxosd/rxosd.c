@@ -166,7 +166,7 @@
 #include <afs/unified_afs.h>
 #include <afs/afsutil.h>
 #include <ubik.h>
-#include <afs/osddb.h>
+#include "osddb.h"
 #include "../rxkad/md5.h"
 
 
@@ -179,7 +179,7 @@
 
 #define USE_NTO_FOR_HOST_CHECK 1
 
-#include "../shlibafsosd/vol_osd_inline.h"
+#include "vol_osd_inline.h"
 
 #define NAMEI_INODESPECIAL ((Inode)RXOSD_VNODEMASK)
 

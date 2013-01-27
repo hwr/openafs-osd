@@ -299,7 +299,7 @@ tvlserver: cmd comerr vol audit tubik libafsrpc libafsauthent tvlserver_depinsta
 	esac
 
 
-viced: cmd comerr vlserver tvlserver audit vol rxosd
+viced: cmd comerr vlserver tvlserver audit vol rxosd_generated
 	+${COMPILE_PART1} viced ${COMPILE_PART2}
 
 tviced: cmd comerr viced vlserver tvlserver libafsrpc libafsauthent
@@ -318,7 +318,7 @@ dviced: cmd comerr viced vlserver tvlserver libafsrpc libafsauthent
 		echo Not building DAFS viced for ${SYS_NAME} ;; \
 	esac
 
-volser: cmd comerr usd kauth vlserver audit shlibafsosd
+volser: cmd comerr usd kauth vlserver audit rxosd_generated
 	+${COMPILE_PART1} volser ${COMPILE_PART2}
 
 tvolser: project tviced usd libafsrpc libafsauthent volser
@@ -340,16 +340,21 @@ dvolser: project tviced usd libafsrpc libafsauthent volser
 		echo Not building DAFS volser for ${SYS_NAME} ;;          \
 	esac
 
-rxosd: project usd libafsrpc libafsauthent vol osddb
+rxosd: project usd libafsrpc libafsauthent vol viced
 	case ${WITH_OBJECT_STORAGE} in \
 	YES) ${COMPILE_PART1} rxosd ${COMPILE_PART2} ;; \
 	*)      echo not building rxosd ;; \
 	esac
 
-rxosdsrc: rxgen fsint
-	${COMPILE_PART1} rxosd ${COMPILE_PART2A} source
+rxosd_generated: rxgen fsint
+	+case ${SYS_NAME} in \
+	alpha_dux*|sgi_*|sun4x_*|sunx86_*|rs_aix*|*linux*|hp_ux11*|ia64_hpux*|*_darwin_1*|*nbsd*|*obsd*|*fbsd*) \
+		${COMPILE_PART1} rxosd ${COMPILE_GENERATED} ;; \
+	*) \
+		echo Not building shared library for rxosd for ${SYS_NAME} ;; \
+	esac
 
-venus: cmd comerr volser ptserver shlibafsosd libafscp
+venus: cmd comerr volser ptserver libafscp
 	+${COMPILE_PART1} venus ${COMPILE_PART2}
 	+${COMPILE_PART1} venus/test ${COMPILE_PART2}
 
@@ -374,7 +379,7 @@ scout: cmd comerr gtx fsprobe
 		echo Not building scout, because no curses-headers found. ; \
 	fi
 
-uss: des kauth cmd comerr rx vlserver vol volser shlibafsosd
+uss: des kauth cmd comerr rx vlserver vol volser rxosd_generated
 	+${COMPILE_PART1} uss ${COMPILE_PART2}
 
 bozo: cmd comerr audit auth kauth volser
@@ -491,7 +496,7 @@ ${DEST}/bin/dedebug: dedebug
 # libafs build targets
 #
 libafs: config export lwp_depinstall rx_depinstall vlserver_depinstall tvlserver_depinstall rxkad_depinstall fsint_depinstall \
-		libacl_depinstall afs_depinstall dir_depinstall rxstat_depinstall sys_depinstall rxosd
+		libacl_depinstall afs_depinstall dir_depinstall rxstat_depinstall sys_depinstall rxosd_generated
 	src/config/config src/libafs/MakefileProto.${MKAFS_OSTYPE} src/libafs/Makefile ${SYS_NAME}
 	+${COMPILE_PART1} libafs ${COMPILE_PART2}
 
@@ -696,7 +701,7 @@ build_tools: config des comerr rxgen
 
 finale: project cmd comerr afsd butc tbutc tbudb @ENABLE_KERNEL_MODULE@ libuafs audit kauth log \
 	ptserver tptserver scout bu_utils ubik uss bozo @VFSCK@ volser tvolser tsalvaged \
-	dviced dvolser libafscp shlibafsosd  \
+	dviced dvolser libafscp rxosd  \
 	venus update xstat afsmonitor rxdebug libafsrpc \
 	libafsauthent shlibafsrpc shlibafsauthent libadmin man-pages \
 	platform kopenafs authtools tvlserver
@@ -704,7 +709,7 @@ finale: project cmd comerr afsd butc tbutc tbudb @ENABLE_KERNEL_MODULE@ libuafs 
 
 finale_nolibafs: project cmd comerr afsd butc tbutc tbudb libuafs audit kauth log \
 	ptserver tptserver scout bu_utils ubik tubik uss bozo @VFSCK@ volser tvolser tsalvaged \
-	dviced dvolser libafscp shlibafsosd  \
+	dviced dvolser libafscp rxosd  \
 	venus update xstat afsmonitor rxdebug libafsrpc \
 	libafsauthent shlibafsrpc shlibafsauthent libadmin man-pages \
 	platform kopenafs authtools

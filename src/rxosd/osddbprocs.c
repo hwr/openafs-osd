@@ -51,7 +51,7 @@
 #include <afs/afsutil.h>
 #include "osddb.h"
 #define BUILDING_VLSERVER 1
-#include "../shlibafsosd/afsosd.h"
+#include "afsosd.h"
 
 struct vol_data_v0 *voldata;
 

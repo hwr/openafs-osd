@@ -122,8 +122,7 @@
 #ifdef AFS_NT40_ENV
 #include <pthread.h>
 #endif
-
-#include "../shlibafsosd/afsosd.h"
+#include "../rxosd/afsosd.h"
 
 #if !defined(AFS_DEMAND_ATTACH_FS)
 #error "online salvager only supported for demand attach fileserver"

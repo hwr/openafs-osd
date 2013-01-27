@@ -13,9 +13,13 @@
  * or parameters of the operations occur. The number is compiled into the
  * interface called by the server binary and also into the interface called
  * inside the library. So a version mismatch can easily be detected.
+ *
+ * ATTENTION:
+ * 	the version number is extracted during configure. Therefore after each
+ *	change configure must be executed!
  */
  
-#define LIBAFSOSD_VERSION 19
+#define LIBAFSOSD_VERSION 20
 
 /*
  *	Unspecific operations used in general servers provided by AFS/OSD

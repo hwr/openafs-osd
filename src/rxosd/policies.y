@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <afs/stds.h>
-#include <afs/osddb.h>
+#include "osddb.h"
 
 struct pp_rule {
     pol_cond *condition;

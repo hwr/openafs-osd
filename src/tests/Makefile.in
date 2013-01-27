@@ -65,7 +65,7 @@ dumptool.o: ${srcdir}/dumptool.c
 	$(CC) $(CFLAGS) $(LDFLAGS) -o dumptool.o -c ${srcdir}/dumptool.c
 
 dumptool: dumptool.o
-	$(CC) $(CFLAGS) $(LDFLAGS) -o dumptool dumptool.o ../shlibafsosd/vol_osd.xdr.o \
+	$(CC) $(CFLAGS) $(LDFLAGS) -o dumptool dumptool.o ../rxosd/vol_osd.xdr.o \
 			${TOP_LIBDIR}/librx.a
 
 libxfiles.a: $(OBJS_libxfiles.a)
