@@ -499,7 +499,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 	    rx_KeepAliveOn(acall); 
  	    memset(&InStatus, 0, sizeof(InStatus));
     	    if (VanillaUser(client)) {
-		code = EPERM;
+		code = EACCES;
 		goto Bad_ReplaceOSD;
     	    }
     	    if (parentwhentargetnotdir != NULL) {
@@ -623,7 +623,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 	    rx_KeepAliveOn(acall); 
 	    /* For the momoent we don't give this feature to normal users */
 	    if (VanillaUser(client)) {
-	        code = EPERM;
+	        code = EACCES;
 		goto Bad_SetPolicy;
 	    }
 
@@ -1501,7 +1501,7 @@ SetOsdFileReady(struct rx_call *acall, AFSFid *Fid, struct cksum *checksum)
     ViceLog(1,("SetOsdFileReady start for %u.%u.%u\n",
                         Fid->Volume, Fid->Vnode, Fid->Unique));
     if (!afsconf_SuperUser(*(voldata->aConfDir), acall, (char *)0)) {
-        errorCode = EPERM;
+        errorCode = EACCES;
         goto Bad_SetOsdFileReady;
     }
     volptr = VGetVolume(&error2, &errorCode, Fid->Volume);
@@ -1579,14 +1579,19 @@ GetOsdMetadata(struct rx_call *acall, AFSFid *Fid)
     if (errorCode = GetVolumePackage(acall, Fid, &volptr, &targetptr,
                                      MustNOTBeDIR, &parentwhentargetnotdir,
                                      &client, READ_LOCK,
-                                     &rights, &anyrights))
+                                     &rights, &anyrights)) {
+	if (errorCode == 102)
+	    errorCode = ENOENT;
         goto Bad_GetOsdMetadata;
+    }
 
     memset(&InStatus, 0, sizeof(InStatus));
     if (errorCode = Check_PermissionRights(targetptr, client, rights,
                         CHK_FETCHDATA, &InStatus)) {
-	if (VanillaUser(client))
+	if (VanillaUser(client)) {
+	    errorCode = EACCES;
             goto Bad_GetOsdMetadata;
+	}
     }
 
     if (targetptr->disk.osdMetadataIndex) {
