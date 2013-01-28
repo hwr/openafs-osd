@@ -128,11 +128,12 @@ dnl Kernel module build options.
 AC_ARG_WITH([linux-kernel-headers],
     [AS_HELP_STRING([--with-linux-kernel-headers=path],
         [use the kernel headers found at path (optional, defaults to
-         /usr/src/linux-2.4, then /usr/src/linux)])])
+         /lib/modules/`uname -r`/build, then /lib/modules/`uname -r`/source,
+         then /usr/src/linux-2.4, and lastly /usr/src/linux)])])
 AC_ARG_WITH([linux-kernel-build],
     [AS_HELP_STRING([--with-linux-kernel-build=path],
 	[use the kernel build found at path(optional, defaults to 
-	/usr/src/linux-2.4, then /usr/src/linux)])])
+	kernel headers path)])])
 AC_ARG_WITH([bsd-kernel-headers],
     [AS_HELP_STRING([--with-bsd-kernel-headers=path],
         [use the kernel headers found at path (optional, defaults to
@@ -169,7 +170,6 @@ AC_ARG_ENABLE([transarc-paths],
     [enable_transarc_paths="no"])
 
 dnl Optimization and debugging flags.
-
 AC_ARG_WITH([version-string],
     [AS_HELP_STRING([--with-version-string=string],
         [what to display in rxdebug -v])])
@@ -255,7 +255,7 @@ AC_ARG_WITH([xslt-processor],
 	AS_HELP_STRING([--with-xslt-processor=ARG],
 	[which XSLT processor to use (possible choices are: libxslt, saxon, xalan-j, xsltproc)]),
        	XSLTPROC="$withval",
-       	AC_CHECK_PROGS([XSLTPROC], [libxslt saxon xalan-j xsltproc], [echo]))
+	AC_CHECK_PROGS([XSLTPROC], [libxslt saxon xalan-j xsltproc], [echo]))
 
 AC_ARG_WITH([html-xsl], 
         AS_HELP_STRING([--with-html-xsl],
@@ -266,7 +266,7 @@ AC_ARG_WITH([html-xsl],
 AC_ARG_WITH([docbook2pdf],
 	AS_HELP_STRING([--with-docbook2pdf=ARG],
 	[which Docbook to PDF utility to use (possible choices are: docbook2pdf, dblatex)]),
-		DOCBOOK2PDF="$withval",
+       	DOCBOOK2PDF="$withval",
 	AC_CHECK_PROGS([DOCBOOK2PDF], [docbook2pdf dblatex], [echo]))
 
 enable_login="no"
@@ -306,16 +306,20 @@ case $system in
 		 if test "x$with_linux_kernel_headers" != "x"; then
 		   LINUX_KERNEL_PATH="$with_linux_kernel_headers"
 		 else
-		   LINUX_KERNEL_PATH="/lib/modules/`uname -r`/source"
-		   if test ! -f "$LINUX_KERNEL_PATH/include/linux/version.h"; then
-		     LINUX_KERNEL_PATH="/lib/modules/`uname -r`/build"
-		   fi
-		   if test ! -f "$LINUX_KERNEL_PATH/include/linux/version.h"; then
-		     LINUX_KERNEL_PATH="/usr/src/linux-2.4"
-		   fi
-		   if test ! -f "$LINUX_KERNEL_PATH/include/linux/version.h"; then
-		     LINUX_KERNEL_PATH="/usr/src/linux"
-		   fi
+		   for utsdir in "/lib/modules/`uname -r`/build" \
+		                 "/lib/modules/`uname -r`/source" \
+		                 "/usr/src/linux-2.4" \
+		                 "/usr/src/linux"; do
+		     LINUX_KERNEL_PATH="$utsdir"
+		     for utsfile in "include/generated/utsrelease.h" \
+		                    "include/linux/utsrelease.h" \
+		                    "include/linux/version.h" \
+		                    "include/linux/version-up.h"; do
+		       if grep "UTS_RELEASE" "$utsdir/$utsfile" >/dev/null 2>&1; then
+		         break 2
+		       fi
+		     done
+		   done
 		 fi
 		 if test "x$with_linux_kernel_build" != "x"; then
 			 LINUX_KERNEL_BUILD="$with_linux_kernel_build"
@@ -370,12 +374,12 @@ case $system in
 		fi
 		AC_MSG_RESULT(linux)
                 if test "x$enable_kernel_module" = "xyes"; then
-		 case "$LINUX_VERSION" in
-		  2.2.*) AFS_SYSKVERS=22 ;;
-		  2.4.*) AFS_SYSKVERS=24 ;;
-		  2.6.* | 3.*) AFS_SYSKVERS=26 ;;
-		  *) AC_MSG_ERROR(Couldn't guess your Linux version [2]) ;;
-		 esac
+                 case "$LINUX_VERSION" in
+                  2.2.*) AFS_SYSKVERS=22 ;;
+                  2.4.*) AFS_SYSKVERS=24 ;;
+                  2.6.* | 3.*) AFS_SYSKVERS=26 ;;
+                  *) AC_MSG_ERROR(Couldn't guess your Linux version [2]) ;;
+                 esac
                 fi
                 ;;
         *-solaris*)
@@ -584,6 +588,14 @@ else
 		i?86-apple-darwin11.*)
 			AFS_SYSNAME="x86_darwin_110"
 			OSXSDK="macosx10.7"
+			;;
+		x86_64-apple-darwin12.*)
+			AFS_SYSNAME="x86_darwin_120"
+			OSXSDK="macosx10.8"
+			;;
+		i?86-apple-darwin12.*)
+			AFS_SYSNAME="x86_darwin_120"
+			OSXSDK="macosx10.8"
 			;;
 		sparc-sun-solaris2.5*)
 			AFS_SYSNAME="sun4x_55"
@@ -810,6 +822,9 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 		 AC_CHECK_LINUX_HEADER([semaphore.h])
 		 AC_CHECK_LINUX_HEADER([seq_file.h])
 
+		 dnl Type existence checks
+		 AC_CHECK_LINUX_TYPE([struct vfs_path], [dcache.h])
+
 		 dnl Check for structure elements
 		 AC_CHECK_LINUX_STRUCT([address_space_operations],
 				       [write_begin], [fs.h])
@@ -919,9 +934,9 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 		 AC_CHECK_LINUX_FUNC([rcu_read_lock],
 				     [#include <linux/rcupdate.h>],
 				     [rcu_read_lock();])
-                 AC_CHECK_LINUX_FUNC([set_nlink],
-                                     [#include <linux/fs.h>],
-                                     [set_nlink(NULL, 1);])
+		 AC_CHECK_LINUX_FUNC([set_nlink],
+				     [#include <linux/fs.h>],
+				     [set_nlink(NULL, 1);])
 		 AC_CHECK_LINUX_FUNC([splice_direct_to_actor],
 				     [#include <linux/splice.h>],
 				     [splice_direct_to_actor(NULL,NULL,NULL);])
@@ -931,9 +946,9 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 		 AC_CHECK_LINUX_FUNC([zero_user_segments],
 				     [#include <linux/highmem.h>],
 				     [zero_user_segments(NULL, 0, 0, 0, 0);])
-                 AC_CHECK_LINUX_FUNC([noop_fsync],
-                                     [#include <linux/fs.h>],
-                                     [void *address = &noop_fsync; printk("%p\n", address)];)
+		 AC_CHECK_LINUX_FUNC([noop_fsync],
+				     [#include <linux/fs.h>],
+				     [void *address = &noop_fsync; printk("%p\n", address)];)
 		 AC_CHECK_LINUX_FUNC([kthread_run],
 				     [#include <linux/kernel.h>
 				      #include <linux/kthread.h>],
@@ -959,11 +974,11 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 		 LINUX_IOP_I_PERMISSION_TAKES_FLAGS
 	  	 LINUX_IOP_I_PERMISSION_TAKES_NAMEIDATA
 	  	 LINUX_IOP_I_PUT_LINK_TAKES_COOKIE
-	  	 LINUX_DOP_D_DELETE_TAKES_CONST
+		 LINUX_DOP_D_DELETE_TAKES_CONST
 	  	 LINUX_DOP_D_REVALIDATE_TAKES_NAMEIDATA
 	  	 LINUX_FOP_F_FLUSH_TAKES_FL_OWNER_T
 	  	 LINUX_FOP_F_FSYNC_TAKES_DENTRY
-	  	 LINUX_FOP_F_FSYNC_TAKES_RANGE
+		 LINUX_FOP_F_FSYNC_TAKES_RANGE
 	  	 LINUX_AOP_WRITEBACK_CONTROL
 		 LINUX_FS_STRUCT_FOP_HAS_SPLICE
 		 LINUX_KERNEL_POSIX_LOCK_FILE_WAIT_ARG
@@ -1333,7 +1348,7 @@ AC_CHECK_HEADERS(windows.h direct.h sys/ipc.h sys/resource.h)
 AC_CHECK_HEADERS(security/pam_modules.h ucontext.h regex.h sys/statvfs.h sys/statfs.h sys/bitypes.h)
 AC_CHECK_HEADERS(linux/errqueue.h,,,[#include <linux/types.h>])
 AC_CHECK_HEADERS(et/com_err.h)
-AC_CHECK_HEADERS(ncurses.h curses.h)
+AC_CHECK_HEADERS(ncurses.h ncurses/ncurses.h curses.h)
 AC_CHECK_HEADERS(search.h)
 
 AC_CHECK_TYPES([fsblkcnt_t],,,[

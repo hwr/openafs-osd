@@ -27,6 +27,16 @@
 # endif
 #endif
 
+#if defined(STRUCT_DENTRY_OPERATIONS_HAS_D_AUTOMOUNT) && !defined(DCACHE_NEED_AUTOMOUNT)
+# define DCACHE_NEED_AUTOMOUNT DMANAGED_AUTOMOUNT
+#endif
+
+#ifdef HAVE_LINUX_STRUCT_VFS_PATH
+typedef struct vfs_path afs_linux_path_t;
+#else
+typedef struct path afs_linux_path_t;
+#endif
+
 #ifndef HAVE_LINUX_DO_SYNC_READ
 static inline int
 do_sync_read(struct file *fp, char *buf, size_t count, loff_t *offp) {
@@ -414,7 +424,7 @@ afs_kern_path(char *aname, int flags, struct nameidata *nd) {
 }
 #else
 static inline int
-afs_kern_path(char *aname, int flags, struct path *path) {
+afs_kern_path(char *aname, int flags, afs_linux_path_t *path) {
     return kern_path(aname, flags, path);
 }
 #endif
@@ -423,7 +433,7 @@ static inline void
 #if defined(HAVE_LINUX_PATH_LOOKUP)
 afs_get_dentry_ref(struct nameidata *nd, struct vfsmount **mnt, struct dentry **dpp) {
 #else
-afs_get_dentry_ref(struct path *path, struct vfsmount **mnt, struct dentry **dpp) {
+afs_get_dentry_ref(afs_linux_path_t *path, struct vfsmount **mnt, struct dentry **dpp) {
 #endif
 #if defined(STRUCT_NAMEIDATA_HAS_PATH)
 # if defined(HAVE_LINUX_PATH_LOOKUP)
@@ -449,7 +459,7 @@ afs_get_dentry_ref(struct path *path, struct vfsmount **mnt, struct dentry **dpp
 static inline struct file *
 afs_dentry_open(struct dentry *dp, struct vfsmount *mnt, int flags, const struct cred *creds) {
 #if defined(DENTRY_OPEN_TAKES_PATH)
-    struct path path;
+    afs_linux_path_t path;
     struct file *filp;
     path.mnt = mnt;
     path.dentry = dp;

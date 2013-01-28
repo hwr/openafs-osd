@@ -141,7 +141,7 @@ struct DumpHeader {
  */
 
 #ifdef AFS_RXOSD_SUPPORT
-#include "../shlibafsosd/vol_osd.h"
+#include "../rxosd/vol_osd.h"
 
 #define MAX_OSD_METADATA_LENGTH 2040
 struct osdMetadataHandle {

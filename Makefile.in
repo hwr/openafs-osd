@@ -354,7 +354,7 @@ rxosd_generated: rxgen fsint
 		echo Not building shared library for rxosd for ${SYS_NAME} ;; \
 	esac
 
-venus: cmd comerr volser ptserver libafscp
+venus: cmd comerr volser ptserver libafscp libafsauthent
 	+${COMPILE_PART1} venus ${COMPILE_PART2}
 	+${COMPILE_PART1} venus/test ${COMPILE_PART2}
 
@@ -379,7 +379,7 @@ scout: cmd comerr gtx fsprobe
 		echo Not building scout, because no curses-headers found. ; \
 	fi
 
-uss: des kauth cmd comerr rx vlserver vol volser rxosd_generated
+uss: des kauth cmd comerr rx vlserver vol volser
 	+${COMPILE_PART1} uss ${COMPILE_PART2}
 
 bozo: cmd comerr audit auth kauth volser
@@ -608,7 +608,7 @@ libafsrpc: rx rxkad rxstat fsint des
 		echo Not building MT libafsrpc for ${SYS_NAME} ;; \
 	esac
 
-libafsauthent: ubik auth kauth libafsrpc
+libafsauthent: ubik auth kauth libafsrpc volser vlserver
 	+case ${SYS_NAME} in \
 	alpha_dux*|sgi_*|sun4x_*|sunx86_*|rs_aix*|*linux*|hp_ux11*|ia64_hpux*|*[nof]bsd*) \
 	${COMPILE_PART1} libafsauthent ${COMPILE_PART2} ;; \
@@ -629,7 +629,7 @@ shlibafsrpc: rx rxstat fsint rxkad des
 		echo Not building shared libafsrpc for ${SYS_NAME} ;; \
 	esac
 
-shlibafsauthent: ubik auth kauth shlibafsrpc
+shlibafsauthent: bozo ubik auth kauth shlibafsrpc
 	+case ${SYS_NAME} in \
 	alpha_dux*|sgi_*|sun4x_*|sunx86_*|rs_aix*|*linux*|hp_ux11*|ia64_hpux*|*_darwin_1*|*nbsd*|*obsd*|*fbsd*) \
 	${COMPILE_PART1} shlibafsauthent ${COMPILE_PART2} ;; \

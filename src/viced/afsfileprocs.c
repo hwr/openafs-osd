@@ -7579,9 +7579,17 @@ common_GiveUpCallBacks(struct rx_call *acall, struct AFSCBFids *FidArray,
 	goto Bad_GiveUpCallBacks;
 
     if (!FidArray && !CallBackArray) {
+	afs_uint32 ip = 0;
+	afs_uint16 port = 0;
+	if (tcon->peer) {
+	    ip = htonl(tcon->peer->host);
+	    port = htons(tcon->peer->port);
+	}
+	
 	ViceLog(1,
-		("SAFS_GiveUpAllCallBacks: host=%x\n",
-		 (tcon->peer ? tcon->peer->host : 0)));
+		("SAFS_GiveUpAllCallBacks: host=%u.%u.%u.%u:%u\n",
+                (ip >> 24) & 0xff, (ip >> 16) & 0xff,
+                (ip >> 8) & 0xff, ip & 0xff, port));
 	errorCode = GetClient(tcon, &client);
 	if (!errorCode) {
 	    H_LOCK;

@@ -353,6 +353,9 @@
 /* Define if your kernel has the splice_direct_to_actor function */
 #undef HAVE_LINUX_SPLICE_DIRECT_TO_ACTOR
 
+/* Define if kernel defines struct vfs_path */
+#undef HAVE_LINUX_STRUCT_VFS_PATH
+
 /* Define if your kernel has the svc_addr_in function */
 #undef HAVE_LINUX_SVC_ADDR_IN
 
@@ -373,6 +376,9 @@
 
 /* Define to 1 if you have the <ncurses.h> header file. */
 #undef HAVE_NCURSES_H
+
+/* Define to 1 if you have the <ncurses/ncurses.h> header file. */
+#undef HAVE_NCURSES_NCURSES_H
 
 /* Define to 1 if you have the <ndir.h> header file, and it defines `DIR'. */
 #undef HAVE_NDIR_H

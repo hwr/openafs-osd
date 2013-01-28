@@ -35,8 +35,8 @@ VOLSEROBJS=volmain.o volprocs.o physio.o voltrans.o volerr.o volint.cs.o dumpstu
 
 VLSERVEROBJS=vldbint.cs.o vldbint.xdr.o vl_errors.o
 
-VOSOBJS= vsprocs.o vsutils.o lockprocs.o volint.xdr.o volerr.o volint.cs.o \
-	osddb.cs.o osddb.xdr.o
+VOSOBJS= vsprocs.o vsutils.o lockprocs.o volint.xdr.o volerr.o volint.cs.o osddb.cs.o \
+	osddb.xdr.o
 
 LWPOBJS=lock.o threadname.o
 
@@ -101,11 +101,11 @@ volint.ss.o: ../volser/volint.ss.c
 volint.xdr.o: ../volser/volint.xdr.c
 	${COMPILE}
 vsprocs.o: ${VOLSER}/vsprocs.c
-	${COMPILE}
+	${COMPILE} -I../volser
 vsutils.o: ${VOLSER}/vsutils.c
-	${COMPILE}
+	${COMPILE} -I../volser
 lockprocs.o: ${VOLSER}/lockprocs.c
-	${COMPILE}
+	${COMPILE} -I../volser
 volosdprocs.o: ${VOLSER}/volosdprocs.c
 	${COMPILE} -I../volser
 
@@ -221,7 +221,7 @@ libafsosd.o: ${RXOSD}/libafsosd.c
 	${COMPILE} 
 
 vos.o: ${VOLSER}/vos.c
-	${COMPILE}
+	${COMPILE} -I../volser
 
 osddb.cs.o: ../rxosd/osddb.cs.c
 	${COMPILE} -I../rxosd
