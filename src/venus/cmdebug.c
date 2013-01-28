@@ -37,6 +37,7 @@
 #include <afs/com_err.h>
 
 static int print_ctime = 0;
+static int PrintLock(struct AFSDBLockDesc *alock);
 
 static int
 PrintCacheConfig(struct rx_connection *aconn)
@@ -137,6 +138,77 @@ PrintDCacheEntries(struct rx_connection *aconn)
 			(dc.refcntFlags >> 8) & 0xff,
 			dc.refcntFlags & 0xff,
 			dc.states);
+	    }
+	}
+    } else {
+	printf("cmdebug: unsupported server version %d\n", srv_ver);
+    }
+    return 0;
+}
+
+static int
+PrintDCacheEntriesWithLocks(struct rx_connection *aconn)
+{
+    struct cacheConfig c;
+    afs_uint32 srv_ver, conflen;
+    int code, i;
+    struct AFSDCacheEntryL dc;
+
+    c.cacheConfig_len = 0;
+    c.cacheConfig_val = NULL;
+    code = RXAFSCB_GetCacheConfig(aconn, 1, &srv_ver, &conflen, &c);
+    if (code) {
+	printf("cmdebug: error checking cache config: %s\n",
+	       afs_error_message(code));
+	return 0;
+    }
+
+    if (srv_ver == AFS_CLIENT_RETRIEVAL_FIRST_EDITION) {
+	struct cm_initparams_v1 *c1;
+
+	if (c.cacheConfig_len != sizeof(*c1) / sizeof(afs_uint32)) {
+	    printf("cmdebug: configuration data size mismatch (%d != %" AFS_SIZET_FMT ")\n",
+		   c.cacheConfig_len, sizeof(*c1) / sizeof(afs_uint32));
+	    return 0;
+	}
+
+	c1 = (struct cm_initparams_v1 *)c.cacheConfig_val;
+	printf("Chunk files:   %d\n", c1->nChunkFiles);
+	printf("Stat caches:   %d\n", c1->nStatCaches);
+	printf("Data caches:   %d\n", c1->nDataCaches);
+	printf("Volume caches: %d\n", c1->nVolumeCaches);
+	printf("Chunk size:    %d", c1->otherChunkSize);
+	if (c1->firstChunkSize != c1->otherChunkSize)
+	    printf(" (first: %d)", c1->firstChunkSize);
+	printf("\n");
+	printf("Cache size:    %d kB\n", c1->cacheSize);
+	printf("Set time:      %s\n", c1->setTime ? "yes" : "no");
+	printf("Cache type:    %s\n", c1->memCache ? "memory" : "disk");
+	for (i=0; i<c1->nDataCaches; i++) {
+	    code = RXAFSCB_GetDCacheEntryL(aconn, i, &dc);
+	    if (!code && dc.chunk >= 0) {
+                time_t t = dc.modTime;
+		i = dc.index;
+		printf("index %d, Fid %u.%u.%u.%u versionNo %llu",
+			dc.index, dc.cell, dc.netFid.Volume,
+			dc.netFid.Vnode, dc.netFid.Unique,
+			dc.versionNo);
+		if (dc.modTime)
+			printf(" modified %s", ctime(&t));
+		printf("\n\tchunk %d, bytes %d, validPos %llu\n",
+			dc.chunk, dc.chunkBytes, dc.validPos);
+		printf("\trefcnt %d, dflags 0x%x, mflags 0x%x, states 0x%x",
+			(dc.refcntFlags >> 16) & 0xffff,
+			(dc.refcntFlags >> 8) & 0xff,
+			dc.refcntFlags & 0xff,
+			dc.states);
+		printf("\n\tlock: ");
+		PrintLock(&dc.lock);
+		printf("\n\ttlock: ");
+		PrintLock(&dc.tlock);
+		printf("\n\tmflock: ");
+		PrintLock(&dc.mflock);
+		printf("\n");
 	    }
 	}
     } else {
@@ -646,7 +718,11 @@ CommandProc(struct cmd_syndesc *as, void *arock)
 
     if (as->parms[9].items) {
 	/* -dcache */
-	PrintDCacheEntries(conn);
+	if (as->parms[2].items)
+	    /* -long */
+	    PrintDCacheEntriesWithLocks(conn);
+	else
+	    PrintDCacheEntries(conn);
 	return 0;
     }
 

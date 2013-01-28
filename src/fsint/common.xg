@@ -82,9 +82,23 @@ struct AFSDCacheEntry {
     afs_int32 index;
     afs_int32 refcntFlags; 	/* (refcnt << 16) | (dflags << 8) | mflags */
 };
-    
-    
 
+struct AFSDCacheEntryL {
+    afs_int32 cell;
+    AFSFid netFid;
+    afs_uint64 validPos;
+    afs_uint64 versionNo;
+    struct AFSDBLockDesc lock;
+    struct AFSDBLockDesc tlock;
+    struct AFSDBLockDesc mflock;
+    afs_int32 chunk;
+    afs_int32 chunkBytes;
+    afs_int32 modTime;
+    afs_int32 states;
+    afs_int32 index;
+    afs_int32 refcntFlags; 	/* (refcnt << 16) | (dflags << 8) | mflags */
+};
+    
 struct AFSDBLock {
     char name[16];
     struct AFSDBLockDesc lock;

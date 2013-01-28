@@ -356,6 +356,118 @@ SRXAFSCB_GetDCacheEntry(struct rx_call *a_call, afs_int32 index,
     return code;
 }
 
+/*------------------------------------------------------------------------
+ * EXPORTED SRXAFSCB_GetDCacheEntryL
+ *
+ * Description:
+ *	Routine called by the server-side callback RPC interface to
+ *	implement pulling out the contents of a dcache entry.
+ *
+ * Arguments:
+ *	a_call   : Ptr to Rx call on which this request came in.
+ *	a_index  : Index of desired entry
+ *	a_result : Ptr to a buffer for the given dcache entry.
+ *
+ * Returns:
+ *	0 if everything went fine,
+ *	1 if we were given a bad index.
+ *
+ * Environment:
+ *	Nothing interesting.
+ *
+ * Side Effects:
+ *	As advertised.
+ *------------------------------------------------------------------------*/
+
+int
+SRXAFSCB_GetDCacheEntryL(struct rx_call *a_call, afs_int32 index,
+		 struct AFSDCacheEntryL *a_result)
+{
+    struct dcache *tdc;	/*Ptr to current cache entry */
+    int code = 0;			/*Return code */
+    XSTATS_DECLS;
+
+    if (afs_cmHideInfo & HIDE_DCACHE)
+	return RXGEN_OPCODE;
+
+    if (index < 0 || index >= afs_cacheFiles)
+	return EINVAL;
+
+    RX_AFS_GLOCK();
+
+    XSTATS_START_CMTIME(AFS_STATS_CM_RPCIDX_GETDCACHE);
+
+    AFS_STATCNT(SRXAFSCB_GetDCacheEntry);
+
+    tdc = afs_indexTable[index];
+    for (; index<afs_cacheFiles; index++) {
+	tdc = afs_indexTable[index];
+	if (tdc && tdc->f.fid.Fid.Volume)
+	    break;
+	tdc = NULL;
+    }
+    if (tdc) {
+        a_result->cell = tdc->f.fid.Cell;
+        a_result->netFid.Volume = tdc->f.fid.Fid.Volume;
+        a_result->netFid.Vnode = tdc->f.fid.Fid.Vnode;
+        a_result->netFid.Unique = tdc->f.fid.Fid.Unique;
+        a_result->validPos = tdc->validPos;
+	FillInt64(a_result->versionNo, tdc->f.versionNo.high, tdc->f.versionNo.low);
+        a_result->modTime = tdc->f.modTime;
+        a_result->states = tdc->f.states;
+        a_result->chunk = tdc->f.chunk;
+        a_result->chunkBytes = tdc->f.chunkBytes;
+        a_result->index = tdc->index;
+	a_result->refcntFlags =
+		 (tdc->refCount << 16) | (tdc->dflags << 8) | tdc->mflags;
+        a_result->lock.waitStates = tdc->lock.wait_states;
+        a_result->lock.exclLocked = tdc->lock.excl_locked;
+        a_result->lock.readersReading = tdc->lock.readers_reading;
+        a_result->lock.numWaiting = tdc->lock.num_waiting;
+#if defined(INSTRUMENT_LOCKS)
+        a_result->lock.pid_last_reader = MyPidxx2Pid(tdc->lock.pid_last_reader);
+        a_result->lock.pid_writer = MyPidxx2Pid(tdc->lock.pid_writer);
+        a_result->lock.src_indicator = tdc->lock.src_indicator;
+#else
+        a_result->lock.pid_last_reader = 0;
+        a_result->lock.pid_writer = 0;
+        a_result->lock.src_indicator = 0;
+#endif /* INSTRUMENT_LOCKS */
+        a_result->tlock.waitStates = tdc->tlock.wait_states;
+        a_result->tlock.exclLocked = tdc->tlock.excl_locked;
+        a_result->tlock.readersReading = tdc->tlock.readers_reading;
+        a_result->tlock.numWaiting = tdc->tlock.num_waiting;
+#if defined(INSTRUMENT_LOCKS)
+        a_result->tlock.pid_last_reader = MyPidxx2Pid(tdc->tlock.pid_last_reader);
+        a_result->tlock.pid_writer = MyPidxx2Pid(tdc->tlock.pid_writer);
+        a_result->tlock.src_indicator = tdc->tlock.src_indicator;
+#else
+        a_result->tlock.pid_last_reader = 0;
+        a_result->tlock.pid_writer = 0;
+        a_result->tlock.src_indicator = 0;
+#endif /* INSTRUMENT_LOCKS */
+        a_result->mflock.waitStates = tdc->mflock.wait_states;
+        a_result->mflock.exclLocked = tdc->mflock.excl_locked;
+        a_result->mflock.readersReading = tdc->mflock.readers_reading;
+        a_result->mflock.numWaiting = tdc->mflock.num_waiting;
+#if defined(INSTRUMENT_LOCKS)
+        a_result->mflock.pid_last_reader = MyPidxx2Pid(tdc->mflock.pid_last_reader);
+        a_result->mflock.pid_writer = MyPidxx2Pid(tdc->mflock.pid_writer);
+        a_result->mflock.src_indicator = tdc->mflock.src_indicator;
+#else
+        a_result->mflock.pid_last_reader = 0;
+        a_result->mflock.pid_writer = 0;
+        a_result->mflock.src_indicator = 0;
+#endif /* INSTRUMENT_LOCKS */
+    } else
+	code = ENOENT;
+    
+    RX_AFS_GUNLOCK();
+
+    XSTATS_END_TIME;
+
+    return code;
+}
 
 /*------------------------------------------------------------------------
  * EXPORTED SRXAFSCB_GetLock

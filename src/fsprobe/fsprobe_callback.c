@@ -759,3 +759,9 @@ int SRXAFSCB_GetDCacheEntry(struct rx_call *a_call, afs_int32 index,
 {
     return RXGEN_OPCODE;
 }
+
+int SRXAFSCB_GetDCacheEntryL(struct rx_call *a_call, afs_int32 index,
+                 struct AFSDCacheEntryL *a_result)
+{
+    return RXGEN_OPCODE;
+}

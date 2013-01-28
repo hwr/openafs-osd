@@ -124,3 +124,8 @@ proc GetDCacheEntry(
    OUT struct AFSDCacheEntry *a_result
 ) = 65550;
 
+proc GetDCacheEntryL(
+   IN afs_int32 index,
+   OUT struct AFSDCacheEntryL *a_result
+) = 65551;
+

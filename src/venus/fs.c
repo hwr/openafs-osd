@@ -659,6 +659,11 @@ int SRXAFSCB_GetDCacheEntry(struct rx_call *a_call, afs_int32 index, struct AFSD
     return RXGEN_OPCODE;
 }
 
+int SRXAFSCB_GetDCacheEntryL(struct rx_call *a_call, afs_int32 index, struct AFSDCacheEntryL *a_result)
+{
+    return RXGEN_OPCODE;
+}
+
 
 struct Acl {
     int dfs;			/* Originally true if a dfs acl; now also the type
