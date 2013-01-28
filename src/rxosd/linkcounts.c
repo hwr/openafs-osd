@@ -19,16 +19,14 @@
 #include <sys/file.h>
 #include <sys/param.h>
 
-
 #include <afs/cmd.h>
-
 #include <rx/xdr.h>
 #include <afs/afsint.h>
-#include "nfs.h"
-#include "lock.h"
-#include "ihandle.h"
-#include "vnode.h"
-#include "volume.h"
+#include <afs/nfs.h>
+#include <lock.h>
+#include "rxosd_ihandle.h"
+#include <afs/vnode.h>
+#include <afs/volume.h>
 #include <afs/afsutil.h>
 
 #define NAMEI_TAGSHIFT     26

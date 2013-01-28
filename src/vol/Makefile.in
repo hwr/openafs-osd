@@ -34,7 +34,7 @@ SALVOBJS=vnode.o volume.o vutil.o partition.o fssync.o  \
 	nuke.o devname.o listinodes.o ihandle.o namei_ops.o
 
 OBJECTS=${VLIBOBJS} physio.o vol-salvage.o vol-info.o vol-dump.o vol-bless.o \
-	fssync-debug.o linkcounts.o 
+	fssync-debug.o
 
 all: gi \
 	${TOP_INCDIR}/afs/ihandle.h \
@@ -45,7 +45,6 @@ all: gi \
 	${TOP_LIBDIR}/libvlib.a \
 	salvager \
 	volinfo \
-	linkcounts \
 	fssync-debug \
 	$(XFS_SIZE_CHECK) \
 	${TOP_INCDIR}/afs/nfs.h \
@@ -119,7 +118,7 @@ ${TOP_INCDIR}/afs/vol_prototypes.h: vol_prototypes.h
 #
 # Installation targets
 #
-install: vlib.a salvager volinfo fssync-debug linkcounts
+install: vlib.a salvager volinfo fssync-debug
 	${INSTALL} -d ${DESTDIR}${libdir}/afs
 	${INSTALL} -d ${DESTDIR}${afssrvlibexecdir}
 	${INSTALL} -d ${DESTDIR}${afssrvsbindir}
@@ -128,7 +127,6 @@ install: vlib.a salvager volinfo fssync-debug linkcounts
 	${INSTALL_DATA} vlib.a ${DESTDIR}${libdir}/afs/libvlib.a
 	${INSTALL_PROGRAM} salvager ${DESTDIR}${afssrvlibexecdir}/salvager
 	${INSTALL_PROGRAM} volinfo ${DESTDIR}${afssrvsbindir}/volinfo
-	${INSTALL_PROGRAM} linkcounts ${DESTDIR}${afssrvsbindir}/linkcounts
 	${INSTALL_PROGRAM} fssync-debug ${DESTDIR}${afssrvsbindir}/fssync-debug
 	${INSTALL_DATA} ${srcdir}/nfs.h ${DESTDIR}${includedir}/afs/nfs.h
 	${INSTALL_DATA} ${srcdir}/vnode.h ${DESTDIR}${includedir}/afs/vnode.h
@@ -156,7 +154,6 @@ dest: vlib.a salvager volinfo fssync-debug
 	${INSTALL_DATA} vlib.a ${DEST}/lib/afs/libvlib.a
 	${INSTALL_PROGRAM} salvager ${DEST}/root.server/usr/afs/bin/salvager
 	${INSTALL_PROGRAM} volinfo ${DEST}/root.server/usr/afs/bin/volinfo
-	${INSTALL_PROGRAM} linkcounts ${DEST}/root.server/usr/afs/bin/linkcounts
 	${INSTALL_PROGRAM} fssync-debug ${DEST}/root.server/usr/afs/bin/fssync-debug
 	${INSTALL_DATA} ${srcdir}/nfs.h ${DEST}/include/afs/nfs.h
 	${INSTALL_DATA} ${srcdir}/vnode.h ${DEST}/include/afs/vnode.h
@@ -211,7 +208,6 @@ salvager.o: AFS_component_version_number.c
 
 vol-salvage: vol-salvage.o
 vol-info: vol-info.o physio.o ihandle.o vlib.a
-linkcounts: linkcounts.o
 
 listinodes.o: listinodes.c AFS_component_version_number.c
 	case ${SYS_NAME} in				\
@@ -247,9 +243,6 @@ fssync-debug: fssync-debug.o physio.o AFS_component_version_number.c ${LIBS}
 vol-bless: vol-bless.o physio.o ihandle.o ${LIBS}
 	${CC} ${CFLAGS} -o vol-bless vol-bless.o physio.o ${LIBS} ${XLIBS}
 
-linkcounts: linkcounts.o
-	${CC} ${CFLAGS} -o linkcounts linkcounts.o ${LIBS}
-
 xfs_size_check: xfs_size_check.c
 	${CC} ${CFLAGS} -o xfs_size_check ${srcdir}/xfs_size_check.c
 
@@ -260,7 +253,6 @@ xfs_size_check: xfs_size_check.c
 clean:
 	$(RM) -f *.o *.a AFS_component_version_number.c
 	$(RM) -f ${SCMPROGS} ${STAGEPROGS} core salvager volinfo gi fssync-debug
-	$(RM) -f linkcounts 
 
 test:
 	cd test; $(MAKE)

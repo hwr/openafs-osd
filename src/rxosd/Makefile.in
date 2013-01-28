@@ -193,7 +193,7 @@ generated: \
 	Kvicedosd.cs.c Kvicedosd.xdr.c vicedosd.cs.c vicedosd.xdr.c \
 	rxosd.cs.c rxosd.xdr.c
 
-all: generated rxosd osd readabyte osdmetadata osddbserver ${LIBAFSOSD} ${LIBDAFSOSD}
+all: generated rxosd osd readabyte osdmetadata osddbserver linkcounts ${LIBAFSOSD} ${LIBDAFSOSD}
 
 ${TOP_INCDIR}/afs/rxosd.h: rxosd.h
 	${INSTALL} $? $@
@@ -212,7 +212,7 @@ ${TOP_LIBDIR}/${LIBDAFSOSD}: ${LIBDAFSOSD}
 ${TOP_LIBDIR}/libafsosd.a: libafsosd.a
 	${INSTALL_DATA} libafsosd.a $@
 
-install: ${LIBAFSOSD} ${LIBDAFSOSD} libafsosd.a rxosd osd osdmetadata osddbserver
+install: ${LIBAFSOSD} ${LIBDAFSOSD} libafsosd.a rxosd osd osdmetadata osddbserver linkcounts
 	../config/shlib-install -d ${DESTDIR}${libdir} \
 		-l libafsosd -M ${LIBAFSOSDMAJOR} -m ${LIBAFSOSDMINOR}
 	../config/shlib-install -d ${DESTDIR}${libdir} \
@@ -223,8 +223,9 @@ install: ${LIBAFSOSD} ${LIBDAFSOSD} libafsosd.a rxosd osd osdmetadata osddbserve
 	${INSTALL} osd ${DESTDIR}${bindir}/osd
 	${INSTALL} osdmetadata ${DESTDIR}${afssrvlibexecdir}/osdmetadata
 	${INSTALL} osddbserver ${DESTDIR}${afssrvlibexecdir}/osddbserver
+	${INSTALL} linkcounts ${DESTDIR}${afssrvlibexecdir}/linkcounts
 
-dest: ${LIBAFSOSD} ${LIBDAFSOSD} libafsosd.a rxosd osd osdmetadata osddbserver
+dest: ${LIBAFSOSD} ${LIBDAFSOSD} libafsosd.a rxosd osd osdmetadata osddbserver linkcounts
 	../config/shlib-install -d ${DEST}/lib \
 		-l libafsosd -M ${LIBAFSOSDMAJOR} -m ${LIBAFSOSDMINOR}
 	../config/shlib-install -d ${DEST}/lib \
@@ -236,6 +237,7 @@ dest: ${LIBAFSOSD} ${LIBDAFSOSD} libafsosd.a rxosd osd osdmetadata osddbserver
 	${INSTALL} osd ${DEST}/bin/osd
 	${INSTALL} osdmetadata ${DEST}/root.server/usr/afs/bin/osdmetadata
 	${INSTALL} osddbserver ${DEST}/root.server/usr/afs/bin/osddbserver
+	${INSTALL} linkcounts ${DEST}/root.server/usr/afs/bin/linkcounts
 
 rxosd: ${rxosdobjects}
 	${CC} ${LDFLAGS} -o rxosd ${rxosdobjects} -ldl ${LIBS} $(LIB_hcrypto) \
@@ -571,6 +573,13 @@ osddbserver.o: ${srcdir}/osddbserver.c osddb.h
 osddbserver: osddbserver.o osddb.ss.o osddb.xdr.o ${LIBS} Makefile
 	${CC} ${CFLAGS} ${MT_CFLAGS} -o osddbserver osddbserver.o osddb.ss.o \
 		osddb.xdr.o ${SERVERLIBS} ${MT_LIBS} ${XLIBS}
+
+linkcunts.o: ${srcdir}/linkcounts.c
+	${CCRULE}
+
+linkcounts: linkcounts.o
+	${CC} ${CFLAGS} ${MT_CFLAGS} -o linkcounts linkcounts.o ${SERVERLIBS} ${MT_LIBS} ${XLIBS}
+
 clean:
 	$(RM) -f *.o libafsosd.a* libafsosd.so* libdafsosd.so* libcafsosd.so* \
 		 *.gch *.ss.c *.cs.c *.xdr.c  *int.h osddb.h rxosd.h vol_osd.h  \
