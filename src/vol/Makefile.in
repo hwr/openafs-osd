@@ -38,7 +38,6 @@ OBJECTS=${VLIBOBJS} physio.o vol-salvage.o vol-info.o vol-dump.o vol-bless.o \
 
 all: gi \
 	${TOP_INCDIR}/afs/ihandle.h \
-	${TOP_INCDIR}/afs/ihandle_rxosd.h \
 	${TOP_INCDIR}/afs/volume.h \
 	${TOP_INCDIR}/afs/vnode.h \
 	${TOP_INCDIR}/afs/partition.h \
@@ -103,9 +102,6 @@ ${TOP_INCDIR}/afs/daemon_com.h: daemon_com.h
 	${INSTALL_DATA} $? $@
 
 ${TOP_INCDIR}/afs/ihandle.h: ihandle.h
-	${INSTALL_DATA} $? $@
-
-${TOP_INCDIR}/afs/ihandle_rxosd.h: ihandle_rxosd.h
 	${INSTALL_DATA} $? $@
 
 ${TOP_INCDIR}/afs/namei_ops.h: namei_ops.h

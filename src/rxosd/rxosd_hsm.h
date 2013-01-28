@@ -5,7 +5,6 @@
 #define LIBAFSDCACHE_VERSION 1
 
 #include <afs/fileutil.h>
-#include <afs/ihandle_rxosd.h>
 
 extern afs_int32 
 load_libafshsm(afs_int32 interface, char *initroutine, void *inrock, void *outrock);

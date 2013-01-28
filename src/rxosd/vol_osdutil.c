@@ -35,7 +35,7 @@
 #include "lock.h"
 #include "lwp.h"
 #include <afs/afssyscalls.h>
-#include "../vol/ihandle.h"
+#include <afs/ihandle.h>
 #include <afs/afsutil.h>
 #ifdef AFS_NT40_ENV
 #include "ntops.h"

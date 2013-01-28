@@ -56,7 +56,7 @@ rxosdobjects = \
 	softsig.o \
 	devname.o \
 	common.o \
-	ihandle.o \
+	rxosd_ihandle.o \
 	rxosd_namei_ops.o \
 	osddb.cs.o \
 	osddb.xdr.o \
@@ -308,7 +308,7 @@ devname.o: ${VOL}/devname.c
 common.o: ${VOL}/common.c
 	${CCRULERXOSD}
 
-ihandle.o: ${VOL}/ihandle.c
+rxosd_ihandle.o: ${srcdir}/rxosd_ihandle.c
 	${CCRULERXOSD}
 
 # osddb routines

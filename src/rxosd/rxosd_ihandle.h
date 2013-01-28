@@ -127,6 +127,21 @@ extern void ih_glock_init(void);
 	osi_Assert((head) && ((head)->prev == NULL));	\
     } while(0)
 
+/*
+ * Macro to insert an element at the head of a doubly linked list
+ */
+#define DLL_INSERT_HEAD(ptr,head,tail,next,prev) \
+    do {                                         \
+        (ptr)->next = (head);                    \
+        (ptr)->prev = NULL;                      \
+        (head) = (ptr);                          \
+        if ((ptr)->next)                         \
+            (ptr)->next->prev = (ptr);           \
+        else                                     \
+            (tail) = (ptr);                      \
+        osi_Assert((tail) && ((tail)->next == NULL)); \
+    } while(0)
+
 #endif /* DLL_INIT_LIST */
 
 #ifdef AFS_NT40_ENV
@@ -239,6 +254,42 @@ typedef struct ih_init_params
  */
 #define FD_MAX_CACHESIZE (2000 - FD_HANDLE_SETASIDE)
 
+#include <dirent.h>
+struct ih_posix_ops {
+    int         (*open)(const char *, int, mode_t, afs_uint64);
+    int         (*close)(int);
+    int         (*read)(int, void *, size_t);
+    ssize_t     (*readv)(int, const struct iovec *, int);
+    ssize_t     (*write)(int, const void *, size_t);
+    ssize_t     (*writev)(int, const struct iovec *, int);
+    afs_int64   (*lseek)(int, afs_int64, int);
+    int         (*fsync)(int);
+    int         (*unlink)(const char *);
+    int         (*mkdir)(const char *, mode_t);
+    int         (*rmdir)(const char *);
+    int         (*chmod)(const char *, mode_t);
+    int         (*chown)(const char *, uid_t, gid_t);
+    int         (*stat64)(char *, struct afs_stat *);
+    int         (*fstat64)(int, struct afs_stat *);
+    int         (*rename)(const char *, const char *);
+    DIR *       (*opendir)(const char *);
+    struct dirent * (*readdir)(DIR *);
+    int         (*closedir)(DIR *);
+    int         (*hardlink)(const char*, const char*);
+#if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
+    int         (*statvfs)(const char *, struct afs_statvfs *);
+#else
+    int         (*statfs)(const char *, struct afs_statfs *);
+#endif
+    int		(*ftruncate)(int, afs_int64);
+    ssize_t     (*pread)(int, void *, size_t, afs_foff_t);
+    ssize_t     (*pwrite)(int, const void *, size_t, afs_foff_t);
+    ssize_t     (*preadv)(int, const struct iovec *, int, afs_foff_t);
+    ssize_t     (*pwritev)(int, const struct iovec *, int, afs_foff_t);
+    int		(*stat_tapecopies)(const char *path, afs_int32 *level,
+				   afs_sfsize_t *size);
+};
+
 /* On modern platforms, this is sized higher than the note implies.
  * For HP, see http://forums11.itrc.hp.com/service/forums/questionanswer.do?admit=109447626+1242508538748+28353475&threadId=302950
  * On AIX, it's said to be self-tuning (sar -v)
@@ -262,10 +313,15 @@ typedef struct IHandle_s {
     struct FdHandle_s *ih_fdtail;
     struct IHandle_s *ih_next;	/* Links for avail list/hash chains */
     struct IHandle_s *ih_prev;
+    struct ih_posix_ops *ih_ops;
 } IHandle_t;
 
 /* Flags for the Inode handle */
 #define IH_REALLY_CLOSED		1
+#define IH_HSM_FILESYSTEM               8
+#define IH_LINKTABLE_V1                 0x100
+#define IH_LINKTABLE_V2                 0x200
+#define IH_LINKTABLE_VERSIONS           0x300
 
 /* Hash function for inode handles */
 #define I_HANDLE_HASH_SIZE	2048	/* power of 2 */
@@ -286,7 +342,7 @@ typedef struct IHashBucket_s {
 #ifdef AFS_NT40_ENV
 #include "ntops.h"
 #endif
-#include "namei_ops.h"
+#include "rxosd_namei_ops.h"
 
 extern void ih_clear(IHandle_t * h);
 extern Inode ih_create(IHandle_t * h, int dev, char *part, Inode nI, int p1,
@@ -304,6 +360,8 @@ extern IHandle_t *ih_init(int /*@alt Device@ */ dev, int /*@alt VolId@ */ vid,
 			  Inode ino);
 extern IHandle_t *ih_copy(IHandle_t * ihP);
 extern FdHandle_t *ih_open(IHandle_t * ihP);
+extern FdHandle_t *ih_reopen(IHandle_t * ihP);
+extern FdHandle_t *ih_fakeopen(IHandle_t * ihP, int open_fd);
 extern int fd_close(FdHandle_t * fdP);
 extern int fd_reallyclose(FdHandle_t * fdP);
 extern StreamHandle_t *stream_fdopen(FD_t fd);
@@ -323,11 +381,14 @@ extern int ih_condsync(IHandle_t * ihP);
 /* Macros common to user space and inode API's. */
 #define IH_INIT(H, D, V, I) ((H) = ih_init((D), (V), (I)))
 
-#define IH_COPY(D, S) ((D) = ih_copy(S))
+	/* files in object storage don't have a handle! */
+#define IH_COPY(D, S) if (S) (D) = ih_copy(S); else (D) = NULL
 
 #define IH_NLINK(H) ih_nlink(H)
 
 #define IH_OPEN(H) ih_open(H)
+
+#define IH_REOPEN(H) ih_reopen(H)
 
 #define FDH_CLOSE(H) (fd_close(H), (H)=NULL, 0)
 
@@ -366,7 +427,7 @@ extern int ih_condsync(IHandle_t * ihP);
 #define OS_PREAD(FD, B, S, O) nt_pread(FD, B, S, O)
 #define OS_PWRITE(FD, B, S, O) nt_pwrite(FD, B, S, O)
 #else
-#ifdef O_LARGEFILE
+#if defined(O_LARGEFILE) || defined(AFS_AIX53_ENV)
 #define OS_PREAD(FD, B, S, O) pread64(FD, B, S, O)
 #define OS_PWRITE(FD, B, S, O) pwrite64(FD, B, S, O)
 #else /* !O_LARGEFILE */
@@ -525,31 +586,27 @@ extern Inode ih_icreate(IHandle_t * ih, int dev, char *part, Inode nI, int p1,
 #define OS_SIZE(FD) ih_size(FD)
 extern afs_sfsize_t ih_size(FD_t);
 
-#ifndef AFS_NT40_ENV
-#define FDH_READV(H, I, N) readv((H)->fd_fd, I, N)
-#define FDH_WRITEV(H, I, N) writev((H)->fd_fd, I, N)
-#endif
-
+#define FDH_READ(H, B, S) ((H)->fd_ih->ih_ops->read)((H)->fd_fd, B, S)
+#define FDH_READV(H, I, N) ((H)->fd_ih->ih_ops->readv)((H)->fd_fd, I, N)
+#define FDH_WRITE(H, B, S) ((H)->fd_ih->ih_ops->write)((H)->fd_fd, B, S)
+#define FDH_WRITEV(H, I, N) ((H)->fd_ih->ih_ops->writev)((H)->fd_fd, I, N)
+#define FDH_SEEK(H, O, F) ((H)->fd_ih->ih_ops->lseek)((H)->fd_fd, O, F)
+#define IH_OPENDIR(N, H) ((H)->ih_ops->opendir)(N)
+#define IH_READDIR(D, H) ((H)->ih_ops->readdir)(D)
+#define IH_CLOSEDIR(D, H) ((H)->ih_ops->closedir)(D)
+#define IH_STAT(N, S, H) ((H)->ih_ops->stat64)(N, S)
+#define FDH_PREAD(H, B, S, O) ((H)->fd_ih->ih_ops->pread)((H)->fd_fd, B, S, O)
+#define FDH_PWRITE(H, B, S, O) ((H)->fd_ih->ih_ops->pwrite)((H)->fd_fd, B, S, O)
+#define FDH_TRUNC(H, L) ((H)->fd_ih->ih_ops->ftruncate)((H)->fd_fd, L)
 #ifdef HAVE_PIOV
-#ifdef O_LARGEFILE
-#define FDH_PREADV(H, I, N, O) preadv64((H)->fd_fd, I, N, O)
-#define FDH_PWRITEV(H, I, N, O) pwritev64((H)->fd_fd, I, N, O)
-#else /* !O_LARGEFILE */
-#define FDH_PREADV(H, I, N, O) preadv((H)->fd_fd, I, N, O)
-#define FDH_PWRITEV(H, I, N, O) pwritev((H)->fd_fd, I, N, O)
-#endif /* !O_LARGEFILE */
+#define FDH_PREADV(H, I, N, O) ((H)->fd_ih->ih_ops->preadv)((H)->fd_fd, I, N, O)
+#define FDH_PWRITEV(H, I, N, O) ((H)->fd_ih->ih_ops->pwritev)((H)->fd_fd, I, N, O)
 #endif
-
-#define FDH_PREAD(H, B, S, O) OS_PREAD((H)->fd_fd, B, S, O)
-#define FDH_PWRITE(H, B, S, O) OS_PWRITE((H)->fd_fd, B, S, O)
-#define FDH_READ(H, B, S) OS_READ((H)->fd_fd, B, S)
-#define FDH_WRITE(H, B, S) OS_WRITE((H)->fd_fd, B, S)
-#define FDH_SEEK(H, O, F) OS_SEEK((H)->fd_fd, O, F)
 
 #define FDH_SYNC(H) ((H->fd_ih!=NULL) ? ( H->fd_ih->ih_synced = 1) - 1 : 1)
-#define FDH_TRUNC(H, L) OS_TRUNC((H)->fd_fd, L)
 #define FDH_SIZE(H) OS_SIZE((H)->fd_fd)
-#define FDH_LOCKFILE(H, O) OS_LOCKFILE((H)->fd_fd, O)
-#define FDH_UNLOCKFILE(H, O) OS_UNLOCKFILE((H)->fd_fd, O)
+
+#define FDH_LOCKFILE(H, O) rxosdlock(H, LOCK_EX)
+#define FDH_UNLOCKFILE(H, O) rxosdlock(H, LOCK_UN)
 
 #endif /* _IHANDLE_H_ */

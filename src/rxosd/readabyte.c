@@ -100,8 +100,8 @@
 #include <afs/fileutil.h>
 #include <afs/unified_afs.h>
 #include <afs/afsutil.h>
-#include <afs/rxosd_hsm.h>
-#include <afs/ihandle_rxosd.h>
+#include "rxosd_hsm.h"
+#include "rxosd_ihandle.h"
 
 char *whoami;
 

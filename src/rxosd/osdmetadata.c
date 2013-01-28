@@ -19,16 +19,14 @@
 #include <sys/file.h>
 #include <sys/param.h>
 
-
 #include <afs/cmd.h>
-
 #include <rx/xdr.h>
 #include <afs/afsint.h>
-#include "../vol/nfs.h"
-#include "lock.h"
-#include "../vol/ihandle.h"
-#include "../vol/vnode.h"
-#include "../vol/volume.h"
+#include <afs/nfs.h>
+#include <lock.h>
+#include <afs/ihandle.h>
+#include <afs/vnode.h>
+#include <afs/volume.h>
 #include "vol_osd.h"
 #include <afs/afsutil.h>
 

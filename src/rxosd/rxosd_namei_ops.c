@@ -79,7 +79,7 @@
 #include <lwp.h>
 #include <afs/nfs.h>
 #include <afs/afsint.h>
-#include <afs/ihandle.h>
+#include "rxosd_ihandle.h"
 #include <afs/vnode.h>
 #include <afs/volume.h>
 #include <afs/viceinode.h>

@@ -78,7 +78,7 @@
 #include "lock.h"
 #include "lwp.h"
 #include <afs/afssyscalls.h>
-#include "../vol/ihandle.h"
+#include <afs/ihandle.h>
 #include <afs/afsutil.h>
 #include <afs/cellconfig.h>
 #include <ubik.h>

@@ -151,7 +151,7 @@
 #include <lock.h>
 #include <afs/afsint.h>
 #include <afs/errors.h>
-#include <afs/ihandle.h>
+#include "rxosd_ihandle.h"
 #include "rxosd.h"
 #include "rxosd_hsm.h"
 #include <afs/vnode.h>
