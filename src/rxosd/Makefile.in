@@ -74,8 +74,8 @@ SERVERLIBS =	${TOP_LIBDIR}/libubik_pthread.a \
 		${TOP_LIBDIR}/libafsutil.a
 
 RXOSDOBJS = \
-	rxosd.cs.o \
-	rxosd.xdr.o
+	l_rxosd.cs.o \
+	l_rxosd.xdr.o
 
 OSDDBOBJS = \
 	osddb.cs.o \
@@ -109,13 +109,15 @@ VOLSEROBJS = \
 	volserosd.o \
 	volserosd.ss.o \
 	volserosd.cs.o \
-	volserosd.xdr.o
+	volserosd.xdr.o \
+	volint.xdr.o
 
 DVOLSEROBJS = \
 	d_volserosd.o \
 	volserosd.ss.o \
 	volserosd.cs.o \
-	volserosd.xdr.o
+	volserosd.xdr.o \
+	volint.xdr.o
 
 VICEDOBJS = \
 	vicedosd.ss.o \
@@ -365,14 +367,23 @@ Krxosd.cs.c: ${srcdir}/rxosd.xg
 rxosd.xdr.c: ${srcdir}/rxosd.xg
 	${RXGEN} -A -x -y -c -o $@ ${srcdir}/rxosd.xg
 
+l_rxosd.xdr.c: ${srcdir}/rxosd.xg
+	${RXGEN} -A -x -c -o $@ ${srcdir}/rxosd.xg
+
 Krxosd.xdr.c: ${srcdir}/rxosd.xg
 	${RXGEN} -A -x -k -y -c -o $@ ${srcdir}/rxosd.xg
 
 rxosd.cs.o: rxosd.cs.c rxosd.h
-	${CCRULE}
+	${CCRULE} -DBUILDING_RXOSD
+
+l_rxosd.cs.o: rxosd.cs.c rxosd.h
+	${CCRULE} -DBUILD_SHLIBAFSOSD
 
 rxosd.xdr.o: rxosd.xdr.c rxosd.h
-	${CCRULE}
+	${CCRULE} -DBUILDING_RXOSD
+
+l_rxosd.xdr.o: l_rxosd.xdr.c rxosd.h
+	${CCRULE} -DBUILD_SHLIBAFSOSD  
 
 rxosd.ss.c: ${srcdir}/rxosd.xg
 	${RXGEN} -A -x -S -o $@ ${srcdir}/rxosd.xg
@@ -508,6 +519,15 @@ volserosd.o: ${srcdir}/volserosd.c volser.h
 d_volserosd.o: ${srcdir}/volserosd.c volser.h
 	${CCRULE} -DAFS_DEMAND_ATTACH_FS
 
+volint.h: ${VOLSER}/volint.xg
+	${RXGEN} -A -x -h -o $@ ${VOLSER}/volint.xg
+
+volint.xdr.c: ${VOLSER}/volint.xg
+	${RXGEN} -A -x -c -o $@ ${VOLSER}/volint.xg
+
+volint.xdr.o: volint.xdr.c volint.h
+	${CCRULE}
+
 vol_osdutil.o: ${srcdir}/vol_osdutil.c vol_osd.h
 	${CCRULE}
 
@@ -584,4 +604,5 @@ clean:
 	$(RM) -f *.o libafsosd.a* libafsosd.so* libdafsosd.so* libcafsosd.so* \
 		 *.gch *.ss.c *.cs.c *.xdr.c  *int.h osddb.h rxosd.h vol_osd.h  \
 		 fs_rxosd_common.h vicedosd.h volserosd.h policies.tab.c \
-		volser.h libafsosd.a osdmetadata fs osd rxosd  readabyte
+		volser.h libafsosd.a osdmetadata fs osd rxosd  readabyte \
+		linkcounts osddbserver
