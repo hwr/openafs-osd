@@ -677,7 +677,7 @@ rxosd_updatecounters(afs_uint32 osd, afs_uint64 bytes_rcvd,
     if (conn) {
         code = RXOSD_updatecounters(conn->conn, bytes_rcvd, bytes_sent);
 	if (code == RXGEN_OPCODE)
-            code = RXOSD_updatecounters315(conn->conn, bytes_rcvd, bytes_sent);
+            code = RXOSD_updatecounters314(conn->conn, bytes_rcvd, bytes_sent);
         PutOsdConn(&conn);
     } else
         code = EIO;
