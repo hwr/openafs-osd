@@ -349,6 +349,42 @@ SAFSVOLOSD_Statistic(struct rx_call *acall, afs_int32 reset, afs_uint32 *since,
 }
 
 afs_int32
+SAFSVOLOSD_Variable(struct rx_call *acall, afs_int32 cmd, char *name,
+                        afs_int64 value, afs_int64 *result)
+{
+    char caller[MAXKTCNAMELEN];
+
+    if (cmd == 1) {                             /* get */
+        if (!strcmp(name, "LogLevel")) {
+            *result = *voldata->aLogLevel;
+            return 0;
+        } else if (!strcmp(name, "convertToOsd")) {
+            *result = *volserdata->aConvertToOsd;
+            return 0;
+        } else
+            return ENOENT;
+    } else if (cmd == 2) {                      /* set */
+        if (!afsconf_SuperUser(*voldata->aConfDir, acall, caller))
+            return EPERM;
+        if (!strcmp(name, "LogLevel")) {
+            if (value < 0)
+                return EINVAL;
+            *voldata->aLogLevel = value;
+            *result = *voldata->aLogLevel;
+            return 0;
+        } else if (!strcmp(name, "convertToOsd")) {
+            if (value < 0)
+                return EINVAL;
+            *volserdata->aConvertToOsd = value;
+            *result = *volserdata->aConvertToOsd;
+            return 0;
+        } else
+            return ENOENT;
+    }
+    return ENOSYS;
+}
+
+afs_int32
 SAFSVolVariable(struct rx_call *acall, afs_int32 cmd, char *name,
                         afs_int64 value, afs_int64 *result)
 {
