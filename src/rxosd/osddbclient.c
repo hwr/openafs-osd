@@ -27,8 +27,8 @@
 
 #include <afsconfig.h>
 #include <rx/xdr.h>
-#include "../rxosd/vicedosd.h"
-#include "../rxosd/volserosd.h"
+#include <afs/vicedosd.h>
+#include <afs/volserosd.h>
 #include <afs/auth.h>
 #include <afs/errors.h>
 #include "lock.h"

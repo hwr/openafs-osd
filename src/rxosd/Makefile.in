@@ -191,6 +191,7 @@ LIBCAFSOSD = libcafsosd.${SHLIB_SUFFIX}.${LIBAFSOSDMAJOR}.${LIBAFSOSDMINOR}
 generated: \
 	${TOP_LIBDIR}/libafsosd.a \
 	${TOP_INCDIR}/afs/rxosd.h ${TOP_INCDIR}/afs/rxosd_hsm.h \
+	${TOP_INCDIR}/afs/vicedosd.h ${TOP_INCDIR}/afs/volserosd.h \
 	rxosd.h vicedosd.h volserosd.h Krxosd.cs.c Krxosd.xdr.c \
 	Kvicedosd.cs.c Kvicedosd.xdr.c vicedosd.cs.c vicedosd.xdr.c \
 	rxosd.cs.c rxosd.xdr.c
@@ -201,6 +202,12 @@ ${TOP_INCDIR}/afs/rxosd.h: rxosd.h
 	${INSTALL} $? $@
 
 ${TOP_INCDIR}/afs/rxosd_hsm.h: rxosd_hsm.h
+	${INSTALL} $? $@
+
+${TOP_INCDIR}/afs/vicedosd.h: vicedosd.h
+	${INSTALL} $? $@
+
+${TOP_INCDIR}/afs/volserosd.h: volserosd.h
 	${INSTALL} $? $@
 
 ${TOP_LIBDIR}/${LIBAFSOSD}: ${LIBAFSOSD}
@@ -335,7 +342,7 @@ osddbuser.o: ${srcdir}/osddbuser.c vicedosd.h volserosd.h fs_rxosd_common.h osdd
 a_osddbuser.o: ${srcdir}/osddbuser.c vicedosd.h volserosd.h fs_rxosd_common.h osddb.h volint.h
 	${CCRULE} -DBUILD_LIBAFSOSD_A
 
-osddbclient.o: ${srcdir}/osddbclient.c vicedosd.h volserosd.h fs_rxosd_common.h
+osddbclient.o: ${srcdir}/osddbclient.c ${TOP_INCDIR}/afs/vicedosd.h ${TOP_INCDIR}/afs/volserosd.h fs_rxosd_common.h
 	${CCRULE}
 
 r_osddbuser.o: ${srcdir}/osddbuser.c
@@ -518,9 +525,6 @@ volserosd.o: ${srcdir}/volserosd.c volser.h
 
 d_volserosd.o: ${srcdir}/volserosd.c volser.h
 	${CCRULE} -DAFS_DEMAND_ATTACH_FS
-
-volint.h: ${VOLSER}/volint.xg
-	${RXGEN} -A -x -h -o $@ ${VOLSER}/volint.xg
 
 volint.xdr.c: ${VOLSER}/volint.xg
 	${RXGEN} -A -x -c -o $@ ${VOLSER}/volint.xg

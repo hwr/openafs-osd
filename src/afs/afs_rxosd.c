@@ -35,7 +35,7 @@
 #if defined(AFS_CACHE_BYPASS) && defined(AFS_LINUX24_ENV)
 #include "afs_bypasscache.h"
 #endif
-#include "../rxosd/vicedosd.h"
+#include "afs/vicedosd.h"
 
 /* conditional GLOCK macros */
 #define COND_GLOCK(var) \
