@@ -32,6 +32,7 @@ COMPILE_PART2  = ${COMPILE_PART2A} ${COMPILE_PART2B}
 COMPILE_CLEAN  = ${COMPILE_PART2A} clean
 COMPILE_DEPINSTALL  = ${COMPILE_PART2A} depinstall
 COMPILE_GENERATED  = ${COMPILE_PART2A} generated
+COMPILE_HPSS  = ${COMPILE_PART2A} hpss
 
 all: force
 	$(MAKE) build
@@ -352,6 +353,14 @@ rxosd_generated: rxgen fsint
 		${COMPILE_PART1} rxosd ${COMPILE_GENERATED} ;; \
 	*) \
 		echo Not building shared library for rxosd for ${SYS_NAME} ;; \
+	esac
+
+rxosd_hpss: rxosd
+	+case ${SYS_NAME} in \
+	*linux26) \
+		${COMPILE_PART1} rxosd ${COMPILE_HPSS} ;; \
+	*) \
+		echo Not building shared library for hpss for ${SYS_NAME} ;; \
 	esac
 
 venus: cmd comerr volser ptserver libafscp libafsauthent

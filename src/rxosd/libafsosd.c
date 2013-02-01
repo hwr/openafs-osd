@@ -504,7 +504,7 @@ int load_libafsosd(char *initroutine, void *inrock, void *outrock)
 #else
 		"libafsosd.so",
 #endif
-		0, LIBAFSOSD_VERSION);
+		LIBAFSOSD_MAJOR_VERSION, LIBAFSOSD_VERSION);
     libHandle = dlopen (libname, RTLD_LAZY);
     if (!libHandle) {
         fprintf (stderr, "dlopen of %s failed: %s\n", libname, dlerror());

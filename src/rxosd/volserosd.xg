@@ -64,12 +64,6 @@ struct volser_kbps {
 };
 #endif
 
-#if 0
-proc OsdSupport(
-  OUT afs_int32 *have_it
-) = VOLOSDSUPPORT;
-#endif
-
 /*
  * procs must be in order of opcodes!
  */
@@ -128,3 +122,8 @@ proc Statistic (
   OUT struct volser_kbps *kbpsrcvd,
   OUT struct volser_kbps *kbpssent
 ) = 7;
+
+proc OsdSupport(
+  OUT afs_int32 *have_it
+) = 8;
+

@@ -283,6 +283,7 @@ typedef struct rxosd_fetch_entry rxosd_fetch_entryList<>;
 /* bits for flag */
 %#define NO_CHECKSUM	1
 %#define USE_RXAFSOSD   2
+%#define ONLY_ONE_FETCHENTRY 4
 
 struct FetchEntry {
     afs_uint32 Requestor;

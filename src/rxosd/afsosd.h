@@ -22,6 +22,13 @@
 #define LIBAFSOSD_VERSION 20
 
 /*
+ * In git master the major version number is 1 
+ * and in github (openafs-1.6-osd) it is 0
+ */
+
+#define LIBAFSOSD_MAJOR_VERSION 0
+
+/*
  *	Unspecific operations used in general servers provided by AFS/OSD
  */
 

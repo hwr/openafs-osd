@@ -1246,6 +1246,11 @@ echo LIBAFSOSDMINOR = $LIBAFSOSDMINOR
 
 AC_SUBST(LIBAFSOSDMINOR)
 
+LIBHPSSMINOR=`grep LIBAFSHPSS_VERSION ${srcdir}/src/rxosd/rxosd_hsm.h | awk '{print $[]3}'`
+echo LIBHPSSMINOR = $LIBHPSSMINOR
+
+AC_SUBST(LIBHPSSMINOR)
+
 if test "$enable_vicep_access" = "yes"; then
         AC_DEFINE(AFS_ENABLE_VICEP_ACCESS, 1, [define if client may access visible fileserver partitions directly (experimental)])
 fi

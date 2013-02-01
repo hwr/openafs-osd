@@ -13,3 +13,5 @@ rxstat/rxstat.[ch]
 vlserver/K*.[ch]
 vlserver/*.xg
 rxosd/K*.[ch]
+rxosd/rxosd.xg
+rxosd/vicedosd.xg

@@ -1,6 +1,7 @@
 # API version. When something changes, increment as appropriate. 
 # Ignore at your own risk.
 LIBAFSOSDMAJOR=0
+LIBHPSSMAJOR=0
 
 # Generated automatically from Makefile.in by configure.
 #
@@ -15,7 +16,11 @@ INSTALL = @INSTALL@
 INSTALL_DATA = @INSTALL_DATA@
 INSTALL_PROGRAM = @INSTALL_PROGRAM@
 INSTALL_SCRIPT = @INSTALL_SCRIPT@
+
+HSM_LIB=@HSM_LIB@
+HSM_INC=@HSM_INC@
 LIBAFSOSDMINOR = @LIBAFSOSDMINOR@
+LIBHPSSMINOR = @LIBHPSSMINOR@
 
 #LIBAFSOSDMINOR=`grep "LIBAFSOSD_VERSION" ${srcdir}/afsosd.h | /usr/bin/awk '{print $$3}'`
 
@@ -28,6 +33,9 @@ CCRULE=${CC} ${SHLIBCFLAGS} -o $@ -c $<
 CCRULESALV = ${CC} ${SHLIBCFLAGS} -DBUILD_SALVAGER -o $@ -c $<
 CCRULERXOSD = ${CC} ${CFLAGS} -I. -I${srcdir}/ -I${TOP_INCDIR} -I../config -DBUILDING_RXOSD -DAFS_PTHREAD_ENV -o $@ -c $<
 CCRULEVENUS = ${CC} ${CFLAGS} -I. -I${srcdir}/ -I${TOP_INCDIR} -I../config -DBUILDING_CLIENT_COMMAND -DAFS_PTHREAD_ENV -o $@ -c $<
+
+SHLIBHSMCFLAGS=${COMMON_CFLAGS} -DBUILD_SHLIBAFSHSM -I.. -I${UTIL}/ ${MT_CFLAGS} ${SHLIB_CFLAGS}
+CCRULEHSM=${CC} ${SHLIBHSMCFLAGS} -o $@ -c $<
 
 VOL = ${srcdir}/../vol
 VOLOBJ = ../vol
@@ -66,6 +74,9 @@ rxosdobjects = \
 
 LIBS=${TOP_LIBDIR}/libafsauthent.a ${TOP_LIBDIR}/libafsrpc.a \
 		${TOP_LIBDIR}/util.a ${TOP_LIBDIR}/libcmd.a
+
+HPSSLIB=${TOP_LIBDIR}/util.a
+
 
 SERVERLIBS =	${TOP_LIBDIR}/libubik_pthread.a \
 		${TOP_LIBDIR}/libafsauthent.a \
@@ -198,6 +209,10 @@ generated: \
 
 all: generated rxosd osd readabyte osdmetadata osddbserver linkcounts ${LIBAFSOSD} ${LIBDAFSOSD}
 
+LIBAFSHPSS = libafshpss.${SHLIB_SUFFIX}.${LIBHPSSMAJOR}.${LIBHPSSMINOR}
+
+hpss: ${LIBAFSHPSS} hpss_read hpss_write hpss_tapeinfo hpss_restore
+
 ${TOP_INCDIR}/afs/rxosd.h: rxosd.h
 	${INSTALL} $? $@
 
@@ -233,6 +248,17 @@ install: ${LIBAFSOSD} ${LIBDAFSOSD} libafsosd.a rxosd osd osdmetadata osddbserve
 	${INSTALL} osdmetadata ${DESTDIR}${afssrvlibexecdir}/osdmetadata
 	${INSTALL} osddbserver ${DESTDIR}${afssrvlibexecdir}/osddbserver
 	${INSTALL} linkcounts ${DESTDIR}${afssrvlibexecdir}/linkcounts
+	${INSTALL_DATA} ${srcdir}/wiper ${DESTDIR}${libdir}/wiper
+	${INSTALL_DATA} ${srcdir}/archive1 ${DESTDIR}${libdir}/archive1
+	${INSTALL_DATA} ${srcdir}/archiver ${DESTDIR}${libdir}/archiver
+
+installhpss: ${LIBAFSHPSS} hpss_read hpss_write hpss_tapeinfo hpss_restore
+	../config/shlib-install -d ${DESTDIR}${libdir} \
+		-l libhpss -M ${LIBHPSSMAJOR} -m ${LIBHPSSMINOR}
+	${INSTALL} hpss_read ${DESTDIR}${afssrvlibexecdir}/hpss_read
+	${INSTALL} hpss_write ${DESTDIR}${afssrvlibexecdir}/hpss_write
+	${INSTALL} hpss_tapeinfo ${DESTDIR}${afssrvlibexecdir}/hpss_tapeinfo
+	${INSTALL} hpss_restore ${DESTDIR}${afssrvlibexecdir}/hpss_restore
 
 dest: ${LIBAFSOSD} ${LIBDAFSOSD} libafsosd.a rxosd osd osdmetadata osddbserver linkcounts
 	../config/shlib-install -d ${DEST}/lib \
@@ -247,6 +273,19 @@ dest: ${LIBAFSOSD} ${LIBDAFSOSD} libafsosd.a rxosd osd osdmetadata osddbserver l
 	${INSTALL} osdmetadata ${DEST}/root.server/usr/afs/bin/osdmetadata
 	${INSTALL} osddbserver ${DEST}/root.server/usr/afs/bin/osddbserver
 	${INSTALL} linkcounts ${DEST}/root.server/usr/afs/bin/linkcounts
+	${INSTALL_DATA} ${srcdir}/wiper ${DEST}/root.server/usr/afs/bin/wiper
+	${INSTALL_DATA} ${srcdir}/archive1 ${DEST}/root.server/usr/afs/bin/archive1
+	${INSTALL_DATA} ${srcdir}/archiver ${DEST}/root.server/usr/afs/bin/archiver
+
+desthpss: ${LIBAFSHPSS} hpss_read hpss_write hpss_tapeinfo hpss_restore
+	../config/shlib-install -d ${DEST}/lib \
+		-l libhpss -M ${LIBHPSSMAJOR} -m ${LIBHPSSMINOR}
+	${INSTALL} hpss_read ${DEST}/root.server/usr/afs/bin/hpss_read
+	${INSTALL} hpss_write ${DEST}/root.server/usr/afs/bin/hpss_write
+	${INSTALL} hpss_tapeinfo ${DEST}/root.server/usr/afs/bin/hpss_tapeinfo
+	${INSTALL} hpss_restore ${DEST}/root.server/usr/afs/bin/hpss_restore
+
+desthpss:
 
 rxosd: ${rxosdobjects}
 	${CC} ${LDFLAGS} -o rxosd ${rxosdobjects} -ldl ${LIBS} $(LIB_hcrypto) \
@@ -604,9 +643,47 @@ linkcunts.o: ${srcdir}/linkcounts.c
 linkcounts: linkcounts.o
 	${CC} ${CFLAGS} ${MT_CFLAGS} -o linkcounts linkcounts.o ${SERVERLIBS} ${MT_LIBS} ${XLIBS}
 
+# HPSS stuff
+
+rxosd_hpss.o: rxosd_hpss.c rxosd_hsm.h
+	${CCRULEHSM} -DBUILDING_RXOSD ${HSM_INC}
+
+l_libafshsm.o: libafshsm.c rxosd_hsm.h ourHpss_inline2.h ourHpss.h
+	${CCRULEHSM}
+
+${LIBAFSHPSS}: rxosd_hpss.o l_libafshsm.o libafshpss.map
+	../config/shlib-build -d $(srcdir) -l libafshpss \
+		-M ${LIBHPSSMAJOR} -m ${LIBHPSSMINOR} -- \
+		rxosd_hpss.o l_libafshsm.o ${MT_LIBS}
+
+hpss_read.o: ${srcdir}/hpss_read.c hpss_inline.h
+	${CCRULEHSM} ${HSM_INC}
+
+hpss_read: hpss_read.o
+	${CC} ${LDFLAGS} -o hpss_read hpss_read.o ../rxkad/md5.o ${HPSSLIB} ${HSM_LIB}
+
+hpss_restore.o: ${srcdir}/hpss_restore.c hpss_inline.h
+	${CCRULEHSM} ${HSM_INC}
+
+hpss_restore: hpss_restore.o
+	${CC} ${LDFLAGS} -o hpss_restore hpss_restore.o ${HPSSLIB} ${HSM_LIB}
+
+hpss_write.o: ${srcdir}/hpss_write.c hpss_inline.h
+	${CCRULEHSM} ${HSM_INC}
+
+hpss_write: hpss_write.o
+	${CC} ${LDFLAGS} -o hpss_write hpss_write.o ../rxkad/md5.o ${HPSSLIB} ${HSM_LIB}
+
+hpss_tapeinfo.o: ${srcdir}/hpss_tapeinfo.c hpss_inline.h
+	${CCRULEHSM} ${HSM_INC}
+
+hpss_tapeinfo: hpss_tapeinfo.o
+	${CC} ${LDFLAGS} -o hpss_tapeinfo hpss_tapeinfo.o ${HPSSLIB} ${HSM_LIB}
+
 clean:
 	$(RM) -f *.o libafsosd.a* libafsosd.so* libdafsosd.so* libcafsosd.so* \
-		 *.gch *.ss.c *.cs.c *.xdr.c  *int.h osddb.h rxosd.h vol_osd.h  \
-		 fs_rxosd_common.h vicedosd.h volserosd.h policies.tab.c \
+		*.gch *.ss.c *.cs.c *.xdr.c  *int.h osddb.h rxosd.h vol_osd.h  \
+		fs_rxosd_common.h vicedosd.h volserosd.h policies.tab.c \
 		volser.h libafsosd.a osdmetadata fs osd rxosd  readabyte \
-		linkcounts osddbserver
+		linkcounts osddbserver libhpss.so.* hpss_read hpss_restore \
+		hpss_write hpss_tapeinfo
