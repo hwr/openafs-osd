@@ -172,6 +172,7 @@ int afsconf_SetExtendedCellInfo(struct afsconf_dir *adir, const char *apath,
 				struct afsconf_cell *acellInfo, char clones[]);
 int afsconf_SetCellInfo(struct afsconf_dir *adir, const char *apath, 
 		        struct afsconf_cell *acellInfo);
+afs_int32 afsconf_SetCell(struct afsconf_dir *adir, char *cell);
 
 
 /* userok.c */

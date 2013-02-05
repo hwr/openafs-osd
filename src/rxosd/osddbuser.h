@@ -11,6 +11,8 @@ typedef struct OsdInfoList {
     OsdInfo *OsdInfo_val;
 } OsdInfoList;
 
+extern struct ubik_client *osddb_client;
+
 extern void FillPolicyTable();
 extern void FillOsdTable();
 extern afs_uint32 MinOsdWipeMB(afs_uint32 osd);
@@ -36,3 +38,4 @@ extern afs_int32 FindOsdBySizeAvoid(afs_uint64 size, afs_uint32 *osd, afs_uint32
 extern afs_int32 get_restore_cand(afs_uint32 nosds, afs_uint32 *osd);
 extern afs_int32 OsdHasAccessToHSM(afs_uint32 osd_id);
 extern afs_int32 policy_uses_file_name(afs_int32 policyIndex);
+extern struct ubik_client * init_osddb_client(char *cell);

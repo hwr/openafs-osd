@@ -1504,7 +1504,8 @@ Optional Features:
   --enable-supergroups    enable support for nested pts groups
   --enable-bitmap-later   enable fast startup of file server by not reading
                           bitmap till needed
-  --enable-object-storage enable use of object storage for AFS files
+  --disable-object-storage
+                          disable use of object storage for AFS files
   --enable-vicep-access   enable direct client access to visible fileserver
                           partitions (experimental)
   --disable-unix-sockets  disable use of unix domain sockets for fssync
@@ -4966,7 +4967,7 @@ fi
 if test "${enable_object_storage+set}" = set; then :
   enableval=$enable_object_storage;
 else
-  enable_object_storage="no"
+  enable_object_storage="yes"
 fi
 
 # Check whether --enable-vicep-access was given.

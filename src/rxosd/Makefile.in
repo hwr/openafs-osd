@@ -46,6 +46,7 @@ VICED = ${srcdir}/../viced
 UTIL = ${srcdir}/../util
 LWP = ${srcdir}/../lwp
 VENUS = ${srcdir}/../venus
+VLSERVER=${srcdir}/../vlserver
 
 rxosdobjects = \
 	rxosd.o \
@@ -72,8 +73,12 @@ rxosdobjects = \
 	vicedosd.cs.o \
 	vicedosd.xdr.o
 
-LIBS=${TOP_LIBDIR}/libafsauthent.a ${TOP_LIBDIR}/libafsrpc.a \
-		${TOP_LIBDIR}/util.a ${TOP_LIBDIR}/libcmd.a
+LIBS=	${TOP_LIBDIR}/libcmd.a \
+	${TOP_LIBDIR}/libafsauthent.a \
+	${TOP_LIBDIR}/libafsrpc.a \
+	${TOP_LIBDIR}/libafsutil.a \
+	${TOP_LIBDIR}/libusd.a \
+	${TOP_LIBDIR}/libafsrpc.a
 
 HPSSLIB=${TOP_LIBDIR}/util.a
 
@@ -98,7 +103,7 @@ OSDDBOBJS = \
 COSDDBOBJS = \
 	osddb.cs.o \
 	osddb.xdr.o \
-	osddbclient.o
+	osddbuser.o
 
 VOLOBJS = \
 	vol_osd.o \
@@ -149,6 +154,8 @@ VENUSOBJS= \
 	venusosd.o
 
 VOSOBJS= \
+	volint.cs.o \
+	volint.xdr.o \
 	volserosd.cs.o \
 	volserosd.xdr.o \
 	vososd.o
@@ -179,8 +186,11 @@ CLIBOBJS= \
 	${CVICEDOBJS} \
 	${RXOSDOBJS} \
 	${CVOLOBJS} \
-	${COSDDBOBJS} \
-	${FSINTOBJS}
+	a_osddbuser.o \
+	osddb.cs.o \
+	osddb.xdr.o \
+	afscbint.ss.o \
+	afscbint.xdr.o
 
 LIBAOBJS = \
 	${RXOSDOBJS} \
@@ -189,12 +199,15 @@ LIBAOBJS = \
 	vol_osd.xdr.o \
 	osddb.cs.o \
 	osddb.xdr.o \
-	osddbclient.o \
 	volserosd.cs.o \
 	volserosd.xdr.o \
 	vicedosd.cs.o \
 	vicedosd.xdr.o
 	
+VLSERVEROBJS=vldbint.cs.o vldbint.xdr.o vl_errors.o
+VOSCMDOBJS= vsprocs.o vsutils.o lockprocs.o volint.xdr.o volerr.o \
+		volint.cs.o
+
 LIBAFSOSD = libafsosd.${SHLIB_SUFFIX}.${LIBAFSOSDMAJOR}.${LIBAFSOSDMINOR}
 LIBDAFSOSD = libdafsosd.${SHLIB_SUFFIX}.${LIBAFSOSDMAJOR}.${LIBAFSOSDMINOR}
 LIBCAFSOSD = libcafsosd.${SHLIB_SUFFIX}.${LIBAFSOSDMAJOR}.${LIBAFSOSDMINOR}
@@ -207,7 +220,7 @@ generated: \
 	Kvicedosd.cs.c Kvicedosd.xdr.c vicedosd.cs.c vicedosd.xdr.c \
 	rxosd.cs.c rxosd.xdr.c
 
-all: generated rxosd osd readabyte osdmetadata osddbserver linkcounts ${LIBAFSOSD} ${LIBDAFSOSD}
+all: generated rxosd osd readabyte osdmetadata osddbserver linkcounts ${LIBAFSOSD} ${LIBDAFSOSD} ${LIBCAFSOSD} fs vos
 
 LIBAFSHPSS = libafshpss.${SHLIB_SUFFIX}.${LIBHPSSMAJOR}.${LIBHPSSMINOR}
 
@@ -236,15 +249,21 @@ ${TOP_LIBDIR}/${LIBDAFSOSD}: ${LIBDAFSOSD}
 ${TOP_LIBDIR}/libafsosd.a: libafsosd.a
 	${INSTALL_DATA} libafsosd.a $@
 
-install: ${LIBAFSOSD} ${LIBDAFSOSD} libafsosd.a rxosd osd osdmetadata osddbserver linkcounts
+install: ${LIBAFSOSD} ${LIBDAFSOSD} ${LIBCAFSOSD} libafsosd.a rxosd osd osdmetadata osddbserver linkcounts fs vos
 	../config/shlib-install -d ${DESTDIR}${libdir} \
 		-l libafsosd -M ${LIBAFSOSDMAJOR} -m ${LIBAFSOSDMINOR}
 	../config/shlib-install -d ${DESTDIR}${libdir} \
 		-l libdafsosd -M ${LIBAFSOSDMAJOR} -m ${LIBAFSOSDMINOR}
+	../config/shlib-install -d ${libdir} \
+		-l libcafsosd -M ${LIBAFSOSDMAJOR} -m ${LIBAFSOSDMINOR}
 	${INSTALL_DATA} libafsosd.a ${DESTDIR}${libdir}/libafsosd.a
 	${INSTALL} rxosd ${DESTDIR}${afssrvlibexecdir}/rxosd
 	${INSTALL} osd ${DESTDIR}${afssrvlibexecdir}/osd
 	${INSTALL} osd ${DESTDIR}${bindir}/osd
+	${INSTALL} vos ${DESTDIR}${afssrvlibexecdir}/vos
+	${INSTALL} vos ${DESTDIR}${bindir}/vos
+	${INSTALL} fs ${DESTDIR}${afssrvlibexecdir}/fs
+	${INSTALL} fs ${DESTDIR}${bindir}/fs
 	${INSTALL} osdmetadata ${DESTDIR}${afssrvlibexecdir}/osdmetadata
 	${INSTALL} osddbserver ${DESTDIR}${afssrvlibexecdir}/osddbserver
 	${INSTALL} linkcounts ${DESTDIR}${afssrvlibexecdir}/linkcounts
@@ -260,16 +279,22 @@ installhpss: ${LIBAFSHPSS} hpss_read hpss_write hpss_tapeinfo hpss_restore
 	${INSTALL} hpss_tapeinfo ${DESTDIR}${afssrvlibexecdir}/hpss_tapeinfo
 	${INSTALL} hpss_restore ${DESTDIR}${afssrvlibexecdir}/hpss_restore
 
-dest: ${LIBAFSOSD} ${LIBDAFSOSD} libafsosd.a rxosd osd osdmetadata osddbserver linkcounts
+dest: ${LIBAFSOSD} ${LIBDAFSOSD} ${LIBCAFSOSD} libafsosd.a rxosd osd osdmetadata osddbserver linkcounts fs vos
 	../config/shlib-install -d ${DEST}/lib \
 		-l libafsosd -M ${LIBAFSOSDMAJOR} -m ${LIBAFSOSDMINOR}
 	../config/shlib-install -d ${DEST}/lib \
 		-l libdafsosd -M ${LIBAFSOSDMAJOR} -m ${LIBAFSOSDMINOR}
+	../config/shlib-install -d ${libdir} \
+		-l libcafsosd -M ${LIBAFSOSDMAJOR} -m ${LIBAFSOSDMINOR}
 	${INSTALL_DATA} libafsosd.a ${DEST}/lib/libafsosd.a
 	${INSTALL} -d ${DEST}/root.server/usr/afs/bin
 	${INSTALL} rxosd ${DEST}/root.server/usr/afs/bin/rxosd
 	${INSTALL} osd ${DEST}/root.server/usr/afs/bin/osd
 	${INSTALL} osd ${DEST}/bin/osd
+	${INSTALL} vos ${DEST}/root.server/usr/afs/bin/vos
+	${INSTALL} vos ${DEST}/bin/vos
+	${INSTALL} fs ${DEST}/root.server/usr/afs/bin/fs
+	${INSTALL} fs ${DEST}/etc/fs
 	${INSTALL} osdmetadata ${DEST}/root.server/usr/afs/bin/osdmetadata
 	${INSTALL} osddbserver ${DEST}/root.server/usr/afs/bin/osddbserver
 	${INSTALL} linkcounts ${DEST}/root.server/usr/afs/bin/linkcounts
@@ -298,8 +323,8 @@ readabyte: readabyte.o libafshsm.o
 	${CC} ${LDFLAGS} -o readabyte readabyte.o libafshsm.o \
 			${LIBS} ${MT_LIBS} -ldl
 
-osd: osd.o rxosd.cs.o rxosd.xdr.o r_osddbuser.o osddb.cs.o osddb.xdr.o policy_parser.o
-	${CC} ${LDFLAGS} -o osd osd.o rxosd.cs.o rxosd.xdr.o r_osddbuser.o \
+osd: osd.o rxosd.cs.o rxosd.xdr.o a_osddbuser.o osddb.cs.o osddb.xdr.o policy_parser.o
+	${CC} ${LDFLAGS} -o osd osd.o rxosd.cs.o rxosd.xdr.o a_osddbuser.o \
 		osddb.cs.o osddb.xdr.o policy_parser.o \
 		${LIBS} $(LIB_hcrypto) $(LIB_roken) ${MT_LIBS} ${XLIBS}
 
@@ -380,9 +405,6 @@ osddbuser.o: ${srcdir}/osddbuser.c vicedosd.h volserosd.h fs_rxosd_common.h osdd
 
 a_osddbuser.o: ${srcdir}/osddbuser.c vicedosd.h volserosd.h fs_rxosd_common.h osddb.h volint.h
 	${CCRULE} -DBUILD_LIBAFSOSD_A
-
-osddbclient.o: ${srcdir}/osddbclient.c ${TOP_INCDIR}/afs/vicedosd.h ${TOP_INCDIR}/afs/volserosd.h fs_rxosd_common.h
-	${CCRULE}
 
 r_osddbuser.o: ${srcdir}/osddbuser.c
 	${CCRULERXOSD}
@@ -568,7 +590,25 @@ d_volserosd.o: ${srcdir}/volserosd.c volser.h
 volint.xdr.c: ${VOLSER}/volint.xg
 	${RXGEN} -A -x -c -o $@ ${VOLSER}/volint.xg
 
+volint.cs.c: ${VOLSER}/volint.xg
+	${RXGEN} -A -x -C -o $@ ${VOLSER}/volint.xg
+
 volint.xdr.o: volint.xdr.c volint.h
+	${CCRULE}
+
+volint.cs.o: volint.cs.c volint.h
+	${CCRULE}
+
+lockprocs.o: ${VOLSER}/lockprocs.c
+	${CCRULE}
+
+vsprocs.o: ${VOLSER}/vsprocs.c 
+	${CCRULE}
+
+vsutils.o: ${VOLSER}/vsutils.c 
+	${CCRULE}
+
+volerr.o: ../volser/volerr.c
 	${CCRULE}
 
 vol_osdutil.o: ${srcdir}/vol_osdutil.c vol_osd.h
@@ -607,18 +647,40 @@ threadname.o: ${LWP}/threadname.c
 
 # venus stuff
 
-fs.o: ${VENUS}/fs.c
+fs.o: ${VENUS}/fs_t.c
 	${CCRULEVENUS}
 
-v_libafsosd.o: ${srcdir}/libafsosd.c
+venus_libafsosd.o: ${srcdir}/libafsosd.c
 	${CCRULEVENUS} 
 
-fs: fs.o v_libafsosd.o ${LIBS}
-	${CC} ${LDFLAGS} -o fs fs.o v_libafsosd.o ${TOP_LIBDIR}/libprot.a ${LIBS} \
-		${TOP_LIBDIR}/libafshcrypto.a $(LIB_roken) -ldl ${XLIBS}
+fs: fs.o venus_libafsosd.o ${LIBS}
+	${CC} ${LDFLAGS} -o fs fs.o venus_libafsosd.o \
+		${TOP_LIBDIR}/libprot.a ${LIBS} ${MT_LIBS} -ldl ${XLIBS}
 
 venusosd.o: ${srcdir}/venusosd.c
 	${CCRULE} -DBUILDING_CLIENT_COMMAND
+
+vldbint.cs.o: ../vlserver/vldbint.cs.c
+	${CCRULEVENUS}
+
+vldbint.xdr.o: ../vlserver/vldbint.xdr.c
+	${CCRULEVENUS}
+
+vlserver.h vl_errors.c: ${VLSERVER}/vl_errors.et ${VLSERVER}/vlserver.p.h
+	$(RM) -f vlserver.h vl_errors.c; ${COMPILE_ET} -p ${VLSERVER} vl_errors -h vlserver
+
+vl_errors.o: vl_errors.c
+	${CCRULEVENUS}
+
+vos.o: ${VOLSER}/vos_t.c
+	${CCRULEVENUS}
+
+vos_libafsosd.o: ${srcdir}/libafsosd.c
+	${CCRULEVENUS} -DBUILDING_VOS -DBUILDING_CLIENT_COMMAND
+
+vos: vos.o vos_libafsosd.o ${VOSCMDOBJS} ${VLSERVEROBJS} ${LIBS}
+	${CC} ${LDFLAGS} -o vos vos.o vos_libafsosd.o ${VOSCMDOBJS} ${VLSERVEROBJS} \
+		${LIBS} ${MT_LIBS} -ldl ${XLIBS}
 
 vososd.o: ${srcdir}/vososd.c
 	${CCRULE} -DBUILDING_CLIENT_COMMAND
@@ -686,4 +748,4 @@ clean:
 		fs_rxosd_common.h vicedosd.h volserosd.h policies.tab.c \
 		volser.h libafsosd.a osdmetadata fs osd rxosd  readabyte \
 		linkcounts osddbserver libhpss.so.* hpss_read hpss_restore \
-		hpss_write hpss_tapeinfo
+		hpss_write hpss_tapeinfo fs vos vl_errors.c vlserver.h

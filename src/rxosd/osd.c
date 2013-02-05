@@ -30,7 +30,9 @@
 #include "rxosd.h"
 #include <ubik.h>
 #include "osddb.h"
+#include "osddbuser.h"
 #include <afs/ptint.h>
+#include <afs/cmd.h>
 
 extern char *pp_input;
 extern pol_ruleList *pp_output;
@@ -63,9 +65,6 @@ int localauth = 0;
 struct afsconf_dir *tdir;
 char rock[T10_CDB_SIZE];
 t10rock dummyrock = {0, 0};
-
-extern struct cmd_syndesc *cmd_CreateSyntax();
-extern struct ubik_client *osddb_client;
 
 #define SIZE 65536
 int Bsize = SIZE;
@@ -181,7 +180,9 @@ scan_osd_or_host()
     fields = sscanf(thost,"%u.%u.%u.%u", &ip0, &ip1, &ip2, &ip3);
     if (fields == 4 && ip0<=255 && ip1<=255 && ip2<=255 && ip3<=255) {
 	Host = htonl((ip0 << 24) + (ip1 << 16) + (ip2 << 8) + ip3);
-        code = init_osddb_client();
+        osddb_client = init_osddb_client(cellp);
+        if (!osddb_client)
+	    fprintf(stderr, "Could not get connection to OSDDB data base\n");
       	return;
     }
     if (localauth && !cellp) {
@@ -190,9 +191,11 @@ scan_osd_or_host()
 	afsconf_GetLocalCell(tdir, cell, len);
 	cellp = cell;
     }
-    code = init_osddb_client();
-    if (code) 
+    osddb_client = init_osddb_client(cellp);
+    if (!osddb_client) {
+	fprintf(stderr, "Could not get connection to OSDDB data base\n"); 
 	return;
+    }
     memset(&l, 0, sizeof(l));
     code = ubik_Call(OSDDB_OsdList, osddb_client, 0, &l);
     if (code) {
@@ -2015,6 +2018,7 @@ bad:
   return error;
 }/* cplist */
 
+#if 0
 int
 init_osddb_client()
 {
@@ -2029,12 +2033,14 @@ init_osddb_client()
     memset(&serverconns, 0, sizeof(serverconns));
     code = ugen_ClientInit(0, AFSDIR_CLIENT_ETC_DIRPATH, cellp, localauth, &cstruct, 
 				0, "osddb", 1, 13,
-				(char *)0, 10, server, OSDDB_SERVER_PORT,
+				(char *)0, 10, server,
+				OSDDB_OLD_SERVER_PORT /* OSDDB_SERVER_PORT */, 
 				OSDDB_SERVICE_ID);
     if (!code)
         osddb_client = cstruct;
     return code;
 }
+#endif
 
 afs_int32 
 ListOsds(struct cmd_syndesc *as, void *rock)
@@ -2130,9 +2136,11 @@ ListOsds(struct cmd_syndesc *as, void *rock)
 	memcpy(&server, he->h_addr, 4);
     }
     
-    code = init_osddb_client();
-    if (code) 
-	return code;
+    osddb_client = init_osddb_client(cellp);
+    if (!osddb_client) {
+	fprintf(stderr, "Could not get connection to OSDDB data base\n");
+	return -1;
+    }
     memset(&l, 0, sizeof(l));
     code = ubik_Call(OSDDB_OsdList, osddb_client, 0, &l);
     if (code) {
@@ -2436,9 +2444,11 @@ CreateOsd(struct cmd_syndesc *as, void *rock)
         cellp = as->parms[13].items->data;
     if (as->parms[14].items) 			/* -localauth */
         localauth = 1;
-    code = init_osddb_client();
-    if (code) 
-	return code;
+    osddb_client = init_osddb_client(cellp);
+    if (!osddb_client) {
+	fprintf(stderr, "Could not get connection to OSDDB data base\n");
+	return -1;
+    }
     code = ubik_Call(OSDDB_AddOsd, osddb_client, 0, e);
     if (code) {
 	if (code == 17)
@@ -2471,9 +2481,11 @@ SetOsd(struct cmd_syndesc *as, void *rock)
         cellp = as->parms[18].items->data;
     if (as->parms[19].items)                   /* -localauth */
 	localauth = 1;
-    code = init_osddb_client();
-    if (code) 
-	return code;
+    osddb_client = init_osddb_client(cellp);
+    if (!osddb_client) {
+	fprintf(stderr, "Could not get connection to OSDDB data base\n");
+	return -1;
+    }
     code = ubik_Call(OSDDB_GetOsd, osddb_client, 0, u.id, u.name, &u);
     if (code == RXGEN_OPCODE)
         code = ubik_Call(OSDDB_GetOsd20, osddb_client, 0, u.id, u.name, &u);
@@ -2688,9 +2700,11 @@ DeleteOsd(struct cmd_syndesc *as, void *rock)
         cellp = as->parms[1].items->data;
     if (as->parms[2].items) 			/* -localauth */
         localauth = 1;
-    code = init_osddb_client();
-    if (code) 
-	return code;
+    osddb_client = init_osddb_client(cellp);
+    if (!osddb_client) {
+	fprintf(stderr, "Could not get connection to OSDDB data base\n");
+	return -1;
+    }
     code = ubik_Call(OSDDB_GetOsd, osddb_client, 0, u.id, u.name, &u);
     if (code == RXGEN_OPCODE)
         code = ubik_Call(OSDDB_GetOsd20, osddb_client, 0, u.id, u.name, &u);
@@ -2746,9 +2760,11 @@ ShowOsd(struct cmd_syndesc *as, void *rock)
     }
     if (as->parms[3].items) 			/* cell */
         cellp = as->parms[3].items->data;
-    code = init_osddb_client();
-    if (code) 
-	return code;
+    osddb_client = init_osddb_client(cellp);
+    if (!osddb_client) {
+	fprintf(stderr, "Could not get connection to OSDDB data base\n");
+	return -1;
+    }
     code = ubik_Call(OSDDB_OsdList, osddb_client, 0, &l);
     if (code) {
 	fprintf(stderr, "Couldn't get list of OSDs\n");
@@ -2881,9 +2897,11 @@ AddServer(struct cmd_syndesc *as, void *rock)
         cellp = as->parms[4].items->data;
     if (as->parms[5].items) 		/* -localauth */
         localauth = 1;
-    code = init_osddb_client();
-    if (code) 
-	return code;
+    osddb_client = init_osddb_client(cellp);
+    if (!osddb_client) {
+	fprintf(stderr, "Could not get connection to OSDDB data base\n");
+	return -1;
+    }
     code = ubik_Call(OSDDB_AddServer, osddb_client, 0, e);
     if (code == RXGEN_OPCODE)
         code = ubik_Call(OSDDB_AddServer60, osddb_client, 0, e);
@@ -2921,9 +2939,11 @@ DeleteServer(struct cmd_syndesc *as, void *rock)
         cellp = as->parms[1].items->data;
     if (as->parms[2].items)		/* -localauth */ 
         localauth = 1;
-    code = init_osddb_client();
-    if (code) 
-	return code;
+    osddb_client = init_osddb_client(cellp);
+    if (!osddb_client) {
+	fprintf(stderr, "Could not get connection to OSDDB data base\n");
+	return -1;
+    }
     code = ubik_Call(OSDDB_DeleteServer, osddb_client, 0, e);
     if (code == RXGEN_OPCODE)
         code = ubik_Call(OSDDB_DeleteServer64, osddb_client, 0, e);
@@ -2965,9 +2985,11 @@ ShowServer(struct cmd_syndesc *as, void *rock)
     }
     if (as->parms[1].items) 			/* cell */
         cellp = as->parms[1].items->data;
-    code = init_osddb_client();
-    if (code) 
-	return code;
+    osddb_client = init_osddb_client(cellp);
+    if (!osddb_client) {
+	fprintf(stderr, "Could not get connection to OSDDB data base\n");
+	return -1;
+    }
     code = ubik_Call(OSDDB_ServerList, osddb_client, 0, &l);
     if (code == RXGEN_OPCODE)
         code = ubik_Call(OSDDB_ServerList63, osddb_client, 0, &l);
@@ -3119,9 +3141,11 @@ Fetchq(struct cmd_syndesc *as, void *rock)
         cellp = as->parms[1].items->data;
     scan_osd_or_host();
     pr_Initialize(1, AFSDIR_CLIENT_ETC_DIRPATH, cellp);
-    code = init_osddb_client();
-    if (code) 
-	return code;
+    osddb_client = init_osddb_client(cellp);
+    if (!osddb_client) {
+	fprintf(stderr, "Could not get connection to OSDDB data base\n");
+	return -1;
+    }
     memset(&l, 0, sizeof(l));
     code = ubik_Call(OSDDB_OsdList, osddb_client, 0, &l);
     if (code) {
@@ -3712,9 +3736,11 @@ AddPolicy(struct cmd_syndesc *as, void *rock)
     if ( as->parms[5].items ) 			/* -localauth */
         localauth = 1;
 
-    code = init_osddb_client();
-    if (code) 
-	goto badAddPolicy;
+    osddb_client = init_osddb_client(cellp);
+    if (!osddb_client) {
+	fprintf(stderr, "Could not get connection to OSDDB data base\n");
+	return -1;
+    }
     code = ubik_Call(OSDDB_AddPolicy, osddb_client, 0, id, name, pp_output);
     if (code == RXGEN_OPCODE)
         code = ubik_Call(OSDDB_AddPolicy65, osddb_client, 0, id, name, pp_output);
@@ -3752,9 +3778,11 @@ ShowPolicy(struct cmd_syndesc *as, void *rock)
     if (as->parms[5].items) 			/* -cell */
         cellp = as->parms[5].items->data;
 
-    code = init_osddb_client();
-    if (code) 
-	return code;
+    osddb_client = init_osddb_client(cellp);
+    if (!osddb_client) {
+	fprintf(stderr, "Could not get connection to OSDDB data base\n");
+	return -1;
+    }
 
     if ( as->parms[0].items ) {			/* -id */
 	if ( !isdigit(as->parms[0].items->data[0]) ) {
@@ -3827,9 +3855,11 @@ DeletePolicy(struct cmd_syndesc *as, void *rock)
     if (as->parms[2].items)		/* -localauth */ 
         localauth = 1;
 
-    code = init_osddb_client();
-    if (code) 
-	return code;
+    osddb_client = init_osddb_client(cellp);
+    if (!osddb_client) {
+	fprintf(stderr, "Could not get connection to OSDDB data base\n");
+	return -1;
+    }
 
     if ( !isdigit(as->parms[0].items->data[0]) ) {
 	code = ubik_Call(OSDDB_GetPolicyID, osddb_client, 0,

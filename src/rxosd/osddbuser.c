@@ -105,11 +105,13 @@ afs_int32  locationMalus = 20;
 afs_int32  groupBonus = 10;
 afs_int32  groupMalus = 10;
 afs_uint32 osdTableTime = 0;
+char * cellPtr = NULL;
 
 #define MIN_SIZE_FOR_STRIPING 1024 * 1024
 
-static struct ubik_client *
-init_osddb_client(char *confDir)
+#ifdef BUILD_LIBAFSOSD_A
+struct ubik_client *
+init_osddb_client(char *cell)
 {
     afs_int32 code, scIndex = 0, i;
     struct afsconf_dir *tdir;
@@ -119,10 +121,52 @@ init_osddb_client(char *confDir)
     struct rx_connection *serverconns[MAXSERVERS];
 
     memset(&serverconns, 0, sizeof(serverconns));
-    tdir = afsconf_Open(confDir);
+    tdir = afsconf_Open(AFSDIR_CLIENT_ETC_DIRPATH);
+    if (!tdir) {
+        fprintf(stderr, "Could not open configuration directory (%s).\n", AFSDIR_CLIENT_ETC_DIRPATH);
+        return NULL;
+    }
+    code = afsconf_ClientAuth(tdir, &sc, &scIndex);
+    if (code) {
+        fprintf(stderr, "Could not get security object for localAuth\n");
+        return NULL;
+    }
+    code = afsconf_GetCellInfo(tdir, cell, AFSCONF_VLDBSERVICE, &info);
+    if (info.numServers > MAXSERVERS) {
+        fprintf(stderr, "vl_Initialize: info.numServers=%d (> MAXSERVERS=%d)\n",
+                 info.numServers, MAXSERVERS);
+        return NULL;
+    }
+    for (i = 0; i < info.numServers; i++)
+        serverconns[i] =
+            rx_NewConnection(info.hostAddr[i].sin_addr.s_addr,
+                   OSDDB_SERVER_PORT, OSDDB_SERVICE_ID, sc, scIndex);
+    code = ubik_ClientInit(serverconns, &cstruct);
+    afsconf_Close(tdir);
+    if (code) {
+        fprintf(stderr, "vl_Initialize: ubik client init failed.\n");
+        return NULL;
+    }
+
+    return cstruct;
+}
+#else
+
+struct ubik_client *
+init_osddb_client(char *cell)
+{
+    afs_int32 code, scIndex = 0, i;
+    struct afsconf_dir *tdir;
+    struct rx_securityClass *sc;
+    struct afsconf_cell info;
+    struct ubik_client *cstruct = 0;
+    struct rx_connection *serverconns[MAXSERVERS];
+
+    memset(&serverconns, 0, sizeof(serverconns));
+    tdir = afsconf_Open(AFSDIR_SERVER_ETC_DIRPATH);
     if (!tdir) {
         ViceLog(0,
-                ("Could not open configuration directory (%s).\n", confDir));
+                ("Could not open configuration directory (%s).\n", AFSDIR_SERVER_ETC_DIRPATH));
         return NULL;
     }
     code = afsconf_ClientAuth(tdir, &sc, &scIndex);
@@ -150,6 +194,7 @@ init_osddb_client(char *confDir)
 
     return cstruct;
 }
+#endif
 
 /* free the memory allocated by regcomp */
 void free_regexes(pol_cond *condition)
@@ -386,7 +431,7 @@ void FillPolicyTable()
     afs_uint32 db_revision;
 
     if (!osddb_client) {
-        osddb_client = init_osddb_client((char*)AFSDIR_SERVER_ETC_DIRPATH);
+        osddb_client = init_osddb_client(cellPtr);
         if (!osddb_client)
             return;
     }
@@ -456,7 +501,7 @@ FillOsdTable()
     }
 
     if (!osddb_client) {
-        osddb_client = init_osddb_client((char*)AFSDIR_SERVER_ETC_DIRPATH);
+        osddb_client = init_osddb_client(cellPtr);
         if (!osddb_client)
             return;
     }
@@ -690,7 +735,7 @@ init_pol_statList(struct osd_infoList *list)
     list->osd_infoList_val = 0;
     
     if (!osddb_client) {
-        osddb_client = init_osddb_client((char*)AFSDIR_SERVER_ETC_DIRPATH);
+        osddb_client = init_osddb_client(cellPtr);
         if (!osddb_client)
             return EIO;
     }
@@ -757,6 +802,7 @@ void incrementChosen(struct Osd *o)
         (o->t.etype_u.osd.chosen)++;
 }
 
+#ifndef BUILD_LIBAFSOSD_A
 /*
  * DoFindOsd is called with osd and lun being pointers either to single
  * variables (in case stripes == 1) or arrays.
@@ -972,6 +1018,7 @@ get_restore_cand(afs_uint32 nosds, afs_uint32 *osd)
     OSDDB_UNLOCK;
     return best;
 }
+#endif /* !BUILD_LIBAFSOSD_A */
 
 afs_int32
 OsdHasAccessToHSM(afs_uint32 osd_id)

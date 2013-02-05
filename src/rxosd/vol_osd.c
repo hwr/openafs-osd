@@ -1995,8 +1995,13 @@ fill_osd_file(Vnode *vn, struct async *a,
     }
 
     code = read_osd_p_fileList(vn->volumePtr, &vn->disk, vn->vnodeNumber, &list);
-    if (code)
+    if (code) {
+	ViceLog(1, ("fill_osd_file: read_osd_p_file %u.%u.%u returns %d\n",
+				V_id(vn->volumePtr), 
+				vn->vnodeNumber,
+				vn->disk.uniquifier, code));
 	return code;
+    }
     for (i=0; i<list.osd_p_fileList_len; i++) {
 	pfile = &list.osd_p_fileList_val[i];
 	if (!pfile->archiveTime) {
@@ -2008,6 +2013,10 @@ fill_osd_file(Vnode *vn, struct async *a,
     if (*fileno < 0 || pfile->flags & RESTORE_IN_PROGRESS) {
 	afs_uint64 size;
 	if (!writeLocked(vn)) { /* no chance to bring file on-line */
+	    ViceLog(1, ("fill_osd_file: %u.%u.%u *fileno =%d returning EIO\n",
+				V_id(vn->volumePtr), 
+				vn->vnodeNumber,
+				vn->disk.uniquifier, *fileno));
 	    code = EIO;
 	    goto bad;
 	}

@@ -60,12 +60,78 @@ private struct auth_ops_v0 {
     int (*afsconf_Close) (struct afsconf_dir *adir);
     int (*afsconf_GetCellInfo) (struct afsconf_dir *adir, char *acellName,
                                 char *aservice, struct afsconf_cell *acellInfo);
+    int (*afsconf_GetLocalCell) (struct afsconf_dir *adir, char *aname,
+                                 afs_int32 alen);
     struct afsconf_dir *(*afsconf_Open) (const char *adir);
+    int (*afsconf_SetCell) (struct afsconf_dir *adir, char *cell);
     int (*afsconf_SuperUser) (struct afsconf_dir *adir, struct rx_call *acall,
                              char *namep);
+    int (*ktc_GetToken) (struct ktc_principal *aserver, struct ktc_token *atoken,
+                         int atokenLen, struct ktc_principal *aclient);
 } auth_ops_v0;
 static struct auth_ops_v0 *auth = NULL;
 
+#ifdef BUILDING_CLIENT_COMMAND
+/*
+ *  from src/cmd and others
+ */
+#include <afs/cmd.h>
+#include <afs/afsint.h>
+#include <afs/volint.h>
+#include <afs/usd.h>
+struct cmd_ops_v0 {
+    void (*AssertionFailed) (char *file, int line);
+    const char *(*afs_error_message) (afs_int32 code);
+    int (*cmd_AddParm) (struct cmd_syndesc *as, char *aname, int atype,
+                        afs_int32 aflags, char *ahelp);
+    int (*cmd_CreateAlias) (struct cmd_syndesc *as, char *aname);
+    struct cmd_syndesc *(*cmd_CreateSyntax) (char *namep,
+                           int (*aprocp) (struct cmd_syndesc *ts, void *arock),
+                           void *rockp, char *helpp);
+    int (*cmd_IsAdministratorCommand) (struct cmd_syndesc *as);
+    int (*cmd_Seek) (struct cmd_syndesc *as, int apos);
+    afs_uint32 (*GetServer) (char *aname);
+    int (*PrintError) (char *msg, afs_int32 errcode);
+    int (*pioctl) (char *path, afs_int32 cmd, struct ViceIoctl *data,
+                   afs_int32 follow);
+    struct rx_securityClass *(*rxkad_NewClientSecurityObject) (rxkad_level level,
+                struct ktc_encryptionKey *sessionkey, afs_int32 kvno,
+                int ticketLen, char *ticket);
+    struct rx_securityClass *(*rxkad_NewServerSecurityObject) (rxkad_level level,
+                              void *get_key_rock,
+                              int (*get_key) (void *get_key_rock, int kvno,
+                                              struct ktc_encryptionKey *serverKey),
+                              int (*user_ok) (char *name, char *instance,
+                                              char *cell, afs_int32 kvno));
+    int (*ubik_VL_ReleaseLock) (struct ubik_client *aclient, afs_int32 aflags,
+                                afs_uint32 Volid,afs_int32 voltype,
+                                afs_int32 ReleaseType);
+    int (*ubik_VL_SetLock) (struct ubik_client *aclient, afs_int32 aflags,
+                            afs_uint32 Volid,afs_int32 voltype,
+                            afs_int32 voloper);
+    struct rx_connection *(*UV_Bind) (afs_uint32 aserver, afs_int32 port);
+    struct rx_connection *(*UV_BindOsd) (afs_uint32 aserver, afs_int32 port);
+    int (*UV_ListOneVolume) (afs_uint32 aserver, afs_int32 apart, afs_uint32 volid,
+            		     struct volintInfo **resultPtr);
+    int (*UV_CreateVolume2) (afs_uint32 aserver, afs_int32 apart, char *aname,
+                 afs_int32 aquota, afs_int32 aspare1, afs_int32 aspare2,
+                 afs_int32 osdpolicy, afs_int32 filequota,
+                 afs_uint32 * anewid);
+    int (*VL_GetEntryByID) (struct rx_connection *z_conn, afs_uint32 Volid,
+                            afs_int32 voltype, struct vldbentry * entry);
+    int (*VLDB_GetEntryByID) (afs_uint32 volid, afs_int32 voltype,
+                              struct nvldbentry *entryp);
+    int (*vsu_ClientInit) (const char *confDir, char *cellName, int secFlags,
+                           int (*secproc)(struct rx_securityClass *, afs_int32),
+                           struct ubik_client **uclientp);
+    int (*vsu_GetVolumeID) (char *astring, struct ubik_client *acstruct,
+                            afs_int32 *errp);
+    int (*usd_Open) (const char *path, int oflag, int mode, usd_handle_t * usdP);
+    int (*usd_StandardInput) (usd_handle_t * usdP);
+    int (*usd_StandardOutput) (usd_handle_t * usdP);
+} cmd_ops_v0;
+static struct cmd_ops_v0 *cmd = NULL;
+#endif
 /* 
  *  from src/dir
  */
@@ -78,20 +144,45 @@ struct dir_ops_v0 {
 private struct dir_ops_v0 dir_ops_v0;
 static struct dir_ops_v0 *dir = NULL;
 
-#if defined(BUILDING_FILESERVER) || defined BUILD_SHLIBAFSOSD
+#if defined(BUILDING_FILESERVER) || defined(BUILD_SHLIBAFSOSD) || defined(BUILDING_CLIENT_COMMAND)
 /* 
  *  from src/fsint
  */
 private struct fsint_ops_v0 {
+    int (*RXAFS_GiveUpAllCallBacks) (struct rx_connection *z_conn);
+    int (*RXAFS_FsCmd) (struct rx_connection *z_conn, AFSFid * Fid,
+			struct FsCmdInputs * Inputs,
+			struct FsCmdOutputs * Outputs);
+    int (*RXAFS_Statistic) (struct rx_connection *z_conn, afs_int32 reset,
+			afs_uint32 * since, afs_uint64 * rcvd, afs_uint64 * sent,
+			viced_statList * l, struct viced_kbps * kbpsrcvd,
+			struct viced_kbps * kbpssent);
+    int (*RXAFS_Threads) (struct rx_connection *z_conn, struct activecallList * list);
+    char *(*RXAFS_TranslateOpCode) (afs_int32 code);
+    int (*RXAFS_Variable) (struct rx_connection *z_conn,
+			afs_int32 cmd, var_info * name, afs_int64 value,
+			afs_int64 * result, var_info * str);
+    bool_t (*xdr_AFSCallBack) (XDR *xdrs, AFSCallBack *objp);
+    bool_t (*xdr_AFSCBFids) (XDR *xdrs, AFSCBFids *objp);
+    bool_t (*xdr_AFSCB_CollData) (XDR *xdrs, AFSCB_CollData *objp);
+    bool_t (*xdr_AFSCBs) (XDR *xdrs, AFSCBs *objp);
+    bool_t (*xdr_AFSDBCacheEntry) (XDR *xdrs, AFSDBCacheEntry *objp);
+    bool_t (*xdr_AFSDBCacheEntry64) (XDR *xdrs, AFSDBCacheEntry64 *objp);
+    bool_t (*xdr_AFSDBLock) (XDR *xdrs, AFSDBLock *objp);
+    bool_t (*xdr_AFSDCacheEntry) (XDR *xdrs, AFSDCacheEntry *objp);
+    bool_t (*xdr_AFSDCacheEntryL) (XDR *xdrs, AFSDCacheEntryL *objp);
     bool_t (*xdr_AFSFetchStatus) (XDR *xdrs, struct AFSFetchStatus *objp);
     bool_t (*xdr_AFSFid) (XDR *xdrs, struct AFSFid *objp);
     bool_t (*xdr_AFSStoreStatus) (XDR *xdrs, struct AFSStoreStatus *objp);
+    bool_t (*xdr_Capabilities) (XDR *xdrs, Capabilities *objp);
     bool_t (*xdr_FsCmdInputs) (XDR *xdrs, struct FsCmdInputs *objp);
     bool_t (*xdr_FsCmdOutputs) (XDR *xdrs, struct FsCmdOutputs *objp);
     bool_t (*xdr_async) (XDR *xdrs, struct async *objp);
     bool_t (*xdr_asyncError) (XDR *xdrs, struct asyncError *objp);
+    bool_t (*xdr_cacheConfig) (XDR *xdrs, cacheConfig *objp);
+    bool_t (*xdr_interfaceAddr) (XDR *xdrs, interfaceAddr *objp);
     bool_t (*xdr_osd_file2List) (XDR *xdrs, struct osd_file2List *objp);
-    bool_t (*xdr_AFSCallBack) (XDR *xdrs, AFSCallBack *objp);
+    bool_t (*xdr_serverList) (XDR *xdrs, serverList *objp);
 } fsint_ops_v0;
 static struct fsint_ops_v0 *fsint;
 #endif /* BUILDING_FILESERVER */
@@ -135,6 +226,7 @@ private struct rx_ops_v0 {
                                  AFS_NORETURN;
     char *(*osi_alloc) (afs_int32 x);
     int (*osi_free) (char *x, afs_int32 size);
+    void (*rx_DestroyConnection) (struct rx_connection *conn);
     afs_int32 (*rx_EndCall) (struct rx_call *call, afs_int32 rc);
     void *(*rx_GetSpecific) (struct rx_connection *conn, int key);
     void (*rx_IncrementTimeAndCount) (struct rx_peer *peer,
@@ -145,6 +237,7 @@ private struct rx_ops_v0 {
                                      struct clock *execTime,
                                      afs_hyper_t * bytesSent,
                                      afs_hyper_t * bytesRcvd, int isServer);
+    int (*rx_Init) (u_int port);
     void (*rx_KeepAliveOff) (struct rx_call *call);
     void (*rx_KeepAliveOn) (struct rx_call *call);
     struct rx_call *(*rx_NewCall) (struct rx_connection *conn);
@@ -153,8 +246,20 @@ private struct rx_ops_v0 {
                                               struct rx_securityClass
                                               *securityObject,
                                               int serviceSecurityIndex);
+    struct rx_service *(*rx_NewService) (u_short port, u_short serviceId,
+                                        char *serviceName,
+                                        struct rx_securityClass
+                                        **securityObjects,
+                                        int nSecurityObjects,
+                                        afs_int32(*serviceProc) (struct
+                                                                 rx_call *
+                                                                 acall));
     int (*rx_ReadProc) (struct rx_call *call, char *buf, int nbytes);
+    void (*rx_SetConnDeadTime) (struct rx_connection *conn, int seconds);
+    void (*rx_StartServer) (int donateMe);
     int (*rx_WriteProc) (struct rx_call *call, char *buf, int nbytes);
+    struct rx_securityClass *(*rxnull_NewClientSecurityObject) (void);
+    struct rx_securityClass *(*rxnull_NewServerSecurityObject) (void);
     int (*xdr_afsUUID) (XDR * xdrs, afsUUID * objp);
     bool_t (*xdr_afs_int32) (XDR * xdrs, afs_int32 *ip);
     bool_t (*xdr_afs_int64) (XDR * xdrs, afs_int64 *ulp);
@@ -198,6 +303,14 @@ private struct ubik_ops_v0 {
                          afs_int32 alen, int atype);
     int (*ubik_Write) (struct ubik_trans *transPtr, void *buffer,
                        afs_int32 length);
+    int (*ugen_ClientInit) (int noAuthFlag, const char *confDir, char *cellName,
+                            afs_int32 sauth, struct ubik_client **uclientp,
+                            int (*secproc) (struct rx_securityClass *sc,
+                                 afs_int32 scIndex),
+                            char *funcName, afs_int32 gen_rxkad_level,
+                            afs_int32 maxservers, char *serviceid,
+                            afs_int32 deadtime, afs_uint32 server,
+                            afs_uint32 port, afs_int32 usrvid);
 } ubik_ops_v0;
 static struct ubik_ops_v0 *ubik = NULL;
 
@@ -205,9 +318,16 @@ static struct ubik_ops_v0 *ubik = NULL;
  *  from src/util
  */
 private struct util_ops_v0 {
+    afs_int32 (*afs_uuid_create) (afsUUID * uuid);
+    afs_int64 (*flipbase64_to_int64) (char *s);
+    struct hostent *(*hostutil_GetHostByName) (char *ahost);
+    char (*hostutil_GetNameByINet) (afs_uint32 addr);
+    char *(*int64_to_flipbase64) (lb64_string_t s, afs_uint64 a);
     int (*afs_vsnprintf) (char *str, size_t sz, const char *format, va_list args);
     const char *(*getDirPath) (afsdir_id_t string_id);
     size_t (*strlcpy) (char *dst, const char *src, size_t siz);
+    afs_int32 (*util_GetInt32) (char *as, afs_int32 * aval);
+    char *(*volutil_PartitionName_r) (int part, char *tbuffer, int buflen);
     void (*vFSLog) (const char *format, va_list args);
 } util_ops_v0;
 static struct util_ops_v0 *util = NULL;
@@ -223,6 +343,7 @@ void viced_fill_ops(struct viced_ops_v0 *viced);
 
 #endif /* BUILDING_FILESERVER */
 
+#ifndef BUILDING_CLIENT_COMMAND
 /* 
  *  from src/vol
  */
@@ -276,6 +397,7 @@ struct vol_ops_v0 {
     void (*LogOsd) (const char *format, va_list args);
 };
 static struct vol_ops_v0 vol_ops_v0, *vol = NULL;
+#endif /* BUILDING_CLIENT_COMMAND */
 
 #if defined(BUILDING_VOLSERVER) || defined BUILD_SHLIBAFSOSD
 #if 0
@@ -289,6 +411,7 @@ static struct volser_ops_v0 volser_ops_v0, *volser = NULL;
 
 struct ops_ptr {
     struct auth_ops_v0 *auth;
+    struct cmd_ops_v0 *cmd;
     struct dir_ops_v0 *dir;
     struct fsint_ops_v0 *fsint;
     struct lwp_ops_v0 *lwp;
@@ -314,30 +437,93 @@ fill_ops(struct ops_ptr *opsptr)
     auth->afsconf_ClientAuth = afsconf_ClientAuth;
     auth->afsconf_Close = afsconf_Close;
     auth->afsconf_GetCellInfo = afsconf_GetCellInfo;
+    auth->afsconf_GetLocalCell = afsconf_GetLocalCell;
     auth->afsconf_Open = afsconf_Open;
+    auth->afsconf_SetCell = afsconf_SetCell;
     auth->afsconf_SuperUser = afsconf_SuperUser;
+    auth->ktc_GetToken = ktc_GetToken;
     opsptr->auth = auth;
 #endif
 
-#ifndef BUILDING_VLSERVER
+#ifdef BUILDING_CLIENT_COMMAND
+#include <afs/sys_prototypes.h>
+#include <afs/com_err.h>
+#include <afs/vldbint.h>
+    cmd = &cmd_ops_v0;
+    cmd->AssertionFailed = AssertionFailed;
+    cmd->afs_error_message = afs_error_message;
+    cmd->cmd_AddParm = cmd_AddParm;
+    cmd->cmd_CreateAlias = cmd_CreateAlias;
+    cmd->cmd_CreateSyntax = cmd_CreateSyntax;
+    cmd->cmd_IsAdministratorCommand = cmd_IsAdministratorCommand;
+    cmd->cmd_Seek = cmd_Seek;
+    cmd->pioctl = pioctl;
+    cmd->rxkad_NewClientSecurityObject = rxkad_NewClientSecurityObject;
+    cmd->rxkad_NewServerSecurityObject = rxkad_NewServerSecurityObject;
+    cmd->VL_GetEntryByID = VL_GetEntryByID;
+#ifdef BUILDING_VOS
+#include <afs/volser.h>
+#include "../volser/volser_internal.h"
+#include <afs/volser_prototypes.h>
+#include <afs/vsutils_prototypes.h>
+extern int VLDB_GetEntryByID(afs_uint32 volid, afs_int32 voltype,
+                            struct nvldbentry *entryp);
+extern afs_uint32 GetServer(char *aname);
+extern struct rx_connection * UV_BindOsd(afs_uint32 aserver, afs_int32 port);
+    cmd->GetServer = GetServer;
+    cmd->PrintError = PrintError;
+    cmd->ubik_VL_ReleaseLock = ubik_VL_ReleaseLock;
+    cmd->ubik_VL_SetLock = ubik_VL_SetLock;
+    cmd->UV_Bind = UV_Bind;
+    cmd->UV_BindOsd = UV_BindOsd;
+    cmd->UV_ListOneVolume = UV_ListOneVolume;
+    cmd->UV_CreateVolume2 = UV_CreateVolume2;
+    cmd->VLDB_GetEntryByID = VLDB_GetEntryByID;
+    cmd->vsu_ClientInit = vsu_ClientInit;
+    cmd->vsu_GetVolumeID = vsu_GetVolumeID;
+    cmd->usd_Open = usd_Open;
+    cmd->usd_StandardInput = usd_StandardInput;
+    cmd->usd_StandardOutput = usd_StandardOutput;
+#endif
+    opsptr->cmd = cmd;
+#endif
+
+#if !defined(BUILDING_VLSERVER) && !defined(BUILDING_CLIENT_COMMAND)
     dir = &dir_ops_v0;
     dir->FidZap = FidZap;
     dir->InverseLookup = InverseLookup;
     opsptr->dir = dir;
 #endif
  
-#ifdef BUILDING_FILESERVER
+#if defined(BUILDING_FILESERVER) || defined(BUILDING_CLIENT_COMMAND) 
     fsint = &fsint_ops_v0;
-    fsint->xdr_AFSFetchStatus = xdr_AFSFetchStatus;
+    fsint->RXAFS_GiveUpAllCallBacks = RXAFS_GiveUpAllCallBacks;
+    fsint->RXAFS_FsCmd = RXAFS_FsCmd;
+    fsint->RXAFS_Statistic = RXAFS_Statistic;
+    fsint->RXAFS_Threads = RXAFS_Threads;
+    fsint->RXAFS_TranslateOpCode = RXAFS_TranslateOpCode;
+    fsint->RXAFS_Variable = RXAFS_Variable;
+    fsint->xdr_AFSCallBack = xdr_AFSCallBack;
+    fsint->xdr_AFSCBFids = xdr_AFSCBFids;
+    fsint->xdr_AFSCB_CollData = xdr_AFSCB_CollData;
+    fsint->xdr_AFSCBs = xdr_AFSCBs;
+    fsint->xdr_AFSDBCacheEntry = xdr_AFSDBCacheEntry;
+    fsint->xdr_AFSDBCacheEntry64 = xdr_AFSDBCacheEntry64;
+    fsint->xdr_AFSDBLock = xdr_AFSDBLock;
+    fsint->xdr_AFSDCacheEntry = xdr_AFSDCacheEntry;
+    fsint->xdr_AFSDCacheEntryL = xdr_AFSDCacheEntryL;
     fsint->xdr_AFSFetchStatus = xdr_AFSFetchStatus;
     fsint->xdr_AFSFid = xdr_AFSFid;
     fsint->xdr_AFSStoreStatus = xdr_AFSStoreStatus;
+    fsint->xdr_Capabilities = xdr_Capabilities;
     fsint->xdr_FsCmdInputs = xdr_FsCmdInputs;
     fsint->xdr_FsCmdOutputs = xdr_FsCmdOutputs;
     fsint->xdr_async = xdr_async;
     fsint->xdr_asyncError = xdr_asyncError;
+    fsint->xdr_cacheConfig = xdr_cacheConfig;
+    fsint->xdr_interfaceAddr = xdr_interfaceAddr;
     fsint->xdr_osd_file2List = xdr_osd_file2List;
-    fsint->xdr_AFSCallBack = xdr_AFSCallBack;
+    fsint->xdr_serverList = xdr_serverList;
     opsptr->fsint = fsint;
 #endif
 
@@ -370,14 +556,21 @@ fill_ops(struct ops_ptr *opsptr)
     rx->osi_AssertFailU = osi_AssertFailU;
     rx->osi_alloc = osi_alloc;
     rx->osi_free = osi_free;
+    rx->rx_DestroyConnection = rx_DestroyConnection;
     rx->rx_EndCall = rx_EndCall;
     rx->rx_GetSpecific = rx_GetSpecific;
     rx->rx_IncrementTimeAndCount = rx_IncrementTimeAndCount;
+    rx->rx_Init = rx_Init;
     rx->rx_KeepAliveOff = rx_KeepAliveOff;
     rx->rx_KeepAliveOn = rx_KeepAliveOn;
     rx->rx_NewCall = rx_NewCall;
     rx->rx_NewConnection = rx_NewConnection;
+    rx->rx_NewService = rx_NewService;
     rx->rx_ReadProc = rx_ReadProc;
+    rx->rx_SetConnDeadTime = rx_SetConnDeadTime;
+    rx->rx_StartServer = rx_StartServer;
+    rx->rxnull_NewClientSecurityObject = rxnull_NewClientSecurityObject;
+    rx->rxnull_NewServerSecurityObject = rxnull_NewServerSecurityObject;
     rx->rx_WriteProc = rx_WriteProc;
     rx->xdr_afsUUID = xdr_afsUUID;
     rx->xdr_afs_int32 = xdr_afs_int32;
@@ -408,13 +601,21 @@ fill_ops(struct ops_ptr *opsptr)
     ubik->ubik_SetLock = ubik_SetLock;
     ubik->ubik_Write = ubik_Write;
 #endif
+    ubik->ugen_ClientInit = ugen_ClientInit;
     opsptr->ubik = ubik;
 #endif
 
     util = &util_ops_v0;
+    util->afs_uuid_create = afs_uuid_create;
+    util->flipbase64_to_int64 = flipbase64_to_int64;
+    util->hostutil_GetHostByName = hostutil_GetHostByName;
+    util->hostutil_GetNameByINet = hostutil_GetNameByINet;
+    util->int64_to_flipbase64 = int64_to_flipbase64;
     util->afs_vsnprintf = afs_vsnprintf;
     util->getDirPath = getDirPath;
     util->strlcpy = strlcpy;
+    util->util_GetInt32 = util_GetInt32;
+    util->volutil_PartitionName_r = volutil_PartitionName_r;
     util->vFSLog = vFSLog;
     opsptr->util = util;
  
@@ -424,6 +625,7 @@ fill_ops(struct ops_ptr *opsptr)
     opsptr->viced = viced;
 #endif
 
+#ifndef BUILDING_CLIENT_COMMAND
 #ifndef BUILDING_VLSERVER
     vol = &vol_ops_v0;
 #ifdef BUILDING_VOLSERVER
@@ -470,6 +672,7 @@ fill_ops(struct ops_ptr *opsptr)
 #endif
     opsptr->vol = vol;
 #endif
+#endif /* BUILDING_CLIENT_COMMAND */
 
 #ifdef BUILDING_VOLSERVER
     volser = &volser_ops_v0;
@@ -485,6 +688,7 @@ fill_ops(struct ops_ptr *opsptr)
 void *libHandle;
 extern char *AFSVersion;
 
+#ifndef BUILDING_CLIENT_COMMAND
 int load_libafsosd(char *initroutine, void *inrock, void *outrock)
 {
     int (*init)(char *myVersion, char **versionstring, void *inrock, void *outrock,
@@ -544,6 +748,56 @@ int load_libafsosd(char *initroutine, void *inrock, void *outrock)
         ViceLog(0, ("AFS RXOSD support activated.\n"));
     return code;
 }
+#else /* BUILDING_CLIENT_COMMAND */
+
+struct osd_vol_ops_v0 *osdvol = NULL;
+
+int
+load_libcafsosd(char *initroutine, void *inrock, void *outrock)
+{
+    int (*init)(char *myVersion, char **versionstring, void *inrock, void *outrock,
+                void *libafsosdrock, afs_int32 version);
+    char libname[256];
+    char *libraryVersion = NULL;
+    struct ops_ptr opsptr;
+    char *error;
+    int code;
+    afs_int32 version = LIBAFSOSD_VERSION;      /* compiled in server binary */
+
+    memset(&opsptr, 0, sizeof(opsptr));
+    sprintf(libname, "%s.%d.%d",
+                "libcafsosd.so",
+                LIBAFSOSD_MAJOR_VERSION, LIBAFSOSD_VERSION);
+    libHandle = dlopen (libname, RTLD_LAZY);
+    if (!libHandle) {
+        fprintf (stderr, "dlopen of %s failed: %s\n", libname, dlerror());
+        return ENOENT;
+    }
+
+    dlerror();  /* Clear any existing error */
+    init = dlsym(libHandle, initroutine);
+    if ((error = dlerror()) != NULL)  {
+        fprintf (stderr, "%s\n", error);
+        return ENOENT;
+    }
+
+    fill_ops(&opsptr);
+
+    code = (*init)(AFSVersion, &libraryVersion, inrock, outrock, &opsptr, version);
+    if (!code) {
+	int *loaded = (int *) outrock;
+	*loaded = 1;
+    } else {
+        if (code == EINVAL)
+           fprintf(stderr, "Version mismatch between binary and %s, aborting\n",
+                   libname);
+        else
+           fprintf(stderr, "call to %s in %s returns %d\n",
+                        initroutine, libname, code);
+    }
+    return code;
+}
+#endif /* BUILDING_CLIENT_COMMAND */
 
 void
 unload_lib()
@@ -568,6 +822,9 @@ libafsosd_init(void *inrock, afs_int32 interfaceVersion)
     if (interfaceVersion != version)
 	return EINVAL;
     auth = in->auth;
+#ifdef BUILDING_CLIENT_COMMAND
+    cmd = in->cmd;
+#endif
     dir = in->dir;
     fsint = in->fsint;
     lwp = in->lwp;
@@ -575,7 +832,9 @@ libafsosd_init(void *inrock, afs_int32 interfaceVersion)
     ubik = in->ubik;
     util = in->util;
     viced = in->viced;
+#ifndef BUILDING_CLIENT_COMMAND
     vol = in->vol;
+#endif
     volser = in->volser;
     return 0;
 };
@@ -615,10 +874,22 @@ afsconf_GetCellInfo(struct afsconf_dir *adir, char *acellName,
     return (auth->afsconf_GetCellInfo)(adir, acellName, aservice, acellInfo);
 }
 
+int
+afsconf_GetLocalCell(struct afsconf_dir *adir, char *aname, afs_int32 alen)
+{
+    return (auth->afsconf_GetLocalCell)(adir, aname, alen);
+}
+
 struct afsconf_dir *
 afsconf_Open(const char *adir)
 {
     return (auth->afsconf_Open)(adir);
+}
+
+int
+afsconf_SetCell(struct afsconf_dir *adir, char *cell)
+{
+    return (auth->afsconf_SetCell)(adir, cell);
 }
 
 int
@@ -627,6 +898,190 @@ afsconf_SuperUser(struct afsconf_dir *adir, struct rx_call *acall, char *namep)
     return (auth->afsconf_SuperUser)(adir, acall, namep);
 }
 
+int
+ktc_GetToken(struct ktc_principal *aserver, struct ktc_token *atoken,
+                         afs_int32 atokenLen, struct ktc_principal *aclient)
+{
+    return (auth->ktc_GetToken)(aserver, atoken, atokenLen, aclient);
+}
+
+#ifdef BUILDING_CLIENT_COMMAND
+/*
+ *  from src/cmd
+ */
+
+void
+AssertionFailed(char *file, int line) 
+{
+    (cmd->AssertionFailed)(file, line);
+}
+
+const char *
+afs_error_message(afs_int32 code)
+{
+    return (cmd->afs_error_message)(code);
+}
+
+int
+cmd_AddParm(struct cmd_syndesc *as, char *aname, int atype, afs_int32 aflags,
+            char *ahelp)
+{
+    return (cmd->cmd_AddParm)(as, aname, atype, aflags, ahelp);
+}
+
+int
+cmd_CreateAlias(struct cmd_syndesc *as, char *aname)
+{
+    return (cmd->cmd_CreateAlias)(as, aname);
+}
+
+struct cmd_syndesc *
+cmd_CreateSyntax(char *namep, int (*aprocp) (struct cmd_syndesc * ts, void *arock),
+                 void *rockp, char *helpp)
+{
+    return (cmd->cmd_CreateSyntax)(namep, aprocp, rockp, helpp);
+}
+
+int cmd_IsAdministratorCommand(struct cmd_syndesc *as)
+{
+    return (cmd->cmd_IsAdministratorCommand)(as);
+}
+
+int
+cmd_Seek(struct cmd_syndesc *as, int apos)
+{
+    return (cmd->cmd_Seek)(as, apos);
+}
+
+afs_uint32
+GetServer(char *aname)
+{
+    return (cmd->GetServer)(aname);
+}
+
+int
+pioctl(char *path, afs_int32 cmnd, struct ViceIoctl *data, afs_int32 follow)
+{
+    return (cmd->pioctl)(path, cmnd, data, follow);
+}
+
+struct rx_securityClass *
+rxkad_NewClientSecurityObject(rxkad_level level,
+                struct ktc_encryptionKey *sessionkey, afs_int32 kvno,
+                int ticketLen, char *ticket)
+{
+    return (cmd->rxkad_NewClientSecurityObject)(level, sessionkey, kvno,
+            ticketLen, ticket);
+}
+
+struct rx_securityClass *
+rxkad_NewServerSecurityObject(rxkad_level level, void *get_key_rock,
+                int (*get_key) (void *get_key_rock, int kvno,
+                                              struct ktc_encryptionKey *
+                                              serverKey),
+                int (*user_ok) (char *name, char *instance,
+                                              char *cell, afs_int32 kvno))
+{
+    return (cmd->rxkad_NewServerSecurityObject)(level, get_key_rock, get_key, user_ok);
+}
+
+int
+ubik_VL_ReleaseLock(struct ubik_client *aclient, afs_int32 aflags,
+                                afs_uint32 Volid, afs_int32 voltype,
+                                afs_int32 ReleaseType)
+{
+    return (cmd->ubik_VL_ReleaseLock)(aclient, aflags, Volid, voltype, ReleaseType);
+}
+
+int
+ubik_VL_SetLock(struct ubik_client *aclient, afs_int32 aflags,
+                            afs_uint32 Volid, afs_int32 voltype,
+                            afs_int32 voloper)
+{
+    return (cmd->ubik_VL_SetLock)(aclient, aflags, Volid, voltype, voloper);
+}
+
+struct rx_connection *
+UV_Bind(afs_uint32 aserver, afs_int32 port)
+{
+    return (cmd->UV_Bind) (aserver, port);
+}
+
+struct rx_connection *
+UV_BindOsd(afs_uint32 aserver, afs_int32 port)
+{
+    return (cmd->UV_BindOsd) (aserver, port);
+}
+
+int 
+UV_ListOneVolume(afs_uint32 aserver, afs_int32 apart, afs_uint32 volid,
+                 struct volintInfo **resultPtr)
+{
+    return (cmd->UV_ListOneVolume)(aserver, apart, volid, resultPtr);
+}
+
+int
+UV_CreateVolume2(afs_uint32 aserver, afs_int32 apart, char *aname,
+                 afs_int32 aquota, afs_int32 aspare1, afs_int32 aspare2,
+                 afs_int32 osdpolicy, afs_int32 filequota,
+                 afs_uint32 * anewid)
+{
+    return (cmd->UV_CreateVolume2)(aserver, apart, aname, aquota, aspare1,
+				   aspare2, osdpolicy, filequota, anewid);
+}
+
+int
+VL_GetEntryByID(struct rx_connection *z_conn, afs_uint32 Volid, afs_int32 voltype,
+                struct vldbentry * entry)
+{
+    return (cmd->VL_GetEntryByID)(z_conn, Volid, voltype, entry);
+}
+
+int
+VLDB_GetEntryByID(afs_uint32 volid, afs_int32 voltype, struct nvldbentry *entryp)
+{
+    return (cmd->VLDB_GetEntryByID)(volid, voltype, entryp);
+}
+
+int
+vsu_ClientInit(const char *confDir, char *cellName, int secFlags,
+               int (*secproc)(struct rx_securityClass *, afs_int32),
+               struct ubik_client **uclientp)
+{
+    return (cmd->vsu_ClientInit)(confDir, cellName, secFlags, secproc, uclientp);
+}
+
+int
+vsu_GetVolumeID(char *astring, struct ubik_client *acstruct, afs_int32 *errp)
+{
+    return (cmd->vsu_GetVolumeID)(astring, acstruct, errp);
+}
+
+int   
+PrintError(char *msg, afs_int32 errcode)
+{
+    return (cmd->PrintError) (msg, errcode);
+}
+
+int
+usd_Open(const char *path, int oflag, int mode, usd_handle_t * usdP)
+{
+    return (cmd->usd_Open)(path, oflag, mode, usdP);
+}
+
+int
+usd_StandardOutput(usd_handle_t * usdP)
+{
+    return (cmd->usd_StandardOutput)(usdP);
+}
+
+int
+usd_StandardInput(usd_handle_t * usdP)
+{
+    return (cmd->usd_StandardInput)(usdP);
+}
+
+#endif /* BUILDING_CLIENT_COMMAND */
 /* 
  *  from src/dir
  */
@@ -652,6 +1107,95 @@ SetDirHandle(struct DirHandle *direc, struct Vnode *vnode)
 /* 
  *  from src/fsint
  */
+int
+RXAFS_GiveUpAllCallBacks(struct rx_connection *z_conn)
+{
+    return (fsint->RXAFS_GiveUpAllCallBacks)(z_conn);
+}
+
+int
+RXAFS_FsCmd(struct rx_connection *z_conn, AFSFid * Fid, struct FsCmdInputs * Inputs,
+		struct FsCmdOutputs * Outputs)
+{
+    return (fsint->RXAFS_FsCmd)(z_conn, Fid, Inputs, Outputs);
+}
+
+int
+RXAFS_Statistic(struct rx_connection *z_conn, afs_int32 reset, afs_uint32 * since,
+		afs_uint64 * rcvd, afs_uint64 * sent, viced_statList * l,
+		struct viced_kbps * kbpsrcvd, struct viced_kbps * kbpssent)
+{
+    return (fsint->RXAFS_Statistic)(z_conn, reset, since, rcvd, sent, l,
+			kbpsrcvd, kbpssent);
+}
+
+int
+RXAFS_Threads(struct rx_connection *z_conn, struct activecallList * list)
+{
+    return (fsint->RXAFS_Threads)(z_conn, list);
+}
+
+char *
+RXAFS_TranslateOpCode(afs_int32 code)
+{
+    return (fsint->RXAFS_TranslateOpCode)(code);
+}
+
+int
+RXAFS_Variable(struct rx_connection *z_conn, afs_int32 cmd, var_info * name,
+		afs_int64 value, afs_int64 * result, var_info * str)
+{
+    return (fsint->RXAFS_Variable)(z_conn, cmd, name, value, result, str);
+}
+
+bool_t
+xdr_AFSCBFids(XDR *xdrs, AFSCBFids *objp)
+{
+    return (fsint->xdr_AFSCBFids)(xdrs, objp);
+}
+
+bool_t
+xdr_AFSCB_CollData(XDR *xdrs, AFSCB_CollData *objp)
+{
+    return (fsint->xdr_AFSCB_CollData)(xdrs, objp);
+}
+
+bool_t
+xdr_AFSCBs(XDR *xdrs, AFSCBs *objp)
+{
+    return (fsint->xdr_AFSCBs)(xdrs, objp);
+}
+
+bool_t
+xdr_AFSDBCacheEntry(XDR *xdrs, AFSDBCacheEntry *objp)
+{
+    return (fsint->xdr_AFSDBCacheEntry)(xdrs, objp);
+}
+
+bool_t
+xdr_AFSDBCacheEntry64(XDR *xdrs, AFSDBCacheEntry64 *objp)
+{
+    return (fsint->xdr_AFSDBCacheEntry64)(xdrs, objp);
+}
+
+bool_t
+xdr_AFSDBLock(XDR *xdrs, AFSDBLock *objp)
+{
+    return (fsint->xdr_AFSDBLock)(xdrs, objp);
+}
+
+bool_t
+xdr_AFSDCacheEntry(XDR *xdrs, AFSDCacheEntry *objp)
+{
+    return (fsint->xdr_AFSDCacheEntry)(xdrs, objp);
+}
+
+bool_t
+xdr_AFSDCacheEntryL(XDR *xdrs, AFSDCacheEntryL *objp)
+{
+    return (fsint->xdr_AFSDCacheEntryL)(xdrs, objp);
+}
+
 bool_t
 xdr_AFSFetchStatus(XDR *xdrs, struct AFSFetchStatus *objp)
 {
@@ -671,6 +1215,12 @@ xdr_AFSStoreStatus(XDR *xdrs, struct AFSStoreStatus *objp)
 }
 
 bool_t
+xdr_Capabilities(XDR *xdrs, Capabilities *objp)
+{
+    return (fsint->xdr_Capabilities)(xdrs, objp);
+}
+
+bool_t
 xdr_FsCmdInputs(XDR *xdrs, struct FsCmdInputs *objp)
 {
     return (fsint->xdr_FsCmdInputs)(xdrs, objp);
@@ -680,6 +1230,12 @@ bool_t
 xdr_FsCmdOutputs(XDR *xdrs, struct FsCmdOutputs *objp)
 {
     return (fsint->xdr_FsCmdOutputs)(xdrs, objp);
+}
+
+bool_t
+xdr_interfaceAddr(XDR *xdrs, interfaceAddr *objp)
+{
+    return (fsint->xdr_interfaceAddr)(xdrs, objp);
 }
 
 bool_t
@@ -695,12 +1251,25 @@ xdr_asyncError(XDR *xdrs, struct asyncError *objp)
 }
 
 bool_t
+xdr_cacheConfig(XDR *xdrs, cacheConfig *objp)
+{
+    return (fsint->xdr_cacheConfig)(xdrs, objp);
+}
+
+bool_t
 xdr_osd_file2List(XDR *xdrs, struct osd_file2List *objp)
 {
     return (fsint->xdr_osd_file2List)(xdrs, objp);
 }
 
-bool_t xdr_AFSCallBack(XDR *xdrs, AFSCallBack *objp)
+bool_t
+xdr_serverList(XDR *xdrs, serverList *objp)
+{
+    return (fsint->xdr_serverList)(xdrs, objp);
+}
+
+bool_t
+xdr_AFSCallBack(XDR *xdrs, AFSCallBack *objp)
 {
     return (fsint->xdr_AFSCallBack)(xdrs, objp);
 }
@@ -848,6 +1417,12 @@ osi_free(char *x, afs_int32 size)
     return (rx->osi_free)(x, size);
 }
 
+void
+rx_DestroyConnection(struct rx_connection *conn)
+{
+    (rx->rx_DestroyConnection)(conn);
+}
+
 afs_int32
 rx_EndCall(struct rx_call *call, afs_int32 rc)
 {
@@ -870,6 +1445,12 @@ rx_IncrementTimeAndCount(struct rx_peer *peer, afs_uint32 rxInterface,
     (rx->rx_IncrementTimeAndCount)(peer, rxInterface, currentFunc, totalFunc,
 				   queueTime, execTime, bytesSent, bytesRcvd,
 				   isServer);
+}
+
+int
+rx_Init(u_int port)
+{
+    return (rx->rx_Init)(port);
 }
 
 void rx_KeepAliveOff(struct rx_call *call)
@@ -897,10 +1478,44 @@ rx_NewConnection(afs_uint32 shost, u_short sport, u_short sservice,
 				  serviceSecurityIndex);
 }
 
+struct rx_service *
+rx_NewService(u_short port, u_short serviceId, char *serviceName,
+              struct rx_securityClass **securityObjects,
+              int nSecurityObjects,
+              afs_int32(*serviceProc) (struct rx_call *acall))
+{
+    return (rx->rx_NewService)(port, serviceId, serviceName, securityObjects,
+            nSecurityObjects, serviceProc);
+}
+
 int
 rx_ReadProc(struct rx_call *call, char *buf, int nbytes)
 {
     return (rx->rx_ReadProc)(call, buf, nbytes);
+}
+
+void
+rx_SetConnDeadTime(struct rx_connection *conn, int seconds)
+{
+    (rx->rx_SetConnDeadTime)(conn, seconds);
+}
+
+void
+rx_StartServer(int donateMe)
+{
+    (rx->rx_StartServer)(donateMe);
+}
+
+struct rx_securityClass *
+rxnull_NewClientSecurityObject(void)
+{
+    return (rx->rxnull_NewClientSecurityObject)();
+}
+
+struct rx_securityClass *
+rxnull_NewServerSecurityObject(void)
+{
+    return (rx->rxnull_NewServerSecurityObject)();
 }
 
 int
@@ -1043,6 +1658,21 @@ ubik_Write(struct ubik_trans *transPtr, void *buffer, afs_int32 length)
     return (ubik->ubik_Write)(transPtr, buffer, length);
 }
 
+afs_int32
+ugen_ClientInit(int noAuthFlag, const char *confDir, char *cellName, afs_int32 sauth,
+                struct ubik_client **uclientp,
+                int (*secproc) (struct rx_securityClass *sc, afs_int32 scIndex),
+                char *funcName, afs_int32 gen_rxkad_level,
+                afs_int32 maxservers, char *serviceid,
+                afs_int32 deadtime, afs_uint32 server,
+                afs_uint32 port, afs_int32 usrvid)
+{
+    return (ubik->ugen_ClientInit)(noAuthFlag, confDir, cellName, sauth,
+                                   uclientp, secproc, funcName, gen_rxkad_level,
+                                   maxservers, serviceid, deadtime,
+                                   server, port, usrvid);
+}
+
 /* 
  *  from src/util
  */
@@ -1062,6 +1692,36 @@ getDirPath(afsdir_id_t string_id)
     return (util->getDirPath)(string_id);
 }
 
+afs_int32
+afs_uuid_create(afsUUID * uuid)
+{
+    return (util->afs_uuid_create)(uuid);
+}
+
+afs_int64
+flipbase64_to_int64(char *s)
+{
+    return (util->flipbase64_to_int64)(s);
+}
+
+struct hostent *
+hostutil_GetHostByName(char *ahost)
+{
+    return (util->hostutil_GetHostByName)(ahost);
+}
+
+char *
+hostutil_GetNameByINet(afs_uint32 addr)
+{
+    return (util->hostutil_GetNameByINet)(addr);
+}
+
+char *
+int64_to_flipbase64(lb64_string_t s, afs_uint64 a)
+{
+    return (util->int64_to_flipbase64)(s, a);
+}
+
 int
 afs_snprintf(char *p, size_t avail, const char *fmt, ...)
 {
@@ -1078,6 +1738,18 @@ size_t
 strlcpy(char *dst, const char *src, size_t siz)
 {
     return (util->strlcpy)(dst, src, siz);
+}
+
+afs_int32
+util_GetInt32(char *as, afs_int32 * aval)
+{
+    return (util->util_GetInt32)(as, aval);
+}
+
+char *
+volutil_PartitionName_r(int part, char *tbuffer, int buflen)
+{
+    return (util->volutil_PartitionName_r)(part, tbuffer, buflen);
 }
 
 /* 
@@ -1225,6 +1897,7 @@ setLegacyFetch(afs_int32 i)
     return (viced->setLegacyFetch)(i);
 }
 
+#ifndef BUILDING_CLIENT_COMMAND
 /* 
  *  from src/vol
  */
@@ -1448,4 +2121,5 @@ NewTrans(afs_uint32 avol, afs_int32 apart)
 {
     return (volser->NewTrans)(avol, apart);
 }
+#endif /* BUILDING_CLIENT_COMMAND */
 #endif /* BUILD_SHLIBAFSOSD */

@@ -19,7 +19,7 @@
  *	change configure must be executed!
  */
  
-#define LIBAFSOSD_VERSION 20
+#define LIBAFSOSD_VERSION 21
 
 /*
  * In git master the major version number is 1 
@@ -32,7 +32,7 @@
  *	Unspecific operations used in general servers provided by AFS/OSD
  */
 
-#ifndef BUILDING_VLSERVER
+#if !defined(BUILDING_VLSERVER) && !defined(BUILDING_CLIENT_COMMAND)
 struct osd_vol_ops_v0 {
     int (*op_salv_OsdMetadata) (FdHandle_t *fd, struct VnodeDiskObject *vd,
 				afs_uint32 vn, afs_uint32 entrylength, void *rock,
@@ -95,7 +95,7 @@ struct osd_vol_ops_v0 {
 };
 
 extern struct osd_vol_ops_v0 *osdvol;
-#endif /* BUILDING_VLSERVER */
+#endif /* !defined(BUILDING_VLSERVER) && !defined(BUILDING_CLIENT_COMMAND) */
 /*
  *	Unspecific data pointers used in AFS/OSD provided by general servers
  */
@@ -154,10 +154,10 @@ extern int Check_PermissionRights(struct Vnode * targetptr, struct client *clien
                                   struct AFSStoreStatus * InStatus);
 extern int EndAsyncTransaction(struct rx_call *call, AFSFid *Fid, afs_uint64 transid);
 extern void GetStatus(struct Vnode * targetptr, struct AFSFetchStatus * status,
-                     afs_int32 rights, afs_int32 anyrights, Vnode * parentptr);
+                     afs_int32 rights, afs_int32 anyrights, struct Vnode * parentptr);
 extern int GetVolumePackage(struct rx_call *acall, AFSFid * Fid,
-			    struct Volume ** volptr, Vnode ** targetptr,
-                            int chkforDir, Vnode ** parent,
+			    struct Volume ** volptr, struct Vnode ** targetptr,
+                            int chkforDir, struct Vnode ** parent,
                             struct client **client, int locktype,
                             afs_int32 * rights, afs_int32 * anyrights);
 extern int PartialCopyOnWrite(struct Vnode * targetptr, struct Volume *volptr,
@@ -200,10 +200,10 @@ struct viced_ops_v0 {
     int (*EndAsyncTransaction) (struct rx_call *call, AFSFid *Fid,
                                 afs_uint64 transid);
     void (*GetStatus) (struct Vnode * targetptr, struct AFSFetchStatus * status,
-		       afs_int32 rights, afs_int32 anyrights, Vnode * parentptr);
+		       afs_int32 rights, afs_int32 anyrights, struct Vnode * parentptr);
     int (*GetVolumePackage) (struct rx_call *acall, AFSFid * Fid,
-                             struct Volume ** volptr, Vnode ** targetptr,
-                             int chkforDir, Vnode ** parent,
+                             struct Volume ** volptr, struct Vnode ** targetptr,
+                             int chkforDir, struct Vnode ** parent,
                              struct client **client, int locktype,
                              afs_int32 * rights, afs_int32 * anyrights);
     int (*PartialCopyOnWrite) (struct Vnode * targetptr, struct Volume *volptr,
@@ -240,39 +240,39 @@ struct viced_ops_v0 {
  */
 
 struct osd_viced_ops_v0 {
-    int (*op_startosdfetch) (struct Volume *volptr, Vnode *targetptr, struct client *client,
+    int (*op_startosdfetch) (struct Volume *volptr, struct Vnode *targetptr, struct client *client,
               		     struct rx_connection *tcon, struct host *thost,
               		     afs_uint64 offset, afs_uint64 length,
               		     struct AsyncParams *Inputs, struct AsyncParams *Outputs);
-    int (*op_startosdstore) (struct Volume *volptr, Vnode *targetptr, struct client *client,
+    int (*op_startosdstore) (struct Volume *volptr, struct Vnode *targetptr, struct client *client,
               		     struct rx_connection *tcon, struct host *thost,
               		     afs_uint64 offset, afs_uint64 length, afs_uint64 filelength,
               		     afs_uint64 maxLength, struct AsyncParams *Inputs,
 			     struct AsyncParams *Outputs);
     int (*op_endosdfetch) (struct AsyncParams *Inputs);
-    int (*op_endosdstore) (struct Volume *volptr, Vnode *targetptr, struct rx_connection *tcon,
+    int (*op_endosdstore) (struct Volume *volptr, struct Vnode *targetptr, struct rx_connection *tcon,
 			   struct AsyncParams *Inputs, afs_int32 *sameDataVersion);
-    int (*op_startvicepfetch) (struct Volume *volptr, Vnode *targetptr,
+    int (*op_startvicepfetch) (struct Volume *volptr, struct Vnode *targetptr,
               		       struct AsyncParams *Inputs, struct AsyncParams *Outputs);
-    int (*op_startvicepstore) (struct Volume *volptr, Vnode *targetptr,
+    int (*op_startvicepstore) (struct Volume *volptr, struct Vnode *targetptr,
               		       struct AsyncParams *Inputs, struct AsyncParams *Outputs);
     int (*op_endvicepfetch) (struct AsyncParams *Inputs);
-    int (*op_endvicepstore) (struct Volume *volptr, Vnode *targetptr,
+    int (*op_endvicepstore) (struct Volume *volptr, struct Vnode *targetptr,
 			     struct rx_connection *tcon, struct AsyncParams *Inputs,
 			     afs_int32 *sameDataVersion);
-    int (*op_legacyFetchData) (struct Volume *volptr, Vnode **targetptr,
+    int (*op_legacyFetchData) (struct Volume *volptr, struct Vnode **targetptr,
 			     struct rx_call * Call, afs_sfsize_t Pos,
 			     afs_sfsize_t Len, afs_int32 Int64Mode,
 			     int client_vice_id, afs_int32 MyThreadEntry,
 			     struct in_addr *logHostAddr);
-    int (*op_legacyStoreData) (struct Volume * volptr, Vnode **targetptr,
+    int (*op_legacyStoreData) (struct Volume * volptr, struct Vnode **targetptr,
 			       struct AFSFid * Fid, struct client * client,
 			       struct rx_call * Call, afs_fsize_t Pos,
 			       afs_fsize_t Length, afs_fsize_t FileLength);
     int (*op_osdVariable) (struct rx_call *acall, afs_int32 cmd, char *name,
                            afs_int64 value, afs_int64 *result);
-    void (*op_remove_if_osd_file) (Vnode **targetptr);
-    void (*op_fill_status) (Vnode *targetptr, afs_fsize_t targetLen,
+    void (*op_remove_if_osd_file) (struct Vnode **targetptr);
+    void (*op_fill_status) (struct Vnode *targetptr, afs_fsize_t targetLen,
 			    AFSFetchStatus *status);
     int (*op_FsCmd) (struct rx_call * acall, struct AFSFid * Fid,
 		     struct FsCmdInputs * Inputs, struct FsCmdOutputs * Outputs);

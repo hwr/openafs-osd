@@ -167,6 +167,7 @@
 #include <afs/afsutil.h>
 #include <ubik.h>
 #include "osddb.h"
+#include "osddbuser.h"
 #include "../rxkad/md5.h"
 
 
@@ -948,6 +949,7 @@ struct fetch_process {
 	struct fetch_entry *request;
 };
 
+#if 0
 struct ubik_client *
 init_osddb_client()
 {
@@ -989,6 +991,7 @@ init_osddb_client()
 
     return cstruct;
 }
+#endif
 
 afs_int32 CheckMount(char *partname)
 {
@@ -1140,7 +1143,7 @@ FiveMinuteCheckLWP()
                          HostName, hoststr, HostAddr_NBO, HostAddr_HBO));
 	}
 	if (!osddb_client) 
-	    osddb_client = init_osddb_client();
+	    osddb_client = init_osddb_client(NULL);
 	if (osddb_client && HostAddr_HBO) { /* find out which OSDs we are */
             l.OsdList_len = 0;
             l.OsdList_val = 0;
@@ -1370,6 +1373,7 @@ FindInFetchqueue(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 {
     struct fetch_entry *f;
     afs_uint64 mask = ((afs_uint64)UNIQUEMASK << 32) + RXOSD_VNODEMASK;
+    int sameuser = 0;
     
     QUEUE_LOCK;
     for (f=rxosd_fetchq; f; f=f->next) {		
@@ -1378,6 +1382,8 @@ FindInFetchqueue(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 	if (anytag && f->d.o.part_id == o->part_id
 	  && (f->d.o.obj_id & mask) == o->obj_id)
 	    break;
+	if (f->d.user == user && !f->error)
+	    sameuser++;
     }
     if (f) {
         QUEUE_UNLOCK;
@@ -1392,6 +1398,10 @@ FindInFetchqueue(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
     } else if (list) {		/* create new entry in the fetch queue */
 	struct fetch_entry *f2;
 	afs_uint32 now = time(0);
+	if (flag & ONLY_ONE_FETCHENTRY && sameuser) {
+	    QUEUE_UNLOCK;
+	    return ENODEV;
+	}
 	f = (struct fetch_entry *) malloc(sizeof(struct fetch_entry));
 	memset(f, 0, sizeof(struct fetch_entry));
 	f->d.o.obj_id = o->obj_id;

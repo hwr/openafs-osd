@@ -98,10 +98,10 @@ AC_ARG_ENABLE([bitmap-later],
     , 
     [enable_bitmap_later="no"])
 AC_ARG_ENABLE([object-storage],
-    [AS_HELP_STRING([--enable-object-storage],
-        [enable use of object storage for AFS files])],
+    [AS_HELP_STRING([--disable-object-storage],
+        [disable use of object storage for AFS files])],
     ,
-    [enable_object_storage="no"])
+    [enable_object_storage="yes"])
 AC_ARG_ENABLE([vicep-access],
     [AS_HELP_STRING([--enable-vicep-access],
         [enable direct client access to visible fileserver partitions (experimental)])],
