@@ -595,6 +595,9 @@
 /* define if struct ufsvfs has vfs_dqrwlock */
 #undef HAVE_VFS_DQRWLOCK
 
+/* define if the function vn_renamepath exists */
+#undef HAVE_VN_RENAMEPATH
+
 /* Define to 1 if you have the `vsnprintf' function. */
 #undef HAVE_VSNPRINTF
 

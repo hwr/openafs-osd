@@ -18,7 +18,7 @@ CCRULE = ${CC} ${CFLAGS} -c $?
 
 VLSERVER = ../../vlserver
 VOLSER = ../../volser
-RXOSD= ../../rxosd
+RXOSD = ../../rxosd
 FSINT = ../../fsint
 
 ADMINOBJS =\
