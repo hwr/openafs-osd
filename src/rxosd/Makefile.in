@@ -321,7 +321,7 @@ readabyte.o: readabyte.c rxosd_hsm.h
 
 readabyte: readabyte.o libafshsm.o
 	${CC} ${LDFLAGS} -o readabyte readabyte.o libafshsm.o \
-			${LIBS} ${MT_LIBS} -ldl
+			${LIBS} ${MT_LIBS} -ldl -lnsl
 
 osd: osd.o rxosd.cs.o rxosd.xdr.o a_osddbuser.o osddb.cs.o osddb.xdr.o policy_parser.o
 	${CC} ${LDFLAGS} -o osd osd.o rxosd.cs.o rxosd.xdr.o a_osddbuser.o \
