@@ -88,17 +88,8 @@
 #include <errno.h>
 #include <sys/time.h>
 #include <sys/wait.h>
-#include <afs/afsint.h>
-#include <afs/nfs.h>
-#include <lock.h>
 
-/*
- * the following define should better be placed in some header file. they are
- * copied from viced.c
- */
-#define SYSIDMAGIC      0x88aabbcc
 #define PARTIDMAGIC     0x25062006
-#define SYSIDWITHUNIQUIFIER  2
 
 /* darwin dirent.h doesn't give us the prototypes we want if KERNEL is
  * defined */
@@ -1649,13 +1640,13 @@ BkgHandler(void)
 }
 #endif
 
-static
+static void
 FindFileserverPartitions()
 {
     afs_int32 fd, nentries, i;
     struct versionStamp {
-	bit32 magic;
-	bit32 version;
+	afs_uint32 magic;
+	afs_uint32 version;
     } vsn;
     char filename[32];
     char symlink[256];
