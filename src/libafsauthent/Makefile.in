@@ -107,7 +107,7 @@ VLDBOBJS = \
 RXOSDOBJS = \
 	volserosd.cs.o \
 	volserosd.xdr.o
-	
+
 LIBOBJS = \
 	${AUDITOBJS} \
 	${AUTHOBJS} \
