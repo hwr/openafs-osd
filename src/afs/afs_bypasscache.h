@@ -174,12 +174,12 @@ typedef struct page * bypass_page_t;
  * as the ab->parm[0] to afs_BQueue */
 struct nocache_read_request {
     /* Why can't we all get along? */
-#if defined(AFS_USR_SUN5_ENV)
+#if defined(AFS_SUN5_ENV)
     /* SOLARIS */
     u_offset_t offset;
     struct seg *segment;
     caddr_t address;
-#elif defined(AFS_LINUX24_ENV) || defined(AFS_USR_LINUX24_ENV)
+#elif defined(AFS_LINUX24_ENV) || defined(UKERNEL)
     /* The tested platform, as CITI impl. just packs ab->parms */
     struct uio * auio;
     struct vrequest *areq;
