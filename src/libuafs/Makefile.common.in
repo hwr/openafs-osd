@@ -1285,9 +1285,9 @@ $(JUAFS)/rxosd.cs.o: $(TOP_OBJ_RXOSD)/rxosd.cs.c
 $(JUAFS)/rxosd.xdr.o: $(TOP_OBJ_RXOSD)/rxosd.xdr.c
 	$(CRULE1)
 $(JUAFS)/vicedosd.cs.o: $(TOP_OBJ_RXOSD)/vicedosd.cs.c
-	$(CRULE2)
+	$(CRULE1)
 $(JUAFS)/vicedosd.xdr.o: $(TOP_OBJ_RXOSD)/vicedosd.xdr.c
-	$(CRULE2)
+	$(CRULE1)
 $(JUAFS)/afs_segments.o: $(TOP_SRC_AFS)/afs_segments.c
 	$(CRULE1)
 $(JUAFS)/afs_server.o: $(TOP_SRC_AFS)/afs_server.c
