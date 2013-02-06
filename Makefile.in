@@ -32,7 +32,7 @@ COMPILE_PART2  = ${COMPILE_PART2A} ${COMPILE_PART2B}
 COMPILE_CLEAN  = ${COMPILE_PART2A} clean
 COMPILE_DEPINSTALL  = ${COMPILE_PART2A} depinstall
 COMPILE_GENERATED  = ${COMPILE_PART2A} generated
-COMPILE_HPSS  = ${COMPILE_PART2A} hpss
+COMPILE_HPSS  = ${COMPILE_PART2A} rxosd_hpss
 
 all: force
 	$(MAKE) build
@@ -646,24 +646,6 @@ shlibafsauthent: bozo ubik auth kauth shlibafsrpc
 		echo Not building shared libafsauthent for ${SYS_NAME} ;; \
 	esac
 
-# AFSOSD extensions in shared library libafsosd.so
-
-shlibafsosd: osddb vol fsint viced 
-	+case ${SYS_NAME} in \
-	alpha_dux*|sgi_*|sun4x_*|sunx86_*|rs_aix*|*linux*|hp_ux11*|ia64_hpux*|*_darwin_1*|*nbsd*|*obsd*|*fbsd*) \
-	${COMPILE_PART1} shlibafsosd ${COMPILE_PART2} ;; \
-	*) \
-		echo Not building shared libafsosd for ${SYS_NAME} ;; \
-	esac
-
-shlibafshpss:  vol rxosd util
-	+case ${SYS_NAME} in \
-	*linux*) \
-	${COMPILE_PART1} shlibafshpss ${COMPILE_PART2} ;; \
-	*) \
-		echo Not building shared libafshpss for ${SYS_NAME} ;; \
-	esac
-
 kopenafs: config sys
 	+${COMPILE_PART1} kopenafs ${COMPILE_PART2}
 
@@ -819,8 +801,6 @@ clean2:
 	-${COMPILE_PART1} rxdebug ${COMPILE_CLEAN}
 	-${COMPILE_PART1} libafsrpc ${COMPILE_CLEAN}
 	-${COMPILE_PART1} libafsauthent ${COMPILE_CLEAN}
-	-${COMPILE_PART1} shlibafshpss ${COMPILE_CLEAN}
-	-${COMPILE_PART1} shlibafsosd ${COMPILE_CLEAN}
 	-${COMPILE_PART1} shlibafsrpc ${COMPILE_CLEAN}
 	-${COMPILE_PART1} shlibafsauthent ${COMPILE_CLEAN}
 	-${COMPILE_PART1} kopenafs ${COMPILE_CLEAN}
