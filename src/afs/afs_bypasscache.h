@@ -102,7 +102,9 @@
 
 
 #ifdef UKERNEL
+#ifndef AFS_USR_SUN5_ENV
 typedef struct uio uio_t;
+#endif
 #ifndef PAGE_SIZE
 #define PAGE_SIZE 1024 * sizeof(long) / 8
 #endif
