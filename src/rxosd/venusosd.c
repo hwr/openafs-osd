@@ -1285,7 +1285,11 @@ osdCmd(struct cmd_syndesc *as, void *arock)
     }
 
     InitializeCBService();
+#if ALL_SERVERS_ONEPOINTSIX
     RXConn = rx_NewConnection(hosts[0], htons(AFSCONF_FILEPORT), 2,
+#else
+    RXConn = rx_NewConnection(hosts[0], htons(AFSCONF_FILEPORT), 1,
+#endif
                 cl->sc[cl->scIndex], cl->scIndex);
     if (!RXConn) {
         fprintf(stderr,"rx_NewConnection failed to server 0x%X\n",
@@ -1298,7 +1302,11 @@ osdCmd(struct cmd_syndesc *as, void *arock)
     afs_uint32 version;
 
     call = rx_NewCall(RXConn);
+#if ALL_SERVERS_ONEPOINTSIX
     code = StartRXAFSOSD_GetOsdMetadata(call, &Fid);
+#else
+    code = StartRXAFS_GetOsdMetadata(call, &Fid);
+#endif
     if (code) {
         fprintf(stderr, "StartRXAFSOSD_GetOsdMetadata returns %d\n", code);
         rx_EndCall(call, 0);
@@ -1315,7 +1323,11 @@ osdCmd(struct cmd_syndesc *as, void *arock)
     if (!length) {
         if (!code)
             printf("%s has no osd metadata\n", as->parms[0].items->data);
+#if ALL_SERVERS_ONEPOINTSIX
         EndRXAFSOSD_GetOsdMetadata(call);
+#else
+        EndRXAFS_GetOsdMetadata(call);
+#endif
         rx_EndCall(call, 0);
     } else {
         XDR xdr;
@@ -1325,7 +1337,11 @@ osdCmd(struct cmd_syndesc *as, void *arock)
         if (bytes != length)
             fprintf(stderr,"read only %d bytes of metadata instead of %d\n",
                             bytes, length);
+#if ALL_SERVERS_ONEPOINTSIX
         code = EndRXAFSOSD_GetOsdMetadata(call);
+#else
+        code = EndRXAFS_GetOsdMetadata(call);
+#endif
 	if (code) {
 	    fprintf(stderr, "XAFSOSD_GetOsdMetadata returned %d\n", code);
 	    return code;

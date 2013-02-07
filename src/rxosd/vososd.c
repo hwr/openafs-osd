@@ -148,6 +148,7 @@ UV_Traverse(afs_uint32 *server, afs_int32 vid, afs_uint32 nservers,
                         (ntohl(server[n]) >> 16) & 0xff,
                         (ntohl(server[n]) >> 8) & 0xff,
                         ntohl(server[n]) & 0xff);
+#if ALL_SERVERS_ONEPOINTSIX
         tconn = UV_BindOsd(server[n], AFSCONF_VOLUMEPORT);
         if (tconn) {
             if ( policy_statistic )
@@ -157,6 +158,17 @@ UV_Traverse(afs_uint32 *server, afs_int32 vid, afs_uint32 nservers,
             }
             rx_DestroyConnection(tconn);
         }
+#else
+        tconn = UV_Bind(server[n], AFSCONF_VOLUMEPORT);
+        if (tconn) {
+            if ( policy_statistic )
+                code = AFSVolPolicyUsage(tconn, vid, srl, list);
+            else {
+                code = AFSVolTraverse(tconn, vid, delay, flag, srl, list);
+            }
+            rx_DestroyConnection(tconn);
+        }
+#endif
         if (!code) {
             if ( !policy_statistic )
                 for (i=0; i<srl->sizerangeList_len; i++) {
@@ -205,12 +217,21 @@ UV_GetArchCandidates(afs_uint32 server, hsmcandList *list, afs_uint64 minsize,
     struct rx_connection *tconn;
     afs_int32 code;
 
+#if ALL_SERVERS_ONEPOINTSIX
     tconn = UV_BindOsd(server, AFSCONF_VOLUMEPORT);
     if (tconn) {
         code = AFSVOLOSD_GetArchCandidates(tconn, minsize, maxsize, copies,
                                         maxcandidates, osd, flag, delay, list);
         rx_DestroyConnection(tconn);
     }
+#else
+    tconn = UV_Bind(server, AFSCONF_VOLUMEPORT);
+    if (tconn) {
+        code = AFSVolGetArchCandidates(tconn, minsize, maxsize, copies,
+                                        maxcandidates, osd, flag, delay, list);
+        rx_DestroyConnection(tconn);
+    }
+#endif
     return code;
 }
 
@@ -329,12 +350,21 @@ Archcand(struct cmd_syndesc *as, void *arock)
             rx_ServiceOf(rxConn)->connDeadTime = *vos_data->rx_connDeadTime;
     }
 
+#if ALL_SERVERS_ONEPOINTSIX
     tcon = UV_BindOsd(server, AFSCONF_VOLUMEPORT);
     if (tcon) {
         code = AFSVOLOSD_GetArchCandidates(tcon, minsize, maxsize, copies,
                                         maxcandidates, osd, flag, delay, &list);
         rx_DestroyConnection(tcon);
     }
+#else
+    tcon = UV_Bind(server, AFSCONF_VOLUMEPORT);
+    if (tcon) {
+        code = AFSVolGetArchCandidates(tcon, minsize, maxsize, copies,
+                                        maxcandidates, osd, flag, delay, &list);
+        rx_DestroyConnection(tcon);
+    }
+#endif
     if (!code) {
         afs_uint64 tb = 0;
         printf("Fid                           Weight      Blocks\n");
@@ -496,6 +526,7 @@ ListObjects(struct cmd_syndesc *as, void *arock)
             }
         }
     }
+#if ALL_SERVERS_ONEPOINTSIX
     tcon = UV_BindOsd(server, AFSCONF_VOLUMEPORT);
     if (!tcon) {
         fprintf(stderr, "Couldn't get connection to %x\n", server);
@@ -503,6 +534,15 @@ ListObjects(struct cmd_syndesc *as, void *arock)
     }
     call = rx_NewCall(tcon);
     code = StartAFSVOLOSD_ListObjects(call, vid, flag, osd, delay);
+#else
+    tcon = UV_Bind(server, AFSCONF_VOLUMEPORT);
+    if (!tcon) {
+        fprintf(stderr, "Couldn't get connection to %x\n", server);
+        return EIO;
+    }
+    call = rx_NewCall(tcon);
+    code = StartAFSVolListObjects(call, vid, flag, osd, delay);
+#endif
     if (code) {
         fprintf(stderr, "Couldn't start RPC to server %x (error code %d)\n",
                     server, code);
@@ -664,10 +704,17 @@ SalvageOSD(struct cmd_syndesc *as, void *arock)
             rx_ServiceOf(rxConn)->connDeadTime = *vos_data->rx_connDeadTime;
     }
 
+#if ALL_SERVERS_ONEPOINTSIX
     tcon = UV_BindOsd(server, AFSCONF_VOLUMEPORT);
     if (tcon) {
         struct rx_call *call = rx_NewCall(tcon);
         code = StartAFSVOLOSD_Salvage(call, vid, flags, instances, localinst);
+#else
+    tcon = UV_Bind(server, AFSCONF_VOLUMEPORT);
+    if (tcon) {
+        struct rx_call *call = rx_NewCall(tcon);
+        code = StartAFSVolSalvage(call, vid, flags, instances, localinst);
+#endif
         if (!code) {
             char line[128];
             char *p = line;
