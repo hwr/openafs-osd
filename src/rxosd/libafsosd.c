@@ -153,6 +153,8 @@ private struct fsint_ops_v0 {
     int (*RXAFS_FsCmd) (struct rx_connection *z_conn, AFSFid * Fid,
 			struct FsCmdInputs * Inputs,
 			struct FsCmdOutputs * Outputs);
+    int (*StartRXAFS_GetOsdMetadata) (struct rx_call *z_call, AFSFid * Fid);
+    int (*EndRXAFS_GetOsdMetadata) (struct rx_call *z_call);
     int (*RXAFS_Statistic) (struct rx_connection *z_conn, afs_int32 reset,
 			afs_uint32 * since, afs_uint64 * rcvd, afs_uint64 * sent,
 			viced_statList * l, struct viced_kbps * kbpsrcvd,
@@ -499,6 +501,8 @@ extern struct rx_connection * UV_BindOsd(afs_uint32 aserver, afs_int32 port);
     fsint = &fsint_ops_v0;
     fsint->RXAFS_GiveUpAllCallBacks = RXAFS_GiveUpAllCallBacks;
     fsint->RXAFS_FsCmd = RXAFS_FsCmd;
+    fsint->StartRXAFS_GetOsdMetadata = StartRXAFS_GetOsdMetadata;
+    fsint->EndRXAFS_GetOsdMetadata = EndRXAFS_GetOsdMetadata;
     fsint->RXAFS_Statistic = RXAFS_Statistic;
     fsint->RXAFS_Threads = RXAFS_Threads;
     fsint->RXAFS_TranslateOpCode = RXAFS_TranslateOpCode;
@@ -1118,6 +1122,17 @@ RXAFS_FsCmd(struct rx_connection *z_conn, AFSFid * Fid, struct FsCmdInputs * Inp
 		struct FsCmdOutputs * Outputs)
 {
     return (fsint->RXAFS_FsCmd)(z_conn, Fid, Inputs, Outputs);
+}
+
+int
+StartRXAFS_GetOsdMetadata(struct rx_call *z_call, AFSFid * Fid)
+{
+    return (fsint->StartRXAFS_GetOsdMetadata)(z_call, Fid);
+}
+
+int EndRXAFS_GetOsdMetadata(struct rx_call *z_call)
+{
+    return (fsint->EndRXAFS_GetOsdMetadata)(z_call);
 }
 
 int

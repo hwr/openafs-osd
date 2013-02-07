@@ -1223,7 +1223,8 @@ SplitVolume(struct cmd_syndesc *as, void *arock)
     tcon = UV_Bind(htonl(entry.serverNumber[i]), AFSCONF_VOLUMEPORT);
     if (tcon) {
         struct rx_call *call = rx_NewCall(tcon);
-        code = StartAFSVolSplitVolume(call, volid, newvolid, dirvnode, verbose);
+        code = StartAFSVolSplitVolume(call, volid, newvolid, dirvnode,
+		 *vos_data->verbose);
         if (!code) {
             char line[256];
             char *p = line;
