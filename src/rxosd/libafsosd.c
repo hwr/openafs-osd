@@ -323,7 +323,7 @@ private struct util_ops_v0 {
     afs_int32 (*afs_uuid_create) (afsUUID * uuid);
     afs_int64 (*flipbase64_to_int64) (char *s);
     struct hostent *(*hostutil_GetHostByName) (char *ahost);
-    char (*hostutil_GetNameByINet) (afs_uint32 addr);
+    char *(*hostutil_GetNameByINet) (afs_uint32 addr);
     char *(*int64_to_flipbase64) (lb64_string_t s, afs_uint64 a);
     int (*afs_vsnprintf) (char *str, size_t sz, const char *format, va_list args);
     const char *(*getDirPath) (afsdir_id_t string_id);
