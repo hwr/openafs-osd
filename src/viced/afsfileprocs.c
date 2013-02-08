@@ -122,8 +122,6 @@ struct osd_viced_ops_v0 *osdviced = NULL;
 extern void SetDirHandle(DirHandle * dir, Vnode * vnode);
 extern void FidZap(DirHandle * file);
 extern void FidZero(DirHandle * file);
-extern afs_int32 evalclient(void *rock, afs_int32 user);
-
 extern afsUUID FS_HostUUID;
 
 #ifdef AFS_PTHREAD_ENV
@@ -1102,7 +1100,7 @@ CheckLength(struct Volume *vp, struct Vnode *vnp, afs_sfsize_t alen)
 
         fdP = IH_OPEN(vnp->handle);
         if (fdP == NULL) {
-            ViceLog(0, ("CheckLength: cannot open inode for fid %lu.%lu.%lu\n",
+            ViceLog(0, ("CheckLength: cannot open inode for fid %u.%u.%u\n",
                         afs_printable_uint32_lu(vp->hashid),
                         afs_printable_uint32_lu(Vn_id(vnp)),
                         afs_printable_uint32_lu(vnp->disk.uniquifier)));
@@ -1113,7 +1111,7 @@ CheckLength(struct Volume *vp, struct Vnode *vnp, afs_sfsize_t alen)
         if (alen < 0) {
             afs_int64 alen64 = alen;
             ViceLog(0, ("CheckLength: cannot get size for inode for fid "
-                        "%lu.%lu.%lu; FDH_SIZE returned %" AFS_INT64_FMT "\n",
+                        "%u.%u.%u; FDH_SIZE returned %" AFS_INT64_FMT "\n",
                         afs_printable_uint32_lu(vp->hashid),
                         afs_printable_uint32_lu(Vn_id(vnp)),
                         afs_printable_uint32_lu(vnp->disk.uniquifier),
@@ -1124,7 +1122,7 @@ CheckLength(struct Volume *vp, struct Vnode *vnp, afs_sfsize_t alen)
 
     if (alen != vlen) {
         afs_int64 alen64 = alen, vlen64 = vlen;
-        ViceLog(0, ("Fid %lu.%lu.%lu has inconsistent length (index "
+        ViceLog(0, ("Fid %u.%u.%u has inconsistent length (index "
                     "%" AFS_INT64_FMT ", inode %" AFS_INT64_FMT "); volume "
                     "must be salvaged\n",
                     afs_printable_uint32_lu(vp->hashid),
@@ -9299,11 +9297,12 @@ StoreData_RXStyle(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
 		    		targetptr->disk.uniquifier));
 	    return EIO;
 	}
+#if 0
 	VN_GET_LEN(size, targetptr);
 	if (size != DataLength) { /* vnode contains wrong file length */
 #ifdef AFS_ENABLE_VICEP_ACCESS
 	    if (Length == 0) {	 	/* StoreMini after vicep access */
-	        ViceLog(1,("StoreData (%u.%u.%u.%u): %lu.%lu.%lu  grew from %llu to %llu\n",
+	        ViceLog(1,("StoreData (%u.%u.%u.%u): %u.%u.%u  grew from %llu to %llu\n",
 			(ntohl(Call->conn->peer->host) >> 24) & 0xff,
 			(ntohl(Call->conn->peer->host) >> 16) & 0xff,
 			(ntohl(Call->conn->peer->host) >> 8) & 0xff,
@@ -9314,7 +9313,7 @@ StoreData_RXStyle(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
 			size, DataLength));
 	    } else
 #endif
-	        ViceLog(0,("StoreData (%u.%u.%u.%u): %lu.%lu.%lu  length corrected from %llu to %llu Length %llu\n",
+	        ViceLog(0,("StoreData (%u.%u.%u.%u): %u.%u.%u  length corrected from %llu to %llu Length %llu\n",
 			(ntohl(Call->conn->peer->host) >> 24) & 0xff,
 			(ntohl(Call->conn->peer->host) >> 16) & 0xff,
 			(ntohl(Call->conn->peer->host) >> 8) & 0xff,
@@ -9326,6 +9325,7 @@ StoreData_RXStyle(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
 	    VN_SET_LEN(targetptr, DataLength);
 	    targetptr->changed_newTime = 1;
 	}
+#endif
         if (CheckLength(volptr, targetptr, DataLength)) {
             FDH_CLOSE(fdP);
             VTakeOffline(volptr);
@@ -10432,6 +10432,8 @@ sys_error_to_et(afs_int32 in)
 
 void viced_fill_ops(struct viced_ops_v0 *viced)
 {
+    extern afs_int32 evalclient(void *rock, afs_int32 user);
+
     viced->AddCallBack1 = AddCallBack1;
     viced->BreakCallBack = BreakCallBack;
     viced->CallPostamble = CallPostamble;
