@@ -249,7 +249,7 @@ ${TOP_LIBDIR}/${LIBDAFSOSD}: ${LIBDAFSOSD}
 ${TOP_LIBDIR}/libafsosd.a: libafsosd.a
 	${INSTALL_DATA} libafsosd.a $@
 
-install: ${LIBAFSOSD} ${LIBDAFSOSD} ${LIBCAFSOSD} libafsosd.a rxosd osd osdmetadata osddbserver linkcounts fs vos
+install: ${LIBAFSOSD} ${LIBDAFSOSD} ${LIBCAFSOSD} libafsosd.a rxosd readabyte osd osdmetadata osddbserver linkcounts fs vos
 	../config/shlib-install -d ${DESTDIR}${libdir} \
 		-l libafsosd -M ${LIBAFSOSDMAJOR} -m ${LIBAFSOSDMINOR}
 	../config/shlib-install -d ${DESTDIR}${libdir} \
@@ -258,6 +258,7 @@ install: ${LIBAFSOSD} ${LIBDAFSOSD} ${LIBCAFSOSD} libafsosd.a rxosd osd osdmetad
 		-l libcafsosd -M ${LIBAFSOSDMAJOR} -m ${LIBAFSOSDMINOR}
 	${INSTALL_DATA} libafsosd.a ${DESTDIR}${libdir}/libafsosd.a
 	${INSTALL} rxosd ${DESTDIR}${afssrvlibexecdir}/rxosd
+	${INSTALL} readabyte ${DESTDIR}${afssrvlibexecdir}/readabyte
 	${INSTALL} osd ${DESTDIR}${bindir}/osd
 	${INSTALL} vos ${DESTDIR}${bindir}/vos
 	${INSTALL} fs ${DESTDIR}${bindir}/fs
@@ -276,7 +277,7 @@ installhpss: ${LIBAFSHPSS} hpss_read hpss_write hpss_tapeinfo hpss_restore
 	${INSTALL} hpss_tapeinfo ${DESTDIR}${afssrvlibexecdir}/hpss_tapeinfo
 	${INSTALL} hpss_restore ${DESTDIR}${afssrvlibexecdir}/hpss_restore
 
-dest: ${LIBAFSOSD} ${LIBDAFSOSD} ${LIBCAFSOSD} libafsosd.a rxosd osd osdmetadata osddbserver linkcounts fs vos
+dest: ${LIBAFSOSD} ${LIBDAFSOSD} ${LIBCAFSOSD} libafsosd.a rxosd readabyte osd osdmetadata osddbserver linkcounts fs vos
 	../config/shlib-install -d ${DEST}/lib \
 		-l libafsosd -M ${LIBAFSOSDMAJOR} -m ${LIBAFSOSDMINOR}
 	../config/shlib-install -d ${DEST}/lib \
@@ -286,6 +287,7 @@ dest: ${LIBAFSOSD} ${LIBDAFSOSD} ${LIBCAFSOSD} libafsosd.a rxosd osd osdmetadata
 	${INSTALL_DATA} libafsosd.a ${DEST}/lib/libafsosd.a
 	${INSTALL} -d ${DEST}/root.server/usr/afs/bin
 	${INSTALL} rxosd ${DEST}/root.server/usr/afs/bin/rxosd
+	${INSTALL} readabyte ${DEST}/root.server/usr/afs/bin/readabyte
 	${INSTALL} osd ${DEST}/root.server/usr/afs/bin/osd
 	${INSTALL} osd ${DEST}/bin/osd
 	${INSTALL} vos ${DEST}/root.server/usr/afs/bin/vos
