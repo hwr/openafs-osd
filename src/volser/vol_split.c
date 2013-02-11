@@ -258,6 +258,10 @@ copyDir(struct Msg *m, IHandle_t *inh, IHandle_t *outh)
 
     infdP = IH_OPEN(inh);
     if (!infdP) {
+	Log("vol_split: copyDir Couldn't open input directory %u.%u.%u\n",
+		    inh->ih_vid,
+		    (afs_uint32)(inh->ih_ino & NAMEI_VNODEMASK),
+		    (afs_uint32)(inh->ih_ino >> NAMEI_UNIQSHIFT));
 	sprintf(m->line, "Couldn't open input directory %u.%u.%u\n", 
 		    inh->ih_vid,
 		    (afs_uint32)(inh->ih_ino & NAMEI_VNODEMASK),
@@ -340,14 +344,14 @@ afs_int32 copyVnodes(struct Msg *m, Volume *vol, Volume *newvol,
 
     fdP = IH_OPEN(vol->vnodeIndex[class].handle);
     if (!fdP) {
-	Log("Couldn't open %s Index of volume %u\n", 
+	Log("vol_split: Couldn't open %s Index of volume %u\n", 
 		class ? "small":"large", V_id(vol));
 	code = EIO;
 	goto Bad_Copy;
     }
     newfdP = IH_OPEN(newvol->vnodeIndex[class].handle);
     if (!newfdP) {
-	Log("Couldn't open %s Index of volume %u\n", 
+	Log("vol_split: Couldn't open %s Index of volume %u\n", 
 		class ? "small":"large", V_id(newvol));
 	code = EIO;
 	goto Bad_Copy;
@@ -360,7 +364,7 @@ afs_int32 copyVnodes(struct Msg *m, Volume *vol, Volume *newvol,
 	    afs_uint64 size;
 	    offset = (e->vN + 1 - class) << (vcp->logSize -1);
 	    if (FDH_PREAD(fdP, vnode, vcp->diskSize, offset) != vcp->diskSize) {
-		Log("Couldn't read in %s Index of volume %u at offset %"
+		Log("vol_split: Couldn't read in %s Index of volume %u at offset %"
 		    AFS_UINT64_FMT "\n", class ? "small":"large",
 		    V_id(vol), offset);
 		code = EIO;
@@ -386,13 +390,16 @@ afs_int32 copyVnodes(struct Msg *m, Volume *vol, Volume *newvol,
 	        ino = VNDISK_GET_INO(vnode);
 	        IH_INIT(h, V_device(vol), V_parentId(vol), ino);
 		code = copyDir(m, h, newh);
-		if (code)
+		if (code) {
+		    Log("vol_split: copyDir failed in vol %u with %d\n",
+		    	V_id(vol), code);
 		    goto Bad_Copy;
+		}
 		/* Now update the vnode and write it back to disk */
 		VNDISK_SET_INO(vnode, newino);
 		vnode->cloned = 0;
 	        if (FDH_PWRITE(fdP, vnode, vcp->diskSize, offset) != vcp->diskSize) {
-		    Log("Couldn't write in %s Index of volume %u at offset %"
+		    Log("vol_split: Couldn't write in %s Index of volume %u at offset %"
 			AFS_UINT64_FMT "\n", class ? "small":"large",
 			V_id(vol), offset);
 		    code = EIO;
@@ -420,7 +427,7 @@ afs_int32 copyVnodes(struct Msg *m, Volume *vol, Volume *newvol,
 			        e->vN, vnode->uniquifier,
 			        vnode->dataVersion);
 	            if (!VALID_INO(newino)) {
-		        Log("IH_CREATE failed for %u.%u.%u\n", 
+		        Log("vol_split: IH_CREATE failed for %u.%u.%u\n", 
 			    V_id(newvol), e->vN, vnode->uniquifier);
 		        code = EIO;
 		        goto Bad_Copy;
@@ -428,17 +435,27 @@ afs_int32 copyVnodes(struct Msg *m, Volume *vol, Volume *newvol,
 	            nearInode = newino;
 	            IH_INIT(newh, newvol->device, V_parentId(newvol), newino);
 	       	    code = namei_replace_file_by_hardlink(newh, h);
+		    if (code) {
+		        Log("vol_split: namei_replace_file_by_hardlink for %u.%u.%u failed with %d\n", 
+			    V_id(newvol), e->vN, vnode->uniquifier, code);
+		        code = EIO;
+		        goto Bad_Copy;
+		    }
 		    VNDISK_SET_INO(vnode, newino);
        	        } else if (osdvol) {
 		    code = (osdvol->op_split_objects)(vol, newvol, vnode, e->vN);
+		    if (code) {
+		        Log("vol_split: op_split_objects for %u.%u.%u failed with %d\n", 
+			    V_id(newvol), e->vN, vnode->uniquifier, code);
+		        code = EIO;
+		        goto Bad_Copy;
+		    }
 	        }
-	        if (code)
-		    goto Bad_Copy;
 		if (e->flag & CHANGEPARENT)
 		    vnode->parent = 1; /* in new root-directory */
 		vnode->cloned = 0;
 	        if (FDH_PWRITE(newfdP, vnode, vcp->diskSize, offset) != vcp->diskSize) {
-		    Log("Couldn't write in %s Index of volume %u to offset %"
+		    Log("vol_split: Couldn't write in %s Index of volume %u to offset %"
 			AFS_UINT64_FMT "\n", class ? "small":"large",
 			V_id(newvol), offset);
 		    code = EIO;
@@ -458,14 +475,14 @@ afs_int32 copyVnodes(struct Msg *m, Volume *vol, Volume *newvol,
 	
 	newoffset = vcp->diskSize;
 	if (FDH_PREAD(newfdP, vnode2, vcp->diskSize, newoffset) != vcp->diskSize) {
-	    Log("splitvolume: couldn't read in large Index of new volume %u at offset %u\n", 
+	    Log("vol_split: couldn't read in large Index of new volume %u at offset %u\n", 
 		    V_id(newvol), vcp->diskSize);
 	    code = EIO;
 	    goto Bad_Copy;
   	}
 	offset = (where + 1 - class) << (vcp->logSize -1);
 	if (FDH_PREAD(fdP, vnode, vcp->diskSize, offset) != vcp->diskSize) {
-	    Log("Couldn't read in large Index of old volume %u at offset %"
+	    Log("vol_split: Couldn't read in large Index of old volume %u at offset %"
 		AFS_UINT64_FMT "\n", V_id(vol), offset);
 	    code = EIO;
 	    goto Bad_Copy;
@@ -478,7 +495,7 @@ afs_int32 copyVnodes(struct Msg *m, Volume *vol, Volume *newvol,
 	IH_INIT(newh, newvol->device, V_parentId(newvol), newino);
 	code = copyDir(m, h, newh);
  	if (code) {
-	    Log("splitvolume: copyDir failed for new root from "
+	    Log("vol_split: copyDir failed for new root from "
 		"%u.%u.%u to %u.1.1\n",
 	        V_id(vol), where, vnode->uniquifier, V_id(newvol));
 	    code = EIO;
@@ -490,7 +507,7 @@ afs_int32 copyVnodes(struct Msg *m, Volume *vol, Volume *newvol,
 	vnode->parent = vnode2->parent;
 	vnode->serverModifyTime = vnode2->serverModifyTime;
 	if (FDH_PWRITE(newfdP, vnode, vcp->diskSize, newoffset) != vcp->diskSize) {
-	    Log("splitvolume: couldn't write in large Index of %u at offset %u\n", 
+	    Log("vol_split: couldn't write in large Index of %u at offset %u\n", 
 		    V_id(newvol), vcp->diskSize);
 	    code = EIO;
 	} 
@@ -545,7 +562,7 @@ createMountpoint(Volume *vol, Volume *newvol, struct VnodeDiskObject *parent,
     FT_GetTimeOfDay(&now, 0);
     fdP = IH_OPEN(vol->vnodeIndex[vSmall].handle);
     if (!fdP) {
-	Log("split volume: error opening small vnode index of %u\n", V_id(vol));
+	Log("vol_split: error opening small vnode index of %u\n", V_id(vol));
 	return EIO;
     }
     offset = vcp->diskSize;
@@ -553,7 +570,7 @@ createMountpoint(Volume *vol, Volume *newvol, struct VnodeDiskObject *parent,
 	rc = FDH_PREAD(fdP, &vnode, vcp->diskSize, offset);
 	if (rc != vcp->diskSize) {
 	    if (rc < 0) {
-		Log("split volume: error reading small vnode index of %u\n", V_id(vol));
+		Log("vol_split: error reading small vnode index of %u\n", V_id(vol));
 		return EIO;
 	    }
 	    if (rc < vcp->diskSize)
@@ -576,6 +593,8 @@ createMountpoint(Volume *vol, Volume *newvol, struct VnodeDiskObject *parent,
     vnode.dataVersion = 1;
     vnode.linkCount = 1;
     vnode.parent = vN;
+    if (!V_osdPolicy(vol))
+        vnode.vnodeMagic = vcp->magic;
 
     newvN = (offset >> (VnodeClassInfo[class].logSize - 1)) - 1 + class;
 #if defined(NEARINODE_HINT) && !defined(AFS_NAMEI_ENV)
@@ -588,14 +607,14 @@ createMountpoint(Volume *vol, Volume *newvol, struct VnodeDiskObject *parent,
     IH_INIT(h, V_device(vol), V_parentId(vol), newino);
     fdP2 = IH_OPEN(h);
     if (!fdP2) {
-	Log("split volume: couldn't open inode for mountpoint %u.%u.%u\n", 
+	Log("vol_split: couldn't open inode for mountpoint %u.%u.%u\n", 
 		V_id(vol), newvN, vnode.uniquifier);
 	return EIO;
     }
     sprintf(symlink, "#%s.", V_name(newvol));
     size = strlen(symlink);
     if (FDH_PWRITE(fdP2, symlink, size, 0) != size) {
-	Log("split volume: couldn't write mountpoint %u.%u.%u\n", 
+	Log("vol_split: couldn't write mountpoint %u.%u.%u\n", 
 		V_id(vol), newvN, vnode.uniquifier);
 	return EIO;
     }
@@ -603,10 +622,8 @@ createMountpoint(Volume *vol, Volume *newvol, struct VnodeDiskObject *parent,
     IH_RELEASE(h);
     VNDISK_SET_INO(&vnode, newino);
     VNDISK_SET_LEN(&vnode, size);
-    if (!osdvol)
-        vnode.vnodeMagic = SMALLVNODEMAGIC;
     if (FDH_PWRITE(fdP, &vnode, vcp->diskSize, offset) != vcp->diskSize) {
-	Log("split volume: couldn't write vnode for mountpoint %u.%u.%u\n", 
+	Log("vol_split: couldn't write vnode for mountpoint %u.%u.%u\n", 
 		V_id(vol), newvN, vnode.uniquifier);
 	return EIO;
     }
@@ -625,7 +642,7 @@ createMountpoint(Volume *vol, Volume *newvol, struct VnodeDiskObject *parent,
 
     code = Delete(&dir, name);
     if (code) {
-	Log("splitvolume: couldn't delete directory entry for %s in %u.%u.%u, code = %d\n",
+	Log("vol_split: couldn't delete directory entry for %s in %u.%u.%u, code = %d\n",
 			name, V_id(vol), vN, parent->uniquifier, code);
 	return code;
     }
@@ -645,7 +662,7 @@ createMountpoint(Volume *vol, Volume *newvol, struct VnodeDiskObject *parent,
     offset = (vN + 1 - class) << (vcp->logSize -1);
     parent->dataVersion++;
     if (FDH_PWRITE(fdP, parent, vcp->diskSize, offset) != vcp->diskSize) {
-	Log("split volume: couldn't write vnode for parent directory %u.%u.%u\n", 
+	Log("vol_split: couldn't write vnode for parent directory %u.%u.%u\n", 
 		V_id(vol), vN, parent->uniquifier);
 	return EIO;
     }
@@ -670,7 +687,7 @@ deleteVnodes(Volume *vol, afs_int32 class,
 
     fdP = IH_OPEN(vol->vnodeIndex[class].handle);
     if (!fdP) {
-	Log("Couldn't open %s Index of volume %u\n", 
+	Log("vol_split: Couldn't open %s Index of volume %u\n", 
 		class ? "small":"large", V_id(vol));
 	code = EIO;
 	goto Bad_Delete;
@@ -681,7 +698,7 @@ deleteVnodes(Volume *vol, afs_int32 class,
 	if (e->flag & NEEDED) {
 	    offset = (e->vN + 1 - class) << (vcp->logSize -1);
 	    if (FDH_PREAD(fdP, vnode, vcp->diskSize, offset) != vcp->diskSize) {
-		Log("Couldn't read in %s Index of volume %u at offset %"
+		Log("vol_split: Couldn't read in %s Index of volume %u at offset %"
 		    AFS_UINT64_FMT "\n", class ? "small":"large", V_id(vol),
 		    offset);
 		code = EIO;
@@ -698,7 +715,7 @@ deleteVnodes(Volume *vol, afs_int32 class,
 	    memset(vnode, 0, vcp->diskSize);
 	    vnode->type = vNull;
 	    if (FDH_PWRITE(fdP, vnode, vcp->diskSize, offset) != vcp->diskSize) {
-	           Log("Couldn't write in %s Index of volume %u to offset %"
+	           Log("vol_split: Couldn't write in %s Index of volume %u to offset %"
 		       AFS_UINT64_FMT "\n", class ? "small":"large",
 		       V_id(vol), offset);
 	    }
@@ -745,6 +762,8 @@ split_volume(struct rx_call *call, Volume *vol, Volume *newvol,
     code = ExtractVnodes(m, vol, vLarge, &dirList, &dl, where, rootVnode, 
 			&parent, parVnode);
     if (code) {
+	Log("vol_split 1: ExtractVnodes dirs  vol %u failed with %d\n",
+		V_id(vol), code);
 	sprintf(m->line, 
 		"ExtractVnodes failed for %u for directories with code %d\n",
 	        V_id(vol), code);
@@ -763,6 +782,8 @@ split_volume(struct rx_call *call, Volume *vol, Volume *newvol,
     code = findName(vol, parVnode, where, rootVnode->uniquifier, 
                     name,  sizeof(name));
     if (code) {
+	Log("vol_split 2: findname for %u in  vol %u failed with %d\n",
+		where, V_id(vol), code);
 	sprintf(m->line, 
 		"splitvolume: could'nt find name of %u in directory %u.%u.%u.\n",
 		where, V_id(vol), parent, parVnode->uniquifier); 
@@ -783,6 +804,8 @@ split_volume(struct rx_call *call, Volume *vol, Volume *newvol,
 
     code = FindVnodes(m, where, dirList, dl, dirList, dl, &dirsNeeded, vLarge);
     if (code) {
+	Log("vol_split 3: FindVnodes directories  vol %u failed with %d\n",
+		V_id(vol), code);
 	sprintf(m->line, 
 		"FindVnodes for directories failed with code %d\n", code);
         inform(m, 1);
@@ -799,6 +822,8 @@ split_volume(struct rx_call *call, Volume *vol, Volume *newvol,
  
     code = ExtractVnodes(m, vol, vSmall, &fileList, &fl, where, 0, 0, 0);
     if (code) {
+	Log("vol_split 4: extractVnodes files  vol %u failed with %d\n",
+		V_id(vol), code);
 	sprintf(m->line, 
 		"ExtractVnodes failed for %u for files with code %d\n",
 		V_id(vol), code);
@@ -814,7 +839,16 @@ split_volume(struct rx_call *call, Volume *vol, Volume *newvol,
 			where, name);
     inform(m, 0);
 
-    FindVnodes(m, where, fileList, fl, dirList, dl, &filesNeeded, vSmall);
+    code = FindVnodes(m, where, fileList, fl, dirList, dl, &filesNeeded, vSmall);
+    if (code) {
+	Log("vol_split 5: FindVnodes files  vol %u failed with %d\n",
+		V_id(vol), code);
+	sprintf(m->line, 
+		"FindVnodes for files failed with code %d\n", code);
+        inform(m, 1);
+	return code;
+    }
+
 
     /* 
      *  Sixth step: create hard links for all small vnode objects needed
@@ -828,6 +862,8 @@ split_volume(struct rx_call *call, Volume *vol, Volume *newvol,
 
     code = copyVnodes(m, vol, newvol, 1, fileList, fl, where, &blocks, 0); 
     if (code) {
+	Log("vol_split 6: copyVnodes files from vol %u to vol %u failed with %d\n",
+		V_id(vol), V_id(newvol), code);
 	sprintf(m->line, "copyVnodes for files failed with code %d\n", code);
         inform(m, 1);
 	return code;
@@ -844,6 +880,8 @@ split_volume(struct rx_call *call, Volume *vol, Volume *newvol,
 
     code = copyVnodes(m, vol, newvol, 0, dirList, dl, where, &blocks, parVnode); 
     if (code) {
+	Log("vol_split 7: copyVnodes directories from vol %u to vol %u failed with %d\n",
+		V_id(vol), V_id(newvol), code);
 	sprintf(m->line, "copyVnodes for directories failed with code %d\n", code);
         inform(m, 1);
 	return code;
@@ -864,6 +902,14 @@ split_volume(struct rx_call *call, Volume *vol, Volume *newvol,
     V_uniquifier(newvol) = V_uniquifier(vol);
     V_inService(newvol) = 1;
     VUpdateVolume(&code, newvol);
+    if (code) {
+	Log("vol_split 8: VUpdateVolume new vol %u failed with %d\n",
+		V_id(newvol), code);
+	sprintf(m->line, "update of new volume %u failed with code %d\n", 
+		V_id(newvol), code);
+        inform(m, 1);
+	return code;
+    }
 
     /*
      *  Sixth step: change directory entry in old volume:
@@ -874,6 +920,8 @@ split_volume(struct rx_call *call, Volume *vol, Volume *newvol,
     
     code = createMountpoint(vol, newvol, parVnode, parent, rootVnode, name);
     if (code) {
+	Log("vol_split 9: CreateMountpoint %s inn vol %u for vol %u failed with %d\n",
+		name, V_id(vol), V_id(newvol), code);
 	sprintf(m->line, "createMountpoint failed with code %d\n", code);
         inform(m, 1);
 	return code;
@@ -896,8 +944,18 @@ split_volume(struct rx_call *call, Volume *vol, Volume *newvol,
     V_diskused(vol) -= blocks;
     V_filecount(vol) -= (filesNeeded + dirsNeeded + 1);
     VUpdateVolume(&code, vol);
+    if (code) {
+	Log("vol_split 11: VUpdateVolume old vol %u failed with %d\n",
+		V_id(vol), code);
+	sprintf(m->line, "update of new volume %u failed with code %d\n", 
+		V_id(newvol), code);
+        inform(m, 1);
+	return code;
+    }
 
     sprintf(m->line, "Finished!\n");
+    Log("vol_split: vol %u successfully split at vnode %u '%s': %u dirs and %u files in new vol %u\n",
+		V_id(vol), where, name, dirsNeeded, filesNeeded, V_id(newvol));
     inform(m, 1);
     m->line[0] = 0;
     m->line[1] = 0;
