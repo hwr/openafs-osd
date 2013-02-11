@@ -79,8 +79,8 @@ extern afs_int32 LogLevel;
 
 static void inform(struct Msg *m, int force)
 {
-    if (LogLevel)
-	Log("%s", m->line);
+    if (LogLevel || force)
+	Log("vol_split: %s", m->line);
     if (m->verbose || force)
 	rx_Write(m->call, m->line, strlen(m->line));
 }
@@ -161,7 +161,7 @@ ExtractVnodes(struct Msg *m, Volume *vol, afs_int32 class,
 	    else
 	        code = EIO;
         } else {
-	    sprintf(m->line, "SplitVolume: extract didn't see directory %u\n", where);
+	    sprintf(m->line, "Extract didn't see directory %u\n", where);
 	    inform(m, 1);
 	    code = ENOENT;
 	}
@@ -208,7 +208,7 @@ FindVnodes(struct Msg *m, afs_uint32 where,
     if (list[0].vN & 1) { 		/* only for directories */
 	if (!found) {
 	    sprintf(m->line, 
-		"SplitVolume: directory %u where to start new volume not found\n",
+		"Directory %u where to start new volume not found\n",
 		 where);
 	    inform(m, 1);
 	    return ENOENT;
@@ -222,7 +222,7 @@ FindVnodes(struct Msg *m, afs_uint32 where,
 	    }
 	}
 	if (!found) {
-	    sprintf(m->line, "SplitVolume: parent directory %u not found\n", 
+	    sprintf(m->line, "Parent directory %u not found\n", 
 			parent);
 	    inform(m, 1);
 	    return ENOENT;
@@ -259,10 +259,6 @@ copyDir(struct Msg *m, IHandle_t *inh, IHandle_t *outh, int change_dot)
 
     infdP = IH_OPEN(inh);
     if (!infdP) {
-	Log("vol_split: copyDir Couldn't open input directory %u.%u.%u\n",
-		    inh->ih_vid,
-		    (afs_uint32)(inh->ih_ino & NAMEI_VNODEMASK),
-		    (afs_uint32)(inh->ih_ino >> NAMEI_UNIQSHIFT));
 	sprintf(m->line, "Couldn't open input directory %u.%u.%u\n", 
 		    inh->ih_vid,
 		    (afs_uint32)(inh->ih_ino & NAMEI_VNODEMASK),
@@ -281,10 +277,6 @@ copyDir(struct Msg *m, IHandle_t *inh, IHandle_t *outh, int change_dot)
         FDH_REALLYCLOSE(outfdP);
     outfdP = IH_OPEN(outh);
     if (!outfdP) {
-	Log("vol_split: copyDir Couldn't open output directory %u.%u.%u\n",
-		    outh->ih_vid,
-		    (afs_uint32)(outh->ih_ino & NAMEI_VNODEMASK),
-		    (afs_uint32)(outh->ih_ino >> NAMEI_UNIQSHIFT));
 	sprintf(m->line, "Couldn't open output directory %u.%u.%u\n", 
 		    outh->ih_vid,
 		    (afs_uint32)(outh->ih_ino & NAMEI_VNODEMASK),
@@ -300,10 +292,6 @@ copyDir(struct Msg *m, IHandle_t *inh, IHandle_t *outh, int change_dot)
 	size_t tlen;
         tlen = size > AFS_PAGESIZE ? AFS_PAGESIZE : size;
         if (FDH_PREAD(infdP, tbuf, tlen, offset) != tlen) {
-	    Log("vol_split: copyDir Couldn't read directory %u.%u.%u\n",
-		    inh->ih_vid,
-		    (afs_uint32)(inh->ih_ino & NAMEI_VNODEMASK),
-		    (afs_uint32)(inh->ih_ino >> NAMEI_UNIQSHIFT));
        	    sprintf(m->line, "Couldn't read directory %u.%u.%u\n", 
 		    inh->ih_vid,
 		    (afs_uint32)(inh->ih_ino & NAMEI_VNODEMASK),
@@ -323,10 +311,6 @@ copyDir(struct Msg *m, IHandle_t *inh, IHandle_t *outh, int change_dot)
 	    change_dot = 0;
 	}
 	if (FDH_PWRITE(outfdP, tbuf, tlen, offset) != tlen) {
-	    Log("vol_split: copyDir Couldn't write directory %u.%u.%u\n",
-		    outh->ih_vid,
-		    (afs_uint32)(outh->ih_ino & NAMEI_VNODEMASK),
-		    (afs_uint32)(outh->ih_ino >> NAMEI_UNIQSHIFT));
 	    sprintf(m->line, "Couldn't write directory %u.%u.%u\n", 
 		    outh->ih_vid,
 		    (afs_uint32)(outh->ih_ino & NAMEI_VNODEMASK),
@@ -789,10 +773,8 @@ split_volume(struct rx_call *call, Volume *vol, Volume *newvol,
     code = ExtractVnodes(m, vol, vLarge, &dirList, &dl, where, rootVnode, 
 			&parent, parVnode);
     if (code) {
-	Log("vol_split 1: ExtractVnodes dirs  vol %u failed with %d\n",
-		V_id(vol), code);
 	sprintf(m->line, 
-		"ExtractVnodes failed for %u for directories with code %d\n",
+		"(step 1) ExtractVnodes failed for %u for directories with code %d\n",
 	        V_id(vol), code);
 	inform(m, 1);
 	return code;
@@ -809,11 +791,9 @@ split_volume(struct rx_call *call, Volume *vol, Volume *newvol,
     code = findName(vol, parVnode, where, rootVnode->uniquifier, 
                     name,  sizeof(name));
     if (code) {
-	Log("vol_split 2: findname for %u in  vol %u failed with %d\n",
-		where, V_id(vol), code);
 	sprintf(m->line, 
-		"splitvolume: could'nt find name of %u in directory %u.%u.%u.\n",
-		where, V_id(vol), parent, parVnode->uniquifier); 
+		"(step 2) findname for %u in directory %u.%u.%u failed with %d.\n",
+		where, V_id(vol), parent, parVnode->uniquifier, code); 
         inform(m, 1);
 	return code;
     }
@@ -831,17 +811,16 @@ split_volume(struct rx_call *call, Volume *vol, Volume *newvol,
 
     code = FindVnodes(m, where, dirList, dl, dirList, dl, &dirsNeeded, vLarge);
     if (code) {
-	Log("vol_split 3: FindVnodes directories  vol %u failed with %d\n",
-		V_id(vol), code);
 	sprintf(m->line, 
-		"FindVnodes for directories failed with code %d\n", code);
+		"(step 3) FindVnodes for directories in vol %u failed with code %d\n",
+			V_id(vol), code);
         inform(m, 1);
 	return code;
     }
 
     /* 
      *  Fourth step: 
-     *  Extract vnode essenca from small vnode file.
+     *  Extract vnode essence from small vnode file.
      */
 
     sprintf(m->line, "4th step extract vnode essence from small vnode file\n");
@@ -849,10 +828,8 @@ split_volume(struct rx_call *call, Volume *vol, Volume *newvol,
  
     code = ExtractVnodes(m, vol, vSmall, &fileList, &fl, where, 0, 0, 0);
     if (code) {
-	Log("vol_split 4: extractVnodes files  vol %u failed with %d\n",
-		V_id(vol), code);
 	sprintf(m->line, 
-		"ExtractVnodes failed for %u for files with code %d\n",
+		"(step 4) ExtractVnodes files in vol  %u failed with code %d\n",
 		V_id(vol), code);
         inform(m, 1);
 	return code;
@@ -868,10 +845,9 @@ split_volume(struct rx_call *call, Volume *vol, Volume *newvol,
 
     code = FindVnodes(m, where, fileList, fl, dirList, dl, &filesNeeded, vSmall);
     if (code) {
-	Log("vol_split 5: FindVnodes files  vol %u failed with %d\n",
-		V_id(vol), code);
 	sprintf(m->line, 
-		"FindVnodes for files failed with code %d\n", code);
+		"(step 5) FindVnodes for files in vol %u failed with code %d\n",
+			V_id(vol), code);
         inform(m, 1);
 	return code;
     }
@@ -889,9 +865,8 @@ split_volume(struct rx_call *call, Volume *vol, Volume *newvol,
 
     code = copyVnodes(m, vol, newvol, 1, fileList, fl, where, &blocks, 0); 
     if (code) {
-	Log("vol_split 6: copyVnodes files from vol %u to vol %u failed with %d\n",
-		V_id(vol), V_id(newvol), code);
-	sprintf(m->line, "copyVnodes for files failed with code %d\n", code);
+	sprintf(m->line, "(step 6) copyVnodes for files from %u to %u failed with %d\n",
+			V_id(vol), V_id(newvol), code);
         inform(m, 1);
 	return code;
     }
@@ -907,9 +882,8 @@ split_volume(struct rx_call *call, Volume *vol, Volume *newvol,
 
     code = copyVnodes(m, vol, newvol, 0, dirList, dl, where, &blocks, parVnode); 
     if (code) {
-	Log("vol_split 7: copyVnodes directories from vol %u to vol %u failed with %d\n",
-		V_id(vol), V_id(newvol), code);
-	sprintf(m->line, "copyVnodes for directories failed with code %d\n", code);
+	sprintf(m->line, "(step 7) copyVnodes directories from %u to %u failed with %d\n",
+			V_id(vol), V_id(newvol), code);
         inform(m, 1);
 	return code;
     }
@@ -930,9 +904,7 @@ split_volume(struct rx_call *call, Volume *vol, Volume *newvol,
     V_inService(newvol) = 1;
     VUpdateVolume(&code, newvol);
     if (code) {
-	Log("vol_split 8: VUpdateVolume new vol %u failed with %d\n",
-		V_id(newvol), code);
-	sprintf(m->line, "update of new volume %u failed with code %d\n", 
+	sprintf(m->line, "(step 8) update of new volume %u failed with code %d\n", 
 		V_id(newvol), code);
         inform(m, 1);
 	return code;
@@ -947,9 +919,8 @@ split_volume(struct rx_call *call, Volume *vol, Volume *newvol,
     
     code = createMountpoint(vol, newvol, parVnode, parent, rootVnode, name);
     if (code) {
-	Log("vol_split 9: CreateMountpoint %s inn vol %u for vol %u failed with %d\n",
+	sprintf(m->line, "(step 9) createMountpoint %s in vol %u for vol %u failed with %d\n",
 		name, V_id(vol), V_id(newvol), code);
-	sprintf(m->line, "createMountpoint failed with code %d\n", code);
         inform(m, 1);
 	return code;
     }
@@ -972,16 +943,16 @@ split_volume(struct rx_call *call, Volume *vol, Volume *newvol,
     V_filecount(vol) -= (filesNeeded + dirsNeeded + 1);
     VUpdateVolume(&code, vol);
     if (code) {
-	Log("vol_split 11: VUpdateVolume old vol %u failed with %d\n",
+	sprintf(m->line, "(step 11) update of old volume %u failed with %d\n", 
 		V_id(vol), code);
-	sprintf(m->line, "update of new volume %u failed with code %d\n", 
-		V_id(newvol), code);
         inform(m, 1);
 	return code;
     }
 
     sprintf(m->line, "Finished!\n");
-    Log("vol_split: vol %u successfully split at vnode %u '%s': %u dirs and %u files in new vol %u\n",
+    inform(m, 0);
+    sprintf(m->line, 
+        "Volume %u successfully split at vnode %u '%s': %u dirs and %u files in new vol %u\n",
 		V_id(vol), where, name, dirsNeeded, filesNeeded, V_id(newvol));
     inform(m, 1);
     m->line[0] = 0;
