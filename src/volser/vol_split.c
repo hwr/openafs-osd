@@ -51,6 +51,7 @@
 #include "physio.h"
 #include "volser_internal.h"
 #include "../rxosd/afsosd.h"
+#include <afs/dir.h>
 
 #define NEEDED 	1
 #define PARENT 	2
@@ -249,7 +250,7 @@ FindVnodes(struct Msg *m, afs_uint32 where,
 }
     
 static afs_int32 
-copyDir(struct Msg *m, IHandle_t *inh, IHandle_t *outh)
+copyDir(struct Msg *m, IHandle_t *inh, IHandle_t *outh, int change_dot)
 {
     FdHandle_t *infdP, *outfdP;
     char *tbuf;
@@ -280,6 +281,10 @@ copyDir(struct Msg *m, IHandle_t *inh, IHandle_t *outh)
         FDH_REALLYCLOSE(outfdP);
     outfdP = IH_OPEN(outh);
     if (!outfdP) {
+	Log("vol_split: copyDir Couldn't open output directory %u.%u.%u\n",
+		    outh->ih_vid,
+		    (afs_uint32)(outh->ih_ino & NAMEI_VNODEMASK),
+		    (afs_uint32)(outh->ih_ino >> NAMEI_UNIQSHIFT));
 	sprintf(m->line, "Couldn't open output directory %u.%u.%u\n", 
 		    outh->ih_vid,
 		    (afs_uint32)(outh->ih_ino & NAMEI_VNODEMASK),
@@ -288,13 +293,17 @@ copyDir(struct Msg *m, IHandle_t *inh, IHandle_t *outh)
 	FDH_REALLYCLOSE(infdP);
 	return EIO;
     }
-    tbuf = malloc(2048);
+    tbuf = malloc(AFS_PAGESIZE);
     offset = 0;
     size = FDH_SIZE(infdP);
     while (size) {
 	size_t tlen;
-        tlen = size > 2048 ? 2048 : size;
+        tlen = size > AFS_PAGESIZE ? AFS_PAGESIZE : size;
         if (FDH_PREAD(infdP, tbuf, tlen, offset) != tlen) {
+	    Log("vol_split: copyDir Couldn't read directory %u.%u.%u\n",
+		    inh->ih_vid,
+		    (afs_uint32)(inh->ih_ino & NAMEI_VNODEMASK),
+		    (afs_uint32)(inh->ih_ino >> NAMEI_UNIQSHIFT));
        	    sprintf(m->line, "Couldn't read directory %u.%u.%u\n", 
 		    inh->ih_vid,
 		    (afs_uint32)(inh->ih_ino & NAMEI_VNODEMASK),
@@ -305,7 +314,19 @@ copyDir(struct Msg *m, IHandle_t *inh, IHandle_t *outh)
 	    free(tbuf);
 	    return EIO;
 	}
+	if (change_dot) {
+	    struct DirPage0 *d0 = (struct DirPage0 *)tbuf;
+	    if (strcmp(d0->entry[0].name, ".") == 0) {
+		d0->entry[0].fid.vnode = htonl(1);
+		d0->entry[0].fid.vunique = htonl(1);
+	    }
+	    change_dot = 0;
+	}
 	if (FDH_PWRITE(outfdP, tbuf, tlen, offset) != tlen) {
+	    Log("vol_split: copyDir Couldn't write directory %u.%u.%u\n",
+		    outh->ih_vid,
+		    (afs_uint32)(outh->ih_ino & NAMEI_VNODEMASK),
+		    (afs_uint32)(outh->ih_ino >> NAMEI_UNIQSHIFT));
 	    sprintf(m->line, "Couldn't write directory %u.%u.%u\n", 
 		    outh->ih_vid,
 		    (afs_uint32)(outh->ih_ino & NAMEI_VNODEMASK),
@@ -386,10 +407,16 @@ afs_int32 copyVnodes(struct Msg *m, Volume *vol, Volume *newvol,
 			        nearInode, V_parentId(vol), 
 			        e->vN, vnode->uniquifier,
 			        vnode->dataVersion);
+	        if (!VALID_INO(newino)) {
+		    Log("vol_split: IH_CREATE failed for %u.%u.%u\n", 
+		        V_id(vol), e->vN, vnode->uniquifier);
+		    code = EIO;
+		    goto Bad_Copy;
+		}
 	        IH_INIT(newh, V_device(vol), V_parentId(vol), newino);
 	        ino = VNDISK_GET_INO(vnode);
 	        IH_INIT(h, V_device(vol), V_parentId(vol), ino);
-		code = copyDir(m, h, newh);
+		code = copyDir(m, h, newh, 0);
 		if (code) {
 		    Log("vol_split: copyDir failed in vol %u with %d\n",
 		    	V_id(vol), code);
@@ -493,7 +520,7 @@ afs_int32 copyVnodes(struct Msg *m, Volume *vol, Volume *newvol,
 	IH_INIT(h, vol->device, V_parentId(vol), ino);
 	newino = VNDISK_GET_INO(vnode2);
 	IH_INIT(newh, newvol->device, V_parentId(newvol), newino);
-	code = copyDir(m, h, newh);
+	code = copyDir(m, h, newh, 1);
  	if (code) {
 	    Log("vol_split: copyDir failed for new root from "
 		"%u.%u.%u to %u.1.1\n",
