@@ -236,6 +236,238 @@ UV_GetArchCandidates(afs_uint32 server, hsmcandList *list, afs_uint64 minsize,
 }
 
 static int
+CreateVolume(struct cmd_syndesc *as, void *arock)
+{
+    afs_int32 pnum;
+    char part[10];
+    afs_uint32 volid = 0, rovolid = 0, bkvolid = 0;
+    afs_uint32 *arovolid;
+    afs_int32 code;
+    struct nvldbentry entry;
+    afs_int32 vcode;
+    afs_int32 quota;
+    afs_int32 filequota = -1;
+    afs_int32 osdpolicy = 0;
+    afs_uint32 server;
+
+    arovolid = &rovolid;
+
+    quota = 5000;
+    server = GetServer(as->parms[0].items->data);
+    if (!server) {
+        fprintf(STDERR, "vos: host '%s' not found in host table\n",
+                as->parms[0].items->data);
+        return ENOENT;
+    }
+    pnum = volutil_GetPartitionID(as->parms[1].items->data);
+    if (pnum < 0) {
+        fprintf(STDERR, "vos: could not interpret partition name '%s'\n",
+                as->parms[1].items->data);
+        return ENOENT;
+    }
+    if (!IsPartValid(pnum, server, &code)) {   /*check for validity of the partition */
+        if (code)
+            PrintError("", code);
+        else
+            fprintf(STDERR,
+                    "vos : partition %s does not exist on the server\n",
+                    as->parms[1].items->data);
+        return ENOENT;
+    }
+    if (!ISNAMEVALID(as->parms[2].items->data)) {
+        fprintf(STDERR,
+                "vos: the name of the root volume %s exceeds the size limit of %d\n",
+                as->parms[2].items->data, VOLSER_OLDMAXVOLNAME - 10);
+        return E2BIG;
+    }
+    if (!VolNameOK(as->parms[2].items->data)) {
+        fprintf(STDERR,
+                "Illegal volume name %s, should not end in .readonly or .backup\n",
+                as->parms[2].items->data);
+        return EINVAL;
+    }
+    if (IsNumeric(as->parms[2].items->data)) {
+        fprintf(STDERR, "Illegal volume name %s, should not be a number\n",
+                as->parms[2].items->data);
+        return EINVAL;
+    }
+    vcode = VLDB_GetEntryByName(as->parms[2].items->data, &entry);
+    if (!vcode) {
+        fprintf(STDERR, "Volume %s already exists\n",
+                as->parms[2].items->data);
+        PrintDiagnostics("create", code);
+        return EEXIST;
+    }
+
+    if (as->parms[3].items) {
+        code = util_GetHumanInt32(as->parms[3].items->data, &quota);
+        if (code) {
+            fprintf(STDERR, "vos: bad integer specified for quota.\n");
+            return code;
+        }
+    }
+
+    if (as->parms[4].items) {
+        if (!IsNumeric(as->parms[4].items->data)) {
+            fprintf(STDERR, "vos: Given volume ID %s should be numeric.\n",
+                    as->parms[4].items->data);
+            return EINVAL;
+        }
+
+        code = util_GetUInt32(as->parms[4].items->data, &volid);
+        if (code) {
+            fprintf(STDERR, "vos: bad integer specified for volume ID.\n");
+            return code;
+        }
+    }
+
+    if (as->parms[5].items) {
+        if (!IsNumeric(as->parms[5].items->data)) {
+            fprintf(STDERR, "vos: Given RO volume ID %s should be numeric.\n",
+                    as->parms[5].items->data);
+            return EINVAL;
+        }
+
+        code = util_GetUInt32(as->parms[5].items->data, &rovolid);
+        if (code) {
+            fprintf(STDERR, "vos: bad integer specified for volume ID.\n");
+            return code;
+        }
+
+        if (rovolid == 0) {
+            arovolid = NULL;
+        }
+    }
+
+    if (as->parms[6].items) {
+        if (!IsNumeric(as->parms[6].items->data)) {
+            fprintf(STDERR, "Initial quota %s should be numeric.\n",
+                    as->parms[6].items->data);
+            return EINVAL;
+        }
+
+        code = util_GetInt32(as->parms[6].items->data, &filequota);
+        if (code) {
+            fprintf(STDERR, "vos: bad integer specified for quota.\n");
+            return code;
+        }
+    }
+
+    if (as->parms[7].items) {
+        if (!IsNumeric(as->parms[7].items->data)) {
+            fprintf(STDERR, "osd policy %s should be numeric.\n",
+                    as->parms[7].items->data);
+            return EINVAL;
+        }
+
+        code = util_GetInt32(as->parms[7].items->data, &osdpolicy);
+        if (code) {
+            fprintf(STDERR, "vos: bad integer specified for osd policy.\n");
+            return code;
+        }
+    }
+
+    code =
+        UV_CreateVolume3(server, pnum, as->parms[2].items->data, quota, 0,
+                         0, osdpolicy, filequota, &volid, arovolid, &bkvolid);
+    if (code) {
+        PrintDiagnostics("create", code);
+        return code;
+    }
+    MapPartIdIntoName(pnum, part);
+    fprintf(STDOUT, "Volume %lu created on partition %s of %s\n",
+            (unsigned long)volid, part, as->parms[0].items->data);
+
+    return 0;
+}
+
+static int
+SetFields(struct cmd_syndesc *as, void *arock)
+{
+    struct nvldbentry entry;
+    volintInfo info;
+    afs_uint32 volid;
+    afs_int32 code, err;
+    afs_uint32 aserver;
+    afs_int32 apart;
+    int previdx = -1;
+
+    volid = vsu_GetVolumeID(as->parms[0].items->data, *vos_data->cstruct, &err);   /* -id */
+    if (volid == 0) {
+        if (err)
+            PrintError("", err);
+        else
+            fprintf(STDERR, "Unknown volume ID or name '%s'\n",
+                    as->parms[0].items->data);
+        return -1;
+    }
+
+    code = VLDB_GetEntryByID(volid, RWVOL, &entry);
+    if (code) {
+        fprintf(STDERR,
+                "Could not fetch the entry for volume number %lu from VLDB \n",
+                (unsigned long)volid);
+        return (code);
+    }
+    MapHostToNetwork(&entry);
+
+    GetServerAndPart(&entry, RWVOL, &aserver, &apart, &previdx);
+    if (previdx == -1) {
+        fprintf(STDERR, "Volume %s does not exist in VLDB\n\n",
+                as->parms[0].items->data);
+        return (ENOENT);
+    }
+
+    init_volintInfo(&info);
+    info.volid = volid;
+    info.type = RWVOL;
+
+    if (as->parms[1].items) {
+        /* -max <quota> */
+        code = util_GetHumanInt32(as->parms[1].items->data, &info.maxquota);
+        if (code) {
+            fprintf(STDERR, "invalid quota value\n");
+            return code;
+        }
+    }
+    if (as->parms[2].items) {
+        /* -clearuse */
+        info.dayUse = 0;
+    }
+    if (as->parms[3].items) {
+        /* -clearVolUpCounter */
+        info.spare2 = 0;
+    }
+    if (as->parms[4].items) {
+        /* -filequota  */
+        code = util_GetInt32(as->parms[4].items->data, &info.filequota);
+        if (code) {
+            fprintf(STDERR, "invalid quota value\n");
+            return code;
+        }
+    }
+    if (as->parms[5].items) {
+        /* -osdpolicy */
+        code = util_GetInt32(as->parms[5].items->data, &info.osdPolicy);
+        if (code) {
+            fprintf(STDERR, "invalid osdPolicy value \"%s\"\n",
+                as->parms[5].items->data);
+            return code;
+        }
+        if (info.osdPolicy < 0) {
+            fprintf(STDERR, "policy index must be 0 or positive\n");
+            return EINVAL;
+        }
+    }
+    code = UV_SetVolumeInfo(aserver, apart, volid, &info);
+    if (code)
+        fprintf(STDERR,
+                "Could not update volume info fields for volume number %lu\n",
+                (unsigned long)volid);
+    return (code);
+}
+
+static int
 Archcand(struct cmd_syndesc *as, void *arock)
 {
     afs_int32 code;
@@ -1421,6 +1653,30 @@ init_voscmd_afsosd(char *myVersion, char **versionstring,
     code = libafsosd_init(libafsosdrock, version);
     if (code)
 	return code;
+
+    ts = cmd_CreateSyntax("create", CreateVolume, NULL, "create a new volume");
+    cmd_AddParm(ts, "-server", CMD_SINGLE, 0, "machine name");
+    cmd_AddParm(ts, "-partition", CMD_SINGLE, 0, "partition name");
+    cmd_AddParm(ts, "-name", CMD_SINGLE, 0, "volume name");
+    cmd_AddParm(ts, "-maxquota", CMD_SINGLE, CMD_OPTIONAL,
+                "initial quota (KB)");
+    cmd_AddParm(ts, "-id", CMD_SINGLE, CMD_OPTIONAL, "volume ID");
+    cmd_AddParm(ts, "-roid", CMD_SINGLE, CMD_OPTIONAL, "readonly volume ID");
+    cmd_AddParm(ts, "-filequota", CMD_SINGLE, CMD_OPTIONAL,
+                "limit for number of files");
+    cmd_AddParm(ts, "-osdpolicy", CMD_SINGLE, CMD_OPTIONAL,
+                "osd policy (0: don't use osd, 1: use osd for files > 1MB)");
+    COMMONPARMS;
+
+    ts = cmd_CreateSyntax("setfields", SetFields, NULL,
+                          "change volume info fields");
+    cmd_AddParm(ts, "-id", CMD_SINGLE, 0, "volume name or ID");
+    cmd_AddParm(ts, "-maxquota", CMD_SINGLE, CMD_OPTIONAL, "quota (KB)");
+    cmd_AddParm(ts, "-clearuse", CMD_FLAG, CMD_OPTIONAL, "clear dayUse");
+    cmd_AddParm(ts, "-clearVolUpCounter", CMD_FLAG, CMD_OPTIONAL, "clear volUpdateCounter");
+    cmd_AddParm(ts, "-filequota", CMD_SINGLE, CMD_OPTIONAL, "file quota");
+    cmd_AddParm(ts, "-osdpolicy", CMD_SINGLE, CMD_OPTIONAL, "osd policy");
+    COMMONPARMS;
 
     ts = cmd_CreateSyntax("archcand", Archcand, NULL,
                           "get list of fids which need an archval copy");

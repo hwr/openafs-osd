@@ -91,6 +91,13 @@ struct cmd_ops_v0 {
     int (*cmd_IsAdministratorCommand) (struct cmd_syndesc *as);
     int (*cmd_Seek) (struct cmd_syndesc *as, int apos);
     afs_uint32 (*GetServer) (char *aname);
+    void (*GetServerAndPart) (struct nvldbentry *entry, int voltype,
+			      afs_uint32 *server, afs_int32 *part, int *previdx);
+    void (*init_volintInfo) (struct volintInfo *vinfo);
+    int (*IsNumeric) (char *name); 
+    int (*IsPartValid) (afs_int32 partId, afs_uint32 server, afs_int32 *code);
+    void (*MapHostToNetwork) (struct nvldbentry *entry);
+    void (*MapPartIdIntoName) (afs_int32 partId, char *partName);
     int (*PrintError) (char *msg, afs_int32 errcode);
     int (*pioctl) (char *path, afs_int32 cmd, struct ViceIoctl *data,
                    afs_int32 follow);
@@ -117,10 +124,19 @@ struct cmd_ops_v0 {
                  afs_int32 aquota, afs_int32 aspare1, afs_int32 aspare2,
                  afs_int32 osdpolicy, afs_int32 filequota,
                  afs_uint32 * anewid);
+    int (*UV_CreateVolume3) (afs_uint32 aserver, afs_int32 apart, char *aname,
+			     afs_int32 aquota, afs_int32 aspare1,
+                             afs_int32 aspare2, afs_int32 osdpolicy,
+                             afs_int32 filequota, afs_uint32 * anewid,
+                             afs_uint32 * aroid, afs_uint32 * abkid);
+    int (*UV_SetVolumeInfo) (afs_uint32 server, afs_int32 partition,
+                            afs_uint32 volid, volintInfo * infop);
     int (*VL_GetEntryByID) (struct rx_connection *z_conn, afs_uint32 Volid,
                             afs_int32 voltype, struct vldbentry * entry);
     int (*VLDB_GetEntryByID) (afs_uint32 volid, afs_int32 voltype,
                               struct nvldbentry *entryp);
+    int (*VolNameOK) (char *name);
+    int (*VLDB_GetEntryByName) (char *namep, struct nvldbentry *entryp);
     int (*vsu_ClientInit) (const char *confDir, char *cellName, int secFlags,
                            int (*secproc)(struct rx_securityClass *, afs_int32),
                            struct ubik_client **uclientp);
@@ -329,7 +345,10 @@ private struct util_ops_v0 {
     const char *(*getDirPath) (afsdir_id_t string_id);
     size_t (*strlcpy) (char *dst, const char *src, size_t siz);
     afs_int32 (*util_GetInt32) (char *as, afs_int32 * aval);
+    afs_int32 (*util_GetHumanInt32) (char *as, afs_int32 * aval);
+    afs_uint32 (*util_GetUInt32) (char *as, afs_uint32 * aval);
     char *(*volutil_PartitionName_r) (int part, char *tbuffer, int buflen);
+    afs_int32 (*volutil_GetPartitionID) (char *aname);
     void (*vFSLog) (const char *format, va_list args);
 } util_ops_v0;
 static struct util_ops_v0 *util = NULL;
@@ -472,7 +491,18 @@ extern int VLDB_GetEntryByID(afs_uint32 volid, afs_int32 voltype,
                             struct nvldbentry *entryp);
 extern afs_uint32 GetServer(char *aname);
 extern struct rx_connection * UV_BindOsd(afs_uint32 aserver, afs_int32 port);
+extern int VolNameOK(char *name);
+extern int GetServerAndPart(struct nvldbentry *entry, int voltype, afs_uint32 *server,
+                 afs_int32 *part, int *previdx);
+extern int IsNumeric(char *name);
+extern int IsPartValid(afs_int32 partId, afs_uint32 server, afs_int32 *code);
     cmd->GetServer = GetServer;
+    cmd->GetServerAndPart = GetServerAndPart;
+    cmd->init_volintInfo = init_volintInfo;
+    cmd->IsNumeric = IsNumeric;
+    cmd->IsPartValid = IsPartValid;
+    cmd->MapHostToNetwork = MapHostToNetwork;
+    cmd->MapPartIdIntoName = MapPartIdIntoName;
     cmd->PrintError = PrintError;
     cmd->ubik_VL_ReleaseLock = ubik_VL_ReleaseLock;
     cmd->ubik_VL_SetLock = ubik_VL_SetLock;
@@ -480,7 +510,11 @@ extern struct rx_connection * UV_BindOsd(afs_uint32 aserver, afs_int32 port);
     cmd->UV_BindOsd = UV_BindOsd;
     cmd->UV_ListOneVolume = UV_ListOneVolume;
     cmd->UV_CreateVolume2 = UV_CreateVolume2;
+    cmd->UV_CreateVolume3 = UV_CreateVolume3;
+    cmd->UV_SetVolumeInfo = UV_SetVolumeInfo;
     cmd->VLDB_GetEntryByID = VLDB_GetEntryByID;
+    cmd->VLDB_GetEntryByName = VLDB_GetEntryByName;
+    cmd->VolNameOK = VolNameOK;
     cmd->vsu_ClientInit = vsu_ClientInit;
     cmd->vsu_GetVolumeID = vsu_GetVolumeID;
     cmd->usd_Open = usd_Open;
@@ -619,7 +653,10 @@ extern struct rx_connection * UV_BindOsd(afs_uint32 aserver, afs_int32 port);
     util->getDirPath = getDirPath;
     util->strlcpy = strlcpy;
     util->util_GetInt32 = util_GetInt32;
+    util->util_GetHumanInt32 = util_GetHumanInt32;
+    util->util_GetUInt32 = util_GetUInt32;
     util->volutil_PartitionName_r = volutil_PartitionName_r;
+    util->volutil_GetPartitionID = volutil_GetPartitionID;
     util->vFSLog = vFSLog;
     opsptr->util = util;
  
@@ -963,6 +1000,43 @@ GetServer(char *aname)
     return (cmd->GetServer)(aname);
 }
 
+void
+GetServerAndPart(struct nvldbentry *entry, int voltype, afs_uint32 *server,
+                 afs_int32 *part, int *previdx)
+{
+    (cmd->GetServerAndPart)(entry, voltype, server, part, previdx);
+}
+
+void
+init_volintInfo(struct volintInfo *vinfo)
+{
+    (cmd->init_volintInfo)(vinfo);
+}
+
+int
+IsNumeric(char *name)
+{
+    return (cmd->IsNumeric)(name);
+}
+
+int
+IsPartValid(afs_int32 partId, afs_uint32 server, afs_int32 *code)
+{
+    return (cmd->IsPartValid)(partId, server, code);
+}
+
+void
+MapHostToNetwork(struct nvldbentry *entry)
+{
+    (cmd->MapHostToNetwork)(entry);
+}
+
+void
+MapPartIdIntoName(afs_int32 partId, char *partName)
+{
+    (cmd->MapPartIdIntoName)(partId, partName);
+}
+
 int
 pioctl(char *path, afs_int32 cmnd, struct ViceIoctl *data, afs_int32 follow)
 {
@@ -1035,6 +1109,25 @@ UV_CreateVolume2(afs_uint32 aserver, afs_int32 apart, char *aname,
 }
 
 int
+UV_CreateVolume3(afs_uint32 aserver, afs_int32 apart, char *aname,
+                            afs_int32 aquota, afs_int32 aspare1,
+                            afs_int32 aspare2, afs_int32 osdpolicy,
+                            afs_int32 filequota, afs_uint32 * anewid,
+                            afs_uint32 * aroid, afs_uint32 * abkid)
+{
+    return (cmd->UV_CreateVolume3)(aserver, apart, aname, aquota, aspare1,
+				   aspare2, osdpolicy, filequota, anewid,
+				   aroid, abkid);
+}
+
+int
+UV_SetVolumeInfo(afs_uint32 server, afs_int32 partition, afs_uint32 volid,
+	         volintInfo * infop)
+{
+    return (cmd->UV_SetVolumeInfo)(server, partition, volid, infop);
+}
+
+int
 VL_GetEntryByID(struct rx_connection *z_conn, afs_uint32 Volid, afs_int32 voltype,
                 struct vldbentry * entry)
 {
@@ -1045,6 +1138,18 @@ int
 VLDB_GetEntryByID(afs_uint32 volid, afs_int32 voltype, struct nvldbentry *entryp)
 {
     return (cmd->VLDB_GetEntryByID)(volid, voltype, entryp);
+}
+
+int
+VLDB_GetEntryByName(char *namep, struct nvldbentry *entryp)
+{
+    return (cmd->VLDB_GetEntryByName)(namep, entryp);
+}
+
+int
+VolNameOK(char *name)
+{
+    return (cmd->VolNameOK)(name);
 }
 
 int
@@ -1761,10 +1866,28 @@ util_GetInt32(char *as, afs_int32 * aval)
     return (util->util_GetInt32)(as, aval);
 }
 
+afs_int32
+util_GetHumanInt32(char *as, afs_int32 * aval)
+{
+    return (util->util_GetHumanInt32)(as, aval);
+}
+
+afs_uint32
+util_GetUInt32(char *as, afs_uint32 * aval)
+{
+    return (util->util_GetUInt32)(as, aval);
+}
+
 char *
 volutil_PartitionName_r(int part, char *tbuffer, int buflen)
 {
     return (util->volutil_PartitionName_r)(part, tbuffer, buflen);
+}
+
+afs_int32
+volutil_GetPartitionID(char *aname)
+{
+    return (util->volutil_GetPartitionID)(aname);
 }
 
 /* 

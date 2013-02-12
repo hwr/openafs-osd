@@ -105,6 +105,7 @@ struct rx_connection *tconn;
 afs_uint32 tserver;
 extern struct ubik_client *cstruct;
 const char *confdir;
+int libafsosd_loaded = 0;
 
 static struct tqHead busyHead, notokHead;
 
@@ -165,7 +166,7 @@ FileExists(char *filename)
 }
 
 /* returns 1 if <name> doesnot end in .readonly or .backup, else 0 */
-static int
+int
 VolNameOK(char *name)
 {
     int total;
@@ -182,7 +183,7 @@ VolNameOK(char *name)
 }
 
 /* return 1 if name is a number else 0 */
-static int
+int
 IsNumeric(char *name)
 {
     int result, len, i;
@@ -505,6 +506,7 @@ DisplayFormat(volintInfo *pntr, afs_uint32 server, afs_int32 part,
 	      int longlist, int disp)
 {
     char pname[10];
+    char serverAndPartition[60];
     time_t t;
 
     if (fast) {
@@ -531,13 +533,25 @@ DisplayFormat(volintInfo *pntr, afs_uint32 server, afs_int32 part,
 		fprintf(STDOUT, "**needs salvage**");
 	    fprintf(STDOUT, "\n");
 	    MapPartIdIntoName(part, pname);
-	    fprintf(STDOUT, "    %s %s \n", hostutil_GetNameByINet(server),
-		    pname);
+            sprintf((char *)&serverAndPartition, "%s %s",
+                        hostutil_GetNameByINet(server), pname);
+            fprintf(STDOUT,"    %-45s %7d files\n",
+                        serverAndPartition, pntr->filecount);
 	    fprintf(STDOUT, "    RWrite %10lu ROnly %10lu Backup %10lu \n",
 		    (unsigned long)pntr->parentID,
 		    (unsigned long)pntr->cloneID,
 		    (unsigned long)pntr->backupID);
-	    fprintf(STDOUT, "    MaxQuota %10d K \n", pntr->maxquota);
+	    fprintf(STDOUT, "    MaxQuota %10d K", pntr->maxquota);
+
+	    /* when running whith libafsosd these fields could be filled */
+            if (pntr->osdPolicy)
+                fprintf(STDOUT,", osd policy %4d", pntr->osdPolicy);
+            else
+                fprintf(STDOUT,"                 ");
+            if (pntr->filequota>0)
+                fprintf(STDOUT," %d files", pntr->filequota);
+            fprintf(STDOUT, "\n");
+
 	    t = pntr->creationDate;
 	    fprintf(STDOUT, "    Creation    %s",
 		    ctime(&t));
@@ -692,7 +706,6 @@ XDisplayFormat(volintXInfo *a_xInfoP, afs_uint32 a_servID, afs_int32 a_partID,
 		    (unsigned long)a_xInfoP->backupID);
 	    fprintf(STDOUT, "    MaxQuota %10d K \n", a_xInfoP->maxquota);
 
-	    t = a_xInfoP->creationDate;
 	    fprintf(STDOUT, "    Creation    %s",
 		    ctime(&t));
 
@@ -1379,7 +1392,7 @@ XDisplayVolumes2(afs_uint32 a_servID, afs_int32 a_partID, volintXInfo *a_xInfoP,
 
 /* set <server> and <part> to the correct values depending on
  * <voltype> and <entry> */
-static void
+void
 GetServerAndPart(struct nvldbentry *entry, int voltype, afs_uint32 *server,
 		 afs_int32 *part, int *previdx)
 {
@@ -5967,7 +5980,6 @@ main(int argc, char **argv)
     {
         extern int load_libcafsosd(const char *, void *, void *);
         afs_int32 LogLevel = 0;
-	int loaded = 0;
         struct vos_data {
             struct ubik_client **aCstruct;
             afs_int32 *aLogLevel;
@@ -5980,22 +5992,22 @@ main(int argc, char **argv)
         vos_data.verbose = &verbose;
         vos_data.noresolve = &noresolve;
         vos_data.rx_connDeadTime = &rx_connDeadTime;
-        code = load_libcafsosd("init_voscmd_afsosd", &vos_data, (void *)&loaded);
+        code = load_libcafsosd("init_voscmd_afsosd", &vos_data, 
+				(void *)&libafsosd_loaded);
     }
 #endif
 
-    ts = cmd_CreateSyntax("create", CreateVolume, NULL, "create a new volume");
-    cmd_AddParm(ts, "-server", CMD_SINGLE, 0, "machine name");
-    cmd_AddParm(ts, "-partition", CMD_SINGLE, 0, "partition name");
-    cmd_AddParm(ts, "-name", CMD_SINGLE, 0, "volume name");
-    cmd_AddParm(ts, "-maxquota", CMD_SINGLE, CMD_OPTIONAL,
-		"initial quota (KB)");
-    cmd_AddParm(ts, "-id", CMD_SINGLE, CMD_OPTIONAL, "volume ID");
-    cmd_AddParm(ts, "-roid", CMD_SINGLE, CMD_OPTIONAL, "readonly volume ID");
-#ifdef notdef
-    cmd_AddParm(ts, "-minquota", CMD_SINGLE, CMD_OPTIONAL, "");
-#endif
-    COMMONPARMS;
+    if (!libafsosd_loaded) {
+        ts = cmd_CreateSyntax("create", CreateVolume, NULL, "create a new volume");
+        cmd_AddParm(ts, "-server", CMD_SINGLE, 0, "machine name");
+        cmd_AddParm(ts, "-partition", CMD_SINGLE, 0, "partition name");
+        cmd_AddParm(ts, "-name", CMD_SINGLE, 0, "volume name");
+        cmd_AddParm(ts, "-maxquota", CMD_SINGLE, CMD_OPTIONAL,
+		    "initial quota (KB)");
+        cmd_AddParm(ts, "-id", CMD_SINGLE, CMD_OPTIONAL, "volume ID");
+        cmd_AddParm(ts, "-roid", CMD_SINGLE, CMD_OPTIONAL, "readonly volume ID");
+        COMMONPARMS;
+    }
 
     ts = cmd_CreateSyntax("remove", DeleteVolume, NULL, "delete a volume");
     cmd_AddParm(ts, "-server", CMD_SINGLE, CMD_OPTIONAL, "machine name");
@@ -6196,13 +6208,15 @@ main(int argc, char **argv)
     COMMONPARMS;
     cmd_CreateAlias(ts, "volinfo");
 
-    ts = cmd_CreateSyntax("setfields", SetFields, NULL,
-			  "change volume info fields");
-    cmd_AddParm(ts, "-id", CMD_SINGLE, 0, "volume name or ID");
-    cmd_AddParm(ts, "-maxquota", CMD_SINGLE, CMD_OPTIONAL, "quota (KB)");
-    cmd_AddParm(ts, "-clearuse", CMD_FLAG, CMD_OPTIONAL, "clear dayUse");
-    cmd_AddParm(ts, "-clearVolUpCounter", CMD_FLAG, CMD_OPTIONAL, "clear volUpdateCounter");
-    COMMONPARMS;
+    if (!libafsosd_loaded) {
+        ts = cmd_CreateSyntax("setfields", SetFields, NULL,
+			      "change volume info fields");
+        cmd_AddParm(ts, "-id", CMD_SINGLE, 0, "volume name or ID");
+        cmd_AddParm(ts, "-maxquota", CMD_SINGLE, CMD_OPTIONAL, "quota (KB)");
+        cmd_AddParm(ts, "-clearuse", CMD_FLAG, CMD_OPTIONAL, "clear dayUse");
+        cmd_AddParm(ts, "-clearVolUpCounter", CMD_FLAG, CMD_OPTIONAL, "clear volUpdateCounter");
+        COMMONPARMS;
+    }
 
     ts = cmd_CreateSyntax("offline", volOffline, NULL, "force the volume status to offline");
     cmd_AddParm(ts, "-server", CMD_SINGLE, 0, "server name");
