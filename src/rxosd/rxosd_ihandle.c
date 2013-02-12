@@ -40,7 +40,6 @@
 #include "rxosd_ihandle.h"
 #include <afs/viceinode.h>
 #include "afs/afs_assert.h"
-#include "afsosd.h"
 #include <afs/afsutil.h>
 
 #ifndef AFS_NT40_ENV
