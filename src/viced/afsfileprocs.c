@@ -9352,6 +9352,8 @@ StoreData_RXStyle(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
 	    volptr->partition->flags |= PART_DONTUPDATE;
 	    if ((errorCode = VDiskUsage(volptr, nBlocks(size)))) {
 		volptr->partition->flags &= ~PART_DONTUPDATE;
+		ViceLog(25, ("StoreData: VDiskUsage for %d blocks returns %d\n",
+				nBlocks(size), errorCode));
 		return (errorCode);
 	    }
 
