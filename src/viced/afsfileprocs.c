@@ -9297,8 +9297,8 @@ StoreData_RXStyle(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
 		    		targetptr->disk.uniquifier));
 	    return EIO;
 	}
-#if 0
 	VN_GET_LEN(size, targetptr);
+#if 0
 	if (size != DataLength) { /* vnode contains wrong file length */
 #ifdef AFS_ENABLE_VICEP_ACCESS
 	    if (Length == 0) {	 	/* StoreMini after vicep access */
