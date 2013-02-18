@@ -9440,12 +9440,18 @@ StoreData_RXStyle(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
         if (!osdvol || !(osdvol->op_isOsdFile)(V_osdPolicy(volptr), V_id(volptr),
 					       &targetptr->disk,
 					       targetptr->vnodeNumber)) {
+	    afs_uint64 finalLength;
 	    nBytes = FDH_PWRITE(fdP, &tlen, 1, Pos);
 	    if (nBytes != 1) {
 		errorCode = -1;
 	        goto done;
 	    }
+	    ViceLog(25,
+		("StoreData_RXStyle: length should now be %llu\n", Pos + 1));
 	    errorCode = FDH_TRUNC(fdP, Pos);
+	    GetLinkCountAndSize(volptr, fdP, &linkCount, &finalLength);
+	    ViceLog(25,
+		("StoreData_RXStyle: and now %llu and is %llu\n", Pos, finalLength));
         }
     } else {
 	/* have some data to copy */
