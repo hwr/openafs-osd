@@ -9390,9 +9390,9 @@ StoreData_RXStyle(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
     if (FileLength < NewLength)
 	/* simulate truncate */
 	NewLength = FileLength;
+    TruncatedLength = NewLength;	/* remember length after possible ftruncate */
     if (Pos + Length > NewLength)
 	NewLength = Pos + Length;	
-    TruncatedLength = NewLength;	/* remember length after possible ftruncate */
 
     /* adjust the disk block count by the difference in the files */
     {
