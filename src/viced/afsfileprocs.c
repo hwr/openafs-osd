@@ -9434,12 +9434,15 @@ StoreData_RXStyle(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
      * do what we're going to do below.
      */
     if (Length == 0 && Pos > TruncatedLength) {
+	int osdfile = 0;
 	/* Set the file's length; we've already done an lseek to the right
 	 * spot above.
 	 */
-        if (!osdvol || !(osdvol->op_isOsdFile)(V_osdPolicy(volptr), V_id(volptr),
-					       &targetptr->disk,
-					       targetptr->vnodeNumber)) {
+	if (osdvol)
+	    osdfile = (osdvol->op_isOsdFile)(V_osdPolicy(volptr), V_id(volptr),
+                                               &targetptr->disk,
+                                               targetptr->vnodeNumber);
+        if (!osdvol || !osdfile) {
 	    afs_uint64 finalLength;
 	    nBytes = FDH_PWRITE(fdP, &tlen, 1, Pos);
 	    if (nBytes != 1) {

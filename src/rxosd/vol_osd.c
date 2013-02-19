@@ -988,8 +988,11 @@ isOsdFile(afs_int32 osdPolicy, afs_uint32 vid, struct VnodeDiskObject *vd,
 
     if (vd->type != vFile)
 	return 0;
-    if (!osdPolicy && ino && vd->vnodeMagic == SMALLVNODEMAGIC)
+    if (!osdPolicy && ino && vd->vnodeMagic == SMALLVNODEMAGIC) {
+	ViceLog(25, ("isOsdFile: %u.%u.%u has vnodeMagic, ino, no osdPolicy\n",
+		 vid, vN, vd->uniquifier)); 
 	return 0;	/* File in a normal OpenAFS volume */
+    }
     if (osdPolicy && !ino && vd->osdMetadataIndex)
 	return 1;	/* OSD-File in an OSD-Volume */
     if (osdPolicy && ino && !vd->osdMetadataIndex)
