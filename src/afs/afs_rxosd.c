@@ -1943,11 +1943,19 @@ rxosd_fetchBypassCacheRead(void *r, afs_uint32 size, afs_uint32 *bytesread)
             if (pageoff + avail <= PAGE_CACHE_SIZE) {
                 /* Copy entire (or rest of) current iovec into current page */
                 if (pp) {
+#if defined(KMAP_ATOMIC_TAKES_NO_KM_TYPE)
+                    address = kmap_atomic(pp);
+#else
                     address = kmap_atomic(pp, KM_USER0);
+#endif
                     memcpy(address + pageoff,
 			   rxiov[k].iov[i].iov_base + rxiov[k].offs,
                            avail);
+#if defined(KMAP_ATOMIC_TAKES_NO_KM_TYPE)
+                    kunmap_atomic(address);
+#else
                     kunmap_atomic(address, KM_USER0);
+#endif
                 }
                 pageoff += avail;
                 (rxiov[k].cur)++;
@@ -1955,11 +1963,19 @@ rxosd_fetchBypassCacheRead(void *r, afs_uint32 size, afs_uint32 *bytesread)
             } else {
                 /* Copy only what's needed to fill current page */
                 if (pp) {
+#if defined(KMAP_ATOMIC_TAKES_NO_KM_TYPE)
+                    address = kmap_atomic(pp);
+#else
                     address = kmap_atomic(pp, KM_USER0);
+#endif
                     memcpy(address + pageoff,
 			   rxiov[k].iov[i].iov_base + rxiov[k].offs,
                            PAGE_CACHE_SIZE - pageoff);
+#if defined(KMAP_ATOMIC_TAKES_NO_KM_TYPE)
+                    kunmap_atomic(address);
+#else
                     kunmap_atomic(address, KM_USER0);
+#endif
                 }
                 rxiov[k].offs += PAGE_CACHE_SIZE - pageoff;
                 pageoff = PAGE_CACHE_SIZE;

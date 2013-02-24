@@ -1274,26 +1274,26 @@ if (code)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,27)
 #if defined(STRUCT_TASK_STRUCT_HAS_CRED)
 #if defined(HAVE_LINUX_PATH_LOOKUP)	
-	fp = dentry_open(dentry, nd.path.mnt, O_LARGEFILE | O_RDWR,
+	fp = afs_dentry_open(dentry, nd.path.mnt, O_LARGEFILE | O_RDWR,
 			 cache_creds);
 	if (IS_ERR(fp))
-	    fp = dentry_open(dentry, nd.path.mnt, O_LARGEFILE | O_RDWR,
+	    fp = afs_dentry_open(dentry, nd.path.mnt, O_LARGEFILE | O_RDWR,
 			 current_cred());
 #else /* defined(HAVE_LINUX_PATH_LOOKUP) */
-	fp = dentry_open(dentry, mnt, O_LARGEFILE | O_RDWR,
+	fp = afs_dentry_open(dentry, mnt, O_LARGEFILE | O_RDWR,
 			 cache_creds);
 	if (IS_ERR(fp)) {
-printf("dentry_open failed with %ld for %s retrying with current_cred\n",
+printf("afs_dentry_open failed with %ld for %s retrying with current_cred\n",
 		(long)fp, path);
-	    fp = dentry_open(dentry, mnt, O_LARGEFILE | O_RDWR,
+	    fp = afs_dentry_open(dentry, mnt, O_LARGEFILE | O_RDWR,
 			 current_cred());
 	}
 #endif /* defined(HAVE_LINUX_PATH_LOOKUP) */
 #else /* defined(STRUCT_TASK_STRUCT_HAS_CRED) */
-	fp = dentry_open(dentry, nd.path.mnt, O_LARGEFILE | O_RDWR);
+	fp = afs_dentry_open(dentry, nd.path.mnt, O_LARGEFILE | O_RDWR);
 #endif /* defined(STRUCT_TASK_STRUCT_HAS_CRED) */
 #else /* LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,27) */
-	fp = dentry_open(dentry, nd.mnt, O_LARGEFILE | O_RDWR);
+	fp = afs_dentry_open(dentry, nd.mnt, O_LARGEFILE | O_RDWR);
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,27) */
 #endif /* NAMEI_DATA_HAS_NO_DENTRY */
 #if !defined(HAVE_LINUX_PATH_LOOKUP)
@@ -1309,7 +1309,7 @@ printf("dentry_open failed with %ld for %s retrying with current_cred\n",
     current_fsuid() = fsuid;
 #endif
     if (!code && IS_ERR(fp)) {
-	afs_warn("dentry_open returns %ld for %s\n", 
+	afs_warn("afs_dentry_open returns %ld for %s\n", 
 		(long)fp, path);
 	code = ENOENT;
     } 

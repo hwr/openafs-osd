@@ -50,6 +50,7 @@
 #include "afsosd.h"
 #include "volserosd.h"
 #include "osddb.h"
+#include "osddbuser.h"
 
 #ifdef HAVE_POSIX_REGEX
 #include <regex.h>
@@ -1193,7 +1194,7 @@ Traverse(struct cmd_syndesc *as, void *arock)
         afs_int32 type;
         afs_int32 status = 0;
 
-        osddb_client = init_osddb_client(cell, 0);
+        osddb_client = init_osddb_client(cell);
         memset(&l, 0, sizeof(l));
         code = ubik_Call(OSDDB_OsdList, osddb_client, 0, &l);
         if (code) {
