@@ -418,6 +418,8 @@ afs_int32 BlocksSpare = 1024;	/* allow 1 MB overruns */
 afs_int32 PctSpare;
 extern afs_int32 implicitAdminRights;
 extern afs_int32 readonlyServer;
+extern int CopyOnWrite_calls, CopyOnWrite_off0, CopyOnWrite_size0;
+extern afs_fsize_t CopyOnWrite_maxsize;
 
 /*
  * Externals used by the xstat code.
@@ -2029,8 +2031,7 @@ RXStore_AccessList(Vnode * targetptr, struct AFSOpaque *AccessList)
 #define	COPYBUFFSIZE	8192
 #define MAXFSIZE (~(afs_fsize_t) 0)
 static int
-PartialCopyOnWrite(Vnode * targetptr, Volume * volptr, afs_foff_t off, 
-			afs_fsize_t len, afs_fsize_t total)
+CopyOnWrite(Vnode * targetptr, Volume * volptr, afs_foff_t off, afs_fsize_t len)
 {
     Inode ino, nearInode AFS_UNUSED;
     ssize_t rdlen;
@@ -2048,6 +2049,13 @@ PartialCopyOnWrite(Vnode * targetptr, Volume * volptr, afs_foff_t off,
 	DFlush();		/* just in case? */
 
     VN_GET_LEN(size, targetptr);
+    if (size > off)
+        size -= off;
+    else
+        size = 0;
+    if (size > len)
+        size = len;
+
     buff = (char *)malloc(COPYBUFFSIZE);
     if (buff == NULL) {
 	return EIO;
@@ -2093,107 +2101,75 @@ PartialCopyOnWrite(Vnode * targetptr, Volume * volptr, afs_foff_t off,
     newFdP = IH_OPEN(newH);
     osi_Assert(newFdP != NULL);
 
-    if (total < off + len)  	/* should not happen */
-	total = off + len;
-    if (total < size)		/* new version shorter than original one */
-	size = total;
-    if (off) {
-	afs_fsize_t before = off;
-	afs_foff_t boff = 0;
-	if (before > size)
-	    before = size;
-	ViceLog(1, ("PartialCopyOnWrite for %u.%u.%u from 0 to %llu\n",
-			V_id(volptr), targetptr->vnodeNumber,
-                        targetptr->disk.uniquifier, before));
-	while (before > 0) {
-	    if (before > COPYBUFFSIZE)
-		length = COPYBUFFSIZE;
-	    else
-		length = before;
-	    rdlen = FDH_PREAD(targFdP, buff, length, boff);
-	    if (rdlen != length) {
-		rc = EIO;
-		goto bad_copyOnWrite;
-	    }
-	    wrlen = FDH_PWRITE(newFdP, buff, length, boff);
-	    if (wrlen != length) {
-		rc = ENOSPC;
-		goto bad_copyOnWrite;
-	    }
-	    before -= length;
-	    boff += length;
+    done = off;
+    while (size > 0) {
+        if (size > COPYBUFFSIZE) {      /* more than a buffer */
+            length = COPYBUFFSIZE;
+            size -= COPYBUFFSIZE;
+        } else {
+            length = size;
+            size = 0;
+        }
+        rdlen = FDH_PREAD(targFdP, buff, length, done);
+        if (rdlen == length) {
+            wrlen = FDH_PWRITE(newFdP, buff, length, done);
+            done += rdlen;
+        } else
+            wrlen = 0;
+        /*  Callers of this function are not prepared to recover
+         *  from error that put the filesystem in an inconsistent
+         *  state. Make sure that we force the volume off-line if
+         *  we some error other than ENOSPC - 4.29.99)
+         *
+         *  In case we are unable to write the required bytes, and the
+         *  error code indicates that the disk is full, we roll-back to
+         *  the initial state.
+         */
+        if ((rdlen != length) || (wrlen != length)) {
+            if ((wrlen < 0) && (errno == ENOSPC)) {     /* disk full */
+                ViceLog(0,
+                        ("CopyOnWrite failed: Partition %s containing volume %u is full\n",
+                         volptr->partition->name, V_id(volptr)));
+                /* remove destination inode which was partially copied till now */
+                FDH_REALLYCLOSE(newFdP);
+                IH_RELEASE(newH);
+                FDH_REALLYCLOSE(targFdP);
+                rc = IH_DEC(V_linkHandle(volptr), ino, V_parentId(volptr));
+                if (rc) {
+                    ViceLog(0,
+                            ("CopyOnWrite failed: error %u after i_dec on disk full, volume %u in partition %s needs salvage\n",
+                             rc, V_id(volptr), volptr->partition->name));
+                    VTakeOffline(volptr);
+                }
+                free(buff);
+                return ENOSPC;
+            } else {
+                /* length, rdlen, and wrlen may or may not be 64-bits wide;
+                 * since we never do any I/O anywhere near 2^32 bytes at a
+                 * time, just case to an unsigned int for printing */
+
+                ViceLog(0,
+                        ("CopyOnWrite failed: volume %u in partition %s  (tried reading %u, read %u, wrote %u, errno %u) volume needs salvage\n",
+                         V_id(volptr), volptr->partition->name, (unsigned)length, (unsigned)rdlen,
+                         (unsigned)wrlen, errno));
+#if defined(AFS_DEMAND_ATTACH_FS)
+                ViceLog(0, ("CopyOnWrite failed: requesting salvage\n"));
+#else
+                ViceLog(0, ("CopyOnWrite failed: taking volume offline\n"));
+#endif
+                /* Decrement this inode so salvager doesn't find it. */
+                FDH_REALLYCLOSE(newFdP);
+                IH_RELEASE(newH);
+                FDH_REALLYCLOSE(targFdP);
+                rc = IH_DEC(V_linkHandle(volptr), ino, V_parentId(volptr));
+                free(buff);
+                VTakeOffline(volptr);
+                return EIO;
+            }
+        }
 #ifndef AFS_PTHREAD_ENV
-	    IOMGR_Poll();
+        IOMGR_Poll();
 #endif /* !AFS_PTHREAD_ENV */
-	}
-    }
-    if (len > size - off)
-	len = size -off;
-    if (off + len < size) {
-	afs_fsize_t behind = size - off - len;
-	done = off;
-	ViceLog(1, ("PartialCopyOnWrite for %u.%u.%u from %llu to %llu\n",
-			V_id(volptr), targetptr->vnodeNumber,
-                        targetptr->disk.uniquifier, off + len, off + len + behind));
-	while (behind > 0) {
-	    if (behind > COPYBUFFSIZE)
-		length = COPYBUFFSIZE;
-	    else
-		length = behind;
-	    rdlen = FDH_PREAD(targFdP, buff, length, done);
-	    if (rdlen != length) {
-		rc = EIO;
-		goto bad_copyOnWrite;
-	    }
-	    wrlen = FDH_PWRITE(newFdP, buff, length, done);
-	    if (wrlen != length) {
-		rc = ENOSPC;
-		goto bad_copyOnWrite;
-	    }
-	    behind -= length;
-	    done += length;
-#ifndef AFS_PTHREAD_ENV
-	    IOMGR_Poll();
-#endif /* !AFS_PTHREAD_ENV */
-	}
-    }
-	
-bad_copyOnWrite:
-    if (rc) {
-	free(buff);
-	/*  Callers of this function are not prepared to recover
-	 *  from error that put the filesystem in an inconsistent
-	 *  state. Make sure that we force the volume off-line if
-	 *  we saw some error other than ENOSPC - 4.29.99)
-	 *
-	 *  In case we are unable to write the required bytes, and the
-	 *  error code indicates that the disk is full, we roll-back to
-	 *  the initial state.
-	 */
-	/* remove destination inode which was partially copied till now */
-	FDH_REALLYCLOSE(newFdP);
-	IH_RELEASE(newH);
-	FDH_REALLYCLOSE(targFdP);
-	if (rc == ENOSPC) { 		/* assume disk full */
-	    ViceLog(0,
-		("CopyOnWrite failed for %u.%u.%u, partition %s full?\n",
-			V_id(volptr), targetptr->vnodeNumber,
-                         targetptr->disk.uniquifier,
-                         volptr->partition->name)); 
-	} else {
-	    ViceLog(0,
-		("CopyOnWrite failed for %u.%u.%u in partition %s, read error! (errno 0 %d)\n",
-			V_id(volptr), targetptr->vnodeNumber,
-                         targetptr->disk.uniquifier,
-                         volptr->partition->name, errno));
-	}
-	if (IH_DEC(V_linkHandle(volptr), ino, V_parentId(volptr)) != 0) {
-	    ViceLog(0,
-		    ("CopyOnWrite failed: error %u after i_dec, volume %u in partition %s needs salvage\n",
-		     rc, V_id(volptr), volptr->partition->name));
-	    VTakeOffline(volptr);
-	} 
-	return rc;
     }
     FDH_REALLYCLOSE(targFdP);
     rc = IH_DEC(V_linkHandle(volptr), VN_GET_INO(targetptr),
@@ -2214,52 +2190,11 @@ bad_copyOnWrite:
 }				/*CopyOnWrite */
 
 static int
-CopyOnWrite(Vnode * targetptr, Volume * volptr)
+PartialCopyOnWrite(Vnode * targetptr, Volume * volptr, afs_foff_t off,
+                        afs_fsize_t len, afs_fsize_t total)
 {
-    afs_int32 code;
-
-    /* make sure the whole file gets copied */
-    code = PartialCopyOnWrite(targetptr, volptr, 0, 0, MAXFSIZE);
-    return code;
+    return CopyOnWrite(targetptr, volptr, 0, MAXFSIZE);
 }
-
-static int
-CopyOnWrite2(FdHandle_t *targFdP, FdHandle_t *newFdP, afs_foff_t off, 
-	     afs_fsize_t size) 
-{
-    char *buff = malloc(COPYBUFFSIZE);
-    size_t length;
-    ssize_t rdlen;
-    ssize_t wrlen;
-    int rc = 0;
-
-    while (size > 0) {
-       if (size > COPYBUFFSIZE) {      /* more than a buffer */
-           length = COPYBUFFSIZE;
-           size -= COPYBUFFSIZE;
-       } else {
-           length = size;
-           size = 0;
-       }
-       rdlen = FDH_PREAD(targFdP, buff, length, off);
-       if (rdlen == length)
-           wrlen = FDH_PWRITE(newFdP, buff, length, off);
-       else
-           wrlen = 0;
-
-       if ((rdlen != length) || (wrlen != length)) {
-           /* no error recovery, at the worst we'll have a "hole"
-            * in the file */
-           rc = 1;
-           break;
-       }
-       off += rdlen;
-    }
-    free(buff);
-    return rc;
-}
-
-
 
 /*
  * Common code to handle with removing the Name (file when it's called from
@@ -2287,7 +2222,7 @@ DeleteTarget(Vnode * parentptr, Volume * volptr, Vnode ** targetptr,
 
     if (parentptr->disk.cloned) {
 	ViceLog(25, ("DeleteTarget : CopyOnWrite called\n"));
-	if ((errorCode = CopyOnWrite(parentptr, volptr))) {
+	if ((errorCode = CopyOnWrite(parentptr, volptr, 0, MAXFSIZE))) {
 	    ViceLog(20,
 		    ("DeleteTarget %s: CopyOnWrite failed %d\n", Name,
 		     errorCode));
@@ -2751,7 +2686,7 @@ Alloc_NewVnode(Vnode * parentptr, DirHandle * dir, Volume * volptr,
 
     if (parentptr->disk.cloned) {
 	ViceLog(25, ("Alloc_NewVnode : CopyOnWrite called\n"));
-	if ((errorCode = CopyOnWrite(parentptr, volptr))) {	/* disk full */
+	if ((errorCode = CopyOnWrite(parentptr, volptr, 0, MAXFSIZE))) {	/* disk full */
 	    ViceLog(25, ("Alloc_NewVnode : CopyOnWrite failed\n"));
 	    /* delete the vnode previously allocated */
 	    (*targetptr)->delete = 1;
@@ -5262,13 +5197,13 @@ SAFSS_Rename(struct rx_call *acall, struct AFSFid *OldDirFid, char *OldName,
      */
     if (oldvptr->disk.cloned) {
 	ViceLog(25, ("Rename : calling CopyOnWrite on  old dir\n"));
-	if ((errorCode = CopyOnWrite(oldvptr, volptr)))
+	if ((errorCode = CopyOnWrite(oldvptr, volptr, 0, MAXFSIZE)))
 	    goto Bad_Rename;
     }
     SetDirHandle(&olddir, oldvptr);
     if (newvptr->disk.cloned) {
 	ViceLog(25, ("Rename : calling CopyOnWrite on  new dir\n"));
-	if ((errorCode = CopyOnWrite(newvptr, volptr)))
+	if ((errorCode = CopyOnWrite(newvptr, volptr, 0, MAXFSIZE)))
 	    goto Bad_Rename;
     }
 
@@ -5436,7 +5371,7 @@ SAFSS_Rename(struct rx_call *acall, struct AFSFid *OldDirFid, char *OldName,
      */
     if (updatefile && (fileptr->disk.cloned)) {
 	ViceLog(25, ("Rename : calling CopyOnWrite on  target dir\n"));
-	if ((errorCode = CopyOnWrite(fileptr, volptr)))
+	if ((errorCode = CopyOnWrite(fileptr, volptr, 0, MAXFSIZE)))
 	    goto Bad_Rename;
         /* since copyonwrite would mean fileptr has a new handle, do it here */
         FidZap(&filedir);
@@ -5979,7 +5914,7 @@ SAFSS_Link(struct rx_call *acall, struct AFSFid *DirFid, char *Name,
     }
     if (parentptr->disk.cloned) {
 	ViceLog(25, ("Link : calling CopyOnWrite on  target dir\n"));
-	if ((errorCode = CopyOnWrite(parentptr, volptr)))
+	if ((errorCode = CopyOnWrite(parentptr, volptr, 0, MAXFSIZE)))
 	    goto Bad_Link;	/* disk full error */
     }
 
@@ -8651,6 +8586,368 @@ FetchData_RXStyle(Volume * volptr, Vnode * targetptr,
     return 0;
 }				/*FetchData_RXStyle */
 
+static int
+GetLinkCountAndSize(Volume * vp, FdHandle_t * fdP, int *lc,
+		    afs_sfsize_t * size)
+{
+    struct afs_stat status;
+#ifdef AFS_NAMEI_ENV
+    FdHandle_t *lhp;
+    lhp = IH_OPEN(V_linkHandle(vp));
+    if (!lhp)
+	return EIO;
+    *lc = namei_GetLinkCount(lhp, fdP->fd_ih->ih_ino, 0, 0, 0);
+    FDH_CLOSE(lhp);
+    if (*lc < 0)
+	return -1;
+    if (afs_fstat(fdP->fd_fd, &status) < 0) {
+	return -1;
+    }
+    *size = status.st_size;
+    if (status.st_nlink > 1) 		/* Possible after split volume */
+	(*lc)++;
+    return (*size == -1) ? -1 : 0;
+#else
+
+    if (afs_fstat(fdP->fd_fd, &status) < 0) {
+	return -1;
+    }
+
+    *lc = GetLinkCount(vp, &status);
+    *size = status.st_size;
+    return 0;
+#endif
+}
+
+/*
+ * StoreData_RXStyle
+ *
+ * Purpose:
+ *	Implement a client's data store using Rx.
+ *
+ * Arguments:
+ *	volptr		: Ptr to the given volume's info.
+ *	targetptr	: Pointer to the vnode involved.
+ *	Call		: Ptr to the Rx call involved.
+ *	Pos		: Offset within the file.
+ *	Len		: Length in bytes to store; this value is bogus!
+ * if FS_STATS_DETAILED
+ *	a_bytesToStoreP	: Set to the number of bytes to be stored to
+ *			  the File Server.
+ *	a_bytesStoredP	: Set to the actual number of bytes stored to
+ *			  the File Server.
+ * endif
+ */
+afs_int32
+StoreData_RXStyle(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
+		  struct client * client, struct rx_call * Call,
+		  afs_fsize_t Pos, afs_fsize_t Length, afs_fsize_t FileLength,
+		  int sync,
+#if FS_STATS_DETAILED
+		  afs_sfsize_t * a_bytesToStoreP,
+		  afs_sfsize_t * a_bytesStoredP
+#endif				/* FS_STATS_DETAILED */
+    )
+{
+    afs_sfsize_t bytesTransfered;	/* number of bytes actually transfered */
+    struct timeval StartTime, StopTime;	/* Used to measure how long the store takes */
+    Error errorCode = 0;		/* Returned error code to caller */
+#ifndef HAVE_PIOV
+    char *tbuffer;	/* data copying buffer */
+#else /* HAVE_PIOV */
+    struct iovec tiov[RX_MAXIOVECS];	/* no data copying with iovec */
+    int tnio;			/* temp for iovec size */
+#endif /* HAVE_PIOV */
+    afs_sfsize_t tlen;		/* temp for xfr length */
+    Inode tinode;		/* inode for I/O */
+    afs_int32 optSize;		/* optimal transfer size */
+    afs_sfsize_t DataLength = 0;	/* size of inode */
+    afs_sfsize_t TruncatedLength;	/* size after ftruncate */
+    afs_fsize_t NewLength;	/* size after this store completes */
+    afs_sfsize_t adjustSize;	/* bytes to call VAdjust... with */
+    int linkCount = 0;		/* link count on inode */
+    ssize_t nBytes;
+    FdHandle_t *fdP = NULL;
+    struct in_addr logHostAddr;	/* host ip holder for inet_ntoa */
+    afs_ino_str_t stmp;
+
+#if FS_STATS_DETAILED
+    /*
+     * Initialize the byte count arguments.
+     */
+    (*a_bytesToStoreP) = 0;
+    (*a_bytesStoredP) = 0;
+#endif /* FS_STATS_DETAILED */
+
+    /*
+     * We break the callbacks here so that the following signal will not
+     * leave a window.
+     */
+    BreakCallBack(client->host, Fid, 0);
+
+    if (osdviced && osdvol 
+      && (osdvol->op_isOsdFile)(V_osdPolicy(volptr), V_id(volptr), 
+				&targetptr->disk, targetptr->vnodeNumber)) {
+        rx_SetLocalStatus(Call, 1);
+        FT_GetTimeOfDay(&StartTime, 0);
+        errorCode = (osdviced->op_legacyStoreData)(volptr, &targetptr, Fid, client, Call,
+                Pos, Length, FileLength);
+	rx_KeepAliveOff(Call);
+        if (errorCode)
+	    return errorCode;
+#if FS_STATS_DETAILED
+    	(*a_bytesToStoreP) = Length;
+    	(*a_bytesStoredP) = Length;
+#endif
+	goto Done;
+    }
+    /* Between here and 'Done:' we can be sure that it's not an OSD file! */
+
+    if (Pos == -1 || VN_GET_INO(targetptr) == 0) {
+	/* the inode should have been created in Alloc_NewVnode */
+	logHostAddr.s_addr = rxr_HostOf(rx_ConnectionOf(Call));
+	ViceLog(0,
+		("StoreData_RXStyle : Inode non-existent Fid = %u.%u.%u, inode = %llu, Pos %llu Host %s:%d\n",
+		 Fid->Volume, Fid->Vnode, Fid->Unique,
+		 (afs_uintmax_t) VN_GET_INO(targetptr), (afs_uintmax_t) Pos,
+		 inet_ntoa(logHostAddr), ntohs(rxr_PortOf(rx_ConnectionOf(Call)))));
+	return ENOENT;		/* is this proper error code? */
+    } else {
+	rx_KeepAliveOff(Call);
+	/*
+	 * See if the file has several links (from other volumes).  If it
+	 * does, then we have to make a copy before changing it to avoid
+	 *changing read-only clones of this dude
+	 */
+	ViceLog(25,
+		("StoreData_RXStyle : Opening inode %s\n",
+		 PrintInode(stmp, VN_GET_INO(targetptr))));
+	fdP = IH_OPEN(targetptr->handle);
+	if (fdP == NULL)
+	    return ENOENT;
+	if (GetLinkCountAndSize(volptr, fdP, &linkCount, &DataLength) < 0) {
+	    FDH_CLOSE(fdP);
+            VTakeOffline(volptr);
+            ViceLog(0, ("Volume of %u.%u.%u now offline, must be salvaged. StoreData GetLinkCount...\n",
+                    		volptr->hashid,
+		    		targetptr->vnodeNumber,
+		    		targetptr->disk.uniquifier));
+	    return EIO;
+	}
+        if (CheckLength(volptr, targetptr, DataLength)) {
+            FDH_CLOSE(fdP);
+            VTakeOffline(volptr);
+            ViceLog(0, ("Volume %u now offline, must be salvaged. StoreData CheckLength\n",
+		    volptr->hashid));
+            return VSALVAGE;
+        }
+
+	if (linkCount != 1) {
+	    afs_fsize_t size;
+	    ViceLog(25,
+		    ("StoreData_RXStyle : inode %s has more than onelink\n",
+		     PrintInode(stmp, VN_GET_INO(targetptr))));
+	    /* other volumes share this data, better copy it first */
+
+	    /* Adjust the disk block count by the creation of the new inode.
+	     * We call the special VDiskUsage so we don't adjust the volume's
+	     * quota since we don't want to penalyze the user for afs's internal
+	     * mechanisms (i.e. copy on write overhead.) Also the right size
+	     * of the disk will be recorded...
+	     */
+	    FDH_CLOSE(fdP);
+            VN_GET_LEN(size, targetptr);
+	    volptr->partition->flags &= ~PART_DONTUPDATE;
+	    VSetPartitionDiskUsage(volptr->partition);
+	    volptr->partition->flags |= PART_DONTUPDATE;
+	    if ((errorCode = VDiskUsage(volptr, nBlocks(size)))) {
+		volptr->partition->flags &= ~PART_DONTUPDATE;
+		return (errorCode);
+	    }
+
+	    ViceLog(25, ("StoreData : calling CopyOnWrite on  target dir\n"));
+	    if ((errorCode = CopyOnWrite(targetptr, volptr, 0, MAXFSIZE))) {
+		ViceLog(25, ("StoreData : CopyOnWrite failed\n"));
+		volptr->partition->flags &= ~PART_DONTUPDATE;
+		return (errorCode);
+	    }
+	    volptr->partition->flags &= ~PART_DONTUPDATE;
+	    VSetPartitionDiskUsage(volptr->partition);
+	    fdP = IH_OPEN(targetptr->handle);
+	    if (fdP == NULL) {
+		ViceLog(25,
+			("StoreData : Reopen after CopyOnWrite failed\n"));
+		return ENOENT;
+	    }
+	}
+	tinode = VN_GET_INO(targetptr);
+    }
+    if (!VALID_INO(tinode)) {
+        VTakeOffline(volptr);
+        ViceLog(0,("Volume of %u.%u.%u now offline, must be salvaged. StoreData VN_GET_INO\n",
+                   		volptr->hashid,
+		    		targetptr->vnodeNumber,
+		    		targetptr->disk.uniquifier));
+        return EIO;
+    }
+
+    /* compute new file length */
+    NewLength = DataLength;
+    if (FileLength < NewLength)
+	/* simulate truncate */
+	NewLength = FileLength;
+    TruncatedLength = NewLength;	/* remember length after possible ftruncate */
+    if (Pos + Length > NewLength)
+	NewLength = Pos + Length;	/* and write */
+
+    /* adjust the disk block count by the difference in the files */
+    {
+        afs_fsize_t targSize;
+        VN_GET_LEN(targSize, targetptr);
+        adjustSize = nBlocks(NewLength) - nBlocks(targSize);
+    }
+    if ((errorCode =
+         AdjustDiskUsage(volptr, adjustSize,
+                         adjustSize - SpareComp(volptr)))) {
+        FDH_CLOSE(fdP);
+        return (errorCode);
+    }
+
+    /* can signal cache manager to proceed from close now */
+    /* this bit means that the locks are set and protections are OK */
+    rx_SetLocalStatus(Call, 1);
+
+    FT_GetTimeOfDay(&StartTime, 0);
+
+    optSize = sendBufSize;
+    ViceLog(25,
+	    ("StoreData_RXStyle: Pos %llu, DataLength %llu, FileLength %llu, Length %llu\n",
+	     (afs_uintmax_t) Pos, (afs_uintmax_t) DataLength,
+	     (afs_uintmax_t) FileLength, (afs_uintmax_t) Length));
+
+    /* truncate the file if it needs it (ftruncate is slow even when its a noop) */
+    if (FileLength < DataLength)
+	FDH_TRUNC(fdP, FileLength);
+    bytesTransfered = 0;
+#ifndef HAVE_PIOV
+    tbuffer = AllocSendBuffer();
+#endif /* HAVE_PIOV */
+    /* if length == 0, the loop below isn't going to do anything, including
+     * extend the length of the inode, which it must do, since the file system
+     * assumes that the inode length == vnode's file length.  So, we extend
+     * the file length manually if need be.  Note that if file is bigger than
+     * Pos+(Length==0), we dont' have to do anything, and certainly shouldn't
+     * do what we're going to do below.
+     */
+    if (Length == 0 && Pos > TruncatedLength) {
+	/* Set the file's length; we've already done an lseek to the right
+	 * spot above.
+	 */
+	nBytes = FDH_PWRITE(fdP, &tlen, 1, Pos);
+	if (nBytes != 1) {
+	    errorCode = -1;
+	    goto done;
+        }
+	errorCode = FDH_TRUNC(fdP, Pos);
+    } else {
+	/* have some data to copy */
+#if FS_STATS_DETAILED
+	(*a_bytesToStoreP) = Length;
+#endif /* FS_STATS_DETAILED */
+	while (1) {
+	    int rlen;
+	    if (bytesTransfered >= Length) {
+		errorCode = 0;
+		break;
+	    }
+	    tlen = Length - bytesTransfered;	/* how much more to do */
+	    if (tlen > optSize)
+		rlen = optSize;	/* bound by buffer size */
+	    else
+		rlen = (int)tlen;
+#ifndef HAVE_PIOV
+	    errorCode = rx_Read(Call, tbuffer, rlen);
+#else /* HAVE_PIOV */
+	    errorCode = rx_Readv(Call, tiov, &tnio, RX_MAXIOVECS, rlen);
+#endif /* HAVE_PIOV */
+	    if (errorCode <= 0) {
+		errorCode = -32;
+		break;
+	    }
+#if FS_STATS_DETAILED
+	    (*a_bytesStoredP) += errorCode;
+#endif /* FS_STATS_DETAILED */
+	    total_bytes_rcvd += errorCode;
+	    rlen = errorCode;
+#ifndef HAVE_PIOV
+	    nBytes = FDH_PWRITE(fdP, tbuffer, rlen, Pos);
+#else /* HAVE_PIOV */
+	    nBytes = FDH_PWRITEV(fdP, tiov, tnio, Pos);
+#endif /* HAVE_PIOV */
+	    if (nBytes != rlen) {
+		errorCode = VDISKFULL;
+		break;
+	    }
+	    bytesTransfered += rlen;
+	    Pos += rlen;
+	}
+    }
+  done:
+#ifndef HAVE_PIOV
+    FreeSendBuffer((struct afs_buffer *)tbuffer);
+#endif /* HAVE_PIOV */
+    if (sync && fdP) {
+	FDH_SYNC(fdP);
+    }
+    if (errorCode) {
+	Error tmp_errorCode = 0;
+	afs_sfsize_t nfSize = FDH_SIZE(fdP);
+	osi_Assert(nfSize >= 0);
+	/* something went wrong: adjust size and return */
+	VN_SET_LEN(targetptr, nfSize);	/* set new file size. */
+	/* changed_newTime is tested in StoreData to detemine if we
+	 * need to update the target vnode.
+	 */
+	targetptr->changed_newTime = 1;
+	FDH_CLOSE(fdP);
+	/* set disk usage to be correct */
+	VAdjustDiskUsage(&tmp_errorCode, volptr,
+			 (afs_sfsize_t) (nBlocks(nfSize) -
+					 nBlocks(NewLength)), 0);
+	/* 
+	 * Don't overwrite errorCode with tmp_errorCode !
+	 */
+	return errorCode;
+    }
+    FDH_CLOSE(fdP);
+
+    FT_GetTimeOfDay(&StopTime, 0);
+
+    VN_SET_LEN(targetptr, NewLength);
+
+Done:
+    /* Update all StoreData related stats */
+    FS_LOCK;
+    if (AFSCallStats.TotalStoredBytes > 2000000000)	/* reset if over 2 billion */
+	AFSCallStats.TotalStoredBytes = AFSCallStats.AccumStoreTime = 0;
+    AFSCallStats.StoreSize1++;	/* Piggybacked data */
+    {
+	afs_fsize_t targLen;
+	VN_GET_LEN(targLen, targetptr);
+	if (targLen < SIZE2)
+	    AFSCallStats.StoreSize2++;
+	else if (targLen < SIZE3)
+	    AFSCallStats.StoreSize3++;
+	else if (targLen < SIZE4)
+	    AFSCallStats.StoreSize4++;
+	else
+	    AFSCallStats.StoreSize5++;
+    }
+    FS_UNLOCK;
+    return (errorCode);
+
+}				/*StoreData_RXStyle */
+
 afs_int32 
 SRXAFS_GetPath(struct rx_call *acall, AFSFid *Fid, struct async *a)
 {
@@ -8765,6 +9062,7 @@ bad:
     SETTHREADINACTIVE();
     return errorCode;
 }
+
 afs_int32
 SRXAFS_StartAsyncFetch2(struct rx_call *acall, AFSFid *Fid, struct RWparm *p,
 			struct async *a, afs_uint64 *transid, afs_uint32 *expires, 
@@ -8957,8 +9255,7 @@ SRXAFS_StartAsyncStore(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
 		    volptr->partition->flags &= ~PART_DONTUPDATE;
 		    goto bad;
 		}
-		if ((errorCode = PartialCopyOnWrite(targetptr, volptr, offset,
-						    length, FileLength))) {
+		if ((errorCode = CopyOnWrite(targetptr, volptr, 0, MAXFSIZE))) {
 		    ViceLog(0,("StartAsyncStore: CopyOnWrite failed for %u.%u.%u\n",
                     		V_id(volptr), targetptr->vnodeNumber,
                     		targetptr->disk.uniquifier));
@@ -9147,419 +9444,6 @@ Bad_EndAsyncStore:
     SETTHREADINACTIVE();
     return errorCode;
 }
-
-static int
-GetLinkCountAndSize(Volume * vp, FdHandle_t * fdP, int *lc,
-		    afs_sfsize_t * size)
-{
-    struct afs_stat status;
-#ifdef AFS_NAMEI_ENV
-    FdHandle_t *lhp;
-    lhp = IH_OPEN(V_linkHandle(vp));
-    if (!lhp)
-	return EIO;
-    *lc = namei_GetLinkCount(lhp, fdP->fd_ih->ih_ino, 0, 0, 0);
-    FDH_CLOSE(lhp);
-    if (*lc < 0)
-	return -1;
-    if (afs_fstat(fdP->fd_fd, &status) < 0) {
-	return -1;
-    }
-    *size = status.st_size;
-    if (status.st_nlink > 1) 		/* Possible after split volume */
-	(*lc)++;
-    return (*size == -1) ? -1 : 0;
-#else
-
-    if (afs_fstat(fdP->fd_fd, &status) < 0) {
-	return -1;
-    }
-
-    *lc = GetLinkCount(vp, &status);
-    *size = status.st_size;
-    return 0;
-#endif
-}
-
-/*
- * StoreData_RXStyle
- *
- * Purpose:
- *	Implement a client's data store using Rx.
- *
- * Arguments:
- *	volptr		: Ptr to the given volume's info.
- *	targetptr	: Pointer to the vnode involved.
- *	Call		: Ptr to the Rx call involved.
- *	Pos		: Offset within the file.
- *	Len		: Length in bytes to store; this value is bogus!
- * if FS_STATS_DETAILED
- *	a_bytesToStoreP	: Set to the number of bytes to be stored to
- *			  the File Server.
- *	a_bytesStoredP	: Set to the actual number of bytes stored to
- *			  the File Server.
- * endif
- */
-afs_int32
-StoreData_RXStyle(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
-		  struct client * client, struct rx_call * Call,
-		  afs_fsize_t Pos, afs_fsize_t Length, afs_fsize_t FileLength,
-		  int sync,
-#if FS_STATS_DETAILED
-		  afs_sfsize_t * a_bytesToStoreP,
-		  afs_sfsize_t * a_bytesStoredP
-#endif				/* FS_STATS_DETAILED */
-    )
-{
-    afs_sfsize_t bytesTransfered;	/* number of bytes actually transfered */
-    struct timeval StartTime, StopTime;	/* Used to measure how long the store takes */
-    Error errorCode = 0;		/* Returned error code to caller */
-#ifndef HAVE_PIOV
-    char *tbuffer;	/* data copying buffer */
-#else /* HAVE_PIOV */
-    struct iovec tiov[RX_MAXIOVECS];	/* no data copying with iovec */
-    int tnio;			/* temp for iovec size */
-#endif /* HAVE_PIOV */
-    afs_sfsize_t tlen;		/* temp for xfr length */
-    Inode tinode;		/* inode for I/O */
-    afs_int32 optSize;		/* optimal transfer size */
-    afs_sfsize_t DataLength = 0;	/* size of inode */
-    afs_sfsize_t TruncatedLength;	/* size after ftruncate */
-    afs_fsize_t NewLength;	/* size after this store completes */
-    afs_sfsize_t adjustSize;	/* bytes to call VAdjust... with */
-    int linkCount = 0;		/* link count on inode */
-    FdHandle_t *fdP = NULL, *origfdP = NULL;
-    struct in_addr logHostAddr;	/* host ip holder for inet_ntoa */
-    afs_fsize_t targSize;	/* original size in vnode */
-    ssize_t nBytes;
-    afs_ino_str_t stmp;
-
-#if FS_STATS_DETAILED
-    /*
-     * Initialize the byte count arguments.
-     */
-    (*a_bytesToStoreP) = 0;
-    (*a_bytesStoredP) = 0;
-#endif /* FS_STATS_DETAILED */
-
-    /*
-     * We break the callbacks here so that the following signal will not
-     * leave a window.
-     */
-    BreakCallBack(client->host, Fid, 0);
-
-    VN_GET_LEN(targSize, targetptr);
-
-    if (osdviced && osdvol 
-      && (osdvol->op_isOsdFile)(V_osdPolicy(volptr), V_id(volptr), 
-				&targetptr->disk, targetptr->vnodeNumber)) {
-        rx_SetLocalStatus(Call, 1);
-        FT_GetTimeOfDay(&StartTime, 0);
-        errorCode = (osdviced->op_legacyStoreData)(volptr, &targetptr, Fid, client, Call,
-                Pos, Length, FileLength);
-	rx_KeepAliveOff(Call);
-        if (errorCode)
-	    return errorCode;
-#if FS_STATS_DETAILED
-    	(*a_bytesToStoreP) = Length;
-    	(*a_bytesStoredP) = Length;
-#endif
-	goto Done;
-    } else if (Pos == -1 || VN_GET_INO(targetptr) == 0) {
-	/* the inode should have been created in Alloc_NewVnode */
-	logHostAddr.s_addr = rx_HostOf(rx_PeerOf(rx_ConnectionOf(Call)));
-	ViceLog(0,
-		("StoreData : Inode non-existent Fid = %u.%u.%u, inode = %llu, Pos %llu Host %s\n",
-		 Fid->Volume, Fid->Vnode, Fid->Unique,
-		 (afs_uintmax_t) VN_GET_INO(targetptr), (afs_uintmax_t) Pos,
-		 inet_ntoa(logHostAddr)));
-	return ENOENT;		/* is this proper error code? */
-    } else {
-	rx_KeepAliveOff(Call);
-	afs_fsize_t size;
-	/*
-	 * See if the file has several links (from other volumes).  If it
-	 * does, then we have to make a copy before changing it to avoid
-	 *changing read-only clones of this dude
-	 */
-	ViceLog(25,
-		("StoreData_RXStyle : Opening inode %s\n",
-		 PrintInode(stmp, VN_GET_INO(targetptr))));
-	fdP = IH_OPEN(targetptr->handle);
-	if (fdP == NULL)
-	    return ENOENT;
-	if (GetLinkCountAndSize(volptr, fdP, &linkCount, &DataLength) < 0) {
-	    FDH_CLOSE(fdP);
-            VTakeOffline(volptr);
-            ViceLog(0, ("Volume of %u.%u.%u now offline, must be salvaged. StoreData GetLinkCount...\n",
-                    		volptr->hashid,
-		    		targetptr->vnodeNumber,
-		    		targetptr->disk.uniquifier));
-	    return EIO;
-	}
-	VN_GET_LEN(size, targetptr);
-#if 0
-	if (size != DataLength) { /* vnode contains wrong file length */
-#ifdef AFS_ENABLE_VICEP_ACCESS
-	    if (Length == 0) {	 	/* StoreMini after vicep access */
-	        ViceLog(1,("StoreData (%u.%u.%u.%u): %u.%u.%u  grew from %llu to %llu\n",
-			(ntohl(Call->conn->peer->host) >> 24) & 0xff,
-			(ntohl(Call->conn->peer->host) >> 16) & 0xff,
-			(ntohl(Call->conn->peer->host) >> 8) & 0xff,
-			ntohl(Call->conn->peer->host) & 0xff,
-			V_id(volptr), 
-			targetptr->vnodeNumber, 
-			targetptr->disk.uniquifier,
-			size, DataLength));
-	    } else
-#endif
-	        ViceLog(0,("StoreData (%u.%u.%u.%u): %u.%u.%u  length corrected from %llu to %llu Length %llu\n",
-			(ntohl(Call->conn->peer->host) >> 24) & 0xff,
-			(ntohl(Call->conn->peer->host) >> 16) & 0xff,
-			(ntohl(Call->conn->peer->host) >> 8) & 0xff,
-			ntohl(Call->conn->peer->host) & 0xff,
-			V_id(volptr), 
-			targetptr->vnodeNumber, 
-			targetptr->disk.uniquifier,
-			size, DataLength, Length));
-	    VN_SET_LEN(targetptr, DataLength);
-	    targetptr->changed_newTime = 1;
-	}
-#endif
-        if (CheckLength(volptr, targetptr, DataLength)) {
-            FDH_CLOSE(fdP);
-            VTakeOffline(volptr);
-            ViceLog(0, ("Volume %u now offline, must be salvaged. StoreData CheckLength\n",
-		    volptr->hashid));
-            return VSALVAGE;
-        }
-
-	if (linkCount != 1) {
-	    ViceLog(25,
-		    ("StoreData_RXStyle : inode %s has more than onelink\n",
-		     PrintInode(stmp, VN_GET_INO(targetptr))));
-	    /* other volumes share this data, better copy it first */
-
-	    /* Adjust the disk block count by the creation of the new inode.
-	     * We call the special VDiskUsage so we don't adjust the volume's
-	     * quota since we don't want to penalyze the user for afs's internal
-	     * mechanisms (i.e. copy on write overhead.) Also the right size
-	     * of the disk will be recorded...
-	     */
-	    origfdP = fdP;
-	    volptr->partition->flags &= ~PART_DONTUPDATE;
-	    VSetPartitionDiskUsage(volptr->partition);
-	    volptr->partition->flags |= PART_DONTUPDATE;
-	    if ((errorCode = VDiskUsage(volptr, nBlocks(size)))) {
-		volptr->partition->flags &= ~PART_DONTUPDATE;
-		ViceLog(25, ("StoreData: VDiskUsage for %d blocks returns %d\n",
-				nBlocks(size), errorCode));
-		return (errorCode);
-	    }
-
-	    ViceLog(25, ("StoreData : calling CopyOnWrite on  target dir\n"));
-	    if ((errorCode = PartialCopyOnWrite(targetptr, volptr, Pos, Length, 
-			FileLength))) {
-		ViceLog(25, ("StoreData : CopyOnWrite failed\n"));
-		volptr->partition->flags &= ~PART_DONTUPDATE;
-		return (errorCode);
-	    }
-	    volptr->partition->flags &= ~PART_DONTUPDATE;
-	    VSetPartitionDiskUsage(volptr->partition);
-	    fdP = IH_OPEN(targetptr->handle);
-	    if (fdP == NULL) {
-		ViceLog(25,
-			("StoreData : Reopen after CopyOnWrite failed\n"));
-		FDH_REALLYCLOSE(origfdP);
-		return ENOENT;
-	    }
-	}
-	tinode = VN_GET_INO(targetptr);
-        if (!VALID_INO(tinode)) {
-            VTakeOffline(volptr);
-            ViceLog(0,("Volume of %u.%u.%u now offline, must be salvaged. StoreData VN_GET_INO\n",
-                    		volptr->hashid,
-		    		targetptr->vnodeNumber,
-		    		targetptr->disk.uniquifier));
-            return EIO;
-        }
-    }
-
-    /* compute new file length */
-    NewLength = DataLength;
-    if (FileLength < NewLength)
-	/* simulate truncate */
-	NewLength = FileLength;
-    TruncatedLength = NewLength;	/* remember length after possible ftruncate */
-    if (Pos + Length > NewLength)
-	NewLength = Pos + Length;	
-
-    /* adjust the disk block count by the difference in the files */
-    {
-        afs_fsize_t targSize;
-        VN_GET_LEN(targSize, targetptr);
-        adjustSize = nBlocks(NewLength) - nBlocks(targSize);
-    }
-    if ((errorCode =
-         AdjustDiskUsage(volptr, adjustSize,
-                         adjustSize - SpareComp(volptr)))) {
-        FDH_CLOSE(fdP);
-        return (errorCode);
-    }
-
-    /* can signal cache manager to proceed from close now */
-    /* this bit means that the locks are set and protections are OK */
-    rx_SetLocalStatus(Call, 1);
-
-    FT_GetTimeOfDay(&StartTime, 0);
-
-    optSize = sendBufSize;
-    ViceLog(25,
-	    ("StoreData_RXStyle: Pos %llu, DataLength %llu, FileLength %llu, Length %llu\n",
-	     (afs_uintmax_t) Pos, (afs_uintmax_t) DataLength,
-	     (afs_uintmax_t) FileLength, (afs_uintmax_t) Length));
-
-    /* truncate the file if it needs it (ftruncate is slow even when its a noop) */
-    if (FileLength < DataLength)
-	FDH_TRUNC(fdP, FileLength);
-    bytesTransfered = 0;
-#ifndef HAVE_PIOV
-    tbuffer = AllocSendBuffer();
-#endif /* HAVE_PIOV */
-    /* if length == 0, the loop below isn't going to do anything, including
-     * extend the length of the inode, which it must do, since the file system
-     * assumes that the inode length == vnode's file length.  So, we extend
-     * the file length manually if need be.  Note that if file is bigger than
-     * Pos+(Length==0), we dont' have to do anything, and certainly shouldn't
-     * do what we're going to do below.
-     */
-    if (Length == 0 && Pos > TruncatedLength) {
-	int osdfile = 0;
-	/* Set the file's length; we've already done an lseek to the right
-	 * spot above.
-	 */
-	if (osdvol)
-	    osdfile = (osdvol->op_isOsdFile)(V_osdPolicy(volptr), V_id(volptr),
-                                               &targetptr->disk,
-                                               targetptr->vnodeNumber);
-        if (!osdvol || !osdfile) {
-	    afs_uint64 finalLength;
-	    nBytes = FDH_PWRITE(fdP, &tlen, 1, Pos);
-	    if (nBytes != 1) {
-		errorCode = -1;
-	        goto done;
-	    }
-	    ViceLog(25,
-		("StoreData_RXStyle: length should now be %llu\n", Pos + 1));
-	    errorCode = FDH_TRUNC(fdP, Pos);
-	    GetLinkCountAndSize(volptr, fdP, &linkCount, &finalLength);
-	    ViceLog(25,
-		("StoreData_RXStyle: and now %llu and is %llu\n", Pos, finalLength));
-        }
-    } else {
-	/* have some data to copy */
-#if FS_STATS_DETAILED
-	(*a_bytesToStoreP) = Length;
-#endif /* FS_STATS_DETAILED */
-	while (1) {
-	    int rlen;
-	    if (bytesTransfered >= Length) {
-		errorCode = 0;
-		break;
-	    }
-	    tlen = Length - bytesTransfered;	/* how much more to do */
-	    if (tlen > optSize)
-		rlen = optSize;	/* bound by buffer size */
-	    else
-		rlen = (int)tlen;
-#ifndef HAVE_PIOV
-	    errorCode = rx_Read(Call, tbuffer, rlen);
-#else /* HAVE_PIOV */
-	    errorCode = rx_Readv(Call, tiov, &tnio, RX_MAXIOVECS, rlen);
-#endif /* HAVE_PIOV */
-	    if (errorCode <= 0) {
-		errorCode = -32;
-		break;
-	    }
-#if FS_STATS_DETAILED
-	    (*a_bytesStoredP) += errorCode;
-#endif /* FS_STATS_DETAILED */
-	    total_bytes_rcvd += errorCode;
-	    rlen = errorCode;
-#ifndef HAVE_PIOV
-	    nBytes = FDH_PWRITE(fdP, tbuffer, rlen, Pos);
-#else /* HAVE_PIOV */
-	    nBytes = FDH_PWRITEV(fdP, tiov, tnio, Pos);
-#endif /* HAVE_PIOV */
-	    if (nBytes != rlen) {
-		errorCode = VDISKFULL;
-		break;
-	    }
-	    bytesTransfered += rlen;
-	    Pos += rlen;
-	}
-	if (bytesTransfered < Length && errorCode == -32 && origfdP) {
-	    CopyOnWrite2(origfdP, fdP, Pos + bytesTransfered, 
-				Length - bytesTransfered);
-	}
-    }
-  done:
-#ifndef HAVE_PIOV
-    FreeSendBuffer((struct afs_buffer *)tbuffer);
-#endif /* HAVE_PIOV */
-    if (origfdP)
-        FDH_REALLYCLOSE(origfdP);
-    if (sync && fdP) {
-	FDH_SYNC(fdP);
-    }
-    if (errorCode) {
-	Error tmp_errorCode = 0;
-	afs_sfsize_t nfSize = FDH_SIZE(fdP);
-	osi_Assert(nfSize >= 0);
-	/* something went wrong: adjust size and return */
-	VN_SET_LEN(targetptr, nfSize);	/* set new file size. */
-	/* changed_newTime is tested in StoreData to detemine if we
-	 * need to update the target vnode.
-	 */
-	targetptr->changed_newTime = 1;
-	FDH_CLOSE(fdP);
-	/* set disk usage to be correct */
-	VAdjustDiskUsage(&tmp_errorCode, volptr,
-			 (afs_sfsize_t) (nBlocks(nfSize) -
-					 nBlocks(NewLength)), 0);
-	/* 
-	 * Don't overwrite errorCode with tmp_errorCode !
-	 */
-	return errorCode;
-    }
-    FDH_CLOSE(fdP);
-
-    FT_GetTimeOfDay(&StopTime, 0);
-
-    VN_SET_LEN(targetptr, NewLength);
-
-Done:
-    /* Update all StoreData related stats */
-    FS_LOCK;
-    if (AFSCallStats.TotalStoredBytes > 2000000000)	/* reset if over 2 billion */
-	AFSCallStats.TotalStoredBytes = AFSCallStats.AccumStoreTime = 0;
-    AFSCallStats.StoreSize1++;	/* Piggybacked data */
-    {
-	afs_fsize_t targLen;
-	VN_GET_LEN(targLen, targetptr);
-	if (targLen < SIZE2)
-	    AFSCallStats.StoreSize2++;
-	else if (targLen < SIZE3)
-	    AFSCallStats.StoreSize3++;
-	else if (targLen < SIZE4)
-	    AFSCallStats.StoreSize4++;
-	else
-	    AFSCallStats.StoreSize5++;
-    }
-    FS_UNLOCK;
-    return (errorCode);
-
-}				/*StoreData_RXStyle */
 
 afs_int32
 SRXAFS_Threads(struct rx_call *acall, struct activecallList *list)
