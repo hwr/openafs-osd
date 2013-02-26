@@ -4981,7 +4981,9 @@ DECL_PIOCTL(PFsCmd)
 		RX_AFS_GLOCK();
 		if (!code && Inputs->command == CMD_REPLACE_OSD)
                     tvc->f.states &= ~CStatd;
+#if 0		/* don't know why this crashes at afs_conn.c:541 (refcnt<0) */
 		afs_PutConn(tc, rxconn, SHARED_LOCK);
+#endif
 	    } else
 		code = -1;
 	} while (afs_Analyze
