@@ -1290,10 +1290,10 @@ printf("afs_dentry_open failed with %ld for %s retrying with current_cred\n",
 	}
 #endif /* defined(HAVE_LINUX_PATH_LOOKUP) */
 #else /* defined(STRUCT_TASK_STRUCT_HAS_CRED) */
-	fp = afs_dentry_open(dentry, nd.path.mnt, O_LARGEFILE | O_RDWR);
+	fp = dentry_open(dentry, nd.path.mnt, O_LARGEFILE | O_RDWR);
 #endif /* defined(STRUCT_TASK_STRUCT_HAS_CRED) */
 #else /* LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,27) */
-	fp = afs_dentry_open(dentry, nd.mnt, O_LARGEFILE | O_RDWR);
+	fp = dentry_open(dentry, nd.mnt, O_LARGEFILE | O_RDWR);
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,27) */
 #endif /* NAMEI_DATA_HAS_NO_DENTRY */
 #if !defined(HAVE_LINUX_PATH_LOOKUP)
@@ -1309,7 +1309,7 @@ printf("afs_dentry_open failed with %ld for %s retrying with current_cred\n",
     current_fsuid() = fsuid;
 #endif
     if (!code && IS_ERR(fp)) {
-	afs_warn("afs_dentry_open returns %ld for %s\n", 
+	afs_warn("dentry_open returns %ld for %s\n", 
 		(long)fp, path);
 	code = ENOENT;
     } 
