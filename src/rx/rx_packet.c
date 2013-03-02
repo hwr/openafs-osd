@@ -1904,12 +1904,12 @@ rxi_ReceiveDebugPacket(struct rx_packet *ap, osi_socket asocket,
 			tconn.type = tc->type;
 			tconn.securityIndex = tc->securityIndex;
 			if (tc->type == RX_SERVER_CONNECTION) {
-			    tconn.sparel[0] = tc->service->serviceId;
-			    tconn.sparel[1] = tc->service->nRequestsRunning;
-			    tconn.sparel[2] = tc->service->maxProcs;
-			    tconn.sparel[3] = tc->service->minProcs;
+			    tconn.sparel[0] = htonl(tc->service->serviceId);
+			    tconn.sparel[1] = htonl(tc->service->nRequestsRunning);
+			    tconn.sparel[2] = htonl(tc->service->maxProcs);
+			    tconn.sparel[3] = htonl(tc->service->minProcs);
 			} else
-			    tconn.sparel[0] = tc->serviceId;
+			    tconn.sparel[0] = htonl(tc->serviceId);
 			if (tc->securityObject) {
 			    RXS_GetStats(tc->securityObject, tc,
 					 &tconn.secStats);
