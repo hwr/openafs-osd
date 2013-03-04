@@ -596,7 +596,7 @@
 #undef HAVE_VFS_DQRWLOCK
 
 /* define if the function vn_renamepath exists */
-/* #undef HAVE_VN_RENAMEPATH */
+#undef HAVE_VN_RENAMEPATH
 
 /* Define to 1 if you have the `vsnprintf' function. */
 #undef HAVE_VSNPRINTF
@@ -693,6 +693,9 @@
 
 /* Define to the one symbol short name of this package. */
 #undef PACKAGE_TARNAME
+
+/* Define to the home page for this package. */
+#undef PACKAGE_URL
 
 /* Define to the version of this package. */
 #undef PACKAGE_VERSION
