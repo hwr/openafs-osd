@@ -3146,9 +3146,13 @@ traverse_osd(struct rx_call *call, afs_uint64 part_id, afs_int32 type,
     myIH.ih_ino = 0;
     myIH.ih_ops = &ih_namei_ops;
     xdrrx_create(&xdr, call, XDR_ENCODE);
-    if (!(flag & INVENTORY_ONLY_SPECIAL))
-        namei_HandleToName(&name, &myIH); /* to fill myIH.ih_ops */
     strcat(path1, "/AFSIDat");
+    if (!(flag & INVENTORY_ONLY_SPECIAL)) {
+        namei_HandleToName(&name, &myIH); /* to fill myIH.ih_ops */
+	if (name.n_path[0] != '/') { /* If this is a HPSS path */
+	    sprintf(path1, "%s", "AFSIDat");
+	}
+    }
     if (volume) {
 	sprintf(path3, "%s/%s/%s", path1, name.n_voldir1, name.n_voldir2);
         dirp3 = IH_OPENDIR(path3, &myIH);
