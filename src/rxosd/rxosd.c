@@ -59,7 +59,7 @@
 #include <signal.h>
 #include <dirent.h>
 #include <utime.h>
-#if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
+#if defined(AFS_HAVE_STATVFS) || defined(AFS_HAVE_STATVFS64)
 #include <sys/statvfs.h>
 #endif /* AFS_HAVE_STATVFS */
 #ifdef AFS_SUN5_ENV
@@ -1152,7 +1152,7 @@ FiveMinuteCheckLWP()
 		ViceLog(0,("FiveMinuteCheckLWP: OSDDB_OsdList failed with %d\n",
 			code));
 	    } else {
-#if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
+#if defined(AFS_HAVE_STATVFS)  || defined(AFS_HAVE_STATVFS64)
     		struct afs_statvfs statbuf;
 #else
     		struct afs_statfs statbuf;
@@ -1207,7 +1207,7 @@ FiveMinuteCheckLWP()
 			    afs_uint32 bsize; 
 			    afs_uint64 blocks, blocksFree, files, filesFree;
 			    int fd;
-#if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
+#if defined(AFS_HAVE_STATVFS) || defined(AFS_HAVE_STATVFS64)
     			    bsize = statbuf.f_frsize;
 #else
     			    bsize = statbuf.f_bsize;
