@@ -1200,8 +1200,8 @@ FiveMinuteCheckLWP()
 #endif
 			}
 			if (code) {		
-			    ViceLog(0,("FiveMinuteCheckLWP: statfs for %s failed with errno=%d\n",
-						p, errno));
+			    ViceLog(0,("FiveMinuteCheckLWP: statfs for %s failed with code=%d, errno=%d\n",
+						p, code, errno));
 			} else {
 			    char osdIdFile[32];
 			    afs_uint32 bsize; 
