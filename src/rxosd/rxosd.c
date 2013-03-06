@@ -1187,13 +1187,13 @@ FiveMinuteCheckLWP()
 			code = CheckMount(partname);
 			if (!code) { 
                             if (hsmDev == e->t.etype_u.osd.lun)
-#if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
+#if defined(AFS_HAVE_STATVFS) || defined(AFS_HAVE_STATVFS64)
                                 code = (ih_hsm_opsPtr->statvfs)(hsmPath, &statbuf);
 #else
                                 code = (ih_hsm_opsPtr->statfs)(hsmPath, &statbuf);
 #endif
                             else
-#if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
+#if defined(AFS_HAVE_STATVFS) || defined(AFS_HAVE_STATVFS64)
     			        code = afs_statvfs(p, &statbuf);
 #else
     			        code = afs_statfs(p, &statbuf);
