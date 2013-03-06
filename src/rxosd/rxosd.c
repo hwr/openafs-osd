@@ -118,11 +118,11 @@
 #define afs_open        open64
 #define afs_fopen       fopen64
 #ifndef AFS_NT40_ENV
-#if AFS_HAVE_STATVFS64
+#if defined(AFS_HAVE_STATVFS64)
 # define afs_statvfs    statvfs64
-#elif AFS_HAVE_STATFS64
+#elif defined(AFS_HAVE_STATFS64)
 #  define afs_statfs    statfs64
-#elif AFS_HAVE_STATVFS
+#elif defined(AFS_HAVE_STATVFS)
 #   define afs_statvfs  statvfs
 #else
 #   define afs_statfs   statfs
