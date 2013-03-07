@@ -393,13 +393,8 @@ extern int ih_condsync(IHandle_t * ihP);
 #define OS_PREAD(FD, B, S, O) nt_pread(FD, B, S, O)
 #define OS_PWRITE(FD, B, S, O) nt_pwrite(FD, B, S, O)
 #else
-#if defined(O_LARGEFILE) || defined(AFS_AIX53_ENV)
 #define OS_PREAD(FD, B, S, O) pread64(FD, B, S, O)
 #define OS_PWRITE(FD, B, S, O) pwrite64(FD, B, S, O)
-#else /* !O_LARGEFILE */
-#define OS_PREAD(FD, B, S, O) pread(FD, B, S, O)
-#define OS_PWRITE(FD, B, S, O) pwrite(FD, B, S, O)
-#endif /* !O_LARGEFILE */
 #endif /* AFS_NT40_ENV */
 #else /* !HAVE_PIO */
 extern ssize_t ih_pread(int fd, void * buf, size_t count, afs_foff_t offset);
@@ -462,32 +457,19 @@ extern afs_sfsize_t IH_IREAD(IHandle_t * H, afs_foff_t O, void *B,
 			     afs_fsize_t S);
 extern afs_sfsize_t IH_IWRITE(IHandle_t * H, afs_foff_t O, void *B,
 			      afs_fsize_t S);
-#ifdef O_LARGEFILE
 #define OFFT off64_t
-#else
-#define OFFT off_t
-#endif
 
 extern OFFT OS_SEEK(int FD, OFFT O, int F);
 extern int OS_TRUNC(int FD, OFFT L);
 #endif /*S_SPLINT_S */
 
-#ifdef O_LARGEFILE
 #define OS_OPEN(F, M, P) open64(F, M, P)
-#else /* !O_LARGEFILE */
-#define OS_OPEN(F, M, P) open(F, M, P)
-#endif /* !O_LARGEFILE */
 #define OS_CLOSE(FD) close(FD)
 
 #define OS_READ(FD, B, S) read(FD, B, S)
 #define OS_WRITE(FD, B, S) write(FD, B, S)
-#ifdef O_LARGEFILE
 #define OS_SEEK(FD, O, F) lseek64(FD, (off64_t) (O), F)
 #define OS_TRUNC(FD, L) ftruncate64(FD, (off64_t) (L))
-#else /* !O_LARGEFILE */
-#define OS_SEEK(FD, O, F) lseek(FD, (off_t) (O), F)
-#define OS_TRUNC(FD, L) ftruncate(FD, (off_t) (L))
-#endif /* !O_LARGEFILE */
 
 #define OS_SYNC(FD) fsync(FD)
 
@@ -512,24 +494,15 @@ extern Inode ih_icreate(IHandle_t * ih, int dev, char *part, Inode nI, int p1,
 #ifdef AFS_LINUX22_ENV
 #define OS_IOPEN(H) -1
 #else
-#ifdef O_LARGEFILE
 #define OS_IOPEN(H) (IOPEN((H)->ih_dev, (H)->ih_ino, O_RDWR|O_LARGEFILE))
-#else
-#define OS_IOPEN(H) (IOPEN((H)->ih_dev, (H)->ih_ino, O_RDWR))
-#endif
 #endif
 #define OS_OPEN(F, M, P) open(F, M, P)
 #define OS_CLOSE(FD) close(FD)
 
 #define OS_READ(FD, B, S) read(FD, B, S)
 #define OS_WRITE(FD, B, S) write(FD, B, S)
-#ifdef O_LARGEFILE
 #define OS_SEEK(FD, O, F) lseek64(FD, (off64_t) (O), F)
 #define OS_TRUNC(FD, L) ftruncate64(FD, (off64_t) (L))
-#else /* !O_LARGEFILE */
-#define OS_SEEK(FD, O, F) lseek(FD, (off_t) (O), F)
-#define OS_TRUNC(FD, L) ftruncate(FD, (off_t) (L))
-#endif /* !O_LARGEFILE */
 
 #define OS_SYNC(FD) fsync(FD)
 

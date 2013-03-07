@@ -17,7 +17,6 @@
 #include <stdlib.h>
 
 /*@+fcnmacros +macrofcndecl@*/
-#ifdef O_LARGEFILE
 #ifdef S_SPLINT_S
 #endif /*S_SPLINT_S */
 #define afs_stat		stat64
@@ -33,19 +32,6 @@
 #else
 #   define afs_statfs   statfs
 #endif /* !AFS_HAVE_STATVFS64 */
-#else /* !O_LARGEFILE */
-#ifdef S_SPLINT_S
-#endif /*S_SPLINT_S */
-#define afs_stat		stat
-#define afs_fstat		fstat
-#define afs_open		open
-#define afs_fopen		fopen
-#ifdef AFS_HAVE_STATVFS
-#define afs_statvfs     statvfs
-#else /* !AFS_HAVE_STATVFS */
-#define afs_statfs      statfs
-#endif /* !AFS_HAVE_STATVFS */
-#endif /* !O_LARGEFILE */
 /*@=fcnmacros =macrofcndecl@*/
 
 #include <unistd.h>

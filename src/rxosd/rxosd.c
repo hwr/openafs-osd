@@ -112,8 +112,6 @@
 #endif
 #endif
 
-#ifdef O_LARGEFILE
-
 #define afs_stat        stat64
 #define afs_open        open64
 #define afs_fopen       fopen64
@@ -128,21 +126,6 @@
 #   define afs_statfs   statfs
 #endif /* !AFS_HAVE_STATVFS64 */
 #endif /* !AFS_NT40_ENV */
-
-#else /* !O_LARGEFILE */
-
-#define afs_stat        stat
-#define afs_open        open
-#define afs_fopen       fopen
-#ifndef AFS_NT40_ENV
-#ifdef AFS_HAVE_STATVFS
-#define afs_statvfs     statvfs
-#else /* !AFS_HAVE_STATVFS */
-#define afs_statfs      statfs
-#endif /* !AFS_HAVE_STATVFS */
-#endif /* !AFS_NT40_ENV */
-
-#endif /* !O_LARGEFILE */
 
 #include <afs/stds.h>
 #include <rx/xdr.h>
@@ -216,7 +199,6 @@ pthread_mutex_t conn_glock_mutex;
 #define CONN_UNLOCK MUTEX_EXIT(&conn_glock_mutex)
 
 /*@+fcnmacros +macrofcndecl@*/
-#ifdef O_LARGEFILE
 #ifdef S_SPLINT_S
 extern off64_t afs_lseek(int FD, off64_t O, int F);
 #endif /*S_SPLINT_S */
@@ -225,16 +207,6 @@ extern off64_t afs_lseek(int FD, off64_t O, int F);
 #define afs_fstat               fstat64
 #define afs_open                open64
 #define afs_fopen               fopen64
-#else /* !O_LARGEFILE */
-#ifdef S_SPLINT_S
-extern off_t afs_lseek(int FD, off_t O, int F);
-#endif /*S_SPLINT_S */
-#define afs_lseek(FD, O, F)     lseek(FD, (off_t)(O), F)
-#define afs_stat                stat
-#define afs_fstat               fstat
-#define afs_open                open
-#define afs_fopen               fopen
-#endif /* !O_LARGEFILE */
 /*@=fcnmacros =macrofcndecl@*/
 
 extern Inode namei_icreate_open(IHandle_t * lh, char *part, afs_uint32 p1,
@@ -610,17 +582,10 @@ unlock_file(FdHandle_t *fdP, afs_uint32 mystripe)
 
 struct afsconf_dir *confDir = 0;
 
-#ifdef O_LARGEFILE
 #define afs_stat	stat64
 #define afs_fstat	fstat64
 #define afs_open	open64
 #define afs_fopen	fopen64
-#else /* !O_LARGEFILE */
-#define afs_stat	stat
-#define afs_fstat	fstat
-#define afs_open	open
-#define afs_fopen	fopen
-#endif /* !O_LARGEFILE */
 
 
 /* The following errors were not defined in NT. They are given unique

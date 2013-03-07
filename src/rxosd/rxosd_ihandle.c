@@ -43,13 +43,8 @@
 #include <afs/afsutil.h>
 
 #ifndef AFS_NT40_ENV
-#ifdef O_LARGEFILE
 #define afs_stat	stat64
 #define afs_fstat	fstat64
-#else /* !O_LARGEFILE */
-#define	afs_stat	stat
-#define	afs_fstat	fstat
-#endif /* !O_LARGEFILE */
 #endif /* AFS_NT40_ENV */
 
 #ifdef AFS_PTHREAD_ENV
