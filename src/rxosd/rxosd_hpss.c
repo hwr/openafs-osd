@@ -41,7 +41,7 @@
 #include <afs/fileutil.h>
 #include <afs/cellconfig.h>
 
-#if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
+#if defined(AFS_HAVE_STATVFS) || defined(AFS_HAVE_STATVFS64)
 #include <sys/statvfs.h>
 #endif /* AFS_HAVE_STATVFS */
 #ifdef AFS_SUN5_ENV
@@ -63,14 +63,14 @@
 #define afs_open        open64
 #define afs_fopen       fopen64
 #ifndef AFS_NT40_ENV
-#if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
-#if AFS_HAVE_STATVFS64
+#if defined(AFS_HAVE_STATVFS) || defined(AFS_HAVE_STATVFS64)
+#if defined(AFS_HAVE_STATVFS64)
 # define afs_statvfs    statvfs64
-#elif AFS_HAVE_STATVFS
+#elif defined(AFS_HAVE_STATVFS)
 #   define afs_statvfs  statvfs
 #endif
 #else /* AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64 */
-#if AFS_HAVE_STATFS64
+#if defined(AFS_HAVE_STATFS64)
 #  define afs_statfs    statfs64
 #else
 #   define afs_statfs   statfs
@@ -84,7 +84,7 @@
 #define afs_open        open
 #define afs_fopen       fopen
 #ifndef AFS_NT40_ENV
-#if AFS_HAVE_STATVFS
+#ifdef AFS_HAVE_STATVFS
 #define afs_statvfs     statvfs
 #else /* !AFS_HAVE_STATVFS */
 #define afs_statfs      statfs
@@ -614,7 +614,7 @@ int myhpss_stat_tapecopies(const char *path, afs_int32 *level, afs_sfsize_t *siz
 
 #define MY_COSID 0
 
-#if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
+#if defined(AFS_HAVE_STATVFS) || defined(AFS_HAVE_STATVFS64)
 int myhpss_statvfs(const char *path, struct afs_statvfs *buf)
 #else
 int myhpss_statfs(const char *path, struct afs_statfs *buf)
@@ -627,7 +627,7 @@ int myhpss_statfs(const char *path, struct afs_statfs *buf)
     p = strchr(&myPath[1], '/');		/* end at 2nd slash  */
     if (p)
 	*p = 0;
-#if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
+#if defined(AFS_HAVE_STATVFS) || defined(AFS_HAVE_STATVFS64)
     return statvfs(myPath, buf);
 #else
     return statfs(myPath, buf);
@@ -636,7 +636,7 @@ int myhpss_statfs(const char *path, struct afs_statfs *buf)
     int code, i;
     hpss_statfs_t hb;
 
-#if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
+#if defined(AFS_HAVE_STATVFS) || defined(AFS_HAVE_STATVFS64)
     memset(buf, 0, sizeof(struct afs_statvfs));
 #else
     memset(buf, 0, sizeof(struct afs_statfs));
@@ -647,7 +647,7 @@ int myhpss_statfs(const char *path, struct afs_statfs *buf)
         removeHPSStransaction();
         checkCode(code);
 	if (!code) {
-#if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
+#if defined(AFS_HAVE_STATVFS) || defined(AFS_HAVE_STATVFS64)
 	    if (buf->f_frsize && buf->f_frsize != hb.f_bsize)
 		break;
     	    buf->f_frsize = hb.f_bsize;
@@ -883,7 +883,7 @@ struct ih_posix_ops ih_hpss_ops = {
     myhpss_readdir,
     myhpss_closedir,
     myhpss_link,
-#if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
+#if defined(AFS_HAVE_STATVFS) || defined(AFS_HAVE_STATVFS64)
     myhpss_statvfs,
 #else
     myhpss_statfs,

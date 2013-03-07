@@ -135,7 +135,7 @@
 #define afs_open        open
 #define afs_fopen       fopen
 #ifndef AFS_NT40_ENV
-#if AFS_HAVE_STATVFS
+#ifdef AFS_HAVE_STATVFS
 #define afs_statvfs     statvfs
 #else /* !AFS_HAVE_STATVFS */
 #define afs_statfs      statfs
@@ -143,6 +143,7 @@
 #endif /* !AFS_NT40_ENV */
 
 #endif /* !O_LARGEFILE */
+
 #include <afs/stds.h>
 #include <rx/xdr.h>
 #include <afs/nfs.h>
@@ -1188,9 +1189,9 @@ FiveMinuteCheckLWP()
 			if (!code) { 
                             if (hsmDev == e->t.etype_u.osd.lun)
 #if defined(AFS_HAVE_STATVFS) || defined(AFS_HAVE_STATVFS64)
-                                code = (ih_hsm_opsPtr->statvfs)(hsmPath, &statbuf);
+                                code = (ih_hsm_opsPtr->afs_statvfs)(hsmPath, &statbuf);
 #else
-                                code = (ih_hsm_opsPtr->statfs)(hsmPath, &statbuf);
+                                code = (ih_hsm_opsPtr->afs_statfs)(hsmPath, &statbuf);
 #endif
                             else
 #if defined(AFS_HAVE_STATVFS) || defined(AFS_HAVE_STATVFS64)

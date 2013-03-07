@@ -11,7 +11,7 @@
 #include <errno.h>
 #include <dcap.h>
 
-#if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
+#if defined(AFS_HAVE_STATVFS) || defined(AFS_HAVE_STATVFS64)
 #include <sys/statvfs.h>
 #endif /* AFS_HAVE_STATVFS */
 #ifdef AFS_SUN5_ENV
@@ -33,14 +33,14 @@
 #define afs_open        open64
 #define afs_fopen       fopen64
 #ifndef AFS_NT40_ENV
-#if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
-#if AFS_HAVE_STATVFS64
+#if defined(AFS_HAVE_STATVFS) || defined(AFS_HAVE_STATVFS64)
+#if defined(AFS_HAVE_STATVFS64)
 # define afs_statvfs    statvfs64
-#elif AFS_HAVE_STATVFS
+#elif defined(AFS_HAVE_STATVFS)
 #   define afs_statvfs  statvfs
 #endif
 #else /* AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64 */
-#if AFS_HAVE_STATFS64
+#if defined(AFS_HAVE_STATFS64)
 #  define afs_statfs    statfs64
 #else
 #   define afs_statfs   statfs
@@ -54,7 +54,7 @@
 #define afs_open        open
 #define afs_fopen       fopen
 #ifndef AFS_NT40_ENV
-#if AFS_HAVE_STATVFS
+#if defined(AFS_HAVE_STATVFS)
 #define afs_statvfs     statvfs
 #else /* !AFS_HAVE_STATVFS */
 #define afs_statfs      statfs

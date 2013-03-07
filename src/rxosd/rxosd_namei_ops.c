@@ -24,11 +24,11 @@
 #define afs_fstat		fstat64
 #define afs_open		open64
 #define afs_fopen		fopen64
-#if AFS_HAVE_STATVFS64
+#if defined(AFS_HAVE_STATVFS64)
 # define afs_statvfs    statvfs64
-#elif AFS_HAVE_STATFS64
+#elif defined(AFS_HAVE_STATFS64)
 #  define afs_statfs    statfs64
-#elif AFS_HAVE_STATVFS
+#elif defined(AFS_HAVE_STATVFS)
 #   define afs_statvfs  statvfs
 #else
 #   define afs_statfs   statfs
@@ -40,7 +40,7 @@
 #define afs_fstat		fstat
 #define afs_open		open
 #define afs_fopen		fopen
-#if AFS_HAVE_STATVFS
+#ifdef AFS_HAVE_STATVFS
 #define afs_statvfs     statvfs
 #else /* !AFS_HAVE_STATVFS */
 #define afs_statfs      statfs
@@ -56,7 +56,7 @@
 #include <sys/param.h>
 #include <afs/cellconfig.h>
 #include <afs/auth.h>
-#if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
+#if defined(AFS_HAVE_STATVFS) || defined(AFS_HAVE_STATVFS64)
 #include <sys/statvfs.h>
 #endif /* AFS_HAVE_STATVFS */
 #ifdef AFS_SUN5_ENV
@@ -128,7 +128,7 @@ struct ih_posix_ops ih_namei_ops = {
     readdir,
     closedir,
     link,
-#if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
+#if defined(AFS_HAVE_STATVFS) || defined(AFS_HAVE_STATVFS64)
     afs_statvfs,
 #else
     afs_statfs,

@@ -25,10 +25,10 @@ struct ih_posix_ops {
     struct dirent * (*readdir)(DIR *);
     int         (*closedir)(DIR *);
     int         (*hardlink)(const char*, const char*);
-#if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
-    int         (*statvfs)(const char *, struct afs_statvfs *);
+#if defined(AFS_HAVE_STATVFS) || defined(AFS_HAVE_STATVFS64)
+    int         (*afs_statvfs)(const char *, struct afs_statvfs *);
 #else
-    int         (*statfs)(const char *, struct afs_statfs *);
+    int         (*afs_statfs)(const char *, struct afs_statfs *);
 #endif
     int		(*ftruncate)(int, afs_int64);
     ssize_t     (*pread)(int, void *, size_t, afs_foff_t);
