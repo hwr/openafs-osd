@@ -186,14 +186,24 @@ afs_linux_key_alloc(struct key_type *type, const char *desc, uid_t uid,
 }
 
 # if defined(STRUCT_TASK_STRUCT_HAS_CRED)
+static inline struct key *
+afs_session_keyring(afs_ucred_t *cred)
+{
+#  if defined(STRUCT_CRED_HAS_SESSION_KEYRING)
+    return cred->session_keyring;
+#  else
+    return cred->tgcred->session_keyring;
+#  endif
+}
+
 static inline struct key*
 afs_linux_search_keyring(afs_ucred_t *cred, struct key_type *type)
 {
     key_ref_t key_ref;
 
-    if (cred->tgcred->session_keyring) {
+    if (afs_session_keyring(cred)) {
 	key_ref = keyring_search(
-		      make_key_ref(cred->tgcred->session_keyring, 1),
+		      make_key_ref(afs_session_keyring(cred), 1),
 		      type, "_pag");
 	if (IS_ERR(key_ref))
 	    return ERR_CAST(key_ref);
@@ -463,10 +473,11 @@ afs_dentry_open(struct dentry *dp, struct vfsmount *mnt, int flags, const struct
     struct file *filp;
     path.mnt = mnt;
     path.dentry = dp;
+    /* note that dentry_open will path_get for us */
     filp = dentry_open(&path, flags, creds);
     return filp;
 #else
-    return dentry_open(dp, mntget(mnt), flags, creds);
+    return dentry_open(dget(dp), mntget(mnt), flags, creds);
 #endif
 }
 #endif
@@ -506,5 +517,52 @@ afs_set_name(afs_name_t aname, char *string) {
     aname->name = string;
 }
 #endif
+
+static_inline struct key *
+afs_set_session_keyring(struct key *keyring)
+{
+    struct key *old;
+#if defined(STRUCT_CRED_HAS_SESSION_KEYRING)
+    struct cred *new_creds;
+    old = current_session_keyring();
+    new_creds = prepare_creds();
+    rcu_assign_pointer(new_creds->session_keyring, keyring);
+    commit_creds(new_creds);
+#else
+    spin_lock_irq(&current->sighand->siglock);
+    old = task_session_keyring(current);
+    smp_wmb();
+    task_session_keyring(current) = keyring;
+    spin_unlock_irq(&current->sighand->siglock);
+#endif
+    return old;
+}
+
+static inline int
+afs_truncate(struct inode *inode, int len)
+{
+    int code;
+#if defined(STRUCT_INODE_OPERATIONS_HAS_TRUNCATE)
+    code = vmtruncate(inode, len);
+#else
+    code = inode_newsize_ok(inode, len);
+    if (!code)
+        truncate_setsize(inode, len);
+#endif
+    return code;
+}
+
+static inline struct proc_dir_entry *
+afs_proc_create(char *name, umode_t mode, struct proc_dir_entry *parent, struct file_operations *fops) {
+#if defined(HAVE_LINUX_PROC_CREATE)
+    return proc_create(name, mode, parent, fops);
+#else
+    struct proc_dir_entry *entry;
+    entry = create_proc_entry(name, mode, parent);
+    if (entry)
+	entry->proc_fops = fops;
+    return entry;
+#endif
+}
 
 #endif /* AFS_LINUX_OSI_COMPAT_H */

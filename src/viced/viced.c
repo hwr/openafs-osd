@@ -1001,6 +1001,7 @@ FlagMsg(void)
     fputs("[-abortthreshold <abort threshold>] ", stdout);
     fputs("[-nojumbo (disable jumbogram network packets - deprecated)] ", stdout);
     fputs("[-jumbo (enable jumbogram network packets)] ", stdout);
+    fputs("[-sync <always | delayed | onclose | never>]", stdout);
 /*   fputs("[-enable_peer_stats] ", stdout); */
 /*   fputs("[-enable_process_stats] ", stdout); */
     fputs("[-help]\n", stdout);
@@ -1473,6 +1474,16 @@ ParseArgs(int argc, char *argv[])
 	else if (strcmp(argv[i], "-saneacls") == 0) {
 	    saneacls = 1;
 	}
+        else if (strcmp(argv[i], "-sync") == 0) {
+            if ((i + 1) >= argc) {
+                printf("You have to specify -sync <sync behavior>\n");
+                return -1;
+            }
+            if (ih_SetSyncBehavior(argv[++i])) {
+                printf("Invalid -sync value %s\n", argv[i]);
+                return -1;
+            }
+        }
 #ifdef AFS_PTHREAD_ENV
 	else if (strcmp(argv[i], "-libafsosd") == 0) {
 	    libafsosd = 1;
@@ -1689,6 +1700,11 @@ vl_Initialize(const char *confDir)
 	exit(1);
     }
     code = afsconf_GetCellInfo(tdir, NULL, AFSCONF_VLDBSERVICE, &info);
+    if (code) {
+        ViceLog(0,
+                ("vl_Initialize: Failed to get cell information\n"));
+        exit(1);
+    }
     if (info.numServers > MAXSERVERS) {
 	ViceLog(0,
 		("vl_Initialize: info.numServers=%d (> MAXSERVERS=%d)\n",
@@ -1946,7 +1962,7 @@ InitVL(void)
     code = vl_Initialize(AFSDIR_SERVER_ETC_DIRPATH);
     if (code != 0) {
 	ViceLog(0,
-		("Couldn't initialize protection library; code=%d.\n", code));
+		("Couldn't initialize volume location library; code=%d.\n", code));
 	return code;
     }
 

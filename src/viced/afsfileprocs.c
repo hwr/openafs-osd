@@ -2020,6 +2020,26 @@ RXStore_AccessList(Vnode * targetptr, struct AFSOpaque *AccessList)
 
 }				/*RXStore_AccessList */
 
+static int
+CheckLink(Volume *volptr, FdHandle_t *fdP, const char *descr)
+{
+    int code;
+    afs_ino_str_t ino;
+
+    code = FDH_ISUNLINKED(fdP);
+    if (code < 0) {
+        ViceLog(0, ("CopyOnWrite: error fstating volume %u inode %s (%s), errno %d\n",
+                    V_id(volptr), PrintInode(ino, fdP->fd_ih->ih_ino), descr, errno));
+        return -1;
+    }
+    if (code) {
+        ViceLog(0, ("CopyOnWrite corruption prevention: detected zero nlink for "
+                    "volume %u inode %s (%s), forcing volume offline\n",
+                    V_id(volptr), PrintInode(ino, fdP->fd_ih->ih_ino), descr));
+        return -1;
+    }
+    return 0;
+}
 
 /* In our current implementation, each successive data store (new file
  * data version) creates a new inode. This function creates the new
@@ -2100,6 +2120,20 @@ CopyOnWrite(Vnode * targetptr, Volume * volptr, afs_foff_t off, afs_fsize_t len)
     IH_INIT(newH, V_device(volptr), V_id(volptr), ino);
     newFdP = IH_OPEN(newH);
     osi_Assert(newFdP != NULL);
+
+    rc = CheckLink(volptr, targFdP, "source");
+    if (!rc) {
+        rc = CheckLink(volptr, newFdP, "dest");
+    }
+    if (rc) {
+        FDH_REALLYCLOSE(newFdP);
+        IH_RELEASE(newH);
+        FDH_REALLYCLOSE(targFdP);
+        IH_DEC(V_linkHandle(volptr), ino, V_parentId(volptr));
+        free(buff);
+        VTakeOffline(volptr);
+        return VSALVAGE;
+    }
 
     done = off;
     while (size > 0) {
@@ -7724,7 +7758,7 @@ SRXAFS_GetCapabilities(struct rx_call * acall, Capabilities * capabilities)
 
 
     SETTHREADINACTIVE();
-    return 0;
+    return code;
 }
 
 afs_int32
@@ -8843,6 +8877,7 @@ StoreData_RXStyle(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
 	/* Set the file's length; we've already done an lseek to the right
 	 * spot above.
 	 */
+	tlen = 0; /* Just a source of data for the write */
 	nBytes = FDH_PWRITE(fdP, &tlen, 1, Pos);
 	if (nBytes != 1) {
 	    errorCode = -1;

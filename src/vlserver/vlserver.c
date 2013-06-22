@@ -360,6 +360,13 @@ main(int argc, char **argv)
 	}
     }
 
+    if (!rxJumbograms) {
+        rx_SetNoJumbo();
+    }
+    if (rxMaxMTU != -1) {
+        rx_SetMaxMTU(rxMaxMTU);
+    }
+
     ubik_nBuffers = 512;
 #ifdef AFS_PTHREAD_ENV
     if (libafsosd)
@@ -423,12 +430,6 @@ main(int argc, char **argv)
 	}
     }
 #endif
-    if (!rxJumbograms) {
-	rx_SetNoJumbo();
-    }
-    if (rxMaxMTU != -1) {
-	rx_SetMaxMTU(rxMaxMTU);
-    }
     rx_SetRxDeadTime(50);
 
     memset(HostAddress, 0, sizeof(HostAddress));

@@ -403,7 +403,17 @@ main(int argc, char **argv)
 	    rx_enablePeerRPCStats();
 	} else if (strcmp(argv[code], "-enable_process_stats") == 0) {
 	    rx_enableProcessRPCStats();
-	}
+        } else if (strcmp(argv[code], "-sync") == 0) {
+            if ((code + 1) >= argc) {
+                printf("You have to specify -sync <sync_behavior>\n");
+                exit(1);
+            }
+            ih_PkgDefaults();
+            if (ih_SetSyncBehavior(argv[++code])) {
+                printf("Invalid -sync value %s\n", argv[code]);
+                exit(1);
+            }
+        }
 #ifndef AFS_NT40_ENV
 	else if (strcmp(argv[code], "-syslog") == 0) {
 	    /* set syslog logging flag */
@@ -430,6 +440,7 @@ main(int argc, char **argv)
 		   "[-syslog[=FACILITY]] -mbpersleep <MB / 1 sec sleep>"
 		   "%s"
 		   "[-enable_peer_stats] [-enable_process_stats] "
+		   "[-sync <always | delayed | onclose | never>] "
 		   "[-help]\n",
 		   libafsosd ?  "[-convert] ":"");
 #else
@@ -438,6 +449,7 @@ main(int argc, char **argv)
 		   "[-nojumbo] [-jumbo] [-rxmaxmtu <bytes>] [-rxbind] [-allow-dotted-principals] "
 		   "[-udpsize <size of socket buffer in bytes>] "
 		   "[-enable_peer_stats] [-enable_process_stats] "
+		   "[-sync <always | delayed | onclose | never>] "
 		   "[-help]\n");
 #endif
 	    VS_EXIT(1);

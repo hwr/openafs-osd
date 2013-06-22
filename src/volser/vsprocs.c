@@ -800,6 +800,12 @@ UV_CreateVolume3(afs_uint32 aserver, afs_int32 apart, char *aname,
     /* rw,ro, bk id are related in the default case */
     /* If caller specified RW id, but not RO/BK ids, have them be RW+1 and RW+2 */
     lastid = *anewid;
+    if (aroid && *aroid != 0) {
+        lastid = MAX(lastid, *aroid);
+    }
+    if (abkid && *abkid != 0) {
+        lastid = MAX(lastid, *abkid);
+    }
     if (aroid && *aroid == 0) {
 	*aroid = ++lastid;
     }
@@ -1204,6 +1210,12 @@ DoVolDelete(struct rx_connection *aconn, afs_uint32 avolid,
 
     code =
         AFSVolTransCreate_retry(aconn, avolid, apart, ITOffline, &ttid);
+
+    /* return early and quietly for VNOVOL; don't continue the attempt to delete. */
+    if (code == VNOVOL) {
+        error = code;
+        goto dfail;
+    }
 
     EGOTO2(dfail, code, "%sFailed to start transaction on %u\n",
            prefix, avolid);
@@ -1894,6 +1906,9 @@ UV_MoveVolume2(afs_uint32 afromvol, afs_uint32 afromserver, afs_int32 afrompart,
         code = DoVolDelete(fromconn, newVol, afrompart,
                            "cloned", 0, NULL, NULL);
         if (code) {
+            if (code == VNOVOL) {
+                EPRINT1(code, "Failed to start transaction on %u\n", newVol);
+            }
             error = code;
             goto mfail;
         }
@@ -2056,9 +2071,13 @@ UV_MoveVolume2(afs_uint32 afromvol, afs_uint32 afromserver, afs_int32 afrompart,
             fflush(STDOUT);
         }
 
-        if (volid && toconn)
+        if (volid && toconn) {
             code = DoVolDelete(toconn, volid, atopart,
                                "destination", 0, NULL, "Recovery:");
+            if (code == VNOVOL) {
+                EPRINT1(code, "Recovery: Failed to start transaction on %u\n", volid);
+            }
+        }
 
         /* put source volume on-line */
         if (fromconn) {
@@ -2099,10 +2118,15 @@ UV_MoveVolume2(afs_uint32 afromvol, afs_uint32 afromserver, afs_int32 afrompart,
         if (fromconn) {
             code = DoVolDelete(fromconn, backupId, afrompart,
                                "backup", 0, NULL, "Recovery:");
-
+            if (code == VNOVOL) {
+                EPRINT1(code, "Recovery: Failed to start transaction on %u\n", backupId);
+	    }
             code = DoVolDelete(fromconn, afromvol, afrompart, "source",
                                (atoserver != afromserver)?atoserver:0,
                                NULL, NULL);
+            if (code == VNOVOL) {
+                EPRINT1(code, "Failed to start transaction on %u\n", afromvol);
+            }
         }
     }
 
@@ -2110,6 +2134,9 @@ UV_MoveVolume2(afs_uint32 afromvol, afs_uint32 afromserver, afs_int32 afrompart,
     if (newVol) {
         code = DoVolDelete(fromconn, newVol, afrompart,
                            "clone", 0, NULL, "Recovery:");
+        if (code == VNOVOL) {
+            EPRINT1(code, "Recovery: Failed to start transaction on %u\n", newVol);
+        }
     }
 
     /* unlock VLDB entry */
@@ -2488,6 +2515,9 @@ cpincr:
         code = DoVolDelete(fromconn, cloneVol, afrompart,
                            "cloned", 0, NULL, NULL);
         if (code) {
+            if (code == VNOVOL) {
+                EPRINT1(code, "Failed to start transaction on %u\n", cloneVol);
+            }
             error = code;
             goto mfail;
         }
@@ -2613,9 +2643,13 @@ cpincr:
     MapHostToNetwork(&entry);
 
     /* common cleanup - delete local clone */
-    if (cloneVol)
+    if (cloneVol) {
         code = DoVolDelete(fromconn, cloneVol, afrompart,
                            "clone", 0, NULL, "Recovery:");
+        if (code == VNOVOL) {
+            EPRINT1(code, "Recovery: Failed to start transaction on %u\n", cloneVol);
+        }
+    }
 
   done:			/* routine cleanup */
     if (fromconn)
@@ -7190,6 +7224,9 @@ UV_VolumeZap(afs_uint32 server, afs_int32 part, afs_uint32 volid)
     aconn = UV_Bind(server, AFSCONF_VOLUMEPORT);
     error = DoVolDelete(aconn, volid, part,
                         "the", 0, NULL, NULL);
+    if (error == VNOVOL) {
+        EPRINT1(error, "Failed to start transaction on %u\n", volid);
+    }
 
     PrintError("", error);
     if (aconn)

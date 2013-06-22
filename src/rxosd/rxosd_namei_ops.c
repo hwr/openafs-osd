@@ -609,7 +609,7 @@ restart:
 	mode = 0600;
     if (dcache && p2 != -1)
         mode |= S_IWUSR;
-    fd = tmp.ih_ops->open(name.n_path, O_CREAT | O_EXCL | O_TRUNC | O_RDWR,
+    fd = tmp.ih_ops->open(name.n_path, O_CREAT | O_EXCL | O_RDWR,
 				  mode, size);
     if (fd < 0) {
         if (errno == ENOTDIR
@@ -618,7 +618,7 @@ restart:
           || errno == ENOENT) {
             if (namei_CreateDataDirectories(&name, &created_dir, &tmp) < 0)
                 goto bad;
-            fd = tmp.ih_ops->open(name.n_path, O_CREAT | O_EXCL | O_TRUNC | O_RDWR,
+            fd = tmp.ih_ops->open(name.n_path, O_CREAT | O_EXCL | O_RDWR,
 				  mode, size);
 	    if (fd < 0)
 		goto bad;
@@ -629,7 +629,7 @@ restart:
 		    if (tmp.ih_ops->stat64(name.n_path, &tstat) == 0) {
 			if (tstat.st_size == 0) { /* empty file, reuse it */
 			    fd = tmp.ih_ops->open(name.n_path,
-						  O_EXCL | O_TRUNC | O_RDWR,
+						  O_EXCL | O_RDWR,
 						  mode, size);
 			}
 			if (fd < 0) { 
@@ -962,7 +962,7 @@ namei_copy_on_write(IHandle_t *h)
 	    return EIO;
 	size = tstat.st_size;
 	afs_snprintf(path, sizeof(path), "%s-tmp", name.n_path);
-	fd = (h->ih_ops->open)(path, O_CREAT | O_EXCL | O_TRUNC | O_RDWR, 0, size);
+	fd = (h->ih_ops->open)(path, O_CREAT | O_EXCL | O_RDWR, 0, size);
 	if (fd < 0) {
 	    FDH_CLOSE(fdP);
 	    return EIO;
@@ -1188,7 +1188,7 @@ GetLinkTableVersion(FdHandle_t *fh)
 		GetOGMFromStat(&tstat, &ogm_parm, &tag);
                 code = rename(name.n_path, badlinktable);
 	        if (code == 0) {
-	            fd = afs_open(name.n_path, O_CREAT | O_EXCL | O_TRUNC | O_RDWR, 0);
+	            fd = afs_open(name.n_path, O_CREAT | O_EXCL | O_RDWR, 0);
 	            close(fh->fd_fd);
 	            fh->fd_fd = fd;
 	            header[0] = LINKTABLEMAGIC;

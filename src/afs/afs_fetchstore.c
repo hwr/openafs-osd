@@ -552,7 +552,7 @@ afs_CacheStoreDCaches(struct vcache *avc, struct dcache **dclist,
     XSTATS_DECLS;
 
     for (i = 0; i < nchunks && !code; i++) {
-	int stored = 0;
+	int stored = 0; /* I think it has to be cleared for each chunk */
 	struct dcache *tdc = dclist[i];
 	afs_int32 size = tdc->f.chunkBytes;
 	if (!tdc) {

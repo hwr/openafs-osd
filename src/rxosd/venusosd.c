@@ -1353,6 +1353,7 @@ osdCmd(struct cmd_syndesc *as, void *arock)
         free_osd_metadata(mh);
     }
     RXAFS_GiveUpAllCallBacks(RXConn);
+    rx_DestroyConnection(RXConn);
     return code;
 }
 

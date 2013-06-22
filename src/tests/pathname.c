@@ -4,7 +4,7 @@
  *
  * Copyright (c) 1998 Carnegie Mellon University
  * All Rights Reserved.
- * 
+ *
  * Permission to use, copy, modify and distribute this software and its
  * documentation is hereby granted, provided that both the copyright
  * notice and this permission notice appear in all copies of the
@@ -152,7 +152,7 @@ dirent_cb(afs_vnode * v, afs_dir_entry * de, XFILE * X, void *refcon)
 
 
 /* Prescan the vnodes in a dump file, collecting information that will
- * be useful in generating and following pathnames.  
+ * be useful in generating and following pathnames.
  */
 afs_uint32
 Path_PreScan(XFILE * X, path_hashinfo * phi, int full)
@@ -280,7 +280,7 @@ Path_Build(XFILE * X, path_hashinfo * phi, afs_uint32 vnode, char **his_path,
 
     if (vnode == 1) {
 	*his_path = (char *)malloc(2);
-	if (!his_path) {
+	if (!*his_path) {
 	    if (phi->p->cb_error)
 		(phi->p->cb_error) (ENOMEM, 1, phi->p->err_refcon,
 				    "No memory for pathname of vnode 1");

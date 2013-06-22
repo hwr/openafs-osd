@@ -1874,6 +1874,9 @@ DECL_PIOCTL(PSetTokens)
     afs_PutCell(tcell, READ_LOCK);
     if (set_parent_pag) {
 	afs_uint32 pag;
+#if defined(AFS_LINUX26_ENV)
+        afs_ucred_t *old_cred = *acred;
+#endif
 #if defined(AFS_DARWIN_ENV) || defined(AFS_XBSD_ENV)
 	char procname[256];
 	osi_procname(procname, 256);
@@ -1882,6 +1885,11 @@ DECL_PIOCTL(PSetTokens)
 	if (!setpag(osi_curproc(), acred, -1, &pag, 1)) {
 #else
 	if (!setpag(acred, -1, &pag, 1)) {
+#endif
+#if defined(AFS_LINUX26_ENV)
+            /* setpag() may have changed our credentials */
+            *acred = crref();
+            crfree(old_cred);
 #endif
 	    afs_InitReq(&treq, *acred);
 	    areq = &treq;
@@ -4887,7 +4895,7 @@ DECL_PIOCTL(PPrefetchFromTape)
     struct vcache *tvc;
     struct prefetchout out;
 
-    AFS_STATCNT(PSetAcl);
+    AFS_STATCNT(PPrefetchFromTape);
     if (!avc)
 	return EINVAL;
 

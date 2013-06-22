@@ -486,7 +486,6 @@ xfs_VerifyInode(char *dir, uint64_t pino, char *name, i_list_inode_t * info,
     int update_chown = 0;
     int retCode = 0;
     char tmpName[32];
-    b64_string_t stmp;
     int tag;
     afs_ino_str_t stmp;
 
@@ -1307,7 +1306,7 @@ bread(int fd, char *buf, daddr_t blk, afs_int32 size)
 
 #endif /* AFS_LINUX20_ENV */
 static afs_int32
-convertVolumeInfo(FdHandle_t *fdhr, FdHandle_t *fdhw, afs_uint32 vid, int osdSeen)
+convertVolumeInfo(FdHandle_t *fdhr, FdHandle_t *fdhw, afs_uint32 vid)
 {
     struct VolumeDiskData vd;
     char *p;
@@ -1316,10 +1315,6 @@ convertVolumeInfo(FdHandle_t *fdhr, FdHandle_t *fdhw, afs_uint32 vid, int osdSee
         sizeof(struct VolumeDiskData)) {
         Log("1 convertiVolumeInfo: read failed for %lu with code %d\n", vid,
             errno);
-        return -1;
-    }
-    if (vd.osdPolicy && !osdSeen) {
-        Log("1 convertiVolumeInfo: osd volume %lu without metadata filed\n", vid);
         return -1;
     }
     vd.restoredFromId = vd.id;  /* remember the RO volume here */

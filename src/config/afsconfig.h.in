@@ -338,6 +338,9 @@
 /* Define if your kernel has the path_lookup function */
 #undef HAVE_LINUX_PATH_LOOKUP
 
+/* Define if your kernel has the proc_create function */
+#undef HAVE_LINUX_PROC_CREATE
+
 /* Define if your kernel has the rcu_read_lock function */
 #undef HAVE_LINUX_RCU_READ_LOCK
 
@@ -607,6 +610,9 @@
 /* Define to 1 if you have the <windows.h> header file. */
 #undef HAVE_WINDOWS_H
 
+/* define if hlist iterators don't need a node parameter */
+#undef HLIST_ITERATOR_NO_NODE
+
 /* define to disable some gcc warnings in warnings-as-errors mode */
 #undef IGNORE_SOME_GCC_WARNINGS
 
@@ -666,6 +672,10 @@
 
 /* Define if you have the libintl package. */
 #undef LIBINTL
+
+/* define if kernel functions like generic_file_aio_read use non-vectorized
+   i/o */
+#undef LINUX_HAS_NONVECTOR_AIO
 
 /* define if your linux kernel uses 5 arguments for sock_create */
 #undef LINUX_KERNEL_SOCK_CREATE_V
@@ -758,6 +768,9 @@
 /* Define if kernel typedef'd struct backing_dev_info has the name element */
 #undef STRUCT_BACKING_DEV_INFO_HAS_NAME
 
+/* Define if kernel typedef'd struct cred has the session_keyring element */
+#undef STRUCT_CRED_HAS_SESSION_KEYRING
+
 /* Define if kernel typedef'd struct ctl_table has the ctl_name element */
 #undef STRUCT_CTL_TABLE_HAS_CTL_NAME
 
@@ -798,6 +811,10 @@
 
 /* Define if kernel typedef'd struct inode has the i_security element */
 #undef STRUCT_INODE_HAS_I_SECURITY
+
+/* Define if kernel typedef'd struct inode_operations has the truncate element
+   */
+#undef STRUCT_INODE_OPERATIONS_HAS_TRUNCATE
 
 /* Define if kernel typedef'd struct key_type has the preparse element */
 #undef STRUCT_KEY_TYPE_HAS_PREPARSE
