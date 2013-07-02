@@ -1,6 +1,6 @@
                        User-Visible OpenAFS Changes
 
-OpenAFS 1.6.3 (in progress)
+OpenAFS 1.6.4
 
 All platforms
 
@@ -41,7 +41,7 @@ All server platforms
       performed before.
 
     * The fileserver now emits a log message when it ran out of memory for
-      for callbacks.
+      callbacks.
 
     * Avoid several potential fileserver problems, including memory
       corruption and segmentation faults, due to client bookkeeping.
@@ -76,7 +76,7 @@ All UNIX client platforms
 
 Linux clients
 
-    * Support Linux kernels up to 3.9
+    * Support Linux kernels up to 3.10
 
     * Fixed two bugs making it impossible to unmount a disk cache filesystem
       after it has been used by the client. (RT #131613)
@@ -86,6 +86,10 @@ Linux clients
 OpenBSD
 
     * Improved support for OpenBSD 4.9 to 5.3
+
+OpenAFS 1.6.3
+
+  This release number had to be skipped for technical reasons.
 
 OpenAFS 1.6.2.1
 
