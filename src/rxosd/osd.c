@@ -4137,7 +4137,7 @@ inventoryCmd(struct cmd_syndesc *as, void *rock)
     else
         printf(" (%llu %s)\n", u64, unit[i]);
     if (flag & INVENTORY_UNLINKED && !(flag & INVENTORY_ONLY_UNLINKED)) {
-        i = totalbytes - unlinkedobjs;
+        i = totalobjs - unlinkedobjs;
         u64 = totalbytes - unlinkedbytes;
         printf("\t%u good objects with %llu bytes", i, u64);
 	i=0;
