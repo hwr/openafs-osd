@@ -313,7 +313,7 @@ desthpss:
 
 rxosd: ${rxosdobjects}
 	${CC} ${LDFLAGS} -o rxosd ${rxosdobjects} -ldl ${LIBS} $(LIB_hcrypto) \
-			$(LIB_roken) ${MT_LIBS} ${XLIBS}
+			$(LIB_roken) ${MT_LIBS} ${XLIBS} ${KRB5_LIBS}
 
 readabyte.o: readabyte.c rxosd_hsm.h
 	${CCRULERXOSD}
@@ -325,7 +325,7 @@ readabyte: readabyte.o libafshsm.o
 osd: osd.o rxosd.cs.o rxosd.xdr.o a_osddbuser.o osddb.cs.o osddb.xdr.o policy_parser.o
 	${CC} ${LDFLAGS} -o osd osd.o rxosd.cs.o rxosd.xdr.o a_osddbuser.o \
 		osddb.cs.o osddb.xdr.o policy_parser.o \
-		${LIBS} $(LIB_hcrypto) $(LIB_roken) ${MT_LIBS} ${XLIBS}
+		${LIBS} $(LIB_hcrypto) $(LIB_roken) ${MT_LIBS} ${XLIBS} ${KRB5_LIBS}
 
 ${LIBAFSOSD}: ${LIBOBJS} libafsosd.map
 	../config/shlib-build -d $(srcdir) -l libafsosd \
@@ -654,7 +654,7 @@ venus_libafsosd.o: ${srcdir}/libafsosd.c
 
 fs: fs.o venus_libafsosd.o ${LIBS}
 	${CC} ${LDFLAGS} -o fs fs.o venus_libafsosd.o \
-		${TOP_LIBDIR}/libprot.a ${LIBS} ${MT_LIBS} -ldl ${XLIBS}
+		${TOP_LIBDIR}/libprot.a ${LIBS} ${MT_LIBS} -ldl ${XLIBS} ${KRB5_LIBS}
 
 venusosd.o: ${srcdir}/venusosd.c
 	${CCRULE} -DBUILDING_CLIENT_COMMAND
@@ -679,7 +679,7 @@ vos_libafsosd.o: ${srcdir}/libafsosd.c
 
 vos: vos.o vos_libafsosd.o ${VOSCMDOBJS} ${VLSERVEROBJS} ${LIBS}
 	${CC} ${LDFLAGS} -o vos vos.o vos_libafsosd.o ${VOSCMDOBJS} ${VLSERVEROBJS} \
-		${LIBS} ${MT_LIBS} -ldl ${XLIBS}
+		${LIBS} ${MT_LIBS} -ldl ${XLIBS} ${KRB5_LIBS}
 
 vososd.o: ${srcdir}/vososd.c
 	${CCRULE} -DBUILDING_CLIENT_COMMAND
@@ -696,7 +696,7 @@ osddbserver.o: ${srcdir}/osddbserver.c osddb.h
 
 osddbserver: osddbserver.o osddb.ss.o osddb.xdr.o ${LIBS} Makefile
 	${CC} ${CFLAGS} ${MT_CFLAGS} -o osddbserver osddbserver.o osddb.ss.o \
-		osddb.xdr.o ${SERVERLIBS} ${MT_LIBS} ${XLIBS}
+		osddb.xdr.o ${SERVERLIBS} ${MT_LIBS} ${XLIBS} ${KRB5_LIBS}
 
 linkcunts.o: ${srcdir}/linkcounts.c
 	${CCRULE}

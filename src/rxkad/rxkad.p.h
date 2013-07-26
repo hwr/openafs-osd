@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -22,8 +22,8 @@
 #define MAXKTCREALMLEN	      64	/* should be 256 */
 #define KTC_TIME_UNCERTAINTY (15*60)	/* max skew bet. machines' clocks */
 
-#define MAXRANDOMNAMELEN 16	/* length of random generated 
-				 * usernames used by afslog for high 
+#define MAXRANDOMNAMELEN 16	/* length of random generated
+				 * usernames used by afslog for high
 				 * security must be < MAXKTCNAMELEN && < MAXSMBNAMELEN */
 #define MAXSMBNAMELEN    256	/* max length of an SMB name */
 
@@ -92,6 +92,11 @@ typedef signed char rxkad_level;
 
 
 extern int rxkad_EpochWasSet;	/* TRUE => we called rx_SetEpoch */
+
+/* An alternate decryption function for rxkad.  Using the given kvno and
+ * enctype, decrypt the input data + length to output data + length. */
+typedef int (*rxkad_alt_decrypt_func)(int, int, void *, size_t, void *,
+				      size_t *);
 
 #include <rx/rxkad_prototypes.h>
 

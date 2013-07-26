@@ -124,6 +124,18 @@
 /* define if dcache_lock exists */
 #undef HAVE_DCACHE_LOCK
 
+/* Define to 1 if you have the declaration of
+   `krb5_free_keytab_entry_contents', and to 0 if you don't. */
+#undef HAVE_DECL_KRB5_FREE_KEYTAB_ENTRY_CONTENTS
+
+/* Define to 1 if you have the declaration of `krb5_kt_free_entry', and to 0
+   if you don't. */
+#undef HAVE_DECL_KRB5_KT_FREE_ENTRY
+
+/* Define to 1 if you have the declaration of `KRB5_KU_TICKET', and to 0 if
+   you don't. */
+#undef HAVE_DECL_KRB5_KU_TICKET
+
 /* Define to 1 if you have the <direct.h> header file. */
 #undef HAVE_DIRECT_H
 
@@ -215,11 +227,23 @@
 /* Define to 1 if `session' is a member of `krb5_creds'. */
 #undef HAVE_KRB5_CREDS_SESSION
 
+/* Define to 1 if you have the `krb5_crypto_init' function. */
+#undef HAVE_KRB5_CRYPTO_INIT
+
+/* Define to 1 if you have the `krb5_c_decrypt' function. */
+#undef HAVE_KRB5_C_DECRYPT
+
 /* Define to 1 if you have the `krb5_c_encrypt' function. */
 #undef HAVE_KRB5_C_ENCRYPT
 
 /* Define to 1 if you have the `krb5_decode_ticket' function. */
 #undef HAVE_KRB5_DECODE_TICKET
+
+/* Define to 1 if you have the `krb5_decrypt_tkt_part' function. */
+#undef HAVE_KRB5_DECRYPT_TKT_PART
+
+/* Define to 1 if you have the `krb5_encrypt_tkt_part' function. */
+#undef HAVE_KRB5_ENCRYPT_TKT_PART
 
 /* Define to 1 if you have the `krb5_enctype_enable' function. */
 #undef HAVE_KRB5_ENCTYPE_ENABLE
@@ -241,6 +265,18 @@
 
 /* Define to 1 if you have the `krb5_get_prompt_types' function. */
 #undef HAVE_KRB5_GET_PROMPT_TYPES
+
+/* Define to 1 if `enctype' is a member of `krb5_keyblock'. */
+#undef HAVE_KRB5_KEYBLOCK_ENCTYPE
+
+/* Define to 1 if `keytype' is a member of `krb5_keyblock'. */
+#undef HAVE_KRB5_KEYBLOCK_KEYTYPE
+
+/* Define to 1 if `key' is a member of `krb5_keytab_entry'. */
+#undef HAVE_KRB5_KEYTAB_ENTRY_KEY
+
+/* Define to 1 if `keyblock' is a member of `krb5_keytab_entry'. */
+#undef HAVE_KRB5_KEYTAB_ENTRY_KEYBLOCK
 
 /* Define to 1 if you have the `krb5_principal_get_comp_string' function. */
 #undef HAVE_KRB5_PRINCIPAL_GET_COMP_STRING
@@ -883,6 +919,9 @@
 
 /* define if your kernel has a usable symlink cache API */
 #undef USABLE_KERNEL_PAGE_SYMLINK_CACHE
+
+/* Define to 1 if krb5 libraries are available and rxkad can use keytabs */
+#undef USE_RXKAD_KEYTAB
 
 /* Enable extensions on AIX 3, Interix.  */
 #ifndef _ALL_SOURCE

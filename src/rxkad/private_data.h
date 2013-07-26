@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -82,6 +82,7 @@ struct rxkad_sprivate {
 		    char *, afs_int32);
 				/* func called with new client name */
     afs_uint32 flags;		/* configuration flags */
+    rxkad_alt_decrypt_func alt_decrypt;
 };
 
 /* private data in server-side connection */

@@ -78,7 +78,7 @@ all: fs up fstrace cmdebug livesys kdump-build afsio cacheout
 # Build targets
 #
 cacheout: cacheout.o
-	$(CC) ${CFLAGS} -o cacheout cacheout.o ${LIBS} ${XLIBS} ${CMLIBS}
+	$(CC) ${CFLAGS} -o cacheout cacheout.o ${LIBS} ${XLIBS} ${CMLIBS} ${KRB5_LIBS}
 
 cacheout.o: cacheout.c
 
@@ -92,14 +92,14 @@ fs.o: fs.c ${INCLS} AFS_component_version_number.c
 
 fs: fs.o ${OSDOBJS} $(LIBS)
 	${CC} ${CFLAGS} -o fs fs.o ${OSDOBJS} ${TOP_LIBDIR}/libprot.a \
-		${TOP_LIBDIR}/libafsint.a $(LIBS) ${XLIBS}
+		${TOP_LIBDIR}/libafsint.a $(LIBS) ${XLIBS} ${KRB5_LIBS}
 
 afsio.o: afsio.c ${INCLS} AFS_component_version_number.c
 
 afsio: afsio.o ${RXOSDOBJS} ${AFSOSDINTOBJS} $(LIBS)
 	${CC} ${CFLAGS} -o afsio afsio.o  ${AFSOSDINTOBJS} ${RXOSDOBJS} \
 			${TOP_LIBDIR}/libprot.a \
-			${TOP_LIBDIR}/libafsint.a $(LIBS) ${XLIBS}
+			${TOP_LIBDIR}/libafsint.a $(LIBS) ${XLIBS} ${KRB5_LIBS}
 
 tafsio.o: afsio.c ${INCLS} AFS_component_version_number.c
 	${CC} ${CFLAGS} -DAFS_PTHREAD_ENV -o tafsio.o -c ${srcdir}/afsio.c
@@ -121,10 +121,10 @@ afsionew: afsionew.o ${AFSIO_LIBS}
 livesys.o: livesys.c ${INCLS} AFS_component_version_number.c
 
 livesys: livesys.c $(LIBS)
-	${CC} ${CFLAGS} -o livesys ${srcdir}/livesys.c $(LIBS) ${XLIBS}
+	${CC} ${CFLAGS} -o livesys ${srcdir}/livesys.c $(LIBS) ${XLIBS} ${KRB5_LIBS}
 
 twiddle: twiddle.c $(LIBS)
-	${CC} ${CFLAGS} -o twiddle ${srcdir}/twiddle.c $(LIBS) ${XLIBS}
+	${CC} ${CFLAGS} -o twiddle ${srcdir}/twiddle.c $(LIBS) ${XLIBS} ${KRB5_LIBS}
 
 gcpags: gcpags.c $(LIBS)
 	${CC} ${CFLAGS} -o gcpags ${srcdir}/gcpags.c $(LIBS) ${XLIBS}
@@ -132,7 +132,7 @@ gcpags: gcpags.c $(LIBS)
 whatfid.o: whatfid.c ${INCLS} AFS_component_version_number.c
 
 whatfid: whatfid.o ${LIBS}
-	${CC} ${CFLAGS} -o whatfid whatfid.o ${LIBS} ${XLIBS}
+	${CC} ${CFLAGS} -o whatfid whatfid.o ${LIBS} ${XLIBS} ${KRB5_LIBS}
 
 fstrace.o: fstrace.c AFS_component_version_number.c
 	case ${SYS_NAME} in \
@@ -166,12 +166,12 @@ fstrace: fstrace.o
 cmdebug.o: cmdebug.c ${INCLS} AFS_component_version_number.c
 
 cmdebug: cmdebug.o ${CMLIBS}
-	$(CC) -o cmdebug cmdebug.o ${CFLAGS} ${CMLIBS} ${XLIBS}
+	$(CC) -o cmdebug cmdebug.o ${CFLAGS} ${CMLIBS} ${XLIBS} ${KRB5_LIBS}
 
 dedebug.o: dedebug.c ${INCLS} AFS_component_version_number.c
 
 dedebug: dedebug.o ${CMLIBS}
-	$(CC) -o dedebug dedebug.o ${CFLAGS} ${CMLIBS} ${XLIBS}
+	$(CC) -o dedebug dedebug.o ${CFLAGS} ${CMLIBS} ${XLIBS} ${KRB5_LIBS}
 
 
 

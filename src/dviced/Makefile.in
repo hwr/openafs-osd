@@ -217,7 +217,7 @@ libafsosd.o: ${RXOSD}/libafsosd.c
 	${CCRULE} -DBUILDING_FILESERVER
 
 dafileserver: ${objects} ${LIBS}
-	${CC} ${LDFLAGS} -o dafileserver ${objects} -ldl ${LIBS} ${MT_LIBS} ${XLIBS}
+	${CC} ${LDFLAGS} -o dafileserver ${objects} -ldl ${LIBS} ${MT_LIBS} ${XLIBS} ${KRB5_LIBS}
 
 state_analyzer: ${SDBGOBJS}
 	${CC} ${LDFLAGS} -o state_analyzer ${SDBGOBJS} ${MT_LIBS} ${XLIBS}
