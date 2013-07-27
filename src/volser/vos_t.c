@@ -2977,6 +2977,16 @@ DumpVolumeCmd(struct cmd_syndesc *as, void *arock)
     }
 
     flags = as->parms[6].items ? VOLDUMPV2_OMITDIRS : 0;
+    if (as->parms[7].items) {
+        if (as->parms[8].items) {
+            fprintf(stderr,"Invalid options: you cannot specify -osddata and -metadataonly together\n");
+            return EINVAL;
+        }
+    } else {
+        flags |= VOLDUMPV2_OSDMETADATA;
+        if (as->parms[8].items)
+            flags |= VOLDUMPV2_METADATADUMP;
+    }
 retry_dump:
     if (as->parms[5].items) {
 	code =
@@ -6111,6 +6121,12 @@ main(int argc, char **argv)
 		"dump a clone of the volume");
     cmd_AddParm(ts, "-omitdirs", CMD_FLAG, CMD_OPTIONAL,
 		"omit unchanged directories from an incremental dump");
+    if (libafsosd_loaded) {
+        cmd_AddParm(ts, "-osd", CMD_FLAG, CMD_OPTIONAL,
+                    "include data of osd files in the dump");
+        cmd_AddParm(ts, "-metadataonly", CMD_FLAG, CMD_OPTIONAL,
+                    "dump only directories and metadata");
+    }
     COMMONPARMS;
 
     ts = cmd_CreateSyntax("restore", RestoreVolumeCmd, NULL,
