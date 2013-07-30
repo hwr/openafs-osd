@@ -704,7 +704,7 @@ case $AFS_SYSNAME in
 		XCFLAGS="-dy -Bdynamic"
 		XLIBELFA="-lelf"
 		XLIBKVM="-lkvm"
-		XLIBS="${LIB_AFSDB} -lsocket -lnsl -lintl -ldl"
+		XLIBS="${LIB_AFSDB} -lsocket -lnsl -lintl -ldl -lresolv"
 		SHLIB_LINKER="${CC} -G -dy -Bsymbolic -z text"
 		;;
 
@@ -723,7 +723,7 @@ case $AFS_SYSNAME in
 		XCFLAGS="-dy -Bdynamic"
 		XLIBELFA="-lelf"
 		XLIBKVM="-lkvm"
-		XLIBS="${LIB_AFSDB} -lsocket -lnsl -lintl -ldl"
+		XLIBS="${LIB_AFSDB} -lsocket -lnsl -lintl -ldl -lresolv"
 		SHLIB_LINKER="${CC} -G -dy -Bsymbolic -z text"
 		;;
 esac

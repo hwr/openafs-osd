@@ -237,6 +237,6 @@ dest: fileserver
 		${DEST}/root.server/usr/afs/bin/fileserver
 
 clean:
-	$(RM) -f *.o *.c *.h fileserver core
+	$(RM) -f *.o fileserver core AFS_component_version_number.c
 
 include ../config/Makefile.version
