@@ -480,6 +480,8 @@ main(int argc, char *argv[])
 	if (vol.needsSalvaged)
 	    printf(" needsSalvaged");
 	printf("\n");
+ 	if (vol.osdPolicy)
+	    printf("\tosdPolicy = %u\n", vol.osdPolicy);
 	printf("\tuniquifier = %lu\n", (unsigned long) vol.uniquifier);
 	tmv = vol.creationDate;
 	printf("\tCreation date = %s", ctime(&tmv));
