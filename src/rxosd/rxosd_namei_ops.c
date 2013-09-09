@@ -82,6 +82,8 @@ afs_int32 defaultLinkCount = 16;
 extern int log_open_close;
 
 afs_int32 hsmDev = -1;
+extern afs_int32 maxDontUnlinkDev;
+extern afs_int32 dontUnlinkDev[0];
 
 extern int dcache;
 /*
@@ -832,7 +834,7 @@ namei_dec(IHandle_t * ih, Inode ino, int p1)
 	if (count == 0) {
 	    IHandle_t *th;
 	    FdHandle_t *tfdP = NULL;
-	    int do_unlink = 1;
+	    int i, do_unlink = 1;
             struct afs_stat st;
             char unlinkname[128];
             time_t t;
@@ -846,6 +848,12 @@ namei_dec(IHandle_t * ih, Inode ino, int p1)
 	    tfdP = IH_REOPEN(th);	/* Avoid tape fetch for the file */
 
 	    namei_HandleToName(&name, th);
+	    for (i=0; i<maxDontUnlinkDev; i++) {
+	        if (ih->ih_dev == dontUnlinkDev[i]) {
+		    do_unlink = 0;
+		    break;
+		}
+	    }
 	    if (th->ih_ops->open != myOpen) /* true for HPSS and DCACHE */
 		do_unlink = 0;
 #ifdef AFS_AIX53_ENV

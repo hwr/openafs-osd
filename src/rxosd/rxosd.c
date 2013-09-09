@@ -161,6 +161,7 @@
 #define BIGTIME	(0x7FFFFFFF)	/* Should be max u_int, rather than max int */
 #define DONTPANIC 0
 #define PANIC 1
+#define MAXARCHIVALOSDSPERMACHINE 16
 
 #define USE_NTO_FOR_HOST_CHECK 1
 
@@ -223,6 +224,8 @@ int HSM = 0;
 
 struct hsm_auth_ops *auth_ops = NULL;
 int withHPSS = 0;
+int maxDontUnlinkDev = 0;
+int dontUnlinkDev[MAXARCHIVALOSDSPERMACHINE];
 int dcache = 0;
 char hpssPath[256];
 char *hsmPath = NULL;
@@ -915,9 +918,8 @@ struct fetch_process {
 	struct fetch_entry *request;
 };
 
-#if 0
 struct ubik_client *
-init_osddb_client()
+my_init_osddb_client()
 {
     afs_int32 code, scIndex = 0, i;
     struct rx_securityClass *sc;
@@ -957,7 +959,6 @@ init_osddb_client()
 
     return cstruct;
 }
-#endif
 
 afs_int32 CheckMount(char *partname)
 {
@@ -1109,7 +1110,7 @@ FiveMinuteCheckLWP()
                          HostName, hoststr, HostAddr_NBO, HostAddr_HBO));
 	}
 	if (!osddb_client) 
-	    osddb_client = init_osddb_client(NULL);
+	    osddb_client = my_init_osddb_client();
 	if (osddb_client && HostAddr_HBO) { /* find out which OSDs we are */
             l.OsdList_len = 0;
             l.OsdList_val = 0;
@@ -1148,8 +1149,14 @@ FiveMinuteCheckLWP()
 			    if (code)
 			        ViceLog(0,("authenticate_for_hpss returns %d\n", code));
 			}
-			if (hsmPath && e->t.etype_u.osd.flags & OSDDB_ARCHIVAL)
+			if (hsmPath && e->t.etype_u.osd.flags & OSDDB_ARCHIVAL
+			  /* special hack to identify HPSS */
+			  && (!(e->t.etype_u.osd.flags & OSDDB_DONT_UNLINK)
+			  || e->t.etype_u.osd.flags & OSDDB_WITH_HSM_PATH))
 			    hsmDev = e->t.etype_u.osd.lun;
+			if (e->t.etype_u.osd.flags & OSDDB_DONT_UNLINK) {
+			    dontUnlinkDev[maxDontUnlinkDev++] = e->t.etype_u.osd.lun;
+			}
 			code = CheckMount(partname);
 			if (!code) { 
                             if (hsmDev == e->t.etype_u.osd.lun)
@@ -5850,9 +5857,9 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
     }
     lock_file(fd, LOCK_EX, 0);
     /*
-     * Before we start reading from other OSDs look whether this file
-     * couldn't be archived directly into HPSS by the OSD it lives on.
-     * This is possible only if the object on the OSD contains the whole file.
+     * Before we start writing to other OSDs look whether this file
+     * couldn't be restored directly from HPSS by the OSD it should go to.
+     * This is possible only if the object on the OSD should contains the whole file.
      */
     if (oh->ih->ih_dev == hsmDev) {
 	/* Only possible if file is a single object (not segmented, not striped) */
@@ -7758,6 +7765,7 @@ main(int argc, char *argv[])
     for (i=0; i<STAT_INDICES; i++)
 	stat_index[i] = -1;
     memset(&stats, 0, sizeof(stats));
+    memset(&dontUnlinkDev, -1, sizeof(dontUnlinkDev));
     OpenLog(AFSDIR_SERVER_RXOSDLOG_FILEPATH);
     SetupLogSignals();
 

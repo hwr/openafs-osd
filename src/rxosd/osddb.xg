@@ -79,6 +79,8 @@ struct osddb_osd {
 %#define OSDDB_ARCHIVAL		1
 %#define OSDDB_WIPEABLE		2
 %#define OSDDB_HSM_ACCESS	4
+%#define OSDDB_DONT_UNLINK	8
+%#define OSDDB_WITH_HSM_PATH	16
 
 %#define OSDDB_OSD_DOWN		1
 %#define OSDDB_OSD_DEAD		2

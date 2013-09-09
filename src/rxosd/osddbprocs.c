@@ -819,7 +819,7 @@ check_osd_tab(struct osddb_osd_tab *in)
 	ViceLog(0,("check_osd_tab: lun >= 256\n"));
 	return EINVAL;
     }
-    if (in->flags & ~(OSDDB_ARCHIVAL | OSDDB_WIPEABLE | OSDDB_HSM_ACCESS)) {
+    if (in->flags & ~(OSDDB_ARCHIVAL | OSDDB_WIPEABLE | OSDDB_HSM_ACCESS | OSDDB_DONT_UNLINK | OSDDB_WITH_HSM_PATH)) {
 	ViceLog(0,("check_osd_tab: unknown flags 0x%x\n", in->flags));
 	return EINVAL;
     }

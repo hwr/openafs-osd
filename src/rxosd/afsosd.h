@@ -19,7 +19,7 @@
  *	change configure must be executed!
  */
  
-#define LIBAFSOSD_VERSION 22
+#define LIBAFSOSD_VERSION 23
 
 /*
  * In git master the major version number is 1 

@@ -40,6 +40,8 @@ extern void *pol_index[];
 extern afs_uint32 policies_revision;
 extern void *make_pol_info();
 
+struct ubik_client * my_init_osddb_client();
+
 struct rx_connection *Conn = 0;
 struct rx_call *Call;
 struct rx_securityClass *Null_secObj;
@@ -180,7 +182,7 @@ scan_osd_or_host()
     fields = sscanf(thost,"%u.%u.%u.%u", &ip0, &ip1, &ip2, &ip3);
     if (fields == 4 && ip0<=255 && ip1<=255 && ip2<=255 && ip3<=255) {
 	Host = htonl((ip0 << 24) + (ip1 << 16) + (ip2 << 8) + ip3);
-        osddb_client = init_osddb_client(cellp);
+        osddb_client = my_init_osddb_client(cellp);
         if (!osddb_client)
 	    fprintf(stderr, "Could not get connection to OSDDB data base\n");
       	return;
@@ -191,7 +193,7 @@ scan_osd_or_host()
 	afsconf_GetLocalCell(tdir, cell, len);
 	cellp = cell;
     }
-    osddb_client = init_osddb_client(cellp);
+    osddb_client = my_init_osddb_client(cellp);
     if (!osddb_client) {
 	fprintf(stderr, "Could not get connection to OSDDB data base\n"); 
 	return;
@@ -2018,9 +2020,8 @@ bad:
   return error;
 }/* cplist */
 
-#if 0
-int
-init_osddb_client()
+struct ubik_client *
+my_init_osddb_client()
 {
     afs_int32 code, scIndex = 0, i;
     struct rx_securityClass *sc;
@@ -2034,13 +2035,13 @@ init_osddb_client()
     code = ugen_ClientInit(0, AFSDIR_CLIENT_ETC_DIRPATH, cellp, localauth, &cstruct, 
 				0, "osddb", 1, 13,
 				(char *)0, 10, server,
-				OSDDB_OLD_SERVER_PORT /* OSDDB_SERVER_PORT */, 
+				OSDDB_SERVER_PORT, 
 				OSDDB_SERVICE_ID);
     if (!code)
-        osddb_client = cstruct;
-    return code;
+        return cstruct;
+    else
+        return NULL;
 }
-#endif
 
 afs_int32 
 ListOsds(struct cmd_syndesc *as, void *rock)
@@ -2136,7 +2137,7 @@ ListOsds(struct cmd_syndesc *as, void *rock)
 	memcpy(&server, he->h_addr, 4);
     }
     
-    osddb_client = init_osddb_client(cellp);
+    osddb_client = my_init_osddb_client(cellp);
     if (!osddb_client) {
 	fprintf(stderr, "Could not get connection to OSDDB data base\n");
 	return -1;
@@ -2256,9 +2257,15 @@ ListOsds(struct cmd_syndesc *as, void *rock)
 		break;
 	    case 7 : /* flag  */
 		sprintf(content,"%s", "---");
-                if (l.OsdList_val[current_osd_index].t.etype_u.osd.flags & OSDDB_ARCHIVAL)
-                    sprintf(content,"%s", "arch");
-                else if (l.OsdList_val[current_osd_index].t.etype_u.osd.flags & OSDDB_WIPEABLE)
+                if (l.OsdList_val[current_osd_index].t.etype_u.osd.flags & OSDDB_ARCHIVAL) {
+                    if (l.OsdList_val[current_osd_index].t.etype_u.osd.flags & OSDDB_DONT_UNLINK)
+
+                        sprintf(content,"%s", "Arch");
+		    else if (l.OsdList_val[current_osd_index].t.etype_u.osd.flags & OSDDB_WITH_HSM_PATH)
+                        sprintf(content,"%s", "arcH");
+		    else
+                        sprintf(content,"%s", "arch");
+                } else if (l.OsdList_val[current_osd_index].t.etype_u.osd.flags & OSDDB_WIPEABLE)
                     sprintf(content,"%s", "hsm");
 		break;
 	    case 8 : /* usage  */
@@ -2407,8 +2414,16 @@ CreateOsd(struct cmd_syndesc *as, void *rock)
     }
     if (as->parms[8].items) {			/* archival */
         e->flags |= OSDDB_ARCHIVAL;
+        if (as->parms[9].items) {		/* dont unlink */
+            e->flags |= OSDDB_DONT_UNLINK;
+        }
+    } else {
+        if (as->parms[9].items) {		/* dont unlink */
+	    fprintf(stderr, "only archival osds can get the 'don't unlink' flag\n");
+	    return EINVAL;
+	}
     }
-    if (as->parms[9].items) {			/* wipeable */
+    if (as->parms[10].items) {			/* wipeable */
 	if (e->flags & OSDDB_ARCHIVAL) {
 	    fprintf(stderr, "archival osd can't be wipeable\n");
 	    return EINVAL;
@@ -2416,35 +2431,35 @@ CreateOsd(struct cmd_syndesc *as, void *rock)
         e->flags |= OSDDB_WIPEABLE;
         e->minWipeSize = 64; 		/* default minWipseSize 64 MB */
     }
-    if (as->parms[10].items) {			/* highwatermark */
-        code = util_GetInt32(as->parms[10].items->data, &e->highWaterMark);
+    if (as->parms[11].items) {			/* highwatermark */
+        code = util_GetInt32(as->parms[11].items->data, &e->highWaterMark);
     } else 
 	e->highWaterMark = 800;			/* start at 80 % */
-    if (as->parms[11].items) {			/* owner */
-	afs_uint32 loc = 0;
-	if (strlen(as->parms[11].items->data) > 3) {
-	    fprintf(stderr, "owner '%s' longer than 3 characters\n",
-			as->parms[11].items->data);
-	    return EINVAL;
-	}
-        strcpy((char *)&loc, as->parms[11].items->data);
-        e->owner = ntohl(loc);
-    }
-    if (as->parms[12].items) {			/* location */
+    if (as->parms[12].items) {			/* owner */
 	afs_uint32 loc = 0;
 	if (strlen(as->parms[12].items->data) > 3) {
-	    fprintf(stderr, "location '%s' longer than 3 characters\n",
+	    fprintf(stderr, "owner '%s' longer than 3 characters\n",
 			as->parms[12].items->data);
 	    return EINVAL;
 	}
         strcpy((char *)&loc, as->parms[12].items->data);
+        e->owner = ntohl(loc);
+    }
+    if (as->parms[13].items) {			/* location */
+	afs_uint32 loc = 0;
+	if (strlen(as->parms[13].items->data) > 3) {
+	    fprintf(stderr, "location '%s' longer than 3 characters\n",
+			as->parms[13].items->data);
+	    return EINVAL;
+	}
+        strcpy((char *)&loc, as->parms[13].items->data);
         e->location = ntohl(loc);
     }
-    if (as->parms[13].items) 			/* -cell */
-        cellp = as->parms[13].items->data;
-    if (as->parms[14].items) 			/* -localauth */
+    if (as->parms[14].items) 			/* -cell */
+        cellp = as->parms[14].items->data;
+    if (as->parms[15].items) 			/* -localauth */
         localauth = 1;
-    osddb_client = init_osddb_client(cellp);
+    osddb_client = my_init_osddb_client(cellp);
     if (!osddb_client) {
 	fprintf(stderr, "Could not get connection to OSDDB data base\n");
 	return -1;
@@ -2481,7 +2496,7 @@ SetOsd(struct cmd_syndesc *as, void *rock)
         cellp = as->parms[18].items->data;
     if (as->parms[19].items)                   /* -localauth */
 	localauth = 1;
-    osddb_client = init_osddb_client(cellp);
+    osddb_client = my_init_osddb_client(cellp);
     if (!osddb_client) {
 	fprintf(stderr, "Could not get connection to OSDDB data base\n");
 	return -1;
@@ -2567,12 +2582,38 @@ SetOsd(struct cmd_syndesc *as, void *rock)
         code = util_GetInt32(as->parms[8].items->data, &val);
 	if (val)
             u.flags |= OSDDB_ARCHIVAL;
-	else
-            u.flags &= ~OSDDB_ARCHIVAL;
+	else 
+            u.flags &= ~(OSDDB_ARCHIVAL | OSDDB_DONT_UNLINK);
     }
-    if (as->parms[9].items) {			/* wipeable */
+    if (as->parms[9].items) {			/* with HSM path */
 	afs_int32 val;
         code = util_GetInt32(as->parms[9].items->data, &val);
+	if (val) {
+	    if (u.flags & OSDDB_ARCHIVAL) {
+                u.flags |= OSDDB_WITH_HSM_PATH;
+	    } else {
+		fprintf(stderr, "only archival osds can have a HSM path'\n");
+		return EINVAL;
+	    }
+	} else
+            u.flags &= ~OSDDB_WITH_HSM_PATH;
+    }
+    if (as->parms[10].items) {			/* don't unlink */
+	afs_int32 val;
+        code = util_GetInt32(as->parms[10].items->data, &val);
+	if (val) {
+	    if (u.flags & OSDDB_ARCHIVAL) {
+                u.flags |= OSDDB_DONT_UNLINK;
+	    } else {
+		fprintf(stderr, "only archival osds can have the flag 'don't unlink'\n");
+		return EINVAL;
+	    }
+	} else
+            u.flags &= ~OSDDB_DONT_UNLINK;
+    }
+    if (as->parms[11].items) {			/* wipeable */
+	afs_int32 val;
+        code = util_GetInt32(as->parms[11].items->data, &val);
 	if (val)
             u.flags |= OSDDB_WIPEABLE;
 	else
@@ -2582,11 +2623,11 @@ SetOsd(struct cmd_syndesc *as, void *rock)
 	fprintf(stderr, "archival osd can't be wipeable\n");
 	return EINVAL;
     }
-    if (as->parms[10].items) {			/* highwatermark */
-        code = util_GetInt32(as->parms[10].items->data, &u.highWaterMark);
+    if (as->parms[12].items) {			/* highwatermark */
+        code = util_GetInt32(as->parms[12].items->data, &u.highWaterMark);
     }
-    if (as->parms[11].items) {			/* minsize */
-	i = sscanf(as->parms[11].items->data, "%llu%s", &size, &str);
+    if (as->parms[13].items) {			/* minsize */
+	i = sscanf(as->parms[13].items->data, "%llu%s", &size, &str);
         if (i == 2) {
 	    if (str[0] == 'k' || str[0] == 'K') 
 		size = size << 10;
@@ -2601,53 +2642,53 @@ SetOsd(struct cmd_syndesc *as, void *rock)
 	} 
 	if (i != 1 && i != 2) {
 	    fprintf(stderr,"%s: invalid value for minsize %s.\n",
-			as->parms[11].items->data);
+			as->parms[13].items->data);
 	    return EINVAL;
         }
 	u.minWipeSize = size >> 20;
     }
-    if (as->parms[12].items) {			/* owner */
+    if (as->parms[14].items) {			/* owner */
         afs_uint32 loc;
-	if (strlen(as->parms[12].items->data) > 3) {
+	if (strlen(as->parms[14].items->data) > 3) {
 	    fprintf(stderr, "owner %s longer than 3 characters\n",
-			as->parms[12].items->data);
+			as->parms[14].items->data);
 	    return EINVAL;
 	}
-	if (as->parms[12].items->data[0] == '0' 
-	  && as->parms[12].items->data[1] == '\0')
+	if (as->parms[14].items->data[0] == '0' 
+	  && as->parms[14].items->data[1] == '\0')
 	    loc = 0;
 	else
-            strcpy((char *)&loc, as->parms[12].items->data);
+            strcpy((char *)&loc, as->parms[14].items->data);
         u.owner = ntohl(loc);
     }
-    if (as->parms[13].items) {			/* location */
+    if (as->parms[15].items) {			/* location */
         afs_uint32 loc;
-	if (strlen(as->parms[13].items->data) > 3) {
+	if (strlen(as->parms[15].items->data) > 3) {
 	    fprintf(stderr, "location %s longer than 3 characters\n",
-			as->parms[13].items->data);
+			as->parms[15].items->data);
 	    return EINVAL;
 	}
-	if (as->parms[13].items->data[0] == '0' 
-	  && as->parms[13].items->data[1] == '\0')
+	if (as->parms[15].items->data[0] == '0' 
+	  && as->parms[15].items->data[1] == '\0')
 	    loc = 0;
 	else
-            strcpy((char *)&loc, as->parms[13].items->data);
+            strcpy((char *)&loc, as->parms[15].items->data);
         u.location = ntohl(loc);
     }
-    if (as->parms[14].items) {			/* newestwiped */
-        code = util_GetInt32(as->parms[14].items->data, &u.newestWiped);
+    if (as->parms[16].items) {			/* newestwiped */
+        code = util_GetInt32(as->parms[16].items->data, &u.newestWiped);
     }
-    if (as->parms[15].items) {			/* hsmaccess */
+    if (as->parms[17].items) {			/* hsmaccess */
 	afs_int32 val;
-        code = util_GetInt32(as->parms[15].items->data, &val);
+        code = util_GetInt32(as->parms[17].items->data, &val);
 	if (val)
             u.flags |= OSDDB_HSM_ACCESS;
 	else
             u.flags &= ~OSDDB_HSM_ACCESS;
     }
-    if (as->parms[16].items) {			/* port */
+    if (as->parms[18].items) {			/* port */
 	afs_int32 val;
-        code = util_GetInt32(as->parms[16].items->data, &val);
+        code = util_GetInt32(as->parms[18].items->data, &val);
 	if (!code) {
 	    if (val < 0 || val> 65535) {
 		fprintf(stderr, "Invalid port number %d\n", val);
@@ -2657,9 +2698,9 @@ SetOsd(struct cmd_syndesc *as, void *rock)
 	    u.service_port |= val;
 	}	
     }
-    if (as->parms[17].items) {			/* service */
+    if (as->parms[19].items) {			/* service */
 	afs_int32 val;
-        code = util_GetInt32(as->parms[17].items->data, &val);
+        code = util_GetInt32(as->parms[19].items->data, &val);
 	if (!code) {
 	    if (val < 0 || val> 65535) {
 		fprintf(stderr, "Invalid service id %d\n", val);
@@ -2700,7 +2741,7 @@ DeleteOsd(struct cmd_syndesc *as, void *rock)
         cellp = as->parms[1].items->data;
     if (as->parms[2].items) 			/* -localauth */
         localauth = 1;
-    osddb_client = init_osddb_client(cellp);
+    osddb_client = my_init_osddb_client(cellp);
     if (!osddb_client) {
 	fprintf(stderr, "Could not get connection to OSDDB data base\n");
 	return -1;
@@ -2760,7 +2801,7 @@ ShowOsd(struct cmd_syndesc *as, void *rock)
     }
     if (as->parms[3].items) 			/* cell */
         cellp = as->parms[3].items->data;
-    osddb_client = init_osddb_client(cellp);
+    osddb_client = my_init_osddb_client(cellp);
     if (!osddb_client) {
 	fprintf(stderr, "Could not get connection to OSDDB data base\n");
 	return -1;
@@ -2815,6 +2856,10 @@ ShowOsd(struct cmd_syndesc *as, void *rock)
     	    string[0] = 0;
 	    if (l.OsdList_val[i].t.etype_u.osd.flags & OSDDB_ARCHIVAL)
 	    		strcpy(string, " = OSDDB_ARCHIVAL");
+	    if (l.OsdList_val[i].t.etype_u.osd.flags & OSDDB_WITH_HSM_PATH)
+	    		strcat(string, " OSDDB_WITH_HSM_PATH");
+	    if (l.OsdList_val[i].t.etype_u.osd.flags & OSDDB_DONT_UNLINK)
+	    		strcat(string, " OSDDB_DONT_UNLINK");
 	    if (l.OsdList_val[i].t.etype_u.osd.flags & OSDDB_WIPEABLE)
 	    		strcpy(string, " = OSDDB_WIPEABLE");
 	    if (l.OsdList_val[i].t.etype_u.osd.flags & OSDDB_HSM_ACCESS) {
@@ -2897,7 +2942,7 @@ AddServer(struct cmd_syndesc *as, void *rock)
         cellp = as->parms[4].items->data;
     if (as->parms[5].items) 		/* -localauth */
         localauth = 1;
-    osddb_client = init_osddb_client(cellp);
+    osddb_client = my_init_osddb_client(cellp);
     if (!osddb_client) {
 	fprintf(stderr, "Could not get connection to OSDDB data base\n");
 	return -1;
@@ -2939,7 +2984,7 @@ DeleteServer(struct cmd_syndesc *as, void *rock)
         cellp = as->parms[1].items->data;
     if (as->parms[2].items)		/* -localauth */ 
         localauth = 1;
-    osddb_client = init_osddb_client(cellp);
+    osddb_client = my_init_osddb_client(cellp);
     if (!osddb_client) {
 	fprintf(stderr, "Could not get connection to OSDDB data base\n");
 	return -1;
@@ -2985,7 +3030,7 @@ ShowServer(struct cmd_syndesc *as, void *rock)
     }
     if (as->parms[1].items) 			/* cell */
         cellp = as->parms[1].items->data;
-    osddb_client = init_osddb_client(cellp);
+    osddb_client = my_init_osddb_client(cellp);
     if (!osddb_client) {
 	fprintf(stderr, "Could not get connection to OSDDB data base\n");
 	return -1;
@@ -3141,7 +3186,7 @@ Fetchq(struct cmd_syndesc *as, void *rock)
         cellp = as->parms[1].items->data;
     scan_osd_or_host();
     pr_Initialize(1, AFSDIR_CLIENT_ETC_DIRPATH, cellp);
-    osddb_client = init_osddb_client(cellp);
+    osddb_client = my_init_osddb_client(cellp);
     if (!osddb_client) {
 	fprintf(stderr, "Could not get connection to OSDDB data base\n");
 	return -1;
@@ -3736,7 +3781,7 @@ AddPolicy(struct cmd_syndesc *as, void *rock)
     if ( as->parms[5].items ) 			/* -localauth */
         localauth = 1;
 
-    osddb_client = init_osddb_client(cellp);
+    osddb_client = my_init_osddb_client(cellp);
     if (!osddb_client) {
 	fprintf(stderr, "Could not get connection to OSDDB data base\n");
 	return -1;
@@ -3778,7 +3823,7 @@ ShowPolicy(struct cmd_syndesc *as, void *rock)
     if (as->parms[5].items) 			/* -cell */
         cellp = as->parms[5].items->data;
 
-    osddb_client = init_osddb_client(cellp);
+    osddb_client = my_init_osddb_client(cellp);
     if (!osddb_client) {
 	fprintf(stderr, "Could not get connection to OSDDB data base\n");
 	return -1;
@@ -3855,7 +3900,7 @@ DeletePolicy(struct cmd_syndesc *as, void *rock)
     if (as->parms[2].items)		/* -localauth */ 
         localauth = 1;
 
-    osddb_client = init_osddb_client(cellp);
+    osddb_client = my_init_osddb_client(cellp);
     if (!osddb_client) {
 	fprintf(stderr, "Could not get connection to OSDDB data base\n");
 	return -1;
@@ -4497,6 +4542,7 @@ int main (int argc, char **argv)
     cmd_AddParm(ts, "-wrprior", CMD_SINGLE, CMD_OPTIONAL, "write priority");
     cmd_AddParm(ts, "-rdprior", CMD_SINGLE, CMD_OPTIONAL, "read priority");
     cmd_AddParm(ts, "-archival", CMD_FLAG, CMD_OPTIONAL, "archival osd");
+    cmd_AddParm(ts, "-dont_unlink", CMD_FLAG, CMD_OPTIONAL, "keep deleted files");
     cmd_AddParm(ts, "-wipeable", CMD_FLAG, CMD_OPTIONAL, "osd can be wiped");
     cmd_AddParm(ts, "-highwatermark", CMD_SINGLE, CMD_OPTIONAL,
 	        "per mille where wiping starts");
@@ -4516,6 +4562,8 @@ int main (int argc, char **argv)
     cmd_AddParm(ts, "-wrprior", CMD_SINGLE, CMD_OPTIONAL, "write priority");
     cmd_AddParm(ts, "-rdprior", CMD_SINGLE, CMD_OPTIONAL, "read priority");
     cmd_AddParm(ts, "-archival", CMD_SINGLE, CMD_OPTIONAL, "archival osd (0|1)");
+    cmd_AddParm(ts, "-hpss", CMD_SINGLE, CMD_OPTIONAL, "objects not stored in partition (0|1)");
+    cmd_AddParm(ts, "-dont_unlink", CMD_SINGLE, CMD_OPTIONAL, "keep deleted files (0|1)");
     cmd_AddParm(ts, "-wipeable", CMD_SINGLE, CMD_OPTIONAL, "osd can be wiped (0|1)");
     cmd_AddParm(ts, "-highwatermark", CMD_SINGLE, CMD_OPTIONAL, "per mille where wiping starts");
     cmd_AddParm(ts, "-minwipesize", CMD_SINGLE, CMD_OPTIONAL, "minimum size for wiping");
