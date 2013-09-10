@@ -1018,7 +1018,7 @@ DumpVolumeHeader(struct iod *iodp, Volume * vp, int flag)
     if (!code)
 	code = DumpInt32(iodp, 'Z', V_dayUse(vp));
     if (flag & TARGETHASOSDSUPPORT) {
-        if (!code)
+        if (!code && V_osdPolicy(vp))
 	    code = DumpInt32(iodp, 'y', V_osdPolicy(vp));
     }
     return code;
