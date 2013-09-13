@@ -3186,7 +3186,6 @@ Fetchq(struct cmd_syndesc *as, void *rock)
         cellp = as->parms[1].items->data;
     scan_osd_or_host();
     pr_Initialize(1, AFSDIR_CLIENT_ETC_DIRPATH, cellp);
-    osddb_client = my_init_osddb_client(cellp);
     if (!osddb_client) {
 	fprintf(stderr, "Could not get connection to OSDDB data base\n");
 	return -1;
