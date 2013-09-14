@@ -165,20 +165,20 @@ init_osddb_client(char *cell)
     memset(&serverconns, 0, sizeof(serverconns));
     tdir = afsconf_Open(AFSDIR_SERVER_ETC_DIRPATH);
     if (!tdir) {
-        fprintf(2,
-                "Could not open configuration directory (%s).\n", AFSDIR_SERVER_ETC_DIRPATH);
+        ViceLog(0,
+                ("Could not open configuration directory (%s).\n", AFSDIR_SERVER_ETC_DIRPATH));
         return NULL;
     }
     code = afsconf_ClientAuth(tdir, &sc, &scIndex);
     if (code) {
-        fprintf(2, "Could not get security object for localAuth\n");
+        ViceLog(0, ("Could not get security object for localAuth\n"));
         return NULL;
     }
     code = afsconf_GetCellInfo(tdir, NULL, AFSCONF_VLDBSERVICE, &info);
     if (info.numServers > MAXSERVERS) {
-        fprintf(2,
-                "vl_Initialize: info.numServers=%d (> MAXSERVERS=%d)\n",
-                 info.numServers, MAXSERVERS);
+        ViceLog(0,
+                ("vl_Initialize: info.numServers=%d (> MAXSERVERS=%d)\n",
+                 info.numServers, MAXSERVERS));
         return NULL;
     }
     for (i = 0; i < info.numServers; i++)
@@ -188,7 +188,7 @@ init_osddb_client(char *cell)
     code = ubik_ClientInit(serverconns, &cstruct);
     afsconf_Close(tdir);
     if (code) {
-        fprintf(2, "vl_Initialize: ubik client init failed.\n");
+        ViceLog(0, ("vl_Initialize: ubik client init failed.\n"));
         return NULL;
     }
 
@@ -235,7 +235,7 @@ void free_policy(struct osddb_policy *policy)
 	free_regexes(&policy->rules.pol_ruleList_val[r].condition);
     xdrmem_create(&xdr, NULL, 0, XDR_FREE);
     if ( !xdr_osddb_policy(&xdr, policy) )
-	fprintf(2, "XDR_FREE of policy at 0x%016x failed\n", policy);
+	ViceLog(0, ("XDR_FREE of policy at 0x%016x failed\n", policy));
 }
 
 void free_pol_info(struct pol_info *info)
@@ -274,8 +274,8 @@ void annotate_condition(struct pol_info *info, pol_cond *cond)
 		    		| (pred.type & PREDFLAG_ICASE ? REG_ICASE : 0); 
 		    if ( code = regcomp(
 				(regex_t*)tmp, pred.pol_pred_u.regex, flags) ) {
-			fprintf(2, "regex compile failed for /%s/: %d\n",
-						pred.pol_pred_u.regex, code); 
+			ViceLog(0, ("regex compile failed for /%s/: %d\n",
+						pred.pol_pred_u.regex, code)); 
 		    }
 		    else
 			cond->pol_cond_u.predicate.type |= PREDFLAG_ANNOTATED;
@@ -317,10 +317,8 @@ struct pol_info *make_pol_info(osddb_policy *pol, afs_uint32 id, char *name,
     }
 
     dest->id = id;
-#if 0
     if ( dest->uses_file_name )
 	ViceLog(1, ("policy %d needs file names\n", id));
-#endif
     strncpy(dest->name, name, OSDDB_MAXNAMELEN-1);
     return dest;
 }
@@ -334,9 +332,7 @@ void buildPolicyIndex(struct OsdList *l)
 
     memset(&new_index, 0, sizeof(new_index));
 
-#if 0
     ViceLog(1, ("building policy index\n"));
-#endif
 
     for ( i = 0 ; i < l->OsdList_len ; i++ ) {
 	struct Osd entry = l->OsdList_val[i];
@@ -353,9 +349,7 @@ void buildPolicyIndex(struct OsdList *l)
 	}
 	else {
 	    new_index[index] = current = malloc(sizeof(struct pol_info));
-#if 0
 	    ViceLog(1, ("inserting pol %d at %d\n", entry.id, index));
-#endif
 	}
 	memset(current, 0, sizeof(struct pol_info));
 
@@ -407,10 +401,8 @@ void buildPolicyIndex(struct OsdList *l)
 	    }
 	}
     }
-#if 0
     ViceLog(1, ("needed %d pass%s over policy index\n",
     			passes, passes > 1 ? "es" : ""));
-#endif
 
     OSDDB_LOCK;
 
@@ -448,13 +440,11 @@ void FillPolicyTable()
     if (code == RXGEN_OPCODE)
         code = ubik_Call(OSDDB_GetPoliciesRevision68, osddb_client, 0, &db_revision);
     if ( code ) {
-	fprintf(2, "failed to query for policy revision, error %d\n", code);
+	ViceLog(0, ("failed to query for policy revision, error %d\n", code));
 	return;
     }
-#if 0
     ViceLog(1, ("OSDDB policy revision: %d, local revision: %d\n", db_revision,
     	policies_revision));
-#endif
     if ( db_revision == policies_revision )
 	return;
 
@@ -623,9 +613,9 @@ retry:
 		FillOsdTable();
 		goto retry;
 	    }
-            fprintf(2,"fillRxEndpoint: osd %u unavailable\n", id);
+            ViceLog(1,("fillRxEndpoint: osd %u unavailable\n", id));
 	 } else
-            fprintf(2, "fillRxEndpoint: couldn't find entry for id %u\n", id);
+            ViceLog(0,("fillRxEndpoint: couldn't find entry for id %u\n", id));
     }
     return code;
 }
@@ -685,9 +675,9 @@ retry:
 		FillOsdTable();
 		goto retry;
 	    }
-            fprintf(2, "FindOsd: osd %u unavailable\n", id);
+            ViceLog(1,("FindOsd: osd %u unavailable\n", id));
 	 } else
-            fprintf(2, "FindOsd: couldn't find entry for id %u\n", id);
+            ViceLog(0,("FindOsd: couldn't find entry for id %u\n", id));
     }
     return code;
 }
@@ -753,7 +743,7 @@ init_pol_statList(struct osd_infoList *list)
     if (code == RXGEN_OPCODE)
         code = ubik_Call(OSDDB_PolicyList66, osddb_client, 0, &l);
     if ( code ) {
-	fprintf(2, "init_iol_statList failed with %d\n", code);
+	ViceLog(0, ("init_pol_statList failed with %d\n", code));
 	return code;
     }
     if ( !l.OsdList_len )
@@ -784,18 +774,14 @@ get_max_move_osd_size()
     if (!osds.OsdList_len)
         FillOsdTable();
     if (!osds.OsdList_len) {
-#if 0
 	ViceLog(0, ("get_max_move_osd_size: returning default value: 1 MB\n"));
-#endif
         return value;
     }
     OSDDB_LOCK;
     for (i=0; i<osds.OsdList_len; i++) {
 	if (osds.OsdList_val[i].id == 1) {
 	    value = osds.OsdList_val[i].t.etype_u.osd.maxSize << 10;
-#if 0
 	    ViceLog(1, ("get_max_move_osd_size: returning value: %llu\n", value));
-#endif
 	    break;
 	}
     }
@@ -848,9 +834,7 @@ DoFindOsd(afs_uint64 size, afs_uint32 *osd, afs_uint32 *lun,
     if (!osds.OsdList_len)
         FillOsdTable();
     if (!osds.OsdList_len) {
-#if 0
 	ViceLog(0, ("DoFindOsd: OSDDB not populated.\n"));
-#endif
         return ENOENT;
     }
     for (i=0; i<navoid; i++) 
@@ -937,9 +921,7 @@ DoFindOsd(afs_uint64 size, afs_uint32 *osd, afs_uint32 *lun,
 			*lun = osds.OsdList_val[i].t.etype_u.osd.lun;
 	    		incrementChosen(&osds.OsdList_val[i]);
         	        OSDDB_UNLOCK;
-#if 0
         		ViceLog(1,("DoFindOsd: chose osd %d for size %llu\n",*osd,size));
-#endif
 			osd++;
 			lun++;
 			needed--;
@@ -967,9 +949,7 @@ DoFindOsd(afs_uint64 size, afs_uint32 *osd, afs_uint32 *lun,
 		            *lun = osds.OsdList_val[i].t.etype_u.osd.lun; 
 	    		    incrementChosen(&osds.OsdList_val[i]);
         	            OSDDB_UNLOCK;
-#if 0
         		    ViceLog(1,("DoFindOsd: chose osd %d for size %llu\n",*osd,size));
-#endif
 			    osd++;
 			    lun++;
 		            needed--;
@@ -985,9 +965,7 @@ DoFindOsd(afs_uint64 size, afs_uint32 *osd, afs_uint32 *lun,
     free (prio);
     if (needed) 
 	return ENOENT;
-#if 0
     ViceLog(1,("DoFindOsd: chose osd %d for size %llu\n",*osd,size));
-#endif
     return 0;
 }
 
@@ -1440,14 +1418,14 @@ eval_condtree(pol_cond *cond, afs_uint64 size, char *fileName,
 		    }
 		    if ( tcode == 0 )
 			break;
-		    fprintf(2,
-			    "regex matching '%s' =~ /%s/ failed with %d\n",
-				    fileName, ex, tcode);
+		    ViceLog(0,
+			    ("regex matching '%s' =~ /%s/ failed with %d\n",
+				    fileName, ex, tcode));
 		    return EIO;
 		}
 		else {
-		    fprintf(2, "regex was not annotated: /%s/\n",
-		    				predicate.pol_pred_u.regex);
+		    ViceLog(0, ("regex was not annotated: /%s/\n",
+		    				predicate.pol_pred_u.regex));
 		    return EIO;
 		}
 		break;
@@ -1501,9 +1479,7 @@ static afs_int32 do_eval_policy( unsigned int policyIndex, afs_uint64 size,
     int r;
 
     if ( !pol ) {
-#if 0
 	ViceLog(0, ("failed to lookup policy %d\n", policyIndex));
-#endif
 	return ENOENT;
     }
 
@@ -1511,14 +1487,10 @@ static afs_int32 do_eval_policy( unsigned int policyIndex, afs_uint64 size,
 	pol_rule rule = pol->rules.pol_ruleList_val[r];
 	int matched = 1;
 	if ( rule.used_policy ) {
-#if 0
 	    ViceLog(2, ("recursively evaluating policy %d\n", rule.used_policy));
-#endif
 	    tcode = do_eval_policy(
 	    		rule.used_policy, size, fileName, evalclient, client, props);
-#if 0
 	    ViceLog(2, ("recursion done, props are now 0x%x\n", *props));
-#endif
 	    if ( ( tcode && tcode != ENOENT ) || POLPROP_FORCE(*props) )
 		return tcode;
 	}
@@ -1526,33 +1498,27 @@ static afs_int32 do_eval_policy( unsigned int policyIndex, afs_uint64 size,
 	    tcode = eval_condtree(&rule.condition, size, fileName, 
 				    evalclient, client, &matched);
 	    if ( tcode == EINVAL ) {
-		fprintf(2, "policy %d may contain unknown predicate type\n",
-								policyIndex);
+		ViceLog(0, ("policy %d may contain unknown predicate type\n",
+								policyIndex));
 	    }
 	    if ( tcode )
 		return tcode;
 	    if ( matched ) {
-#if 0
 		ViceLog(2, ("updating: props 0x%x with 0x%x\n", *props, rule.properties));
-#endif
 		UPDATE(POLPROP_LOCATION, POLICY_LOCATION_MASK);
 		UPDATE(POLPROP_NSTRIPES, POLICY_NSTRIPES_MASK);
 		UPDATE(POLPROP_SSTRIPES, POLICY_SSTRIPES_MASK);
 		UPDATE(POLPROP_NCOPIES, POLICY_NCOPIES_MASK);
 		UPDATE(POLPROP_FORCE, POLICY_CONT_OP_MASK);
 		if ( POLPROP_FORCE(rule.properties) ) {
-#if 0
 		    TRACE_POLICY(2);
-#endif
 		    return 0;
 		}
 	    }
 	}
     }
 
-#if 0
     TRACE_POLICY(2);
-#endif
     return 0;
 }
 

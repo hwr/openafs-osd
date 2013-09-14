@@ -322,8 +322,8 @@ readabyte: readabyte.o libafshsm.o
 	${CC} ${LDFLAGS} -o readabyte readabyte.o libafshsm.o \
 			${LIBS} ${MT_LIBS} -ldl -lnsl
 
-osd: osd.o rxosd.cs.o rxosd.xdr.o osddbuser.o osddb.cs.o osddb.xdr.o policy_parser.o
-	${CC} ${LDFLAGS} -o osd osd.o rxosd.cs.o rxosd.xdr.o osddbuser.o \
+osd: osd.o rxosd.cs.o rxosd.xdr.o a_osddbuser.o osddb.cs.o osddb.xdr.o policy_parser.o
+	${CC} ${LDFLAGS} -o osd osd.o rxosd.cs.o rxosd.xdr.o a_osddbuser.o \
 		osddb.cs.o osddb.xdr.o policy_parser.o \
 		${LIBS} $(LIB_hcrypto) $(LIB_roken) ${MT_LIBS} ${XLIBS} ${KRB5_LIBS}
 
