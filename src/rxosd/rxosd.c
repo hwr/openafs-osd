@@ -634,8 +634,6 @@ t10rock dummyrock = {0, 0};
 
 struct activerpc IsActive[MAX_RXOSD_THREADS];
 
-extern char *threadname();
-
 void *
 ShutDownAndCore(int dopanic)
 {
@@ -1155,7 +1153,16 @@ FiveMinuteCheckLWP()
 			  || e->t.etype_u.osd.flags & OSDDB_WITH_HSM_PATH))
 			    hsmDev = e->t.etype_u.osd.lun;
 			if (e->t.etype_u.osd.flags & OSDDB_DONT_UNLINK) {
-			    dontUnlinkDev[maxDontUnlinkDev++] = e->t.etype_u.osd.lun;
+			    int i;
+			    for (i=0; i<MAXARCHIVALOSDSPERMACHINE; i++) {
+				if (dontUnlinkDev[i] == e->t.etype_u.osd.lun)
+				    break; 	/* already marked */
+				if (dontUnlinkDev[i] == -1) {
+			    	    dontUnlinkDev[i] = e->t.etype_u.osd.lun;
+			    	    maxDontUnlinkDev++;
+				    break;
+				}
+			    }
 			}
 			code = CheckMount(partname);
 			if (!code) { 
