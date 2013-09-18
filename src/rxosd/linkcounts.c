@@ -306,7 +306,7 @@ Convert(struct cmd_syndesc *as, char *arock)
         sprintf(&oldpath, "/%s/AFSIDat/%s/%s/special/%s-old",
 		partition, V1, V2, N);
 	printf("Version 2 link table will be %s\n", newpath);
-	newfd = open(newpath, O_CREAT | O_RDWR);
+	newfd = open(newpath, O_CREAT | O_RDWR, 0600);
 	if (newfd < 0) {
 	    fprintf(stderr, "Couldn't create %s, exiting\n", newpath);
 	    close(fd);
