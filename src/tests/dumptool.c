@@ -152,6 +152,8 @@ struct osdMetadataHandle {
 
 struct osdMetadataHandle dummymh;
 
+char cwd[1024];
+
 static bool_t
 xdrvol_getint32(void *axdrs, afs_int32 * lp)
 {
@@ -1251,6 +1253,7 @@ InteractiveRestore(FILE * f, VolumeDiskData * vol)
 		"possible.\n");
 	return;
     }
+    strcpy(cwd,"/");
 
     /*
      * If you're doing a selective dump correctly, then you should get all
@@ -1264,7 +1267,7 @@ InteractiveRestore(FILE * f, VolumeDiskData * vol)
 		"data.  An interactive restore\nmay not be possible\n",
 		numNoDirData);
 
-    printf("> ");
+    printf("%s> ", cwd);
     while (fgets(cmdbuf, CMDBUFSIZE, stdin)) {
 
 	cmdbuf[strlen(cmdbuf) - 1] = '\0';
@@ -1317,7 +1320,7 @@ InteractiveRestore(FILE * f, VolumeDiskData * vol)
 		    "Unknown command, \"%s\", enter "
 		    "\"help\" for a list of commands.\n", argv[0]);
 
-	printf("> ");
+	printf("%s> ", cwd);
     }
 
     return;
@@ -1618,6 +1621,7 @@ static struct vnodeData *
 ChangeDirectory(int argc, char **argv, struct vnodeData *vdatacwd)
 {
     struct vnodeData *newvdatacwd;
+    char *p = argv[1];
 
     if (argc != 2) {
 	fprintf(stderr, "Usage: %s directory\n", argv[0]);
@@ -1635,6 +1639,27 @@ ChangeDirectory(int argc, char **argv, struct vnodeData *vdatacwd)
     if (newvdatacwd->filedata == NULL) {
 	fprintf(stderr, "%s: No directory data found.\n", argv[1]);
 	return NULL;
+    }
+    while (*p) {
+	char *cwdend = &cwd[strlen(cwd)-1];
+        if (!strncmp(p, "..", 2)) {
+	    p +=2;
+	    while (strlen(cwd) > 1 && *cwdend != '/') {
+		*cwdend = 0;
+		cwdend--;
+	    }
+	    if (strlen(cwd) > 1) {
+	        *cwdend = 0;
+	        cwdend--;
+	    }
+	} else {
+	    if (strlen(cwd) > 1)
+	        *(++cwdend) = '/';	
+	    while (*p != '/' && *p != 0) 
+		*(++cwdend) = *p++;		
+	}
+	if (*p == '/')
+	    p++;
     }
 
     return newvdatacwd;
