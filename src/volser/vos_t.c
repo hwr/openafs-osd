@@ -2292,7 +2292,7 @@ MoveVolume(struct cmd_syndesc *as, void *arock)
     if (TESTM)
 	fprintf(STDOUT, "volume %lu size %d\n", (unsigned long)volid,
 		p->size);
-    if (partition.free <= p->size) {
+    if (partition.free <= p->size && !p->osdPolicy) {
 	fprintf(STDERR,
 		"vos: no space on target partition %s to move volume %lu\n",
 		toPartName, (unsigned long)volid);
