@@ -3484,31 +3484,35 @@ int examine(struct rx_call *call, t10rock *rock, struct oparmT10 *o,
     if ((mask & WANTS_SIZE) && sizep)
         *sizep = tstat.st_size;
     if ((mask & WANTS_HSM_STATUS) && statusp) {
-	struct fetch_entry *f;
-	f = GetFetchEntry(o);
-	if (f) {
-	    *statusp = 'm';
-	} else if (h.ih_ops->stat_tapecopies) { /* hpss or dcache */
-	    time_t before = time(0), after;
-	    char what[2];
-	    result = h.ih_ops->stat_tapecopies(name.n_path, statusp, sizep);
-	    after = time(0);
-	    what[0] = *statusp;
-	    what[1] = 0;
-	    ViceLog(1, ("stat_tapecopies for %s took %d seconds to find %s\n",
-				sprint_oparmT10(o, string, sizeof(string)),
-				after - before, what));
+        if (!HSM && h.ih_dev != hsmDev) {
+	    *statusp = 'r';
 	} else {
-	    char input[100];
-	    *statusp = 0;
+	    struct fetch_entry *f;
+	    f = GetFetchEntry(o);
+	    if (f) {
+	        *statusp = 'm';
+	    } else if (h.ih_ops->stat_tapecopies) { /* hpss or dcache */
+	        time_t before = time(0), after;
+	        char what[2];
+	        result = h.ih_ops->stat_tapecopies(name.n_path, statusp, sizep);
+	        after = time(0);
+	        what[0] = *statusp;
+	        what[1] = 0;
+	        ViceLog(1, ("stat_tapecopies for %s took %d seconds to find %s\n",
+				    sprint_oparmT10(o, string, sizeof(string)),
+				    after - before, what));
+	    } else {
+	        char input[100];
+	        *statusp = 0;
 #ifdef AFS_TSM_HSM_ENV
-    	    sprintf(input, DSMLS, name.n_path);
+    	        sprintf(input, DSMLS, name.n_path);
 #endif /* AFS_TSM_HSM_ENV */
 #ifdef AFS_SUN510_ENV
-    	    sprintf(input, SLSCMD, name.n_path);
+    	        sprintf(input, SLSCMD, name.n_path);
 #endif 
-    	    code = Command(input, CHK_STDOUT, check_dsmls, statusp);
-	}
+    	        code = Command(input, CHK_STDOUT, check_dsmls, statusp);
+	    }
+        }
     }
 #ifdef AFS_TSM_HSM_ENV
     blocks = tstat.st_blocks;
