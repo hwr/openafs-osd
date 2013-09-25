@@ -2033,7 +2033,7 @@ my_init_osddb_client()
 	return 0;
     memset(&serverconns, 0, sizeof(serverconns));
     code = ugen_ClientInit(0, AFSDIR_CLIENT_ETC_DIRPATH, cellp, localauth, &cstruct, 
-				0, "osddb", 1, 13,
+				0, "osddb_client", 1, 13,
 				(char *)0, 10, server,
 				OSDDB_SERVER_PORT, 
 				OSDDB_SERVICE_ID);
@@ -2492,9 +2492,9 @@ SetOsd(struct cmd_syndesc *as, void *rock)
     if (as->parms[1].items) {			/* name */
 	strcpy((char *)&u.name, as->parms[1].items->data);
     }
-    if (as->parms[18].items) 			/* cell */
-        cellp = as->parms[18].items->data;
-    if (as->parms[19].items)                   /* -localauth */
+    if (as->parms[20].items) 			/* cell */
+        cellp = as->parms[20].items->data;
+    if (as->parms[21].items)                   /* -localauth */
 	localauth = 1;
     osddb_client = my_init_osddb_client(cellp);
     if (!osddb_client) {
