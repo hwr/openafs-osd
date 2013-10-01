@@ -6486,6 +6486,8 @@ SRXOSD_modify_fetchq(struct rx_call *call, struct ometa *o, afs_int32 what,
 {
     afs_int32 code = EINVAL;
     struct fetch_entry *f = NULL;
+    char string[FIDSTRLEN];
+    afs_int32 steps = 0;
 
     SETTHREADACTIVE(21, call, o);
     *result = 0;
@@ -6493,26 +6495,46 @@ SRXOSD_modify_fetchq(struct rx_call *call, struct ometa *o, afs_int32 what,
         code = EACCES;
         goto finis;
     }
-    if (what == REMOVE_FROM_FETCHQUEUE) {
-	if (o->vsn == 1)
-            code = FindInFetchqueue(call, &o->ometa_u.t, 0, NULL, 0, &f, 1);
-	else {
-	    struct oparmT10 o1;
-	    code = convert_ometa_2_1(&o->ometa_u.f, &o1);
-	    if (code)
-		goto finis;
-            code = FindInFetchqueue(call, &o1, 0, NULL, 0, &f, 1);
-	}
-        if (f) {				/* still in fetch queue */
-	    /*
-	     *  We should not try to dereference f because we are not
-	     *  protected by a lock. RemoveFromFetchqueue first checks
-	     *  f is still in the queue before doing anything.
-	     */
-	    *result = code;			/* == f->error */
-	    code = RemoveFromFetchq(f);
-        }
-    }
+    steps = what >> MOD_FETCHQUEUE_CMD_BITS;
+    what &= 0xf;
+    switch (what) {
+
+	case REMOVE_FROM_FETCHQUEUE :
+	    if (o->vsn == 1)
+                code = FindInFetchqueue(call, &o->ometa_u.t, 0, NULL, 0, &f, 1);
+	    else {
+	        struct oparmT10 o1;
+	        code = convert_ometa_2_1(&o->ometa_u.f, &o1);
+	        if (code)
+		    goto finis;
+                code = FindInFetchqueue(call, &o1, 0, NULL, 0, &f, 1);
+	    }
+            if (f) {				/* still in fetch queue */
+	        /*
+	         *  We should not try to dereference f because we are not
+	         *  protected by a lock. RemoveFromFetchqueue first checks
+	         *  f is still in the queue before doing anything.
+	         */
+	        *result = code;			/* == f->error */
+	        code = RemoveFromFetchq(f);
+            }
+   	    break;
+
+	case MOVE_UP_IN_FETCHQUEUE :
+	    ViceLog(0,("modify_fetchq: Move fid %s up by %u steps\n",
+               sprint_oparmFree(o, string, sizeof(string)),steps));
+            *result = steps;
+            break; 
+	case MOVE_DOWN_IN_FETCHQUEUE :
+            ViceLog(0,("Move fid %s down by %u steps\n",
+               sprint_oparmFree(o, string, sizeof(string)),steps));
+            *result = -steps;
+            break;
+	default :
+	    ViceLog(0,("SRXOSD_modify_fetchq: Internal Error. Got unknown command %d\n", 
+what));
+     }
+
 finis:
     SETTHREADINACTIVE();
     return code;
@@ -7221,7 +7243,9 @@ read_from_hpss(struct rx_call *call, struct oparmT10 *o,
         code = EIO;
 	goto bad;
     }
+#if 0
     lock_file(fd, LOCK_EX, 0);
+#endif
     oh->ih->ih_ops->lseek(fd->fd_fd, 0, SEEK_SET);
     odsc = &list->osd_segm_descList_val[0].objList.osd_obj_descList_val[0];
     if (odsc->o.vsn != 1) {
@@ -7310,7 +7334,9 @@ bad:
     if (buf)
 	free(buf);
     if (fd) {
+#if 0
 	unlock_file(fd, 0);
+#endif
         FDH_REALLYCLOSE(fd);
     }
     if (oh)

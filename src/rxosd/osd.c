@@ -4203,11 +4203,66 @@ inventoryCmd(struct cmd_syndesc *as, void *rock)
 }
 
 afs_int32
+move_fetch(struct cmd_syndesc *as, void *rock)
+{
+    afs_int32 code, what, cmd, result;
+    afs_int32 steps;
+
+
+    if (as->parms[3].items) 					/* -localauth */
+	localauth = 1;
+    if (as->parms[4].items) 					/* -cell */
+        cellp = as->parms[4].items->data;
+
+    thost = as->parms[0].items->data;
+
+    if (fill_ometa(as->parms[1].items->data))  {
+        fprintf(stderr, "Invalid fid: %s\n", 
+	        as->parms[1].items->data);
+   	return EINVAL;     
+    }
+    
+    steps = as->parms[2].items->data;
+
+    if ( abs(steps) >  MAX_FETCHQUEUE_MOVE ) {
+	fprintf(stderr, "abs(num steps) %d too high\n",steps);
+	return EINVAL;
+	} 
+  
+    if ( steps < 0 )  {
+	cmd = 4;
+	steps = -steps;
+    } else if (steps > 0) {
+	cmd = 2;
+    } else {
+	fprintf(stderr, "refusing to walk 0 steps\n");
+	return(EXIT_FAILURE);
+    }
+    
+    what = abs(steps) << MOD_FETCHQUEUE_CMD_BITS;
+    what |= cmd;
+
+    scan_osd_or_host();
+    GetConnection();
+    code = RXOSD_modify_fetchq(Conn, &Oprm, what, &result);
+    if (code)
+	fprintf(stderr, "RXOSD_modify_fetchq returns %d\n", code);
+    else if (result)
+	fprintf(stderr, "Done. Moved entry by %d positions.\n",
+		result);
+    else
+	fprintf(stderr, "internal error.\n");
+    return code;
+}
+
+
+
+afs_int32
 remove_fetch(struct cmd_syndesc *as, void *rock)
 {
     afs_int32 code, what, result;
 
-    what = REMOVE_FROM_FETCHQUEUE;			/* For now the only use */
+    what = REMOVE_FROM_FETCHQUEUE;			
 
     if (as->parms[2].items) 					/* -localauth */
 	localauth = 1;
@@ -4709,6 +4764,17 @@ int main (int argc, char **argv)
 		"delete all files unlinked before unlinkdate");
     cmd_AddParm(ts, "-localauth", CMD_FLAG, CMD_OPTIONAL,
 	        "get ticket from server key-file ");
+    cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
+
+    ts = cmd_CreateSyntax("mvfetchentry", move_fetch, NULL, "move entry in the fetch queue");
+    cmd_AddParm(ts, "-osd", CMD_SINGLE, CMD_REQUIRED,
+                "osd or server name or IP-address");
+    cmd_AddParm(ts, "-fid", CMD_SINGLE, CMD_REQUIRED,
+                "file-id: volume.vnode.uniquifier[.tag]");
+    cmd_AddParm(ts, "-steps", CMD_SINGLE, CMD_REQUIRED,
+                "steps: number of steps to move inside the fetchq");
+    cmd_AddParm(ts, "-localauth", CMD_FLAG, CMD_OPTIONAL,
+                "get ticket from server key-file ");
     cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");
 
     ts = cmd_CreateSyntax("rmfetchentry", remove_fetch, NULL, "remove entry from fetch queue");

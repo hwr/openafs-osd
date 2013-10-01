@@ -195,9 +195,16 @@ wipe_candidates (IN afs_uint32 lun,
 fetchqueue	(OUT FetchEntryList *list) = 20;
 
 /***************************************************************************
- * Not yet implemented, but should be used to make changes in the fetch queue */
+ * Make changes to the fetchq.
+ * The 8 least significant bits are reserved for commands.
+ * The other 24 bits act as a unsigned integer payload.
+ */
 
+%#define MOD_FETCHQUEUE_CMD_BITS	8 
+%#define MAX_FETCHQUEUE_MOVE		0xFFFFFFFF >> MOD_FETCHQUEUE_CMD_BITS
 %#define REMOVE_FROM_FETCHQUEUE		1
+%#define MOVE_UP_IN_FETCHQUEUE		2
+%#define MOVE_DOWN_IN_FETCHQUEUE	4
 
 modify_fetchq	(IN struct ometa *o,
 		 IN afs_int32 what,
