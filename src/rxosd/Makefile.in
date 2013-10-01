@@ -35,7 +35,7 @@ CCRULERXOSD = ${CC} ${CFLAGS} -I. -I${srcdir}/ -I${TOP_INCDIR} -I../config -DBUI
 CCRULEVENUS = ${CC} ${CFLAGS} -I. -I${srcdir}/ -I${TOP_INCDIR} -I../config -DBUILDING_CLIENT_COMMAND -DAFS_PTHREAD_ENV -o $@ -c $<
 
 SHLIBHSMCFLAGS=${COMMON_CFLAGS} -DBUILD_SHLIBAFSHSM -I.. -I${UTIL}/ ${MT_CFLAGS} ${SHLIB_CFLAGS}
-CCRULEHSM=${CC} ${SHLIBHSMCFLAGS} -o $@ -c $<
+CCRULEHSM=${CC} ${HSM_INC} ${SHLIBHSMCFLAGS} -o $@ -c $<
 
 VOL = ${srcdir}/../vol
 VOLOBJ = ../vol
@@ -709,8 +709,9 @@ linkcounts: linkcounts.o
 rxosd_hpss.o: rxosd_hpss.c rxosd_hsm.h
 	${CCRULEHSM} -DBUILDING_RXOSD ${HSM_INC}
 
-l_libafshsm.o: libafshsm.c rxosd_hsm.h ourHpss_inline2.h ourHpss.h
-	${CCRULEHSM}
+l_libafshsm.o: ${srcdir}/libafshsm.c ${srcdir}/rxosd_hsm.h \
+		${srcdir}/ourHpss_inline2.h ${srcdir}/ourHpss.h
+	${CCRULEHSM} -o l_libafshsm.o
 
 ${LIBAFSHPSS}: rxosd_hpss.o l_libafshsm.o libafshpss.map
 	../config/shlib-build -d $(srcdir) -l libafshpss \
