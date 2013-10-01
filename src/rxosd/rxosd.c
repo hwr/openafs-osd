@@ -1237,7 +1237,9 @@ FiveMinuteCheckLWP()
 }
 
 #define MAXPARALLELFETCHES 8
+#define MAXFETCHREQUESTSPERUSER 200
 afs_uint32 maxParallelFetches = 4;
+afs_uint32 maxFetchRequestsPerUser = MAXFETCHREQUESTSPERUSER;
 
 struct fetch_process FetchProc[MAXPARALLELFETCHES];
 
@@ -1381,6 +1383,10 @@ FindInFetchqueue(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 	if (flag & ONLY_ONE_FETCHENTRY && sameuser) {
 	    QUEUE_UNLOCK;
 	    return ENODEV;
+	}
+	if (sameuser >= maxFetchRequestsPerUser) {
+	    QUEUE_UNLOCK;
+	    return ENFILE;
 	}
 	f = (struct fetch_entry *) malloc(sizeof(struct fetch_entry));
 	memset(f, 0, sizeof(struct fetch_entry));
@@ -6519,7 +6525,10 @@ Variable(struct rx_call *call, afs_int32 cmd, char *name,
     afs_int32 code = ENOSYS;
 
     if (cmd == 1) {						/* get */
-        if (!strcmp(name, "maxParallelFetches")) {
+        if (!strcmp(name, "maxFetcheEntriesPerUser")) {
+	    *result = maxFetchRequestsPerUser;
+	    code = 0;
+        } else if (!strcmp(name, "maxParallelFetches")) {
 	    *result = maxParallelFetches;
 	    code = 0;
         } else if (!strcmp(name, "MBperSecSleep")) {
@@ -6581,7 +6590,17 @@ Variable(struct rx_call *call, afs_int32 cmd, char *name,
             code = EACCES;
             goto finis;
         }
-        if (!strcmp(name, "maxParallelFetches")) {
+        if (!strcmp(name, "maxFetchRequestsPerUser")) {
+            if (value < 0) {
+                code = EINVAL;
+                goto finis;
+	    }
+            maxFetchRequestsPerUser = value;
+	    *result = maxFetchRequestsPerUser;
+            ViceLog(0,("SetVariable: maxParallelFetches set to %u\n",
+                			maxFetchRequestsPerUser));
+	    code = 0;
+        } else if (!strcmp(name, "maxParallelFetches")) {
             if (value > MAXPARALLELFETCHES || value < 0) {
                 code = EINVAL;
                 goto finis;
@@ -6639,6 +6658,8 @@ finis:
 
 char ExportedVariables[] = 
     "LogLevel"
+    EXP_VAR_SEPARATOR
+    "maxFetchRequestsPerUser"
     EXP_VAR_SEPARATOR
     "maxParallelFetches"
     EXP_VAR_SEPARATOR
@@ -7204,7 +7225,7 @@ read_from_hpss(struct rx_call *call, struct oparmT10 *o,
     oh->ih->ih_ops->lseek(fd->fd_fd, 0, SEEK_SET);
     odsc = &list->osd_segm_descList_val[0].objList.osd_obj_descList_val[0];
     if (odsc->o.vsn != 1) {
-	ViceLog(0, ("read_from_hpss: objcct_desc contained ometa with vsn %d\n", 
+	ViceLog(0, ("read_from_hpss: object_desc contained ometa with vsn %d\n", 
 		odsc->o.vsn));
 	code = EIO;
 	goto bad;

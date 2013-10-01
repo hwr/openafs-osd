@@ -27,6 +27,7 @@
 #include "afs/vice.h"
 #include "afs/afs_bypasscache.h"
 #include "rx/rx_globals.h"
+#include "afs/unified_afs.h"
 
 extern afs_uint32 afs_protocols;
 extern afs_int32 afs_soft_mounted;
@@ -4921,16 +4922,18 @@ DECL_PIOCTL(PPrefetchFromTape)
 
     afs_PutVCache(tvc);
 
-    if (code && code != OSD_WAIT_FOR_TAPE)
+    if (code && code != OSD_WAIT_FOR_TAPE && code != ENFILE && code != UAENFILE)
 	return code;
 
     out.fid.Volume = tfid.Fid.Volume;
     out.fid.Vnode = tfid.Fid.Vnode;
     out.fid.Unique = tfid.Fid.Unique;
-    if (code)
+    if (code == OSD_WAIT_FOR_TAPE)
 	out.length = -1;	/* tape fetch started */
-    else
+    else if (!code)
         out.length = 0;		/* file already on-line */
+    else
+	out.length = ENFILE;    /* Too many fetch requests for this user */
 
     return afs_pd_putBytes(aout, &out, sizeof(struct prefetchout));
 }

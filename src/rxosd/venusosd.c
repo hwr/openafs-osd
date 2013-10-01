@@ -1287,10 +1287,11 @@ osdCmd(struct cmd_syndesc *as, void *arock)
     InitializeCBService();
 #if ALL_SERVERS_ONEPOINTSIX
     RXConn = rx_NewConnection(hosts[0], htons(AFSCONF_FILEPORT), 2,
+                cl->sc[cl->scIndex], cl->scIndex);
 #else
     RXConn = rx_NewConnection(hosts[0], htons(AFSCONF_FILEPORT), 1,
-#endif
                 cl->sc[cl->scIndex], cl->scIndex);
+#endif
     if (!RXConn) {
         fprintf(stderr,"rx_NewConnection failed to server 0x%X\n",
                         hosts[0]);
@@ -1418,6 +1419,11 @@ Restart:
             Fid.Volume = out.fid.Volume;
             Fid.Vnode = out.fid.Vnode;
             Fid.Unique = out.fid.Unique;
+	    code = out.length;
+	    if (code == ENFILE) {
+		fprintf(stderr, "You have too many fetch requests pending\n");
+		return code;
+	    }
         }
         haveWaited = 0;
 Retry:
