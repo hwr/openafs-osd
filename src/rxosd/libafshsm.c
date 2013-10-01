@@ -135,7 +135,7 @@ unload_lib()
 {
     dlclose(libHandle);
 }
-#else /* BUILD_SHLIBAFSOSD */
+#else /* BUILD_SHLIBAFSHSM */
 
 /*
  * This code is part of the shared library (libafsosd.so or libdafsosd.so)
@@ -184,4 +184,4 @@ libafshsm_init(afs_int32 interface, void *inrock, void **outrock, afs_int32 inte
     afs_ops = in->afs_ops;
     return code;
 };
-#endif /* BUILD_SHLIBAFSOSD */
+#endif /* BUILD_SHLIBAFSHSM */
