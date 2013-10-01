@@ -72,6 +72,9 @@ ${TOP_INCDIR}/afs/budb_client.h: budb_client.h
 ${TOP_INCDIR}/afs/budb_prototypes.h: budb_prototypes.h
 	${INSTALL_DATA} $? $@
 
+budb_client.h: ${srcdir}/budb_client.h
+	cp -p ${srcdir}/budb_client.h budb_client.h
+
 budb_errs.h: budb_errs.c
 
 budb_errs.c: budb_errs.et
