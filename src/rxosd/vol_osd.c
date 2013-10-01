@@ -2185,6 +2185,7 @@ retry:
                     }
 		    if (code) {
 			if (code != OSD_WAIT_FOR_TAPE) {
+			    afs_int32 code2;
 			    ViceLog(0,("fill_osd_file: RXOSD_restore_archive to osd %u returned %d for %u.%u.%u\n",
 					osd, code,
 					V_id(vn->volumePtr), 
@@ -2199,6 +2200,13 @@ retry:
 				}
 				goto retry;
 			    }
+    			    code2 = remove_osd_online_file(vn, 0);
+			    if (code2)
+				ViceLog(0, ("Couldn't wipe %u.%u.%u (error %d) after unsuccessful tape fetch\n",
+					code2,
+					V_id(vn->volumePtr), 
+					vn->vnodeNumber,
+					vn->disk.uniquifier));
 			}
 			goto bad;
 		    }		
@@ -2355,19 +2363,6 @@ retry:
             vn->changed_newTime = 1;
 	}
     } 
-#if 0
-#ifdef AFS_NAMEI_ENV
-    if (!code && !(flag & FS_OSD_COMMAND) && writeLocked(vn)) { 
-        afs_uint32 now;
-        now = FT_ApproxTime();
-	if (now - vn->disk.lastUsageTime > 600) {
-            vn->disk.lastUsageTime = now;
-            vn->disk.osdFileOnline = 1; /* corrective action */
-            vn->changed_newTime = 1;
-	}
-    }
-#endif
-#endif
 bad:
     free_osd_segm_descList(&rlist);
     destroy_osd_p_fileList(&list);
@@ -2429,30 +2424,44 @@ set_osd_file_ready(struct rx_call *call, Vnode *vn, struct cksum *checksum)
 	    struct osd_p_segm *s = &f->segmList.osd_p_segmList_val[0];
 	    struct osd_p_obj  *o = &s->objList.osd_p_objList_val[0];
 	    code = FindOsd(o->osd_id, &ip, &lun, 1);
-	    if (!code && htonl(ip) == rx_PeerOf(rx_ConnectionOf(call))->host) {
-		osd = o->osd_id;
-                if (checksum) {
-		    if (checksum->type != 1) {
-			ViceLog(0,("set_osd_file_ready: unknown checksum type %d\n",
-				checksum->type));
-		    } else
+	    if (code)
+		ViceLog(0, ("set_osd_file_ready: FindOsd for %u failed with %d\n",
+				o->osd_id, code));
+	    else if  (htonl(ip) != rx_PeerOf(rx_ConnectionOf(call))->host) {
+		afs_uint32 ip2 = ntohl(rx_PeerOf(rx_ConnectionOf(call))->host);
+		ViceLog(0, ("set_osd_file_ready: ip address of osd %u is %u.%u.%u.%u instead of %u.%u.%u.%u\n",
+			o->osd_id,
+			(ip2 >> 24) & 255,
+			(ip2 >> 16) & 255,
+			(ip2 >> 8) & 255,
+			ip2 & 255,	
+			(ip >> 24) & 255,
+			(ip >> 16) & 255,
+			(ip >> 8) & 255,
+			ip & 255));
+	    }
+	    osd = o->osd_id;
+            if (checksum) {
+		if (checksum->type == 1) {
                     for (j=0; j<f->metaList.osd_p_metaList_len; j++) {
-                        if (f->metaList.osd_p_metaList_val[j].type
-                                                == OSD_P_META_MD5) {
+                        if (f->metaList.osd_p_metaList_val[j].type == OSD_P_META_MD5) {
 			    if (fastRestore)
-				code = 0;
+			        code = 0;
 			    else
                                 code = compare_md5(&f->metaList.osd_p_metaList_val[j],
-				   	           &checksum->cksum_u.md5[0]);
+				                   &checksum->cksum_u.md5[0]);
                             if (code)
                                 goto bad;
                         }
                     }
+		} else {
+		    ViceLog(0,("set_osd_file_ready: unknown checksum type %d\n",
+			    checksum->type));
                 }
-	        f->nFetches++;
-	        f->fetchTime = now;
-	        break;
-	    }
+            }
+	    f->nFetches++;
+	    f->fetchTime = now;
+	    break;
 	}
     }
     /* Reset the flag to allow new copy to be accessed by clients */
