@@ -122,7 +122,7 @@ struct ih_posix_ops ih_namei_ops = {
     afs_statfs,
 #endif
     ftruncate,
-#ifdef AFS_AIX53_ENV
+#if defined (AFS_AIX53_ENV) || defined(AFS_SUN510_ENV)
     pread64,
     pwrite64,
 #else
