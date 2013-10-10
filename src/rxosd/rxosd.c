@@ -1116,6 +1116,7 @@ FiveMinuteCheckLWP()
 	    if (code) {
 		ViceLog(0,("FiveMinuteCheckLWP: OSDDB_OsdList failed with %d\n",
 			code));
+		osddb_client = NULL; 	/* make sure we get a new one */
 	    } else {
 #if defined(AFS_HAVE_STATVFS)  || defined(AFS_HAVE_STATVFS64)
     		struct afs_statvfs statbuf;
