@@ -83,7 +83,7 @@ extern int log_open_close;
 
 afs_int32 hsmDev = -1;
 extern afs_int32 maxDontUnlinkDev;
-extern afs_int32 dontUnlinkDev[0];
+extern afs_int32 dontUnlinkDev[1];
 
 extern int dcache;
 /*
