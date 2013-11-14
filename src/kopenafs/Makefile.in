@@ -123,6 +123,6 @@ dest: ${LIBKOPENAFS}
 #
 clean:
 	$(RM) -f *.o *.a ${LIBKOPENAFS} AFS_component_version_number.c \
-		test-setpag test-unlog libkopenafs.exp
+		test-setpag test-unlog
 
 include ../config/Makefile.version
