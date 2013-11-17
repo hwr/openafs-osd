@@ -20,6 +20,42 @@
 #include <errno.h>
 #include <time.h>
 
+#ifdef O_LARGEFILE
+
+#define afs_stat                stat64
+#define afs_open                open64
+#define afs_fopen               fopen64
+#define afs_fstat               fstat64
+#define afs_lseek               lseek64
+#ifndef AFS_NT40_ENV
+#if defined (AFS_HAVE_STATVFS64)
+#  define afs_statvfs           statvfs64
+#elif defined (AFS_HAVE_STATFS64)
+#  define afs_statfs            statfs64
+#elif defined (AFS_HAVE_STATVFS)
+#  define afs_statvfs           statvfs
+#else
+#  define afs_statfs            statfs
+#endif /* !AFS_HAVE_STATVFS64 */
+#endif /* !AFS_NT40_ENV */
+
+#else /* !O_LARGEFILE */
+
+#define afs_stat                stat
+#define afs_open                open
+#define afs_fopen               fopen
+#define afs_fstat               fstat
+#define afs_lseek               lseek
+#ifndef AFS_NT40_ENV
+#if defined (AFS_HAVE_STATVFS)
+#  define afs_statvfs           statvfs
+#else /* !AFS_HAVE_STATVFS */
+#  define afs_statfs            statfs
+#endif /* !AFS_HAVE_STATVFS */
+#endif /* !AFS_NT40_ENV */
+
+#endif /* !O_LARGEFILE */
+
 #include <afs/cmd.h>
 #include <afs/auth.h>
 #include <afs/afsutil.h>
@@ -30,7 +66,9 @@
 #include "rxosd.h"
 #include <ubik.h>
 #include "osddb.h"
+
 #include "osddbuser.h"
+
 #include <afs/ptint.h>
 #include <afs/cmd.h>
 
@@ -40,7 +78,7 @@ extern void *pol_index[];
 extern afs_uint32 policies_revision;
 extern void *make_pol_info();
 
-struct ubik_client * my_init_osddb_client();
+struct ubik_client * my_init_osddb_client(char*);
 
 struct rx_connection *Conn = 0;
 struct rx_call *Call;
@@ -68,6 +106,7 @@ struct afsconf_dir *tdir;
 char rock[T10_CDB_SIZE];
 t10rock dummyrock = {0, 0};
 
+#undef SIZE
 #define SIZE 65536
 int Bsize = SIZE;
 
@@ -95,7 +134,7 @@ static u_long GetHost(char *hostname)
     if (hostent->h_length == sizeof(u_int)) 
 	    memcpy((char *)&host, hostent->h_addr, sizeof(host));
     else {
-	    fprintf(stderr, "Bad length for host addr: %d instead of %d\n",
+	    fprintf(stderr, "Bad length for host addr: %d instead of %lu\n",
 	    				hostent->h_length, sizeof(u_long));
 	    exit(1);
     }
@@ -289,7 +328,7 @@ static int create(struct cmd_syndesc *as, void *rock)
     }
     code = RXOSD_create(Conn, &Oprm, &Oprm);
     if (!code) {
-        printf("Created object %u.%u.%u.%u", 
+        printf("Created object %llu.%llu.%llu.%u", 
 		Oprm.ometa_u.f.rwvol,
 		Oprm.ometa_u.f.vN,
 		Oprm.ometa_u.f.unique,
@@ -362,7 +401,7 @@ static int incrlc_obj(struct cmd_syndesc *as, void *rock)
     }
     code = RXOSD_incdec(Conn, &Oprm, 1);
     if (!code) {
-        printf("Link count incremented of %u.%u.%u.%u", 
+        printf("Link count incremented of %llu.%llu.%llu.%u", 
 		Oprm.ometa_u.f.rwvol,
 		Oprm.ometa_u.f.vN,
 		Oprm.ometa_u.f.unique,
@@ -430,7 +469,7 @@ static int decrlc_obj(struct cmd_syndesc *as, void *rock)
     }
     code = RXOSD_incdec(Conn, &Oprm, -1);
     if (!code) {
-        printf("Link count decremented of %u.%u.%u.%u", 
+        printf("Link count decremented of %llu.%llu.%llu.%u", 
 		Oprm.ometa_u.f.rwvol,
 		Oprm.ometa_u.f.vN,
 		Oprm.ometa_u.f.unique,
@@ -519,7 +558,7 @@ int psread_obj(struct cmd_syndesc *as, void *rock)
         }
     }
     if (as->parms[4].items) {  		/* -to */
-        fd = open(as->parms[4].items->data, O_RDWR | O_CREAT, 0644);
+        fd = afs_open(as->parms[4].items->data, O_RDWR | O_CREAT, 0644);
         if (!fd) {
 	    fprintf(stderr, "Could not open output file: %s\n", 
 		    as->parms[4].items->data);
@@ -637,7 +676,7 @@ int psread_obj(struct cmd_syndesc *as, void *rock)
         call[i] = rx_NewCall(Conn);
         error = StartRXOSD_read(call[i], &dummyrock, &p, &Oprm); 
     	if (error) {
-		fprintf(stderr, "StartRXOSD_readPS failed with code %d.\n, error");
+		fprintf(stderr, "StartRXOSD_readPS failed with code %d.\n", error);
 		exit(1);
     	}
 	Conn = 0;
@@ -816,7 +855,7 @@ int read_obj(struct cmd_syndesc *as, void *rock)
         }
     }
     if (as->parms[4].items) {  		/* -to */
-        fd = open(as->parms[4].items->data, O_RDWR | O_CREAT, 0644);
+        fd = afs_open(as->parms[4].items->data, O_RDWR | O_CREAT, 0644);
         if (!fd) {
 	    fprintf(stderr, "Could not open output file: %s\n", 
 		    as->parms[4].items->data);
@@ -1011,9 +1050,9 @@ int pswrite_obj(struct cmd_syndesc *as, void *rock)
         }
     }
     if (as->parms[4].items) {  		/* -from */
-	struct stat64 tstat;
+	struct afs_stat tstat;
      
-        if (stat64(as->parms[4].items->data, &tstat) < 0) {
+        if (afs_stat(as->parms[4].items->data, &tstat) < 0) {
 	    fprintf(stderr, "Could not stat input file: %s\n", 
 		    as->parms[4].items->data);
 	    return EINVAL;     
@@ -1026,9 +1065,9 @@ int pswrite_obj(struct cmd_syndesc *as, void *rock)
 	if (!length) 
 	    length = tstat.st_size - offset;
 	    
-        fd = open(as->parms[4].items->data, O_RDONLY);
+        fd = afs_open(as->parms[4].items->data, O_RDONLY);
         if (!fd) {
-	    fprintf(stderr, "Could not open output file: %s\n", 
+	    fprintf(stderr, "Could not open input file: %s\n", 
 		    as->parms[4].items->data);
 	    return EINVAL;     
         }
@@ -1163,7 +1202,7 @@ int pswrite_obj(struct cmd_syndesc *as, void *rock)
 	p.RWparm_u.p2.mystripe = i;
         error = StartRXOSD_write(call[i], &dummyrock, &p, &Oprm);
     	if (error) {
-		fprintf(stderr, "StartRXOSD_writePS failed with code %d.\n, error");
+		fprintf(stderr, "StartRXOSD_writePS failed with code %d.\n", error);
 		exit(1);
     	}
     }
@@ -1294,9 +1333,9 @@ int write_obj(struct cmd_syndesc *as, void *rock)
         }
     }
     if (as->parms[4].items) {  		/* -from */
-	struct stat64 tstat;
+	struct afs_stat tstat;
      
-        if (stat64(as->parms[4].items->data, &tstat) < 0) {
+        if (afs_stat(as->parms[4].items->data, &tstat) < 0) {
 	    fprintf(stderr, "Could not stat input file: %s\n", 
 		    as->parms[4].items->data);
 	    return EINVAL;     
@@ -1309,9 +1348,9 @@ int write_obj(struct cmd_syndesc *as, void *rock)
 	if (!length) 
 	    length = tstat.st_size - offset;
 	    
-        fd = open(as->parms[4].items->data, O_RDONLY);
+        fd = afs_open(as->parms[4].items->data, O_RDONLY);
         if (!fd) {
-	    fprintf(stderr, "Could not open output file: %s\n", 
+	    fprintf(stderr, "Could not open input file: %s\n", 
 		    as->parms[4].items->data);
 	    return EINVAL;     
         }
@@ -1488,25 +1527,25 @@ int objects(struct cmd_syndesc *as, void *rock)
 		    nGoodObjects++;
 		    if (unlinked)
 			goto skip;
-        	    printf("%u.%u.%u.%u ", 
+        	    printf("%llu.%llu.%llu.%u ", 
 			Oprm.ometa_u.f.rwvol,
 			Oprm.ometa_u.f.vN,
 			Oprm.ometa_u.f.unique,
 			Oprm.ometa_u.f.tag);
  		    if (Oprm.ometa_u.f.tag == 1)
-		        printf("Volume Info for %u with RW %u  length %llu\n",
+		        printf("Volume Info for %llu with RW %llu  length %llu\n",
 				Oprm.ometa_u.f.rwvol, Oprm.ometa_u.f.unique, length);
  		    if (Oprm.ometa_u.f.tag == 2)
-		        printf("Large Vnodes of %u with RW %u  length %llu\n",
+		        printf("Large Vnodes of %llu with RW %llu  length %llu\n",
 				Oprm.ometa_u.f.rwvol, Oprm.ometa_u.f.unique, length);
  		    if (Oprm.ometa_u.f.tag == 3)
-		        printf("Small Vnodes of %u with RW %u  length %llu\n",
+		        printf("Small Vnodes of %llu with RW %llu  length %llu\n",
 				Oprm.ometa_u.f.rwvol, Oprm.ometa_u.f.unique, length);
 		    if (Oprm.ometa_u.f.tag == 5)
-		        printf("Osd Metadata for %u with RW %u  length %llu\n",
+		        printf("Osd Metadata for %llu with RW %llu  length %llu\n",
 				Oprm.ometa_u.f.rwvol, Oprm.ometa_u.f.unique, length);
 		    if (Oprm.ometa_u.f.tag == 6)
-		        printf("Link Table   for %u with RW %u  length %llu\n",
+		        printf("Link Table   for %llu with RW %llu  length %llu\n",
 				Oprm.ometa_u.f.rwvol, Oprm.ometa_u.f.unique, length);
 		} else {
 		    if (linkCount >= 0 && unlinked) {
@@ -1519,12 +1558,12 @@ int objects(struct cmd_syndesc *as, void *rock)
 			nUnlinkedObjects++;
 			if (!unlinked && !all)
 			    goto skip;
-        	        printf("%u.%u.%u.%u (from ", 
+        	        printf("%llu.%llu.%llu.%u (from ", 
 			    Oprm.ometa_u.f.rwvol,
 			    Oprm.ometa_u.f.vN,
 			    Oprm.ometa_u.f.unique,
 			    Oprm.ometa_u.f.tag);
-			PrintTime(&Oprm.ometa_u.f.spare[2]);
+			PrintTime(Oprm.ometa_u.f.spare[2]);
         	        printf(" lng %llu) unlinked %04d%02d%02d\n", 
 			    length,
 			    Oprm.ometa_u.f.spare[1] >> 9,
@@ -1535,7 +1574,7 @@ int objects(struct cmd_syndesc *as, void *rock)
 			nGoodObjects++;
 			if (unlinked)
 			    goto skip;
-        	        printf("%u.%u.%u.%u lng %llu lc %u", 
+        	        printf("%llu.%llu.%llu.%u lng %llu lc %u", 
 			    Oprm.ometa_u.f.rwvol,
 			    Oprm.ometa_u.f.vN,
 			    Oprm.ometa_u.f.unique,
@@ -1701,7 +1740,7 @@ examine(struct cmd_syndesc *as, void *rock)
 		    Oprm.ometa_u.f.rwvol, Oprm.ometa_u.f.vN, 
 		    Oprm.ometa_u.f.unique, Oprm.ometa_u.f.tag, 
 		    e.exam_u.e3.size, e.exam_u.e3.linkcount);
-            PrintTime(&e.exam_u.e3.mtime);
+            PrintTime(e.exam_u.e3.mtime);
 	    break;
 	case 4:
     	    if (Oprm.ometa_u.f.nStripes > 1)
@@ -1723,11 +1762,11 @@ examine(struct cmd_syndesc *as, void *rock)
 	        printf(" HSM status %s", str);
 	    }
 	    if (mask & WANTS_CTIME)
-        	PrintTime(&e.exam_u.e4.ctime);
+		PrintTime(e.exam_u.e4.ctime);
 	    else if (mask & WANTS_ATIME)
-        	PrintTime(&e.exam_u.e4.atime);
+		PrintTime(e.exam_u.e4.atime);
 	    else 
-        	PrintTime(&e.exam_u.e4.mtime);
+		PrintTime(e.exam_u.e4.mtime);
 	    break;
 	case 5:
     	    if (Oprm.ometa_u.f.nStripes > 1)
@@ -1742,16 +1781,17 @@ examine(struct cmd_syndesc *as, void *rock)
 		    Oprm.ometa_u.f.rwvol, Oprm.ometa_u.f.vN, 
 		    Oprm.ometa_u.f.unique, Oprm.ometa_u.f.tag, 
 		    e.exam_u.e5.size, e.exam_u.e5.linkcount);
-	    if (mask & WANTS_HSM_STATUS)
-	        printf(" HSM status %s", e.exam_u.e5.status);
-	    else if (mask & WANTS_CTIME)
-        	PrintTime(&e.exam_u.e5.ctime);
+	    if (mask & WANTS_HSM_STATUS) {
+		unsigned char uc = e.exam_u.e5.status;
+	        printf(" HSM status %s", uc);
+	    } else if (mask & WANTS_CTIME)
+        	PrintTime(e.exam_u.e5.ctime);
 	    else if (mask & WANTS_ATIME)
-        	PrintTime(&e.exam_u.e5.atime);
+        	PrintTime(e.exam_u.e5.atime);
 	    else if (mask & WANTS_PATH)
 		printf(" path %s", e.exam_u.e5.path.path_info_val);
-	    else 
-        	PrintTime(&e.exam_u.e5.mtime);
+	    else
+        	PrintTime(e.exam_u.e5.ctime);
 	    break;
 	default:
 	    fprintf(stderr, "Unexpected exam type %d\n", e.type);
@@ -1823,7 +1863,7 @@ examine(struct cmd_syndesc *as, void *rock)
 		str[1] = 0;
 		printf(" HSM status %s", str);
 	    }
-            PrintTime(&time);
+            PrintTime(time);
 	    printf("\n");
 	} else
 #endif
@@ -1903,7 +1943,7 @@ restart:
 	    sleep(10);
 	    goto restart;
 	}
-	fprintf(stderr, "RXOSD_md5sum failed with code %d for %u.%u.%u.%u\n",
+	fprintf(stderr, "RXOSD_md5sum failed with code %d for %llu.%llu.%llu.%u\n",
 		code, Oprm.ometa_u.f.rwvol, Oprm.ometa_u.f.vN,
 		Oprm.ometa_u.f.unique, Oprm.ometa_u.f.tag);
 	return EINVAL;
@@ -2021,7 +2061,7 @@ bad:
 }/* cplist */
 
 struct ubik_client *
-my_init_osddb_client()
+my_init_osddb_client(char *unused)
 {
     afs_int32 code, scIndex = 0, i;
     struct rx_securityClass *sc;
@@ -2282,8 +2322,8 @@ ListOsds(struct cmd_syndesc *as, void *rock)
 		break;
 	    case 11 : /* newestwiped  */
 		if (l.OsdList_val[current_osd_index].t.etype_u.osd.newestWiped) {
-                    time_t newest = l.OsdList_val[current_osd_index].t.etype_u.osd.newestWiped;
-                    sprintDate(content,&newest);
+                    afs_uint64 newest = l.OsdList_val[current_osd_index].t.etype_u.osd.newestWiped;
+                    sprintDate(content, newest);
                 } else {
                     sprintf(content,"%s","---");
                 }
@@ -2365,7 +2405,7 @@ CreateOsd(struct cmd_syndesc *as, void *rock)
 	}
     }
     if (as->parms[4].items) {			/* minsize */
-	i = sscanf(as->parms[4].items->data, "%llu%s", &size, &str);
+	i = sscanf(as->parms[4].items->data, "%llu%s", &size, str);
         if (i == 2) {
 	    if (str[0] == 'k' || str[0] == 'K') 
 		size = size << 10;
@@ -2379,14 +2419,14 @@ CreateOsd(struct cmd_syndesc *as, void *rock)
 	        i = 3;
 	} 
 	if (i != 1 && i != 2) {
-	    fprintf(stderr,"%s: invalid value for minsize %s.\n",
+	    fprintf(stderr,"Invalid value for minsize %s.\n",
 			as->parms[4].items->data);
 	    return EINVAL;
         }
 	e->minSize = size >> 10;
     }
     if (as->parms[5].items) {			/* maxsize */
-	i = sscanf(as->parms[5].items->data, "%llu%s", &size, &str);
+	i = sscanf(as->parms[5].items->data, "%llu%s", &size, str);
         if (i == 2) {
 	    if (str[0] == 'k' || str[0] == 'K') 
 		size = size << 10;
@@ -2400,7 +2440,7 @@ CreateOsd(struct cmd_syndesc *as, void *rock)
 	        i = 3;
 	} 
 	if (i != 1 && i != 2) {
-	    fprintf(stderr,"%s: invalid value for maxsize %s.\n",
+	    fprintf(stderr,"Invalid value for maxsize %s.\n",
 			as->parms[5].items->data);
 	    return EINVAL;
         }
@@ -2530,7 +2570,7 @@ SetOsd(struct cmd_syndesc *as, void *rock)
 	}
     }
     if (as->parms[4].items) {			/* minsize */
-	i = sscanf(as->parms[4].items->data, "%llu%s", &size, &str);
+	i = sscanf(as->parms[4].items->data, "%llu%s", &size, str);
         if (i == 2) {
 	    if (str[0] == 'k' || str[0] == 'K') 
 		size = size << 10;
@@ -2544,14 +2584,14 @@ SetOsd(struct cmd_syndesc *as, void *rock)
 	        i = 3;
 	} 
 	if (i != 1 && i != 2) {
-	    fprintf(stderr,"%s: invalid value for minsize %s.\n",
+	    fprintf(stderr,"Invalid value for minsize %s.\n",
 			as->parms[4].items->data);
 	    return EINVAL;
         }
 	u.minSize = size >> 10;
     }
     if (as->parms[5].items) {			/* maxsize */
-	i = sscanf(as->parms[5].items->data, "%llu%s", &size, &str);
+	i = sscanf(as->parms[5].items->data, "%llu%s", &size, str);
         if (i == 2) {
 	    if (str[0] == 'k' || str[0] == 'K') 
 		size = size << 10;
@@ -2627,7 +2667,7 @@ SetOsd(struct cmd_syndesc *as, void *rock)
         code = util_GetInt32(as->parms[12].items->data, &u.highWaterMark);
     }
     if (as->parms[13].items) {			/* minsize */
-	i = sscanf(as->parms[13].items->data, "%llu%s", &size, &str);
+	i = sscanf(as->parms[13].items->data, "%llu%s", &size, str);
         if (i == 2) {
 	    if (str[0] == 'k' || str[0] == 'K') 
 		size = size << 10;
@@ -2641,7 +2681,7 @@ SetOsd(struct cmd_syndesc *as, void *rock)
 	        i = 3;
 	} 
 	if (i != 1 && i != 2) {
-	    fprintf(stderr,"%s: invalid value for minsize %s.\n",
+	    fprintf(stderr,"Invalid value for minsize %s.\n",
 			as->parms[13].items->data);
 	    return EINVAL;
         }
@@ -2850,7 +2890,7 @@ ShowOsd(struct cmd_syndesc *as, void *rock)
 	    if (l.OsdList_val[i].t.etype_u.osd.newestWiped) {
     	        printf("\tnewest wiped    = %u = ", 
 				l.OsdList_val[i].t.etype_u.osd.newestWiped);
-                PrintTime(&l.OsdList_val[i].t.etype_u.osd.newestWiped);
+                PrintTime(l.OsdList_val[i].t.etype_u.osd.newestWiped);
     	        printf("\n");
 	    }
     	    string[0] = 0;
@@ -2882,7 +2922,7 @@ ShowOsd(struct cmd_syndesc *as, void *rock)
 				(char *)&loc[0]);
     	    printf("\ttimeStamp    	= %u = ",
 				l.OsdList_val[i].t.etype_u.osd.timeStamp);
-            PrintTime(&l.OsdList_val[i].t.etype_u.osd.timeStamp);
+            PrintTime(l.OsdList_val[i].t.etype_u.osd.timeStamp);
 	    printf("\n");
     	    printf("\thighWaterMark	= %u per mille used\n",
 				l.OsdList_val[i].t.etype_u.osd.highWaterMark);
@@ -3098,7 +3138,7 @@ printfetchq(struct FetchEntryList *q, struct Osd *o)
 	    seconds = (f->TimeStamp.afstm_u.nsec100 / 10000000);
 	else 
 	    fprintf(stderr, "Invalid type %d in afstm found\n", f->TimeStamp.type);
-        PrintTime(&seconds);
+        PrintTime(seconds);
         printf(" %3u ", f->rank);
         if (f->error) 
 	    printf("in error: %d\n", f->error);
@@ -3146,7 +3186,7 @@ printfetchq0(struct FetchEntry0List *q, struct Osd *o)
         printf("%4u %-9s %-26s",
                 i+1, userid, tstr);
 	seconds = f->TimeStamp;
-        PrintTime(&seconds);
+        PrintTime(seconds);
         printf(" %3u ", f->rank);
         if (f->caller) 
 	    printf("in error: %d\n", f->caller);
@@ -3323,7 +3363,7 @@ WipeCand(struct cmd_syndesc *as, void *rock)
 			w->o.ometa_u.f.vN, 
 			w->o.ometa_u.f.unique,
 			w->o.ometa_u.f.tag);
-	    sprintf(fid, "%u.%u.%u",
+	    sprintf(fid, "%llu.%llu.%llu",
 			w->o.ometa_u.f.rwvol, 
 			w->o.ometa_u.f.vN, 
 			w->o.ometa_u.f.unique);
@@ -3341,7 +3381,7 @@ WipeCand(struct cmd_syndesc *as, void *rock)
 	        sscanf(ctime(&date),"%s %s %d %d:%d:%d %d",
                     (char *)&weekday,
                     (char *)&month, &day, &hour, &minute, &second, &year);
-	        printf(" %s %2d %4d ", &month, day, year);
+	        printf(" %s %2d %4d ", month, day, year);
 	    }
 	    printf(" %12llu %s %s\n", w->size, obj, fid);
 	}
@@ -3382,7 +3422,7 @@ WipeCand(struct cmd_syndesc *as, void *rock)
 	        sscanf(ctime(&date),"%s %s %d %d:%d:%d %d",
                     (char *)&weekday,
                     (char *)&month, &day, &hour, &minute, &second, &year);
-	        printf(" %s %2d %4d ", &month, day, year);
+	        printf(" %s %2d %4d ", month, day, year);
 	    }
 	    printf(" %12llu %s %s\n", w->size, obj, fid);
 	}
@@ -3624,7 +3664,7 @@ Statistic(struct cmd_syndesc *as, void *rock)
 
     TM_GetTimeOfDay(&now, 0);
     printf("Since ");
-    PrintTime(&since);
+    PrintTime(since);
     seconds = tsec = now.tv_sec - since;
     days = tsec / 86400;
     tsec = tsec % 86400;
@@ -3689,7 +3729,7 @@ OsddbStatistic(struct cmd_syndesc *as, void *rock)
 
     TM_GetTimeOfDay(&now, 0);
     printf("Since ");
-    PrintTime(&since);
+    PrintTime(since);
     seconds = tsec = now.tv_sec - since;
     days = tsec / 86400;
     tsec = tsec % 86400;
@@ -3972,7 +4012,7 @@ hard_delete(struct cmd_syndesc *as, void *rock)
 	flag |= WHOLE_VOLUME;
     }
     fields = sscanf(as->parms[3].items->data, "%04u%02u%02u%s",
-			&year, &month, &day, &junk);
+			&year, &month, &day, junk);
     if (fields != 3 ||
       year < 2005 || month == 0 || month > 12 || day == 0 || day > 31) {
         fprintf(stderr, "Invalid unlinkdate: %s, format is 'yyyymmdd'\n", 
@@ -4021,7 +4061,7 @@ relinkCmd(struct cmd_syndesc *as, void *rock)
         }
     }
     fields = sscanf(as->parms[2].items->data, "%04u%02u%02u%s",
-			&year, &month, &day, &junk);
+			&year, &month, &day, junk);
     if (fields != 3 ||
       year < 2005 || month == 0 || month > 12 || day == 0 || day > 31) {
         fprintf(stderr, "Invalid unlinkdate: %s, format is 'yyyymmdd'\n", 
@@ -4106,8 +4146,8 @@ inventoryCmd(struct cmd_syndesc *as, void *rock)
 	     
 	    totalbytes += inv1->size;
 	    totalobjs++;
-            sprintDate(date1,&inv1->mtime);
-            sprintDate(date2,&inv1->atime);
+            sprintDate(date1, (afs_int64)inv1->mtime);
+            sprintDate(date2, (afs_int64)inv1->atime);
 	    if (inv1->o.obj_id & RXOSD_VNODEMASK == (afs_uint64)RXOSD_VNODEMASK) {
 		afs_uint32 rwvol, unique, tag;
 		rwvol = (afs_uint32)(inv1->o.part_id & RXOSD_VOLIDMASK);
@@ -4310,7 +4350,7 @@ int GetConnection()
 	afsconf_GetLocalCell(tdir, cell, len);
         strcpy(sname.cell , cell);
 	cellp = cell;
-        code = afsconf_GetLatestKey(tdir, &kvno, &key);
+        code = afsconf_GetLatestKey(tdir, &kvno, (struct ktc_encryptionKey*)key);
         ttoken.kvno = kvno;
         if (code) {
             fprintf(stderr,"afsconf_GetLatestKey returned %d\n", code);
@@ -4357,7 +4397,7 @@ int GetConnection()
 	    cellp = cell;
 	}
         strcpy(sname.cell, cellp);
-        code = ktc_GetToken(&sname, &ttoken, sizeof(ttoken), (char *)0);
+        code = ktc_GetToken(&sname, &ttoken, sizeof(ttoken), NULL);
         if (code)
             scIndex = 0;
         else {

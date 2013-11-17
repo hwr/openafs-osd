@@ -8,6 +8,11 @@
 #ifndef _AFSOSD_H_
 #define _AFSOSD_H_ 1
 
+struct volser_trans;
+struct host;
+struct client;
+
+#include "afs/vnode.h"
 /* 
  * This version number should be incremented whenever changes to the structs
  * or parameters of the operations occur. The number is compiled into the

@@ -43,6 +43,7 @@
 #include <afs/com_err.h>
 #include <afs/usd.h>
 
+#include "../volser/lockdata.h"
 #include "../volser/volser_internal.h"
 #include "../volser/volser_prototypes.h"
 #include "../volser/vsutils_prototypes.h"
@@ -472,7 +473,7 @@ static int
 Archcand(struct cmd_syndesc *as, void *arock)
 {
     afs_int32 code;
-    struct rx_conn *tcon;
+    struct rx_connection *tcon;
     struct hsmcandList list;
     int i, j;
     afs_uint64 minsize = 0;
@@ -488,7 +489,7 @@ Archcand(struct cmd_syndesc *as, void *arock)
 
     server = GetServer(as->parms[0].items->data);
     if (as->parms[1].items) {           /* -minsize */
-        i = sscanf(as->parms[1].items->data, "%llu%s", &minsize, &str);
+        i = sscanf(as->parms[1].items->data, "%llu%s", &minsize, str);
         if (i == 2) {
             if (str[0] == 'k' || str[0] == 'K')
                 minsize = minsize << 10;
@@ -502,13 +503,13 @@ Archcand(struct cmd_syndesc *as, void *arock)
                 i = 3;
         }
         if (i != 1 && i != 2) {
-            fprintf(stderr,"%s: invalid value for minsize %s.\n",
+            fprintf(stderr,"Invalid value for minsize %s.\n",
                         as->parms[1].items->data);
             return 1;
         }
     }
     if (as->parms[2].items) {           /* -maxsize */
-        i = sscanf(as->parms[2].items->data, "%llu%s", &maxsize, &str);
+        i = sscanf(as->parms[2].items->data, "%llu%s", &maxsize, str);
         if (i == 2) {
             if (str[0] == 'k' || str[0] == 'K')
                 maxsize = maxsize << 10;
@@ -522,7 +523,7 @@ Archcand(struct cmd_syndesc *as, void *arock)
                 i = 3;
         }
         if (i != 1 && i != 2 || maxsize < minsize) {
-            fprintf(stderr,"%s: invalid value for maxsize %s.\n",
+            fprintf(stderr,"Invalid value for maxsize %s.\n",
                         as->parms[2].items->data);
             return 1;
         }
@@ -530,7 +531,7 @@ Archcand(struct cmd_syndesc *as, void *arock)
     if (as->parms[3].items) {           /* -copies */
         code = util_GetInt32(as->parms[3].items->data, &copies);
         if (code || copies < 1 || copies > 4) {
-            fprintf(stderr,"%s: invalid value for copies %s.\n",
+            fprintf(stderr,"Invalid value for copies %s.\n",
                         as->parms[3].items->data);
             return 1;
         }
@@ -538,7 +539,7 @@ Archcand(struct cmd_syndesc *as, void *arock)
     if (as->parms[4].items) {           /* -maxcandidates */
         code = util_GetInt32(as->parms[4].items->data, &maxcandidates);
         if (code || maxcandidates < 1 || maxcandidates > 4096) {
-            fprintf(stderr,"%s: invalid value for maxcandidates %s.\n",
+            fprintf(stderr,"Invalid value for maxcandidates %s.\n",
                         as->parms[4].items->data);
             return 1;
         }
@@ -546,7 +547,7 @@ Archcand(struct cmd_syndesc *as, void *arock)
     if (as->parms[5].items) {           /* -osd */
         code = util_GetInt32(as->parms[5].items->data, &osd);
         if (code || osd < 2) {
-            fprintf(stderr,"%s: invalid value for osd %s.\n",
+            fprintf(stderr,"Invalid value for osd %s.\n",
                         as->parms[5].items->data);
             return 1;
         }
@@ -555,7 +556,7 @@ Archcand(struct cmd_syndesc *as, void *arock)
         flag |= ONLY_BIGGER_MINWIPESIZE;
     }
     if (as->parms[7].items) {           /* delay */
-        code = sscanf(as->parms[7].items->data, "%u%s", &delay, &str);
+        code = sscanf(as->parms[7].items->data, "%u%s", &delay, str);
         if (code == 2) {
             if (str[0] == 'm' || str[0] == 'M')
                 delay = delay * 60;
@@ -674,7 +675,7 @@ ListObjects(struct cmd_syndesc *as, void *arock)
         flag |= POL_INDICES;
     }
     if (as->parms[7].items) {                           /* -minage */
-        code = sscanf(as->parms[7].items->data, "%u%s", &delay, &str);
+        code = sscanf(as->parms[7].items->data, "%u%s", &delay, str);
         if (code == 2) {
             if (str[0] == 'm' || str[0] == 'M')
                 delay = delay * 60;
@@ -683,7 +684,7 @@ ListObjects(struct cmd_syndesc *as, void *arock)
             else if (str[0] == 'd' || str[0] == 'D')
                 delay = delay * 3600 * 24;
             else if (str[0] != 's' && str[0] != 'S') {
-                sprintf(stderr, "Unknown time unit %s, aborting\n", str);
+                fprintf(stderr, "Unknown time unit %s, aborting\n", str);
                 return EINVAL;
             }
         }
@@ -1072,7 +1073,7 @@ Traverse(struct cmd_syndesc *as, void *arock)
     if (as->parms[3].items)
         policy_statistic = 1;
     if (as->parms[4].items) {
-        code = sscanf(as->parms[4].items->data, "%u%s", &delay, &str);
+        code = sscanf(as->parms[4].items->data, "%u%s", &delay, str);
         if (code == 2) {
             if (str[0] == 'm' || str[0] == 'M')
                 delay = delay * 60;
@@ -1081,7 +1082,7 @@ Traverse(struct cmd_syndesc *as, void *arock)
             else if (str[0] == 'd' || str[0] == 'D')
                 delay = delay * 3600 * 24;
             else if (str[0] != 's' && str[0] != 'S') {
-                sprintf(stderr, "Unknown time unit %s, aborting\n", str);
+                fprintf(stderr, "Unknown time unit %s, aborting\n", str);
                 return EINVAL;
             }
         }
@@ -1138,7 +1139,7 @@ Traverse(struct cmd_syndesc *as, void *arock)
                 return ENOENT;
             }
         }
-        code = UV_Traverse(&server, vid, nservers, flag, delay, srl, list);
+        code = UV_Traverse(server, vid, nservers, flag, delay, srl, list);
         if (code) {
             fprintf(stderr, "UV_Traverse returned %d\n", code);
         }
@@ -1263,8 +1264,7 @@ Traverse(struct cmd_syndesc *as, void *arock)
         }
         printf("----------------------------------------------------------------\n");
         bytes = totalbytes;
-        printf("Totals:      %11lu Files         ",
-                        totalfiles);
+        printf("Totals:      %11lu Files         ", totalfiles);
         printlength(totalbytes);
         printf("\n");
         totalfiles = 0;
@@ -1310,8 +1310,7 @@ Traverse(struct cmd_syndesc *as, void *arock)
             list->osd_infoList_val[k].osdid |= 0x8000000;
         }
         printf("---------------------------------------------------------------\n");
-        printf("Total                       %11u objects  ",
-                totalfiles);
+        printf("Total                       %11u objects  ", totalfiles);
         printlength(totalbytes);
         printf("\n");
 
@@ -1331,9 +1330,8 @@ Traverse(struct cmd_syndesc *as, void *arock)
                 int archival = 0;
                 p = unknown;
                 for (j=0; j<l.OsdList_len; j++) {
-                    if (l.OsdList_val[j].id
-                      == (list->osd_infoList_val[k].osdid & 0x7ffffff)) {
-                        p = &l.OsdList_val[j].name;
+                    if (l.OsdList_val[j].id == (list->osd_infoList_val[k].osdid & 0x7ffffff)) {
+                        p = l.OsdList_val[j].name;
                         if (l.OsdList_val[j].t.etype_u.osd.flags & OSDDB_ARCHIVAL)
                             archival = 1;
                         break;
@@ -1356,8 +1354,7 @@ Traverse(struct cmd_syndesc *as, void *arock)
             list->osd_infoList_val[k].osdid = 0xfffffff;
         }
         printf("---------------------------------------------------------------\n");
-        printf("Total                       %11u objects  ",
-                totalfiles);
+        printf("Total                       %11u objects  ", totalfiles);
         printlength(totalbytes);
         printf("\n");
     } else
@@ -1608,7 +1605,7 @@ Statistic(struct cmd_syndesc *as, void *arock)
     }
     FT_GetTimeOfDay(&now, 0);
     printf("Since ");
-    PrintTime(&since);
+    PrintTime(since);
     seconds = tsec = now.tv_sec - since;
     days = tsec / 86400;
     tsec = tsec % 86400;

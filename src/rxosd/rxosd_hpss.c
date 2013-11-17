@@ -806,7 +806,7 @@ myhpss_chmod(char *path, mode_t Mode)
 	sprintf(myPath, "%s", path);
     else
        sprintf(myPath, "%s/%s", ourPath, path);
-    code = hpss_Chmode(myPath, Mode);
+    code = hpss_Chmod(myPath, Mode);
     return code;
 }
 

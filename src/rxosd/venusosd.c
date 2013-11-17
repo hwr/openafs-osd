@@ -93,7 +93,7 @@ struct Acl;
 static void ZapList(struct AclEntry *);
 static int PruneList(struct AclEntry **, int);
 static int CleanAcl(struct Acl *, char *);
-static int SetVolCmd(struct cmd_syndesc *as, void *arock);
+static int SetVolCmd(struct cmd_syndesc *as, void *unused);
 static int GetCellName(char *, struct afsconf_cell *);
 static void Die(int, char *);
 
@@ -153,7 +153,7 @@ SetDotDefault(struct cmd_item **aitemp)
     *aitemp = ti;
 }
 
-void PrintDate(afs_uint32 *intdate)
+void PrintTime(afs_uint32 intdate)
 {
     time_t now, date;
     char month[4];
@@ -164,33 +164,8 @@ void PrintDate(afs_uint32 *intdate)
                          "Sep", "Oct", "Nov", "Dec"};
     int i;
 
-    if (!*intdate) printf(" never       "); else {
-        date = *intdate;
-        timestring = ctime(&date);
-        sscanf(timestring, "%s %s %d %d:%d:%d %d",
-                (char *)&weekday,
-                (char *)&month, &day, &hour, &minute, &second, &year);
-        for (i=0; i<12; i++) {
-           if (!strcmp(month, months[i]))
-                break;
-        }
-        printf(" %04d-%02d-%02d", year, i+1, day);
-    }
-}
-
-void PrintTime(afs_uint32 *intdate)
-{
-    time_t now, date;
-    char month[4];
-    char weekday[4];
-    int  hour, minute, second, day, year;
-    char *timestring;
-    char *months[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug",
-                         "Sep", "Oct", "Nov", "Dec"};
-    int i;
-
-    if (!*intdate) printf(" never       "); else {
-        date = *intdate;
+    if (!intdate) printf(" never       "); else {
+        date = intdate;
         timestring = ctime(&date);
         sscanf(timestring, "%s %s %d %d:%d:%d %d",
                 (char *)&weekday,
@@ -203,6 +178,7 @@ void PrintTime(afs_uint32 *intdate)
     }
     return;
 }
+
 void
 InitializeCBService_LWP()
 {
@@ -285,9 +261,9 @@ SetCellFname(char *name)
 {
     struct afsconf_dir *tdir;
 
-    strcpy((char *) &cellFname,"/afs/");
+    strcpy(cellFname,"/afs/");
     if (name)
-        strcat((char *) &cellFname, name);
+        strcat(cellFname, name);
     else {
         tdir = afsconf_Open(AFSDIR_CLIENT_ETC_DIRPATH);
         if (tdir)
@@ -348,7 +324,7 @@ FindCell(char *cellName)
         strcpy((char *)&sname.cell, (char *)&p->info.name);
         sname.instance[0] = 0;
         strcpy(sname.name, "afs");
-        code = ktc_GetToken(&sname, &ttoken, sizeof(ttoken), (char *)0);
+        code = ktc_GetToken(&sname, &ttoken, sizeof(ttoken), NULL);
         if (code)
             p->scIndex = 0;
         else {
@@ -445,7 +421,7 @@ get_file_cell(char *fn, char **cellp, afs_int32 *hosts,
     } else {
         *cellp = (char *) malloc(strlen(buf)+1);
         strcpy(*cellp, buf);
-        SetCellFname(cellp);
+        SetCellFname(*cellp);
         bzero(buf, sizeof(buf));
         status.in = 0;
         status.in_size = 0;
@@ -747,7 +723,7 @@ GetCell(char *fname, char *cellname)
 
 #define USE_ARCHIVE     1       /* as defined in vol_osd.c */
 static int
-ArchiveCmd(struct cmd_syndesc *as, void *arock)
+ArchiveCmd(struct cmd_syndesc *as, void *unused)
 {
     struct ViceIoctl status;
     int vnode = 0;
@@ -815,7 +791,7 @@ restart:
 }
 
 static int
-CreateOsdCmd(struct cmd_syndesc *as, void *arock)
+CreateOsdCmd(struct cmd_syndesc *as, void *unused)
 {
     struct ViceIoctl status;
     afs_int32 code;
@@ -888,7 +864,7 @@ CreateOsdCmd(struct cmd_syndesc *as, void *arock)
 }
 
 static int
-GetPoliciesCmd(struct cmd_syndesc *as, char *arock)
+GetPoliciesCmd(struct cmd_syndesc *as, void *unused)
 {
     struct AFSFetchStatus OutStatus;
     AFSFid Fid;
@@ -967,7 +943,7 @@ GetPoliciesCmd(struct cmd_syndesc *as, char *arock)
 }
 
 static int
-ListArchCmd(struct cmd_syndesc *as, void *arock)
+ListArchCmd(struct cmd_syndesc *as, void *unused)
 {
     struct ViceIoctl status;
     afs_int32 code, i;
@@ -1068,7 +1044,7 @@ ListLine(AFSFetchStatus *Status, char *fname, char *what, AFSFid *fid)
             strcat(str, " ");
         printf(" %s ", str);
     } else
-        PrintTime(&Status->ClientModTime);
+        PrintTime(Status->ClientModTime);
     printf(" %s", fname);
     if (Status->FileType == SymbolicLink && what) {
         printf(" -> %s", what);
@@ -1087,7 +1063,7 @@ struct VenusFid {
 };
 
 static int
-LsCmd(struct cmd_syndesc *as, void *arock)
+LsCmd(struct cmd_syndesc *as, void *unused)
 {
     struct dirEssential {
         struct dirEssential *next;
@@ -1230,7 +1206,7 @@ Finis:
 }
 
 static int
-osdCmd(struct cmd_syndesc *as, void *arock)
+osdCmd(struct cmd_syndesc *as, void *unused)
 {
     char *np, *cell, *fname, *dirname = 0;
     struct cellLookup *cl;
@@ -1263,7 +1239,7 @@ osdCmd(struct cmd_syndesc *as, void *arock)
     if (as->parms[1].items)
         cell = as->parms[1].items->data;
     if (fid) {
-        code = get_vnode_hosts(fname, &cell, &hosts, &Fid, 0);
+        code = get_vnode_hosts(fname, &cell, hosts, &Fid, 0);
         if (code) return code;
     } else
         code = get_file_cell(fname, &cell, hosts, &Fid, &OutStatus);
@@ -1364,7 +1340,7 @@ struct prefetchout {
 };
 
 static int
-PrefetchCmd(struct cmd_syndesc *as, void *arock)
+PrefetchCmd(struct cmd_syndesc *as, void *unused)
 {
     struct cmd_item *nm_itemP;
     char *fname, *fn;
@@ -1455,7 +1431,7 @@ Retry:
 }
 
 static int
-ProtocolCmd(struct cmd_syndesc *as, void *arock)
+ProtocolCmd(struct cmd_syndesc *as, void *unused)
 {
     afs_int32 code;
     struct ViceIoctl blob;
@@ -1569,7 +1545,7 @@ ProtocolCmd(struct cmd_syndesc *as, void *arock)
 }
 
 static int
-ReplaceOsd(struct cmd_syndesc *as, void *arock)
+ReplaceOsd(struct cmd_syndesc *as, void *unused)
 {
     struct ViceIoctl status;
     afs_int32 code;
@@ -1614,7 +1590,7 @@ ReplaceOsd(struct cmd_syndesc *as, void *arock)
 }
 
 static int
-SetPolicyCmd(struct cmd_syndesc *as, char *arock)
+SetPolicyCmd(struct cmd_syndesc *as, void *unused)
 {
     unsigned int policy = atoi(as->parms[0].items->data);
     struct AFSFetchStatus OutStatus;
@@ -1661,7 +1637,7 @@ SetPolicyCmd(struct cmd_syndesc *as, char *arock)
 }
 
 static int
-translateCmd(struct cmd_syndesc *as, void *arock)
+translateCmd(struct cmd_syndesc *as, void *unused)
 {
     struct cmd_item *nm_itemP;
     char *fname, *p, *p2, *cell = 0;
@@ -1906,7 +1882,7 @@ translateCmd(struct cmd_syndesc *as, void *arock)
 }
 
 static int
-WipeCmd(struct cmd_syndesc *as, void *arock)
+WipeCmd(struct cmd_syndesc *as, void *unused)
 {
     struct ViceIoctl status;
     int vnode = 0;
@@ -1960,8 +1936,7 @@ WipeCmd(struct cmd_syndesc *as, void *arock)
 #define NAMEI_TAGSHIFT  26
 #define NAMEI_TAGMASK   63
 static afs_int32
-ListVnode(as)
-struct cmd_syndesc *as;
+ListVnode(struct cmd_syndesc *as, void *unused)
 {
     struct cmd_item *nm_itemP;
     char *fname;
@@ -2042,9 +2017,9 @@ struct cmd_syndesc *as;
                         printf("\n");
                         printf("\tdataVersion\t = %u\n", *(p+13));
                         printf("\tunixModifyTime\t =");
-                        PrintTime(p+14); printf("\n");
+                        PrintTime(p[14]); printf("\n");
                         printf("\tserverModifyTime =");
-                        PrintTime(p+15); printf("\n");
+                        PrintTime(p[15]); printf("\n");
                         printf("\tvn_ino_lo\t = %u\t(0x%x)",
                                 *(p+16), *(p+16));
                         if ((*(p+16) & NAMEI_VNODEMASK) == *(p+1))
@@ -2099,7 +2074,7 @@ struct cmd_syndesc *as;
     return code;
 }
 
-afs_int32 ListVariables(struct cmd_syndesc *as)
+afs_int32 ListVariables(struct cmd_syndesc *as, void *unused)
 {
     afs_int32 code, i;
     char *cell = 0;
@@ -2176,7 +2151,7 @@ afs_int32 ListVariables(struct cmd_syndesc *as)
 }
 
 afs_int32
-Variable(struct cmd_syndesc *as)
+Variable(struct cmd_syndesc *as, void *unused)
 {
     afs_int32 code, cmd = 1;
     afs_int64 value = 0;
@@ -2246,8 +2221,7 @@ Variable(struct cmd_syndesc *as)
 }
 
 static afs_int32
-Threads(as)
-struct cmd_syndesc *as;
+Threads(struct cmd_syndesc *as, void *unused)
 {
     struct cmd_item *nm_itemP;
     char *fname;
@@ -2317,7 +2291,7 @@ struct cmd_syndesc *as;
                 printf("rpc %5u %20s for %u.%u.%u since ",
                         w->num & 0x7fffffff,
                         name, w->volume, w->vnode, w->unique);
-                PrintTime(&w->timeStamp);
+                PrintTime(w->timeStamp);
                 printf(" from %u.%u.%u.%u\n",
                         (w->ip >> 24) & 255,
                         (w->ip >> 16) & 255,
@@ -2407,7 +2381,7 @@ char *quarters[96] = {
 #define OneDay (86400)         /* 24 hours' worth of seconds */
 
 static int
-Statistic(struct cmd_syndesc *as, char *rock)
+Statistic(struct cmd_syndesc *as, void *unused)
 {
     afs_int32 code, i, j;
     afs_int32 reset = 0;
@@ -2481,7 +2455,7 @@ Statistic(struct cmd_syndesc *as, char *rock)
 
         FT_GetTimeOfDay(&now, 0);
         printf("Since ");
-        PrintTime(&since);
+        PrintTime(since);
         seconds = tsec = now.tv_sec - since;
         days = tsec / 86400;
         tsec = tsec % 86400;
@@ -2529,8 +2503,7 @@ Statistic(struct cmd_syndesc *as, char *rock)
 }
 
 static afs_int32
-ListLocked(as)
-struct cmd_syndesc *as;
+ListLocked(struct cmd_syndesc *as, void *unused)
 {
     struct cmd_item *nm_itemP;
     char *fname;
@@ -2580,9 +2553,8 @@ struct cmd_syndesc *as;
     }
     return code;
 }
-
 static int
-WhereIsCmd(struct cmd_syndesc *as, void *arock)
+WhereIsCmd(struct cmd_syndesc *as, void *unused)
 {
     afs_int32 code;
     struct ViceIoctl blob;
@@ -2690,7 +2662,7 @@ WhereIsCmd(struct cmd_syndesc *as, void *arock)
 }
 
 static int
-WSCellCmd(struct cmd_syndesc *as, void *arock)
+WSCellCmd(struct cmd_syndesc *as, void *unused)
 {
     afs_int32 code;
     struct ViceIoctl blob;

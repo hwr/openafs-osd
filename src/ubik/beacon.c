@@ -410,8 +410,8 @@ ubeacon_Interact(void *dummy)
 	    if (ubik_dbase[k])
 		l++;
 	}
-	memset(&buffer, 0, sizeof(buffer));
-	list.ubik_db_stateList_val = &buffer;
+	memset(buffer, 0, sizeof(buffer));
+	list.ubik_db_stateList_val = buffer;
 	list.ubik_db_stateList_len = l;
 	l = 0; /* offset in list */
 	for (k=0; k<MAX_UBIK_DBASES; k++) {

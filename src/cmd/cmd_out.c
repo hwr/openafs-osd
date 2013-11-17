@@ -12,7 +12,7 @@
 #include <sys/types.h>
 #include <time.h>
 
-void PrintDate(afs_uint32 *intdate)
+void PrintDate(afs_uint32 intdate)
 {
     time_t now, date;
     char month[4];
@@ -23,8 +23,8 @@ void PrintDate(afs_uint32 *intdate)
                          "Sep", "Oct", "Nov", "Dec"};
     int i;
 
-    if (!*intdate) printf(" never       "); else {
-        date = *intdate;
+    if (!intdate) printf(" never       "); else {
+        date = intdate;
         timestring = ctime(&date);
         sscanf(timestring, "%s %s %d %d:%d:%d %d",
                 (char *)&weekday,
@@ -37,7 +37,7 @@ void PrintDate(afs_uint32 *intdate)
     }
 }
 
-void PrintTime(afs_uint32 *intdate)
+void PrintTime(afs_uint32 intdate)
 {
     time_t now, date;
     char month[4];
@@ -48,8 +48,8 @@ void PrintTime(afs_uint32 *intdate)
                          "Sep", "Oct", "Nov", "Dec"};
     int i;
 
-    if (!*intdate) printf(" never       "); else {
-        date = *intdate;
+    if (!intdate) printf(" never       "); else {
+        date = intdate;
         timestring = ctime(&date);
         sscanf(timestring, "%s %s %d %d:%d:%d %d",
                 (char *)&weekday,
@@ -63,7 +63,7 @@ void PrintTime(afs_uint32 *intdate)
     return;
 }
 
-void sprintDate( char *string, afs_uint32 *intdate)
+void sprintDate( char *string, afs_uint32 intdate)
 {
     time_t now, date;
     char month[4];
@@ -73,10 +73,10 @@ void sprintDate( char *string, afs_uint32 *intdate)
     char *months[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug",
                          "Sep", "Oct", "Nov", "Dec"};
     int i;
-    if (!*intdate) 
+    if (!intdate) 
         printf("never"); 
     else {
-        date = *intdate;
+        date = intdate;
         timestring=ctime(&date);
         sscanf(timestring, "%s %s %d %d:%d:%d %d",
                 (char *)&weekday,

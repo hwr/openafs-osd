@@ -38,12 +38,12 @@
 #define _AFS_VICED_HOST_H
 #endif
 /* #if defined(BUILDING_FILESERVER) || defined(BUILDING_VOLSERVER) */
+/*#include "../volser/volser.h"*/
+#include "afs/print.h"
 #include "afsosd.h"
 /* #endif */
 
-#ifdef BUILD_SALVAGER
-extern LogOsd(const char *format, ...);
-#endif
+extern void LogOsd(const char *format, va_list args);
 
 extern int ubeacon_AmSyncSite(void);
 extern void FidZap(DirHandle *);
@@ -79,6 +79,11 @@ static struct auth_ops_v0 *auth = NULL;
 #include <afs/afsint.h>
 #include <afs/volint.h>
 #include <afs/usd.h>
+
+struct vldbentry;
+struct nvldbentry;
+struct ViceIoctl;
+
 struct cmd_ops_v0 {
     void (*AssertionFailed) (char *file, int line);
     const char *(*afs_error_message) (afs_int32 code);
@@ -137,9 +142,11 @@ struct cmd_ops_v0 {
                               struct nvldbentry *entryp);
     int (*VolNameOK) (char *name);
     int (*VLDB_GetEntryByName) (char *namep, struct nvldbentry *entryp);
+#if 0
     int (*vsu_ClientInit) (const char *confDir, char *cellName, int secFlags,
                            int (*secproc)(struct rx_securityClass *, afs_int32),
                            struct ubik_client **uclientp);
+#endif
     int (*vsu_GetVolumeID) (char *astring, struct ubik_client *acstruct,
                             afs_int32 *errp);
     int (*usd_Open) (const char *path, int oflag, int mode, usd_handle_t * usdP);
@@ -515,7 +522,9 @@ extern int IsPartValid(afs_int32 partId, afs_uint32 server, afs_int32 *code);
     cmd->VLDB_GetEntryByID = VLDB_GetEntryByID;
     cmd->VLDB_GetEntryByName = VLDB_GetEntryByName;
     cmd->VolNameOK = VolNameOK;
+#if 0
     cmd->vsu_ClientInit = vsu_ClientInit;
+#endif
     cmd->vsu_GetVolumeID = vsu_GetVolumeID;
     cmd->usd_Open = usd_Open;
     cmd->usd_StandardInput = usd_StandardInput;
@@ -1152,6 +1161,7 @@ VolNameOK(char *name)
     return (cmd->VolNameOK)(name);
 }
 
+#if 0
 int
 vsu_ClientInit(const char *confDir, char *cellName, int secFlags,
                int (*secproc)(struct rx_securityClass *, afs_int32),
@@ -1159,6 +1169,7 @@ vsu_ClientInit(const char *confDir, char *cellName, int secFlags,
 {
     return (cmd->vsu_ClientInit)(confDir, cellName, secFlags, secproc, uclientp);
 }
+#endif
 
 int
 vsu_GetVolumeID(char *astring, struct ubik_client *acstruct, afs_int32 *errp)

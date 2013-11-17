@@ -17,20 +17,28 @@
 #include <stdlib.h>
 
 /*@+fcnmacros +macrofcndecl@*/
-#ifdef S_SPLINT_S
-#endif /*S_SPLINT_S */
-#define afs_stat		stat64
-#define afs_fstat		fstat64
-#define afs_open		open64
-#define afs_fopen		fopen64
+#if defined (AFS_DARWIN_ENV)
+# include <sys/param.h>
+# include <sys/mount.h>
+# define afs_stat               stat
+# define afs_fstat              fstat
+# define afs_open               open
+# define afs_fopen              fopen
+#else
+# define afs_stat		stat64
+# define afs_fstat		fstat64
+# define afs_open		open64
+# define afs_fopen		fopen64
+#endif
+
 #if defined(AFS_HAVE_STATVFS64)
 # define afs_statvfs    statvfs64
 #elif defined(AFS_HAVE_STATFS64)
-#  define afs_statfs    statfs64
+# define afs_statfs    statfs64
 #elif defined(AFS_HAVE_STATVFS)
-#   define afs_statvfs  statvfs
+# define afs_statvfs  statvfs
 #else
-#   define afs_statfs   statfs
+# define afs_statfs   statfs
 #endif /* !AFS_HAVE_STATVFS64 */
 /*@=fcnmacros =macrofcndecl@*/
 
@@ -78,12 +86,16 @@
 #include "../vol/common.h"
 #include <afs/errors.h>
 
+#if defined (AFS_DARWIN_ENV)
+# include <sys/mount.h>
+#endif
+
 afs_int32 defaultLinkCount = 16;
 extern int log_open_close;
 
 afs_int32 hsmDev = -1;
 extern afs_int32 maxDontUnlinkDev;
-extern afs_int32 dontUnlinkDev[1];
+extern afs_int32 dontUnlinkDev[0];
 
 extern int dcache;
 /*
@@ -102,15 +114,24 @@ struct ih_posix_ops ih_namei_ops = {
     readv,
     write,
     writev,
+#if defined (AFS_DARWIN_ENV)
+    lseek,
+#else
     lseek64,
+#endif
     fsync,
     unlink,
     mkdir,
     rmdir,
     chmod,
     chown,
+#if defined (AFS_DARWIN_ENV)
+    stat,
+    fstat,
+#else
     stat64,
     fstat64,
+#endif
     rename,
     opendir,
     readdir,

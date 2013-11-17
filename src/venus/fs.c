@@ -318,7 +318,7 @@ struct cellLookup *FindCell(cellName)
         strcpy((char *)&sname.cell, (char *)&p->info.name);
         sname.instance[0] = 0;
         strcpy(sname.name, "afs");
-        code = ktc_GetToken(&sname, &ttoken, sizeof(ttoken), (char *)0);
+        code = ktc_GetToken(&sname, &ttoken, sizeof(ttoken), NULL);
         if (code)
             p->scIndex = 0;
         else {
@@ -5766,7 +5766,7 @@ afs_int32 osd_parms(struct cmd_syndesc *as, void *arock)
 }
 
 static int
-SetPolicy(struct cmd_syndesc *as, char *arock)
+SetPolicy(struct cmd_syndesc *as, void *arock)
 {
     unsigned int policy = atoi(as->parms[0].items->data);
     struct AFSFetchStatus OutStatus;
@@ -5813,7 +5813,7 @@ SetPolicy(struct cmd_syndesc *as, char *arock)
 }
 
 static int
-GetPolicies(struct cmd_syndesc *as, char *arock)
+GetPolicies(struct cmd_syndesc *as, void *arock)
 {
     struct AFSFetchStatus OutStatus;
     AFSFid Fid;
@@ -6105,7 +6105,7 @@ char *quarters[96] = {
 #define OneDay (86400)         /* 24 hours' worth of seconds */
 
 static int
-Statistic(struct cmd_syndesc *as, char *rock)
+Statistic(struct cmd_syndesc *as, void *rock)
 {
     afs_int32 code, i, j;
     afs_int32 reset = 0;
@@ -6226,7 +6226,7 @@ Statistic(struct cmd_syndesc *as, char *rock)
     return code;
 }
 
-afs_int32 ListVariables(struct cmd_syndesc *as) 
+afs_int32 ListVariables(struct cmd_syndesc *as, void *unused) 
 {
     afs_int32 code, i;
     char *cell = 0;
@@ -6303,7 +6303,7 @@ afs_int32 ListVariables(struct cmd_syndesc *as)
 }
 
 afs_int32
-Variable(struct cmd_syndesc *as)
+Variable(struct cmd_syndesc *as, void *unused)
 {
     afs_int32 code, cmd = 1;
     afs_int64 value = 0;

@@ -104,7 +104,7 @@ int
 printentry(afs_int32 fd, afs_int32 index, afs_uint32 entrylength) 
 {
     struct osd_p_fileList mylist, *list;
-    struct osdMetadaEntry *entry;
+    struct osdMetadaEntry *entry = (struct osdMetadaEntry *)dummyentry;
     struct osdMetadataHandle *mh;
     afs_uint32 version;
     afs_uint64 offset;
@@ -114,7 +114,6 @@ printentry(afs_int32 fd, afs_int32 index, afs_uint32 entrylength)
     list = &mylist;
     list->osd_p_fileList_len = 0;
     list->osd_p_fileList_val = 0;
-    entry = (struct osdMetaDataEntry *)&dummyentry;
     mh = &dummymh;
     mh->length = 0;
     mh->offset = 0;
@@ -134,7 +133,7 @@ printentry(afs_int32 fd, afs_int32 index, afs_uint32 entrylength)
 }
 
 static int
-handleit(struct cmd_syndesc *as)
+handleit(struct cmd_syndesc *as, void *unused)
 {
     Volume *vp;
     Error ec;
@@ -159,7 +158,7 @@ handleit(struct cmd_syndesc *as)
     int highest = 0;
     int highesttag = 0;
     int highestcount = 0;
-    struct osdMetadaEntry *entry = buf;
+    struct osdMetadaEntry *entry = (struct osdMetadaEntry*)buf;
     afs_uint32 entrylength = MAXOSDMETADATAENTRYLEN;
     byte *bp, *ep;
     afs_int32 usedentries = 0;
@@ -177,10 +176,10 @@ handleit(struct cmd_syndesc *as)
     volumeId = atoi(as->parms[0].items->data);
     rwid = volumeId;
     if (as->parms[1].items)
-       strcpy(&partition, as->parms[1].items->data);
+       strcpy(partition, as->parms[1].items->data);
     if (as->parms[2].items) {
         lun = atoi(as->parms[2].items->data);
-	sprintf(&partition,"vicep%s", part[lun]);
+	sprintf(partition,"vicep%s", part[lun]);
     }
     if (as->parms[3].items) {
         rwid = atoi(as->parms[3].items->data);
@@ -195,7 +194,7 @@ handleit(struct cmd_syndesc *as)
     tmp |= 5 << NAMEI_TAGSHIFT;
     tmp |= NAMEI_VNODEMASK;
     int64_to_flipbase64(N, tmp);
-    sprintf(&path, "/%s/AFSIDat/%s/%s/special/%s",
+    sprintf(path, "/%s/AFSIDat/%s/%s/special/%s",
 		partition, V1, V2, N);
     printf("%s\n", path);
     fd = afs_open(path, O_RDONLY, 0);
@@ -271,7 +270,7 @@ handleit(struct cmd_syndesc *as)
 				base, volumeId,
 				entry->vnode, entry->unique,
 				entry->next, entry->prev);
-		PrintTime(&entry->timestamp);
+		PrintTime((afs_uint64) entry->timestamp);
 		if (verbose && entry->unique && !entry->prev) 
 		    printentry(fd, base, entrylength);
 		else 

@@ -95,6 +95,43 @@
 #include <strings.h>
 #endif
 
+#ifdef O_LARGEFILE
+
+#define afs_stat                stat64
+#define afs_open                open64
+#define afs_fopen               fopen64
+#define afs_fstat               fstat64
+#define afs_lseek               lseek64
+#ifndef AFS_NT40_ENV
+#if defined (AFS_HAVE_STATVFS64)
+#  define afs_statvfs           statvfs64
+#elif defined (AFS_HAVE_STATFS64)
+#  define afs_statfs            statfs64
+#elif defined (AFS_HAVE_STATVFS)
+#  define afs_statvfs           statvfs
+#else
+#  define afs_statfs            statfs
+#endif /* !AFS_HAVE_STATVFS64 */
+#endif /* !AFS_NT40_ENV */
+
+#else /* !O_LARGEFILE */
+
+#define afs_stat                stat
+#define afs_open                open
+#define afs_fopen               fopen
+#define afs_fstat               fstat64
+#define afs_lseek               lseek64
+#ifndef AFS_NT40_ENV
+#if defined (AFS_HAVE_STATVFS)
+#  define afs_statvfs           statvfs
+#else /* !AFS_HAVE_STATVFS */
+#  define afs_statfs            statfs
+#endif /* !AFS_HAVE_STATVFS */
+#endif /* !AFS_NT40_ENV */
+
+#endif /* !O_LARGEFILE */
+
+
 #include <afs/stds.h>
 #include <afs/afs_assert.h>
 #include <afs/fileutil.h>
@@ -111,21 +148,23 @@ char *initname[3] = {"nothing", "init_rxosd_hpss", "init_rxosd_dcache"};
 extern struct ih_posix_ops ih_dcache_ops;
 time_t hpssLastAuth = 0;
 
+
+
 struct ih_posix_ops clib_ops = {
-    open,
+    afs_open,
     close,
     read,
     NULL,
     write,
     NULL,
-    lseek64,
+    afs_lseek,
     NULL,
     NULL,
     NULL,
     NULL,
     NULL,
     NULL,
-    stat64,
+    afs_stat,
     NULL,
     NULL,
     NULL,
@@ -145,7 +184,7 @@ char **argv;
     char filename[256];
     char buffer;
     char *whoami;
-    struct stat64 status;
+    struct afs_stat status;
     int fd, verbose = 1;
     struct timeval starttime, endtime;
     struct timezone timezone;
@@ -255,8 +294,8 @@ char **argv;
         gettimeofday(&endtime, &timezone);
         seconds = endtime.tv_sec + endtime.tv_usec *.000001
              -starttime.tv_sec - starttime.tv_usec *.000001;
-        fprintf(log, "%s online %.0f sec %lu\n", 
-		filename, seconds, status.st_size);
+        fprintf(log, "%s online %.0f sec %llu\n", 
+		filename, seconds, (long long unsigned)status.st_size);
     }
  
     exit(0);

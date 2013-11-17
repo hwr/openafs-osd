@@ -90,6 +90,7 @@
 #include <afs/afsutil.h>
 #include <afs/dir.h>
 #include "vicedosd.h"
+#include "volser/volser.h"
 #include "afsosd.h"
 
 extern struct vol_data_v0 *voldata;
@@ -1402,7 +1403,7 @@ ApplyOsdPolicy(struct rx_call *acall, AFSFid *Fid, afs_uint64 length,
     char fileName[256];
     int i;
 
-    ViceLog(1,("SRXAFSOSD_ApplyOsdPolicy for %u.%u.%u, length %lu\n",
+    ViceLog(1,("SRXAFSOSD_ApplyOsdPolicy for %u.%u.%u, length %llu\n",
 			Fid->Volume, Fid->Vnode, Fid->Unique, length));
     *protocol = 1; /* default: store in local partition */
 
@@ -1798,7 +1799,7 @@ common_GetPath(struct rx_call *acall, AFSFid *Fid, struct async *a)
     afsUUID *tuuid;
     afs_int32 lockType;
 
-    ViceLog(1,("SRXAFSOSD_GetPath: %lu.%lu.%lu\n",
+    ViceLog(1,("SRXAFSOSD_GetPath: %u.%u.%u\n",
 	Fid->Volume, Fid->Vnode, Fid->Unique));
 
     switch (a->type) {
@@ -2273,15 +2274,15 @@ fill_status(Vnode *targetptr, afs_fsize_t targetLen, AFSFetchStatus *status)
     if (ClientsWithAccessToFileserverPartitions && VN_GET_INO(targetptr)
       && !(targetptr->vnodeNumber & 1)) {
         namei_t name;
-        struct stat64 tstat;
+        struct afs_stat tstat;
 
         namei_HandleToName(&name, targetptr->handle);
-        if (stat64(name.n_path, &tstat) == 0) {
+        if (afs_stat(name.n_path, &tstat) == 0) {
             SplitOffsetOrSize(tstat.st_size,
                     status->Length_hi,
                     status->Length);
             if (tstat.st_size != targetLen) {
-                ViceLog(3,("GetStatus: new file length %llu instead of %llu for (%lu.%lu.%lu)\n",
+                ViceLog(3,("GetStatus: new file length %llu instead of %llu for (%u.%u.%u)\n",
                             tstat.st_size,
                             targetLen,
                             targetptr->volumePtr->hashid,
@@ -3024,10 +3025,10 @@ ServerPath(struct rx_call * acall, AFSFid *Fid, afs_int32 writing,
     struct host *thost;
 
     if (writing) {
-        ViceLog(1,("ServerPath: writing (%lu.%lu.%lu) offset %llu length %llu filelength %llu\n",
+        ViceLog(1,("ServerPath: writing (%u.%u.%u) offset %llu length %llu filelength %llu\n",
                 Fid->Volume, Fid->Vnode, Fid->Unique, offset, length, filelength));
     } else {
-        ViceLog(1,("ServerPath: reading (%lu.%lu.%lu) offset %llu length %llu\n",
+        ViceLog(1,("ServerPath: reading (%u.%u.%u) offset %llu length %llu\n",
                 Fid->Volume, Fid->Vnode, Fid->Unique, offset, length));
     }
 
@@ -3201,7 +3202,7 @@ SRXAFS_GetPath0(struct rx_call *acall, AFSFid *Fid, afs_uint64 *ino, afs_uint32 
     struct rx_connection *tcon;
     struct host *thost;
 
-    ViceLog(1,("SRXAFS_GetPath0: %lu.%lu.%lu\n",
+    ViceLog(1,("SRXAFS_GetPath0: %u.%u.%u\n",
         Fid->Volume, Fid->Vnode, Fid->Unique));
 
     *algorithm = 1; /* Only known algorithm for now */

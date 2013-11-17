@@ -235,7 +235,7 @@ void free_policy(struct osddb_policy *policy)
 	free_regexes(&policy->rules.pol_ruleList_val[r].condition);
     xdrmem_create(&xdr, NULL, 0, XDR_FREE);
     if ( !xdr_osddb_policy(&xdr, policy) )
-	ViceLog(0, ("XDR_FREE of policy at 0x%016x failed\n", policy));
+	ViceLog(0, ("XDR_FREE of policy at 0x%p failed\n", policy));
 }
 
 void free_pol_info(struct pol_info *info)
@@ -1305,7 +1305,7 @@ void print_policy(struct osddb_policy *pol, int unroll)
 		printf(predicate_formats[output_format], buf);
 	    }
 	    else
-		printf(empty_predicate[output_format]);
+		printf("%s", empty_predicate[output_format]);
 
 	    if ( output_format == POL_OUTPUT_TABULAR ) printf("[");
 	    if ( use_osd || use_local || use_dynamic ) {
@@ -1314,27 +1314,27 @@ void print_policy(struct osddb_policy *pol, int unroll)
 			    : use_local ? string_local[output_format]
 			    : string_dynamic[output_format]);
 		if ( stripes || log2size || copies )
-		    printf(seperator[output_format]);
+		    printf("%s", seperator[output_format]);
 	    }
 	    if ( output_format == POL_OUTPUT_TABULAR ) printf(",");
 	    if ( stripes ) {
 		printf(stripes_format[output_format], stripes);
-		if ( log2size || copies ) printf(seperator[output_format]);
+		if ( log2size || copies ) printf("%s", seperator[output_format]);
 	    }
 	    if ( output_format == POL_OUTPUT_TABULAR ) printf(",");
 	    if ( log2size ) {
 		printf(ssize_format[output_format], log2size);
-		if ( copies ) printf(seperator[output_format]);
+		if ( copies ) printf("%s", seperator[output_format]);
 	    }
 	    if ( output_format == POL_OUTPUT_TABULAR ) printf(",");
 	    if ( copies )
 		printf(copies_format[output_format], copies);
 	    if ( output_format == POL_OUTPUT_TABULAR ) printf("] ");
 	    if ( force || output_format != POL_OUTPUT_LONG )
-		printf(seperator[output_format]);
+		printf("%s", seperator[output_format]);
 	    printf("%s", force ? stop_string[output_format]
 			       : continue_string[output_format]);
-	    printf(ending[output_format]);
+	    printf("%s", ending[output_format]);
 	}
 	else
 	    if ( unroll ) {
@@ -1471,7 +1471,7 @@ eval_condtree(pol_cond *cond, afs_uint64 size, char *fileName,
 
 #define UPDATE(P, M) if ( P(rule.properties) ) *props = ( *props & ~M ) | (rule.properties & M)
 static afs_int32 do_eval_policy( unsigned int policyIndex, afs_uint64 size,
-		    char *fileName, afs_int32 (*evalclient), void *client,
+		    char *fileName, afs_int32 (*evalclient)(void*, afs_int32), void *client,
 		     afs_uint32 *props)
 {
     osddb_policy *pol = get_pol(policyIndex);

@@ -71,10 +71,9 @@ struct osdMetadataHandle {
 };
 
 static bool_t
-xdrvol_getint32(void *axdrs, afs_int32 * lp)
+xdrvol_getint32(XDR *xdrs, afs_int32 * lp)
 {
     afs_int32 l;
-    XDR * xdrs = (XDR *)axdrs;
     struct osdMetadataHandle *mh;
 
     mh = (struct osdMetadataHandle *)(xdrs->x_private);
@@ -86,10 +85,10 @@ xdrvol_getint32(void *axdrs, afs_int32 * lp)
     }
     return FALSE;
 }
+
 static bool_t
-xdrvol_getbytes(void *axdrs, caddr_t addr, u_int len)
+xdrvol_getbytes(XDR *xdrs, caddr_t addr, u_int len)
 {
-    XDR * xdrs = (XDR *)axdrs;
     struct osdMetadataHandle *mh;
 
     mh = (struct osdMetadataHandle *)(xdrs->x_private);
@@ -102,14 +101,18 @@ xdrvol_getbytes(void *axdrs, caddr_t addr, u_int len)
 }
 
 static struct xdr_ops xdrvol_ops = {
+#ifdef AFS_XDR_64BITOPS         /* used for SGI 6.1 only */
+    NULL,                       /* not supported */
+    NULL,                       /* not supported */
+#endif
     xdrvol_getint32,            /* deserialize an afs_int32 */
-    0,                          /* serialize an afs_int32 */
+    NULL,                       /* serialize an afs_int32 */
     xdrvol_getbytes,            /* deserialize counted bytes */
-    0,                          /* serialize counted bytes */
-    0,                          /* get offset in the stream: not supported. */
-    0,                          /* set offset in the stream: not supported. */
-    0,                          /* prime stream for inline macros */
-    0                           /* destroy stream */
+    NULL,                       /* serialize counted bytes */
+    NULL,                       /* get offset in the stream: not supported. */
+    NULL,                       /* set offset in the stream: not supported. */
+    NULL,                       /* prime stream for inline macros */
+    NULL,                       /* destroy stream */
 };
 
 static void
@@ -334,7 +337,7 @@ print_osd_metadata_verb(struct osdMetadataHandle *mh, afs_int32 verbose,
 					if (pobj->osd_id == o->id) {
 					    volutil_PartitionName_r(
 							o->t.etype_u.osd.lun,
-							&PART, 16);
+							PART, 16);
 					    break;
 					}
 				    }

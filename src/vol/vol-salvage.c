@@ -208,7 +208,7 @@ struct vol_data_v0 vol_data_v0 = {
     NULL,
     &LogLevel,
     NULL,
-    &VnodeClassInfo,
+    VnodeClassInfo,
     NULL,
     NULL,
     NULL,
@@ -2674,7 +2674,7 @@ SalvageIndex(struct SalvInfo *salvinfo, Inode ino, VnodeClass class, int RW,
                     volSummary->header.id);
             else
                 osdEntryLength = (osdvol->op_salv_GetOsdEntryLength)(osdMetadataFd,
-								 &osdrock);
+								 (void**)&osdrock);
 	} else {
 	    Log("SalvageIndex: volume %u has no OSD metadata file, perhaps wrong salvageserver binary\n",
                     volSummary->header.id);

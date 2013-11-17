@@ -373,7 +373,7 @@ CommandProc(struct cmd_syndesc *as, void *arock)
 	            printf("    %s[%d] %s\t dbcurrent = %d, version %d.%d\n", 
 			   info->index ? "        ":"dbases: ",
 			   info->index,
-			   &info->name,
+			   info->name,
 			   info->currentDB,
 			   info->remoteVersion.epoch,
 		           info->remoteVersion.counter);

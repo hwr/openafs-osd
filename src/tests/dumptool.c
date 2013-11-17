@@ -222,14 +222,11 @@ printOsdMetadata(struct osdMetadataHandle *mh, char *name)
     xdrvol_create(&xdr, mh, XDR_DECODE);
     if (xdr_afs_uint32(&xdr, &version)) {
         if (!xdr_osd_p_fileList(&xdr, list)) {
-            fprintf(stderr, "xdr_osd_p_fileList failed for %u\n", index);
+            fprintf(stderr, "xdr_osd_p_fileList failed for %s\n", name);
             return;
         }
-	if (name)
-	    printf("%s has %u bytes of osd metadata, v=%u\n",
+	printf("%s has %u bytes of osd metadata, v=%u\n",
 				name, mh->length, version);
-	else 
-	    printf("%u bytes, v=%u\n", mh->length, version);
         for (i=0; i<list->osd_p_fileList_len; i++) {
             struct osd_p_file *pfile = &list->osd_p_fileList_val[i];
 	    if (pfile->archiveVersion) {
@@ -993,8 +990,10 @@ ScanVnodes(FILE * f, VolumeDiskData * vol, int sizescan)
 		    fprintf(stderr, "failed int32 for 'f'\n");
 		    return -1;
 		}
-		if (verbose > 1 && sizescan)
-		    printf("vnode %u has %lu byte of file data!\n", vnodeNumber, length);
+		if (verbose > 1 && sizescan) {
+		    afs_uint64 total = ((afs_uint64)vnode->vn_length_hi << 32) + length;
+		    printf("vnode %u has %llu bytes of file data!\n", vnodeNumber, total);
+		}
 		vnode->length = length;
 		offset = ftello64(f);
 		fseeko64(f, length, SEEK_CUR);
@@ -1063,8 +1062,11 @@ ScanVnodes(FILE * f, VolumeDiskData * vol, int sizescan)
 		    dummymh.length = osdlength;
 		    dummymh.offset = 0;
 		    ReadByteString(f, &dummymh.data, osdlength);
-		    if (verbose > 1)
-		        printOsdMetadata(&dummymh, 0);
+		    if (verbose > 1) {
+			char name[256];
+			sprintf(name, "%u.%u", vnodeNumber, vnode->uniquifier);
+		        printOsdMetadata(&dummymh, name);
+		    }
 	 	  } else
 		    fseeko64(f, osdlength, SEEK_CUR);
 		 break;
@@ -1084,8 +1086,11 @@ ScanVnodes(FILE * f, VolumeDiskData * vol, int sizescan)
 		    dummymh.length = osdlength;
 		    dummymh.offset = 0;
 		    ReadByteString(f, &dummymh.data, osdlength);
-		    if (verbose > 1)
-		        printOsdMetadata(&dummymh, 0);
+		    if (verbose > 1) {
+			char name[256];
+			sprintf(name, "%u.%u", vnodeNumber, vnode->uniquifier);
+		        printOsdMetadata(&dummymh, name);
+		    }
 	 	} else
 		    fseeko64(f, osdlength, SEEK_CUR);
 		break;

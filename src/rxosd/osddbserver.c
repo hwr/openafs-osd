@@ -1534,7 +1534,7 @@ SetOsdUsage(struct rx_call *call, afs_uint32 id, afs_uint32 bsize,
 	    if (id == osds.OsdList_val[i].id) {
 		struct Osd *o = &osds.OsdList_val[i];
 		if (o->t.etype_u.osd.totalSize != b) {
-		    ViceLog(1,("SetOsdUsage totalSize changed from %u to %u for %s (%u).\n",
+		    ViceLog(1,("SetOsdUsage totalSize changed from %u to %llu for %s (%u).\n",
 				o->t.etype_u.osd.totalSize, b, o->name, o->id));
 		    update = 1;
 		    o->t.etype_u.osd.totalSize = b;
@@ -1546,7 +1546,7 @@ SetOsdUsage(struct rx_call *call, afs_uint32 id, afs_uint32 bsize,
 		    o->t.etype_u.osd.pmUsed = pmUsed;
 		}
 		if (o->t.etype_u.osd.totalFiles != f) {
-		    ViceLog(1,("SetOsdUsage totalFiles changed from %u to %u for %s (%u).\n",
+		    ViceLog(1,("SetOsdUsage totalFiles changed from %u to %llu for %s (%u).\n",
 				o->t.etype_u.osd.totalFiles, f, o->name, o->id));
 		    update = 1;
 		    o->t.etype_u.osd.totalFiles = f;
@@ -2445,7 +2445,7 @@ main(argc, argv)
 	    rxMaxMTU = atoi(argv[++i]);
 	    if ((rxMaxMTU < RX_MIN_PACKET_SIZE) || 
 		(rxMaxMTU > RX_MAX_PACKET_DATA_SIZE)) {
-		printf("rxMaxMTU %d% invalid; must be between %d-%d\n",
+		printf("rxMaxMTU %d invalid; must be between %d-%lu\n",
 		       rxMaxMTU, RX_MIN_PACKET_SIZE, 
 		       RX_MAX_PACKET_DATA_SIZE);
 		return -1;

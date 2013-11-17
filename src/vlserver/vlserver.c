@@ -53,6 +53,9 @@
 #include "vlserver.h"
 #include "vlserver_internal.h"
 #ifdef AFS_PTHREAD_ENV
+#include "afs/nfs.h"
+#include "afs/afscbint.h"
+#include "afs/ihandle.h"
 #include "../rxosd/afsosd.h"
 #endif
 
@@ -410,7 +413,7 @@ main(int argc, char **argv)
 	struct init_osddb_outputs output = {
 	    &osddb
  	};
-        char *osd_dbaseName = AFSDIR_SERVER_OSDDB_FILEPATH;
+        const char *osd_dbaseName = AFSDIR_SERVER_OSDDB_FILEPATH;
 
         code =
 	    ubik_ServerInitByInfoN(myHost, 0, 1 /* index */, &info, clones,

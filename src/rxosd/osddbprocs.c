@@ -51,6 +51,10 @@
 #include <afs/afsutil.h>
 #include "osddb.h"
 #define BUILDING_VLSERVER 1
+
+#include <afs/afscbint.h>
+#include <afs/ihandle.h>
+#include <afs/namei_ops.h>
 #include "afsosd.h"
 
 struct vol_data_v0 *voldata;
@@ -1544,7 +1548,7 @@ SetOsdUsage(struct rx_call *call, afs_uint32 id, afs_uint32 bsize,
 	    if (id == osds.OsdList_val[i].id) {
 		struct Osd *o = &osds.OsdList_val[i];
 		if (o->t.etype_u.osd.totalSize != b) {
-		    ViceLog(1,("SetOsdUsage totalSize changed from %u to %u for %s (%u).\n",
+		    ViceLog(1,("SetOsdUsage totalSize changed from %u to %llu for %s (%u).\n",
 				o->t.etype_u.osd.totalSize, b, o->name, o->id));
 		    update = 1;
 		    o->t.etype_u.osd.totalSize = b;
@@ -1556,7 +1560,7 @@ SetOsdUsage(struct rx_call *call, afs_uint32 id, afs_uint32 bsize,
 		    o->t.etype_u.osd.pmUsed = pmUsed;
 		}
 		if (o->t.etype_u.osd.totalFiles != f) {
-		    ViceLog(1,("SetOsdUsage totalFiles changed from %u to %u for %s (%u).\n",
+		    ViceLog(1,("SetOsdUsage totalFiles changed from %u to %llu for %s (%u).\n",
 				o->t.etype_u.osd.totalFiles, f, o->name, o->id));
 		    update = 1;
 		    o->t.etype_u.osd.totalFiles = f;
@@ -2388,8 +2392,8 @@ SOSDDB_GetPoliciesRevision68(struct rx_call *call, afs_uint32 *revision)
     return code;
 }
 
-void
-OSDDB_5_minuteCheck()
+void*
+OSDDB_5_minuteCheck(void *unused)
 {
     afs_int32 code, sleepseconds, i;
     osds.OsdList_len = 0;

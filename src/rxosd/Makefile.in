@@ -203,7 +203,7 @@ LIBAOBJS = \
 	volserosd.xdr.o \
 	vicedosd.cs.o \
 	vicedosd.xdr.o
-	
+
 VLSERVEROBJS=vldbint.cs.o vldbint.xdr.o vl_errors.o
 VOSCMDOBJS= vsprocs.o vsutils.o lockprocs.o volint.xdr.o volerr.o \
 		volint.cs.o
@@ -212,15 +212,22 @@ LIBAFSOSD = libafsosd.${SHLIB_SUFFIX}.${LIBAFSOSDMAJOR}.${LIBAFSOSDMINOR}
 LIBDAFSOSD = libdafsosd.${SHLIB_SUFFIX}.${LIBAFSOSDMAJOR}.${LIBAFSOSDMINOR}
 LIBCAFSOSD = libcafsosd.${SHLIB_SUFFIX}.${LIBAFSOSDMAJOR}.${LIBAFSOSDMINOR}
 
+all: \
+	generated rxosd osd readabyte osdmetadata osddbserver linkcounts \
+	${LIBAFSOSD} ${LIBDAFSOSD} ${LIBCAFSOSD} fs vos
+
 generated: \
+	depinstall \
 	${TOP_LIBDIR}/libafsosd.a \
-	${TOP_INCDIR}/afs/rxosd.h ${TOP_INCDIR}/afs/rxosd_hsm.h \
-	${TOP_INCDIR}/afs/vicedosd.h ${TOP_INCDIR}/afs/volserosd.h \
-	rxosd.h vicedosd.h volserosd.h Krxosd.cs.c Krxosd.xdr.c \
-	Kvicedosd.cs.c Kvicedosd.xdr.c vicedosd.cs.c vicedosd.xdr.c \
+	rxosd.h vicedosd.h volserosd.h \
+	vicedosd.cs.c vicedosd.xdr.c \
 	rxosd.cs.c rxosd.xdr.c
 
-all: generated rxosd osd readabyte osdmetadata osddbserver linkcounts ${LIBAFSOSD} ${LIBDAFSOSD} ${LIBCAFSOSD} fs vos
+depinstall: \
+	Krxosd.cs.c Krxosd.xdr.c \
+	Kvicedosd.cs.c Kvicedosd.xdr.c \
+	${TOP_INCDIR}/afs/rxosd.h ${TOP_INCDIR}/afs/rxosd_hsm.h \
+	${TOP_INCDIR}/afs/vicedosd.h ${TOP_INCDIR}/afs/volserosd.h
 
 LIBAFSHPSS = libafshpss.${SHLIB_SUFFIX}.${LIBHPSSMAJOR}.${LIBHPSSMINOR}
 
@@ -250,9 +257,9 @@ ${TOP_LIBDIR}/libafsosd.a: libafsosd.a
 	${INSTALL_DATA} libafsosd.a $@
 
 install: ${LIBAFSOSD} ${LIBDAFSOSD} ${LIBCAFSOSD} libafsosd.a rxosd readabyte osd osdmetadata osddbserver linkcounts fs vos
-	../config/shlib-install -d ${DESTDIR}${libdir} \
+	../config/shlib-install -d ${DESTDIR}${afssrvlibexecdir} \
 		-l libafsosd -M ${LIBAFSOSDMAJOR} -m ${LIBAFSOSDMINOR}
-	../config/shlib-install -d ${DESTDIR}${libdir} \
+	../config/shlib-install -d ${DESTDIR}${afssrvlibexecdir} \
 		-l libdafsosd -M ${LIBAFSOSDMAJOR} -m ${LIBAFSOSDMINOR}
 	../config/shlib-install -d ${DESTDIR}${libdir} \
 		-l libcafsosd -M ${LIBAFSOSDMAJOR} -m ${LIBAFSOSDMINOR}
@@ -320,7 +327,7 @@ readabyte.o: readabyte.c rxosd_hsm.h
 
 readabyte: readabyte.o libafshsm.o
 	${CC} ${LDFLAGS} -o readabyte readabyte.o libafshsm.o \
-			${LIBS} ${MT_LIBS} -ldl -lnsl
+			${LIBS} ${MT_LIBS} -ldl
 
 osd: osd.o rxosd.cs.o rxosd.xdr.o a_osddbuser.o osddb.cs.o osddb.xdr.o policy_parser.o
 	${CC} ${LDFLAGS} -o osd osd.o rxosd.cs.o rxosd.xdr.o a_osddbuser.o \
@@ -361,16 +368,25 @@ vol_osd.xdr.o: vol_osd.xdr.c vol_osd.h
 vol_osd.o: ${srcdir}/vol_osd.c vol_osd.h
 	${CCRULE}
 
-d_vol_osd.o: ${srcdir}/vol_osd.c vol_osd.h
+d_vol_osd.c: ${srcdir}/vol_osd.c
+	ln -fs $? $@
+
+d_vol_osd.o: d_vol_osd.c vol_osd.h
 	${CCRULE} -DAFS_DEMAND_ATTACH_FS 
 
 libafsosd.o: ${srcdir}/libafsosd.c
 	${CCRULE}
 
-d_libafsosd.o: ${srcdir}/libafsosd.c
+d_libafsosd.c: ${srcdir}/libafsosd.c
+	ln -fs $? $@
+
+d_libafsosd.o: d_libafsosd.c
 	${CCRULE} -DAFS_DEMAND_ATTACH_FS
 
-c_libafsosd.o: ${srcdir}/libafsosd.c
+c_libafsosd.c: ${srcdir}/libafsosd.c
+	ln -fs $? $@
+
+c_libafsosd.o: c_libafsosd.c
 	${CCRULE} -DBUILDING_CLIENT_COMMAND
 
 rxosd_namei_ops.o: ${srcdir}/rxosd_namei_ops.c
@@ -402,10 +418,16 @@ osddb.xdr.c: ${srcdir}/osddb.xg osddb.h
 osddbuser.o: ${srcdir}/osddbuser.c vicedosd.h volserosd.h fs_rxosd_common.h osddb.h volint.h
 	${CCRULE}
 
-a_osddbuser.o: ${srcdir}/osddbuser.c vicedosd.h volserosd.h fs_rxosd_common.h osddb.h volint.h
+a_osddbuser.c: ${srcdir}/osddbuser.c
+	ln -fs $? $@
+
+a_osddbuser.o: a_osddbuser.c vicedosd.h volserosd.h fs_rxosd_common.h osddb.h volint.h
 	${CCRULE} -DBUILD_LIBAFSOSD_A
 
-r_osddbuser.o: ${srcdir}/osddbuser.c
+r_osddbuser.c: ${srcdir}/osddbuser.c
+	ln -fs $? $@
+
+r_osddbuser.o: r_osddbuser.c
 	${CCRULERXOSD}
 
 osddb.xdr.o: osddb.xdr.c
@@ -478,7 +500,10 @@ libafshsm.o: ${srcdir}/libafshsm.c ${srcdir}/rxosd_hsm.h
 vol_osd_salv.o: ${srcdir}/vol_osd.c
 	${CCRULESALV}
 
-d_vol_osd_salv.o: ${srcdir}/vol_osd.c
+d_vol_osd_salv.c: ${srcdir}/vol_osd.c
+	ln -sf $? $@
+
+d_vol_osd_salv.o: d_vol_osd_salv.c
 	${CCRULESALV} -DAFS_DEMAND_ATTACH_FS
 
 # fsint stuff
@@ -548,6 +573,9 @@ vicedosd.cs.o: vicedosd.cs.c vicedosd.h afsint.h fs_rxosd_common.h
 vicedosd.o: ${srcdir}/vicedosd.c
 	${CCRULE}
 
+d_vicedosd.c: ${srcdir}/vicedosd.c
+	ln -sf $? $@
+
 d_vicedosd.o: ${srcdir}/vicedosd.c
 	${CCRULE} -DAFS_DEMAND_ATTACH_FS
 
@@ -582,6 +610,9 @@ volserosd.xdr.o: volserosd.xdr.c volserosd.h
 
 volserosd.o: ${srcdir}/volserosd.c volser.h
 	${CCRULE}
+
+d_volserosd.c: ${srcdir}/volserosd.c
+	ln -sf $? $@
 
 d_volserosd.o: ${srcdir}/volserosd.c volser.h
 	${CCRULE} -DAFS_DEMAND_ATTACH_FS
@@ -709,6 +740,9 @@ linkcounts: linkcounts.o
 rxosd_hpss.o: rxosd_hpss.c rxosd_hsm.h
 	${CCRULEHSM} -DBUILDING_RXOSD ${HSM_INC}
 
+l_libafshsm.c: ${srcdir}/libafshsm.c
+	ln -sf $? $@
+
 l_libafshsm.o: ${srcdir}/libafshsm.c ${srcdir}/rxosd_hsm.h \
 		${srcdir}/ourHpss_inline2.h ${srcdir}/ourHpss.h
 	${CCRULEHSM} -o l_libafshsm.o
@@ -748,4 +782,5 @@ clean:
 		fs_rxosd_common.h vicedosd.h volserosd.h policies.tab.c \
 		volser.h libafsosd.a osdmetadata fs osd rxosd  readabyte \
 		linkcounts osddbserver libhpss.so.* hpss_read hpss_restore \
-		hpss_write hpss_tapeinfo fs vos vl_errors.c vlserver.h
+		hpss_write hpss_tapeinfo fs vos vl_errors.c vlserver.h \
+		d_*.c  c_*.c l_*.c

@@ -1839,7 +1839,7 @@ readFile(struct cmd_syndesc *as, void *unused)
         fprintf(stderr,"File not found %s\n", fname);
         return code;
     }
-    code = readAFSFile(&Fid, &hosts, 1, cell, fname);
+    code = readAFSFile(&Fid, hosts, 1, cell, fname);
     if (code)
 	fprintf(stderr, "%s failed with code %d\n", 
 				as->name, code);
@@ -2342,7 +2342,7 @@ copyFile(struct cmd_syndesc *as, void *unused)
 			as->parms[1].items->data);
 	    return EIO;
 	}
-	code = readAFSFile(&Fid, &hosts, fd, cell, as->parms[0].items->data);
+	code = readAFSFile(&Fid, hosts, fd, cell, as->parms[0].items->data);
     }
     if (code)
 	fprintf(stderr, "%s failed with code %d\n", 

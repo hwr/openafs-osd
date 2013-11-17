@@ -119,6 +119,7 @@
 
 
 #include "rxosd.h"
+#include <afs/volser.h>
 #include "afsosd.h"
 #include "vol_osd_inline.h"
 #include "osddbuser.h"
@@ -1352,7 +1353,7 @@ FlushMetadataHandle(Volume *vol, struct VnodeDiskObject *vd,
         code = VSyncVnode(vol, vd, vN, 0);
         if (code) {
 	    ViceLog(0, ("FlushMetadataHandle: VSyncVnode returned %d for %u.%u.%u. Undoing the update.\n",
-		V_id(vol), vN, vd->uniquifier));
+			code, V_id(vol), vN, vd->uniquifier));
 	    vd->osdMetadataIndex = oldindex;
 	    oldindex = mainIndex;
 	}
@@ -1585,7 +1586,7 @@ read_osd_p_fileList(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN,
 			    if (o->magic != OSD_P_OBJ_MAGIC)
 				goto bad;  
 			    if ((o->obj_id & NAMEI_VNODEMASK) != vN) {
-				ViceLog(0, ("read_osd_p_fileList: file %u.%u.%u has object belonging to vnode %u\n",
+				ViceLog(0, ("read_osd_p_fileList: file %u.%u.%u has object belonging to vnode %llu\n",
 					V_id(vol), vN, vd->uniquifier,
 					o->obj_id & NAMEI_VNODEMASK));
 #ifdef REPAIR_BAD_OBJIDS
@@ -1677,7 +1678,7 @@ extract_objects(Volume *vol, VnodeDiskObject *vd, afs_uint32 vN, struct osdobjec
         list->osdobjectList_val = (struct osdobject *)
 	        malloc(list->osdobjectList_len * sizeof(struct osdobject));
         if (!list->osdobjectList_val) {
-	    ViceLog(0,("extract_objects: couldn't malloc %d bytes for object list of %u.%u.%u\n",
+	    ViceLog(0,("extract_objects: couldn't malloc %lu bytes for object list of %u.%u.%u\n",
 			list->osdobjectList_len * sizeof(struct osdobject),
 			V_id(vol), vN, vd->uniquifier));
 	    code = ENOMEM;
@@ -3186,7 +3187,7 @@ osd_create_spec_file(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN,
 	}
     }
     if (!osds[0]) {
-	ViceLog(1, ("osd_create_file: finding %d OSDs for size %d\n",
+	ViceLog(1, ("osd_create_file: finding %d OSDs for size %llu\n",
 			stripes * copies, size / stripes));
         code = FindOsdBySize(size/stripes, &osds[0], &luns[0], stripes * copies, 0);
         if (code)
@@ -3372,7 +3373,7 @@ CreateStripedOsdFile(Vnode *vn, afs_uint32 stripes, afs_uint32 stripe_size,
     if (!size)
 	size = 0x4000000; /* default value: 64 MB */
 
-    ViceLog(1, ("CreateStripedOsdFile: using o_size of %d\n", size));
+    ViceLog(1, ("CreateStripedOsdFile: using o_size of %llu\n", size));
 
     code = osd_create_file(vol, vd, vN, stripes, stripe_size, copies, size,  0, 0);
     if (!code) {
@@ -6237,18 +6238,24 @@ IncDecObjectList(Volume *vol, struct osdobjectList *list, afs_int32 what)
 			 * the new RW_volId only if the creation of a hardlink
 			 * succeeded. otherwise the original part_id is in place.
 			 */
-                	ViceLog(1, ("incdec_objectLinkCounts incr failed with %d for osd 0x%x, part 0x%lx, obj 0x%lx\n",
+                	ViceLog(1, ("incdec_objectLinkCounts incr failed with %d for osd %u, object %llu.%llu.%llu.%llu\n",
                             code,
                             list->osdobjectList_val[i].osd,
-                            list->osdobjectList_val[i].pid,
-                            list->osdobjectList_val[i].oid));
+                            list->osdobjectList_val[i].pid & RXOSD_VOLUME_MASK,
+                            list->osdobjectList_val[i].oid & NAMEI_VNODEMASK,
+                            (list->osdobjectList_val[i].oid >> 32) & NAMEI_UNIQMASK,
+                            (list->osdobjectList_val[i].oid >> NAMEI_TAGSHIFT) &
+					NAMEI_TAGMASK));
 			code = 0;
 		    } else {
-                	ViceLog(0, ("incdec_objectLinkCounts incr failed with %d for osd 0x%x, part 0x%lx, obj 0x%lx\n",
+                	ViceLog(0, ("incdec_objectLinkCounts incr failed with %d for osd %u, object %llu.%llu.%llu.%llu\n",
                             code,
                             list->osdobjectList_val[i].osd,
-                            list->osdobjectList_val[i].pid,
-                            list->osdobjectList_val[i].oid));
+                            list->osdobjectList_val[i].pid & RXOSD_VOLUME_MASK,
+                            list->osdobjectList_val[i].oid & NAMEI_VNODEMASK,
+                            (list->osdobjectList_val[i].oid >> 32) & NAMEI_UNIQMASK,
+                            (list->osdobjectList_val[i].oid >> NAMEI_TAGSHIFT) &
+					NAMEI_TAGMASK));
                         return code;
 		    }
 		}

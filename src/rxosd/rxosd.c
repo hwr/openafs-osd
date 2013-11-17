@@ -112,19 +112,27 @@
 #endif
 #endif
 
-#define afs_stat        stat64
-#define afs_open        open64
-#define afs_fopen       fopen64
-#ifndef AFS_NT40_ENV
-#if defined(AFS_HAVE_STATVFS64)
-# define afs_statvfs    statvfs64
-#elif defined(AFS_HAVE_STATFS64)
-#  define afs_statfs    statfs64
-#elif defined(AFS_HAVE_STATVFS)
-#   define afs_statvfs  statvfs
+#if defined (AFS_DARWIN_ENV)
+# define afs_stat        stat
+# define afs_open        open
+# define afs_fopen       fopen
+# define afs_lseek       lseek
 #else
+# define afs_stat        stat64
+# define afs_open        open64
+# define afs_fopen       fopen64
+# define afs_lseek       lseek64
+#endif
+#ifndef AFS_NT40_ENV
+# if defined(AFS_HAVE_STATVFS64)
+#  define afs_statvfs    statvfs64
+# elif defined(AFS_HAVE_STATFS64)
+#  define afs_statfs    statfs64
+# elif defined(AFS_HAVE_STATVFS)
+#   define afs_statvfs  statvfs
+# else
 #   define afs_statfs   statfs
-#endif /* !AFS_HAVE_STATVFS64 */
+# endif /* !AFS_HAVE_STATVFS64 */
 #endif /* !AFS_NT40_ENV */
 
 #include <afs/stds.h>
@@ -150,11 +158,10 @@
 #include <afs/unified_afs.h>
 #include <afs/afsutil.h>
 #include <ubik.h>
+#include "volint.h"
 #include "osddb.h"
 #include "osddbuser.h"
 #include "../rxkad/md5.h"
-
-
 
 #define AFS_HARDDEADTIME	120
 #define FIDSTRLEN 64
@@ -198,17 +205,6 @@ pthread_mutex_t conn_glock_mutex;
 #define ACTIVE_UNLOCK MUTEX_EXIT(&active_glock_mutex)
 #define CONN_LOCK MUTEX_ENTER(&conn_glock_mutex)
 #define CONN_UNLOCK MUTEX_EXIT(&conn_glock_mutex)
-
-/*@+fcnmacros +macrofcndecl@*/
-#ifdef S_SPLINT_S
-extern off64_t afs_lseek(int FD, off64_t O, int F);
-#endif /*S_SPLINT_S */
-#define afs_lseek(FD, O, F)     lseek64(FD, (off64_t)(O), F)
-#define afs_stat                stat64
-#define afs_fstat               fstat64
-#define afs_open                open64
-#define afs_fopen               fopen64
-/*@=fcnmacros =macrofcndecl@*/
 
 extern Inode namei_icreate_open(IHandle_t * lh, char *part, afs_uint32 p1,
                            afs_uint32 p2, afs_uint32 p3, afs_uint32 p4,
@@ -297,7 +293,7 @@ int oldRxosds = 1; /* As long as still 1.4x rxosds exist in the cell */
 
 struct o_handle *oh_init(afs_uint64 p, afs_uint64 o)
 {
-    static initialized = 0;
+    static int initialized = 0;
     struct o_handle *ohP;
     afs_uint32 lun, vid, h, h2;
     int i;
@@ -408,7 +404,7 @@ oh_release(struct o_handle *oh)
     OSD_UNLOCK;
 }
 
-oh_free(struct o_handle *oh)
+void oh_free(struct o_handle *oh)
 {
     struct o_handle *ohP;
     FdHandle_t *fdP = 0;
@@ -558,7 +554,7 @@ unlock_file(FdHandle_t *fdP, afs_uint32 mystripe)
 	a2 = a;
     }
     if (!a) {
-	ViceLog(0,("unlock_file: Entry not found %u.%u.%u.%u stripe %u on partition %u\n",
+	ViceLog(0,("unlock_file: Entry not found %u.%llu.%llu.%llu stripe %u on partition %u\n",
 			fdP->fd_ih->ih_vid,
 			fdP->fd_ih->ih_ino & RXOSD_VNODEMASK,
 			fdP->fd_ih->ih_ino >> RXOSD_UNIQUESHIFT,
@@ -585,12 +581,6 @@ unlock_file(FdHandle_t *fdP, afs_uint32 mystripe)
 
 struct afsconf_dir *confDir = 0;
 
-#define afs_stat	stat64
-#define afs_fstat	fstat64
-#define afs_open	open64
-#define afs_fopen	fopen64
-
-
 /* The following errors were not defined in NT. They are given unique
  * names here to avoid any potential collision.
  */
@@ -603,7 +593,7 @@ struct afsconf_dir *confDir = 0;
 
 extern struct ih_posix_ops *ih_hsm_opsPtr;
 extern afs_int32 dataVersionHigh;
-static void     FiveMinuteCheckLWP();
+static void *   FiveMinuteCheckLWP(void *);
 static void *   CheckFetchProc(void *unused);
 extern int SystemId;
 static struct rx_connection *GetConnection(afs_uint32 ip, afs_uint32 limit,
@@ -741,7 +731,7 @@ ShutDown(void *unused)
 }
 
 void
-ShutDown_Signal(x)
+ShutDown_Signal(int unused)
 {
     ShutDown(NULL);
 }
@@ -928,7 +918,7 @@ my_init_osddb_client()
     memset(&serverconns, 0, sizeof(serverconns));
     if (!confDir) {
         ViceLog(0,
-                ("Could not open configuration directory (%s).\n", confDir));
+                ("Could not open configuration directory (%s).\n", confDir->name));
         return NULL;
     }
     code = afsconf_ClientAuth(confDir, &sc, &scIndex);
@@ -1064,8 +1054,8 @@ afs_int32 CheckMount(char *partname)
 
 extern void TransferRate();
 
-static void
-FiveMinuteCheckLWP()
+static void*
+FiveMinuteCheckLWP(void* unused)
 {
     struct ubik_client *osddb_client = 0;
     struct OsdList l;
@@ -1235,6 +1225,7 @@ FiveMinuteCheckLWP()
 		       between the OSDDB fiveminutecheck runs to sort out dead
 		       OSDs. */
     }
+    return NULL;
 }
 
 #define MAXPARALLELFETCHES 8
@@ -1243,6 +1234,9 @@ afs_uint32 maxParallelFetches = 4;
 afs_uint32 maxFetchRequestsPerUser = MAXFETCHREQUESTSPERUSER;
 
 struct fetch_process FetchProc[MAXPARALLELFETCHES];
+
+void
+xdrfetchq_create(XDR * xdrs, enum xdr_op op);
 
 void
 StartFetch()
@@ -1318,7 +1312,7 @@ StartFetch()
     return;
 }
 
-WriteFetchQueue()
+void WriteFetchQueue()
 {
     XDR xdr;
     struct fetch_entry *f;
@@ -1509,7 +1503,7 @@ RemoveFromFetchq(struct fetch_entry *f)
 }
 
 static bool_t
-xdrfetchq_getint32(void *axdrs, afs_int32 *lp)
+xdrfetchq_getint32(struct __afs_xdr *xdrs, afs_int32 *lp)
 {
     if (read(fetchq_fd, lp, 4) == 4) 
 	return TRUE;
@@ -1517,7 +1511,7 @@ xdrfetchq_getint32(void *axdrs, afs_int32 *lp)
 }
 
 static bool_t
-xdrfetchq_putint32(void *axdrs, afs_int32 *lp)
+xdrfetchq_putint32(struct __afs_xdr *xdrs, afs_int32 *lp)
 {
     if (write(fetchq_fd, lp, 4) == 4) 
 	return TRUE;
@@ -1525,6 +1519,10 @@ xdrfetchq_putint32(void *axdrs, afs_int32 *lp)
 }
 
 static struct xdr_ops xdrfetchq_ops = {
+#ifdef AFS_XDR_64BITOPS
+    NULL,
+    NULL,
+#endif
     xdrfetchq_getint32,         /* deserialize an afs_int32 */
     xdrfetchq_putint32,         /* serialize an afs_int32 */
     NULL,	                /* deserialize counted bytes */
@@ -1535,15 +1533,17 @@ static struct xdr_ops xdrfetchq_ops = {
     NULL                        /* destroy stream */
 };
 
+void
 xdrfetchq_create(XDR * xdrs, enum xdr_op op)
 {
     xdrs->x_op = op;
     xdrs->x_ops = &xdrfetchq_ops;
 }
 
-void
-XferData(struct fetch_entry *f)
+void*
+XferData(void *_f)
 {
+    struct fetch_entry *f = _f;
     afs_int32 code, i;
     AFSFid fid;
     struct osd_segm_descList list;
@@ -1583,7 +1583,7 @@ XferData(struct fetch_entry *f)
 	        conn = GetConnection(htonl(f->d.fileserver), 1, htons(7000), 1);
 	        code = RXAFS_SetOsdFileReady(conn, &fid, &new_md5.c);
 	        if (code == RXGEN_OPCODE)
-	            code = RXAFS_SetOsdFileReady0(conn, &fid, &new_md5.c.cksum_u.md5);
+	            code = RXAFS_SetOsdFileReady0(conn, &fid, (struct viced_md5*)&new_md5.c.cksum_u.md5);
 	    }
 	    if (code)
 	        f->error = code;
@@ -1592,7 +1592,7 @@ XferData(struct fetch_entry *f)
 	        RemoveFromFetchq(f);
         }
     } else {
-        ViceLog(0, ("Xfer: fetch entry for %u.%u.%u.%u has bad desc list len %d, val 0x%x\n",
+        ViceLog(0, ("Xfer: fetch entry for %u.%u.%u has bad desc list len %d, val 0x%x\n",
                 fid.Volume, fid.Vnode, fid.Unique, 
 		list.osd_segm_descList_len,
 		 list.osd_segm_descList_val));
@@ -1600,13 +1600,14 @@ XferData(struct fetch_entry *f)
     }
 
     pthread_exit(&code);
+    return NULL;
 }
 
 static void *
 CheckFetchProc(void *unused)
 {
     XDR xdr;
-    struct stat64 stat;
+    struct afs_stat st;
     struct fetch_entry *f, *f2;
     afs_int32 i;
     afs_uint32 now;
@@ -1615,9 +1616,9 @@ CheckFetchProc(void *unused)
 
     assert(pthread_attr_init(&tattr) == 0);
     memset(&FetchProc, 0, sizeof(FetchProc));
-    if (stat64(AFSDIR_SERVER_RXOSD_FETCHQ_FILEPATH, &stat) == 0) {
+    if (afs_stat(AFSDIR_SERVER_RXOSD_FETCHQ_FILEPATH, &st) == 0) {
 	ViceLog(0, ("%s has length %llu\n", 
-		AFSDIR_SERVER_RXOSD_FETCHQ_FILEPATH, stat.st_size));
+		AFSDIR_SERVER_RXOSD_FETCHQ_FILEPATH, st.st_size));
 	fetchq_fd = open(AFSDIR_SERVER_RXOSD_FETCHQ_FILEPATH, O_RDWR, 0644);
 	if (fetchq_fd > 0) { 		/* read fetch queue into memory */
 	    afs_lseek(fetchq_fd, 0, SEEK_SET);
@@ -1636,14 +1637,17 @@ CheckFetchProc(void *unused)
 	            if (f2->d.user == f->d.user) 
 	                (f->rank)++;
                 }
-                for (f2=(struct fetch_entry *)&rxosd_fetchq; f2 && f2->next; 
+		/* Even if before more was allowed, trim fetchq to new limit */
+		if (f->rank < maxFetchRequestsPerUser) {
+                    for (f2=(struct fetch_entry *)&rxosd_fetchq; f2 && f2->next; 
 								f2=f2->next) {
-	            if (f2->next->rank > f->rank) 
-	                break;
-                }
-	        f->next = f2->next;
-	        f2->next = f;
-	        f = (struct fetch_entry *) malloc(sizeof(struct fetch_entry));
+	                if (f2->next->rank > f->rank) 
+	                    break;
+                    }
+	            f->next = f2->next;
+	            f2->next = f;
+	            f = (struct fetch_entry *) malloc(sizeof(struct fetch_entry));
+		}
 	        memset(f, 0, sizeof(struct fetch_entry));
 	    }
             QUEUE_UNLOCK;
@@ -1748,7 +1752,7 @@ restart:
 				    if (!f->refcnt) {
 				        f->refcnt++;
 				        assert(pthread_create(&f->tid, &tattr, 
-					        (void *)&XferData, f) == 0);
+					        	      XferData, f) == 0);
 				    }
 				} else { /* not called form restore_archive  */
 			    	    FetchProc[i].request = 0;
@@ -1992,7 +1996,7 @@ CheckCAP(struct rx_call *call, t10rock *r, struct oparmT10 *o, afs_int32 command
     so = rx_SecurityObjectOf(conn);
     if (!(so)->ops->op_EncryptDecrypt) 
 	return -1;
-    (*(so)->ops->op_EncryptDecrypt)(conn, cap, CAPCRYPTLEN, DECRYPT);
+    (*(so)->ops->op_EncryptDecrypt)(conn, (afs_uint32*)cap, CAPCRYPTLEN, DECRYPT);
     ViceLog(3, ("Clear CAP = 0x%x, 0x%x 0x%x 0x%x cid=0x%x, epoch=0x%x\n",
                         cap->pid_hi, cap->pid_lo,
                         cap->oid_hi, cap->oid_lo,
@@ -2271,7 +2275,7 @@ static struct afs_buffer {
 } *freeBufferList = 0;
 static int afs_buffersAlloced = 0;
 
-static
+static void
 FreeSendBuffer(struct afs_buffer *adata)
 {
     OSD_LOCK;
@@ -2279,8 +2283,6 @@ FreeSendBuffer(struct afs_buffer *adata)
     adata->next = freeBufferList;
     freeBufferList = adata;
     OSD_UNLOCK;
-    return 0;
-
 }				/*FreeSendBuffer */
 
 /* allocate space for sender */
@@ -2666,7 +2668,7 @@ incdec(struct rx_call *call, struct oparmT10 *o, afs_int32 diff)
     if (diff < 0) {
 	if (lc == 0) { /* perhaps link table damaged (too short) */
 	    code = namei_SetNonZLC(fdP, inode);
-            ViceLog(0,("incdec: namei_SetNonZLC returnd &d for %s after lc == 0\n",
+            ViceLog(0,("incdec: namei_SetNonZLC returnd %d for %s after lc == 0\n",
                 code, sprint_oparmT10(o, string, sizeof(string))));
 	    code = 0;	/* fake success to allow more link counts to be corrected */
 	}
@@ -3392,9 +3394,9 @@ int examine(struct rx_call *call, t10rock *rock, struct oparmT10 *o,
     afs_uint64 *mtime64p = 0;
     afs_uint64 *atime64p = 0;
     afs_uint64 *ctime64p = 0;
-    afs_uint32 *mtimep = 0;
-    afs_uint32 *atimep = 0;
-    afs_uint32 *ctimep = 0;
+    afs_int32 *mtimep = 0;
+    afs_int32 *atimep = 0;
+    afs_int32 *ctimep = 0;
     afs_uint32 *lcp = 0;
     afs_int32  *statusp = 0; 
     path_info *pathp = 0;
@@ -3505,9 +3507,9 @@ int examine(struct rx_call *call, t10rock *rock, struct oparmT10 *o,
 	        after = time(0);
 	        what[0] = *statusp;
 	        what[1] = 0;
-	        ViceLog(1, ("stat_tapecopies for %s took %d seconds to find %s\n",
+	        ViceLog(1, ("stat_tapecopies for %s took %lld seconds to find %s\n",
 				    sprint_oparmT10(o, string, sizeof(string)),
-				    after - before, what));
+				    (long long int)(after - before), what));
 	    } else {
 	        char input[100];
 	        *statusp = 0;
@@ -3540,30 +3542,36 @@ int examine(struct rx_call *call, t10rock *rock, struct oparmT10 *o,
         *mtimep = tstat.st_mtime;
     }
     if ((mask & WANTS_MTIME) && mtime64p) {
-#ifdef AFS_AIX53_ENV
-	*mtime64p = ((tstat.st_mtime << 32) | tstat.st_mtime_n) / 100;
+#if defined(AFS_AIX53_ENV)
+	*mtime64p = (((afs_uint64)tstat.st_mtime << 32) | (afs_uint64)tstat.st_mtime_n) / 100;
+#elif defined (AFS_DARWIN_ENV)
+	*mtime64p = ((tstat.st_mtimespec.tv_sec << 32) | tstat.st_mtimespec.tv_nsec) / 100;
 #else
-	*mtime64p = ((tstat.st_mtim.tv_sec << 32) | tstat.st_mtim.tv_nsec) / 100;
+	*mtime64p = (((afs_uint64)tstat.st_mtim.tv_sec << 32) | (afs_uint64)tstat.st_mtim.tv_nsec) / 100;
 #endif
     }
     if ((mask & WANTS_ATIME) && atimep) {
         *atimep = tstat.st_atime;
     }
     if ((mask & WANTS_ATIME) && atime64p) {
-#ifdef AFS_AIX53_ENV
-	*atime64p = ((tstat.st_atime << 32) | tstat.st_atime_n) / 100;
+#if defined(AFS_AIX53_ENV)
+	*atime64p = (((afs_uint64)tstat.st_atime << 32) | (afs_uint64)tstat.st_atime_n) / 100;
+#elif defined (AFS_DARWIN_ENV)
+	*atime64p = ((tstat.st_atimespec.tv_sec << 32) | tstat.st_atimespec.tv_nsec) / 100;
 #else
-	*atime64p = ((tstat.st_atim.tv_sec << 32) | tstat.st_atim.tv_nsec) / 100;
+	*atime64p = (((afs_uint64)tstat.st_atim.tv_sec << 32) | (afs_uint64)tstat.st_atim.tv_nsec) / 100;
 #endif
     }
     if ((mask & WANTS_CTIME) && ctimep) {
         *ctimep = tstat.st_ctime;
     }
     if ((mask & WANTS_CTIME) && ctime64p) {
-#ifdef AFS_AIX53_ENV
-	*ctime64p = ((tstat.st_ctime << 32) | tstat.st_ctime_n) / 100;
+#if defined(AFS_AIX53_ENV)
+	*ctime64p = (((afs_uint64)tstat.st_ctime << 32) | (afs_uint64)tstat.st_ctime_n) / 100;
+#elif defined (AFS_DARWIN_ENV)
+	*ctime64p = ((tstat.st_ctimespec.tv_sec << 32) | tstat.st_ctimespec.tv_nsec) / 100;
 #else
-	*ctime64p = ((tstat.st_ctim.tv_sec << 32) | tstat.st_ctim.tv_nsec) / 100;
+	*ctime64p = (((afs_uint64)tstat.st_ctim.tv_sec << 32) | (afs_uint64)tstat.st_ctim.tv_nsec) / 100;
 #endif
     }
     if ((mask & WANTS_LINKCOUNT) && lcp) {
@@ -4062,7 +4070,7 @@ int CopyOnWrite(struct rx_call *call, struct oparmT10 *o, afs_uint64 offs,
 #define PARTNAMELEN 64
     char partition[PARTNAMELEN];
     afs_int32 code, bytes;
-    struct stat64 tstat;
+    struct afs_stat tstat;
     char *buffer = 0;
     namei_t name;
     afs_uint64 offset, length;
@@ -4095,8 +4103,8 @@ int CopyOnWrite(struct rx_call *call, struct oparmT10 *o, afs_uint64 offs,
         goto bad;
     }
     namei_HandleToName(&name, oh->ih);
-    if (stat64(name.n_path, &tstat) < 0) {
-        ViceLog(0,("CopyOnWrite: stat64 failed for %s\n",
+    if (afs_stat(name.n_path, &tstat) < 0) {
+        ViceLog(0,("CopyOnWrite: stat failed for %s\n",
 		sprint_oparmT10(o, string, sizeof(string))));
         code = EIO;
         goto bad;
@@ -4431,7 +4439,7 @@ readPS(struct rx_call *call, t10rock *rock, struct oparmT10 * o,
     FdHandle_t *fdP = 0;
     afs_uint32 vid, lun;
     Inode inode;
-    struct stat64 tstat;
+    struct afs_stat tstat;
     namei_t name;
     afs_uint64 toffset;
     afs_uint32 skip, firstlen;
@@ -4862,7 +4870,7 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
     afs_int32 code;
     afs_uint32 vid, lun;
     Inode inode;
-    struct stat64 tstat;
+    struct afs_stat tstat;
     struct timespec mtime, atime;
     afs_uint64 at, mt;
     afs_uint32 mtimesec, atimesec;
@@ -4893,8 +4901,8 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
 	goto finis;
     }
     namei_HandleToName(&name, from_oh->ih);
-    if (stat64(name.n_path, &tstat) < 0) {
-        ViceLog(0,("copy: stat64 failed for %s\n",
+    if (afs_stat(name.n_path, &tstat) < 0) {
+        ViceLog(0,("copy: stat failed for %s\n",
 		sprint_oparmT10(from, string, sizeof(string))));
         code = EIO;
 	goto finis;
@@ -4917,9 +4925,9 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
     memcpy(&mtime, &tstat.st_mtimespec, sizeof(tstat.st_mtimespec));
     memcpy(&atime, &tstat.st_atimespec, sizeof(tstat.st_atimespec));
     at = 10000000 * (afs_uint64) tstat.st_atimespec.tv_sec
-		 + tstat.st_atimespec.tv__nsec/100;
+		 + tstat.st_atimespec.tv_nsec/100;
     mt = 10000000 * (afs_uint64) tstat.st_mtimespec.tv_sec
-		 + tstat.st_mtimespec.tv__nsec/100;
+		 + tstat.st_mtimespec.tv_nsec/100;
 #else
     mtime = tstat.st_mtim;
     atime = tstat.st_atim;
@@ -5003,8 +5011,8 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
             length -= nbytes;
 	    offset += nbytes;
         }
-        if (stat64(name.n_path, &tstat) < 0) {
-            ViceLog(0,("copy: 2nd stat64 failed for %s\n",
+        if (afs_stat(name.n_path, &tstat) < 0) {
+            ViceLog(0,("copy: 2nd stat failed for %s\n",
 		sprint_oparmT10(from, string, sizeof(string))));
             code = EIO;
         }
@@ -5219,7 +5227,7 @@ md5sum(struct rx_call *call, struct oparmT10 *o, struct osd_cksum *md5)
 {
     struct o_handle *oh = 0;
     afs_int32 code;
-    struct stat64 tstat;
+    struct afs_stat tstat;
     namei_t name;
     afs_uint64 length;
     char input[256];
@@ -6523,12 +6531,12 @@ SRXOSD_modify_fetchq(struct rx_call *call, struct ometa *o, afs_int32 what,
 
 	case MOVE_UP_IN_FETCHQUEUE :
 	    ViceLog(0,("modify_fetchq: Move fid %s up by %u steps\n",
-               sprint_oparmFree(o, string, sizeof(string)),steps));
+               sprint_oparmFree(&o->ometa_u.f, string, sizeof(string)),steps));
             *result = steps;
             break; 
 	case MOVE_DOWN_IN_FETCHQUEUE :
             ViceLog(0,("Move fid %s down by %u steps\n",
-               sprint_oparmFree(o, string, sizeof(string)),steps));
+               sprint_oparmFree(&o->ometa_u.f, string, sizeof(string)),steps));
             *result = -steps;
             break;
 	default :
@@ -7057,7 +7065,7 @@ write_to_hpss(struct rx_call *call, struct oparmT10 *o,
 	if (bytes != tlen) {
 	    ViceLog(0,("write_to_hpss: read only %d bytes from %s instead of %d at offset %llu\n",
                 	bytes, sprint_oparmT10(&oin, string, sizeof(string)),
-				bytes, tlen, offset));
+				tlen, offset));
 	    code = EIO;
 	    goto bad;
 	}
@@ -7545,7 +7553,7 @@ SRXOSD_hard_delete(struct rx_call *call, struct ometa *o, afs_uint32 packed_unli
 	    goto finis;
 	}
 	namei_HandleToName(&n, oh->ih);
-	sprintf(&name, "%s-unlinked-%04u%02u%02u", n.n_path, u.year, u.month, u.day);
+	sprintf(name, "%s-unlinked-%04u%02u%02u", n.n_path, u.year, u.month, u.day);
 	code = (oh->ih->ih_ops->stat64)(name, &tstat);
 	if (code) {
 	    code = ENOENT;
@@ -7601,7 +7609,7 @@ SRXOSD_relink(struct rx_call *call, struct ometa *o, afs_uint32 packed_unlinkdat
 	    goto finis;
 	}
 	namei_HandleToName(&n, oh->ih);
-	sprintf(&name, "%s-unlinked-%04u%02u%02u", n.n_path, u.year, u.month, u.day);
+	sprintf(name, "%s-unlinked-%04u%02u%02u", n.n_path, u.year, u.month, u.day);
 	code = (oh->ih->ih_ops->stat64)(name, &tstat);
 	if (code) {
 	    code = ENOENT;
@@ -7775,22 +7783,22 @@ threadNum(void)
 }
 
 static int
-get_key(char *arock, afs_int32 akvno, char *akey)
+get_key(void *arock, int akvno, struct ktc_encryptionKey *akey)
 {
     /* find the key */
-    static struct afsconf_key tkey;
+    static struct ktc_encryptionKey tkey;
     afs_int32 code;
 
     if (!confDir) {
         ViceLog(0, ("conf dir not open\n"));
         return 1;
     }
-    code = afsconf_GetKey(confDir, akvno, &tkey.key);
+    code = afsconf_GetKey(confDir, akvno, &tkey);
     if (code) {
         ViceLog(0, ("afsconf_GetKey failure: kvno %d code %d\n", akvno, code));
         return code;
     }
-    memcpy(akey, tkey.key, sizeof(tkey.key));
+    memcpy(akey, &tkey, sizeof(tkey));
     return 0;
 
 }                               /*get_key */
@@ -7887,6 +7895,13 @@ main(int argc, char *argv[])
 	    ++i;
 	    keytab = argv[i];
 	    withHPSS = 1;
+	}
+	else if (strcmp(argv[i], "-d") == 0) {
+	    if ((i + 1) >= argc) {
+		fprintf(stderr, "missing argument for -d\n");
+		return -1;
+	    }
+	    LogLevel = atoi(argv[++i]);
 	}
         else
             printf("Unsupported option: %s\n", argv[i]);
@@ -7985,7 +8000,7 @@ main(int argc, char *argv[])
     assert(pthread_attr_setdetachstate(&tattr, PTHREAD_CREATE_DETACHED) == 0);
 
     assert(pthread_create
-           (&serverPid, &tattr, (void *)FiveMinuteCheckLWP,
+           (&serverPid, &tattr, FiveMinuteCheckLWP,
             &fiveminutes) == 0);
     registerthread(serverPid, "5_min_chk");
     assert(pthread_create(&serverPid, NULL, CheckFetchProc, &fiveminutes) ==0);

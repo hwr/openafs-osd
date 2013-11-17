@@ -7484,7 +7484,7 @@ UV_GetArchCandidates(afs_uint32 server, hsmcandList *list, afs_uint64 minsize,
         afs_uint64 maxsize, afs_uint32 copies, afs_uint32 maxcandidates,
         afs_int32 osd, afs_int32 flag, afs_uint32 delay)
 {
-    struct rx_conn *tcon;
+    struct rx_connection *tcon;
     afs_int32 code;
 
     tcon = UV_Bind(server, AFSCONF_VOLUMEPORT);

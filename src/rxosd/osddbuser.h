@@ -1,5 +1,7 @@
 /* public interface to osddb */
 
+#include "volint.h"
+
 typedef struct OsdInfo {
     afs_uint32 owner;
     afs_uint32 location;

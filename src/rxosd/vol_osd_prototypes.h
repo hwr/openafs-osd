@@ -64,10 +64,11 @@ extern afs_int32 CorrectOsdLinkCounts(Volume *vol, struct VnodeDiskObject *old,
 				afs_uint32 vN, struct VnodeDiskObject *new, 
 				struct osdobjectList *oldlist,
 				afs_int32 noNeedToIncrement);
-extern afs_int32 init_osd_infoList(char *list);
-extern afs_int32 init_sizerangeList(char *l);
-extern afs_int32 traverse(Volume *vol, char *srl, char *list, afs_int32 flag,
-				afs_uint32 delay);
+extern afs_int32 init_osd_infoList(struct osd_infoList *list);
+extern afs_int32 init_sizerangeList(struct sizerangeList *l);
+extern afs_int32 traverse(Volume *vol, struct sizerangeList *srl,
+			  struct osd_infoList *list, afs_int32 flag,
+			  afs_uint32 delay);
 extern afs_int32 salvage(struct rx_call *call, Volume *vol,  afs_int32 nowrite,
 				afs_uint32 instances, afs_uint32 localinst);
 extern afs_int32 init_candidates(char **alist);

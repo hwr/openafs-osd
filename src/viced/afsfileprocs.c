@@ -1102,7 +1102,7 @@ CheckLength(struct Volume *vp, struct Vnode *vnp, afs_sfsize_t alen)
 
         fdP = IH_OPEN(vnp->handle);
         if (fdP == NULL) {
-            ViceLog(0, ("CheckLength: cannot open inode for fid %u.%u.%u\n",
+            ViceLog(0, ("CheckLength: cannot open inode for fid %lu.%lu.%lu\n",
                         afs_printable_uint32_lu(vp->hashid),
                         afs_printable_uint32_lu(Vn_id(vnp)),
                         afs_printable_uint32_lu(vnp->disk.uniquifier)));
@@ -1113,7 +1113,7 @@ CheckLength(struct Volume *vp, struct Vnode *vnp, afs_sfsize_t alen)
         if (alen < 0) {
             afs_int64 alen64 = alen;
             ViceLog(0, ("CheckLength: cannot get size for inode for fid "
-                        "%u.%u.%u; FDH_SIZE returned %" AFS_INT64_FMT "\n",
+                        "%lu.%lu.%lu; FDH_SIZE returned %" AFS_INT64_FMT "\n",
                         afs_printable_uint32_lu(vp->hashid),
                         afs_printable_uint32_lu(Vn_id(vnp)),
                         afs_printable_uint32_lu(vnp->disk.uniquifier),
@@ -1124,7 +1124,7 @@ CheckLength(struct Volume *vp, struct Vnode *vnp, afs_sfsize_t alen)
 
     if (alen != vlen) {
         afs_int64 alen64 = alen, vlen64 = vlen;
-        ViceLog(0, ("Fid %u.%u.%u has inconsistent length (index "
+        ViceLog(0, ("Fid %lu.%lu.%lu has inconsistent length (index "
                     "%" AFS_INT64_FMT ", inode %" AFS_INT64_FMT "); volume "
                     "must be salvaged\n",
                     afs_printable_uint32_lu(vp->hashid),
@@ -2974,9 +2974,9 @@ SRXAFS_FsCmd(struct rx_call * acall, struct AFSFid * Fid,
     case CMD_LISTLOCKEDVNODES:
         {
             afs_int32 code;
-            afs_int32 *p = &Outputs->int32s[2];
+            afs_uint32 *p = &Outputs->int32s[2];
             Outputs->int32s[1] = 49;
-            code = ListLockedVnodes(&Outputs->int32s, Outputs->int32s[1], &p);
+            code = ListLockedVnodes(Outputs->int32s, Outputs->int32s[1], &p);
             Outputs->code = code;
             errorCode = 0;
             break;
@@ -10394,13 +10394,13 @@ struct vol_data_v0 vol_data_v0 = {
     &confDir,
     &LogLevel,
     &VInit,
-    &VnodeClassInfo,
+    VnodeClassInfo,
     &total_bytes_rcvd,
     &total_bytes_sent,
     &total_bytes_rcvd_vpac,
     &total_bytes_sent_vpac,
-    &KBpsRcvd,
-    &KBpsSent,
+    KBpsRcvd,
+    KBpsSent,
     &lastRcvd,
     &lastSent,
     &statisticStart,

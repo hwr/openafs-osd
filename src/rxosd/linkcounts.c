@@ -19,6 +19,42 @@
 #include <sys/file.h>
 #include <sys/param.h>
 
+#ifdef O_LARGEFILE
+
+#define afs_stat                stat64
+#define afs_open                open64
+#define afs_fopen               fopen64
+#define afs_fstat               fstat64
+#define afs_lseek               lseek64
+#ifndef AFS_NT40_ENV
+#if defined (AFS_HAVE_STATVFS64)
+#  define afs_statvfs           statvfs64
+#elif defined (AFS_HAVE_STATFS64)
+#  define afs_statfs            statfs64
+#elif defined (AFS_HAVE_STATVFS)
+#  define afs_statvfs           statvfs
+#else
+#  define afs_statfs            statfs
+#endif /* !AFS_HAVE_STATVFS64 */
+#endif /* !AFS_NT40_ENV */
+
+#else /* !O_LARGEFILE */
+
+#define afs_stat                stat
+#define afs_open                open
+#define afs_fopen               fopen
+#define afs_fstat               fstat
+#define afs_lseek               lseek
+#ifndef AFS_NT40_ENV
+#if defined (AFS_HAVE_STATVFS)
+#  define afs_statvfs           statvfs
+#else /* !AFS_HAVE_STATVFS */
+#  define afs_statfs            statfs
+#endif /* !AFS_HAVE_STATVFS */
+#endif /* !AFS_NT40_ENV */
+
+#endif /* !O_LARGEFILE */
+
 #include <afs/cmd.h>
 #include <rx/xdr.h>
 #include <afs/afsint.h>
@@ -41,11 +77,11 @@ char *part[] = {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l",
 	"bm", "bn", "bo", "bp", "br", "bs", "bt", "bu", "bv", "bw", "bx", "by", "bz"};
 
 static int
-Display(struct cmd_syndesc *as, char *arock)
+Display(struct cmd_syndesc *as, void *arock)
 {
     Volume *vp;
     Error ec;
-    struct stat64 tstat;
+    struct afs_stat tstat;
     int verbose = 0;
     int truncate = 0;
     int bless, unbless, nofssync;
@@ -76,10 +112,10 @@ Display(struct cmd_syndesc *as, char *arock)
 
     volumeId = atoi(as->parms[0].items->data);
     if (as->parms[1].items)
-       strcpy(&partition, as->parms[1].items->data);
+       strcpy(partition, as->parms[1].items->data);
     if (as->parms[2].items) {
         lun = atoi(as->parms[2].items->data);
-	sprintf(&partition,"vicep%s", part[lun]);
+	sprintf(partition,"vicep%s", part[lun]);
     }
     if (as->parms[3].items) 
 	verbose = 1;
@@ -92,14 +128,14 @@ Display(struct cmd_syndesc *as, char *arock)
     tmp |= 6 << NAMEI_TAGSHIFT;
     tmp |= NAMEI_VNODEMASK;
     int64_to_flipbase64(N, tmp);
-    sprintf(&path, "/%s/AFSIDat/%s/%s/special/%s",
+    sprintf(path, "/%s/AFSIDat/%s/%s/special/%s",
 		partition, V1, V2, N);
     printf("%s\n", path);
-    code = stat64(path, &tstat);
+    code = afs_stat(path, &tstat);
     if (code != 0) 
-	fprintf(stderr, "stat64 for %s failed with %d\n", path, code);
+	fprintf(stderr, "stat for %s failed with %d\n", path, code);
     if (truncate)
-	fd = open64(path, O_RDWR);
+	fd = open(path, O_RDWR);
     else
         fd = open(path, O_RDONLY);
     if (fd>0) {
@@ -183,9 +219,9 @@ Display(struct cmd_syndesc *as, char *arock)
     if (truncate) {
 	printf("Truncating linktable from %llu to %llu bytes\n", 
 			tstat.st_size, highestoffset);
-	code = ftruncate64(fd, highestoffset);
+	code = ftruncate(fd, highestoffset);
 	if (code) 
-	    fprintf(stderr, "ftruncate64 returns %d\n", code);
+	    fprintf(stderr, "ftruncate returns %d\n", code);
     }
     close(fd);
     if (verbose) {
@@ -203,11 +239,11 @@ Display(struct cmd_syndesc *as, char *arock)
 }
 
 static int
-Convert(struct cmd_syndesc *as, char *arock)
+Convert(struct cmd_syndesc *as, void *arock)
 {
     Volume *vp;
     Error ec;
-    struct stat64 tstat;
+    struct afs_stat tstat;
     int bless, unbless, nofssync;
     int volumeId;
     int lun = 0;
@@ -239,10 +275,10 @@ Convert(struct cmd_syndesc *as, char *arock)
 
     volumeId = atoi(as->parms[0].items->data);
     if (as->parms[1].items)
-       strcpy(&partition, as->parms[1].items->data);
+       strcpy(partition, as->parms[1].items->data);
     if (as->parms[2].items) {
         lun = atoi(as->parms[2].items->data);
-	sprintf(&partition,"vicep%s", part[lun]);
+	sprintf(partition,"vicep%s", part[lun]);
     }
     if (as->parms[3].items)
 	exchange = 1;
@@ -253,13 +289,13 @@ Convert(struct cmd_syndesc *as, char *arock)
     tmp |= 6 << NAMEI_TAGSHIFT;
     tmp |= NAMEI_VNODEMASK;
     int64_to_flipbase64(N, tmp);
-    sprintf(&path, "/%s/AFSIDat/%s/%s/special/%s",
+    sprintf(path, "/%s/AFSIDat/%s/%s/special/%s",
 		partition, V1, V2, N);
     printf("%s\n", path);
-    code = stat64(path, &tstat);
+    code = afs_stat(path, &tstat);
     if (code != 0) 
-	fprintf(stderr, "stat64 for %s failed with %d\n", path, code);
-    fd = open64(path, O_RDONLY);
+	fprintf(stderr, "stat for %s failed with %d\n", path, code);
+    fd = open(path, O_RDONLY);
     if (fd>0) {
 	bytes = read(fd, &magic, sizeof(magic));
 	if (magic != LINKTABLEMAGIC) {
@@ -301,9 +337,9 @@ Convert(struct cmd_syndesc *as, char *arock)
 	    fprintf(stderr, "Nothing to do, exiting\n");
 	    exit(0);
 	}
-        sprintf(&newpath, "/%s/AFSIDat/%s/%s/special/%s-new",
+        sprintf(newpath, "/%s/AFSIDat/%s/%s/special/%s-new",
 		partition, V1, V2, N);
-        sprintf(&oldpath, "/%s/AFSIDat/%s/%s/special/%s-old",
+        sprintf(oldpath, "/%s/AFSIDat/%s/%s/special/%s-old",
 		partition, V1, V2, N);
 	printf("Version 2 link table will be %s\n", newpath);
 	newfd = open(newpath, O_CREAT | O_RDWR, 0600);

@@ -64,6 +64,7 @@
 #include "../volser/physio.h"
 #include "../volser/dumpstuff.h"
 #include "osddb.h"
+#include "vol_osd.h"
 #include "vol_osd_prototypes.h"
 #include "afsosd.h"
 
@@ -632,7 +633,7 @@ SAFSVOLOSD_ListObjects(struct rx_call *acall, afs_uint32 vid, afs_int32 flag,
                 DeleteTrans(tt, 1);
         }
     }
-    rx_Write(acall, &null, 1);
+    rx_Write(acall, (char *)&null, 1);
     return code;
 }
 

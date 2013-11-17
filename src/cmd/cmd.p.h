@@ -132,9 +132,9 @@ struct Table {
     int* (*newTableLayout) (int CellsperRow);
 };
 
-extern void PrintTime(afs_uint32 *intdate);
-extern void PrintDate(afs_uint32 *intdate);
-extern void sprintDate( char *string, afs_uint32 *intdate);
+extern void PrintTime(afs_uint32 intdate);
+extern void PrintDate(afs_uint32 intdate);
+extern void sprintDate( char *string, afs_uint32 intdate);
 extern void printTable(struct Table *Table);
 extern struct TableRow* newTableRow();
 extern struct TableCell* newTableCell(); 

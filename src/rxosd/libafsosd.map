@@ -7,11 +7,10 @@
 
 {
     global:
-	init_viced_afsosd;		# for fileserver, dafileserver
-	init_volser_afsosd;		# for volserver, davolserver
-	init_salv_afsosd;		# for salvager, dasalvager, salvageserver
-	init_osddbserver;		# for vlserver
-	RXAFSOSD_ApplyOsdPolicy;	# for afsio
+	init_viced_afsosd;
+	init_volser_afsosd;
+	init_salv_afsosd;
+	init_osddbserver;
     local:
 	*;
 };
