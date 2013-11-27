@@ -29,9 +29,15 @@ CFLAGS=${COMMON_CFLAGS} -I.. -I${UTIL}/ ${MT_CFLAGS} ${XCFLAGS}
 SHLIBCFLAGS=${COMMON_CFLAGS} -DBUILD_SHLIBAFSOSD -fPIC -I.. -I${UTIL}/ ${MT_CFLAGS} ${XCFLAGS} ${SHLIB_CFLAGS}
 
 # CCRULE=${CC} ${CFLAGS} -DBUILDING_RXOSD -c $<
+#CRULE... replaces $< by $? referring to the full list of dependencies. This is not applicable if dependencies consist of more than one .c source file.
+#CCRULE... is not applicable for some targets under Solaris dmake/make because $< is not set if target and dependency are not compliant to a suffix rule.
+CRULE=${CC} ${SHLIBCFLAGS} -o $@ -c $?
 CCRULE=${CC} ${SHLIBCFLAGS} -o $@ -c $<
+CRULESALV = ${CC} ${SHLIBCFLAGS} -DBUILD_SALVAGER -o $@ -c $?
 CCRULESALV = ${CC} ${SHLIBCFLAGS} -DBUILD_SALVAGER -o $@ -c $<
+CRULERXOSD = ${CC} ${CFLAGS} -I. -I${srcdir}/ -I${TOP_INCDIR} -I../config -DBUILDING_RXOSD -DAFS_PTHREAD_ENV -o $@ -c $?
 CCRULERXOSD = ${CC} ${CFLAGS} -I. -I${srcdir}/ -I${TOP_INCDIR} -I../config -DBUILDING_RXOSD -DAFS_PTHREAD_ENV -o $@ -c $<
+CRULEVENUS = ${CC} ${CFLAGS} -I. -I${srcdir}/ -I${TOP_INCDIR} -I../config -DBUILDING_CLIENT_COMMAND -DAFS_PTHREAD_ENV -o $@ -c $?
 CCRULEVENUS = ${CC} ${CFLAGS} -I. -I${srcdir}/ -I${TOP_INCDIR} -I../config -DBUILDING_CLIENT_COMMAND -DAFS_PTHREAD_ENV -o $@ -c $<
 
 SHLIBHSMCFLAGS=${COMMON_CFLAGS} -DBUILD_SHLIBAFSHSM -I.. -I${UTIL}/ ${MT_CFLAGS} ${SHLIB_CFLAGS}
@@ -368,6 +374,7 @@ vol_osd.xdr.o: vol_osd.xdr.c vol_osd.h
 vol_osd.o: ${srcdir}/vol_osd.c vol_osd.h
 	${CCRULE}
 
+#create a hard linked second name for the same source to match dependency rule for another target
 d_vol_osd.c: ${srcdir}/vol_osd.c
 	ln -fs $? $@
 
@@ -383,6 +390,7 @@ d_libafsosd.c: ${srcdir}/libafsosd.c
 d_libafsosd.o: d_libafsosd.c
 	${CCRULE} -DAFS_DEMAND_ATTACH_FS
 
+#create a hard linked second name for the same source to match dependency rule for another target
 c_libafsosd.c: ${srcdir}/libafsosd.c
 	ln -fs $? $@
 
@@ -393,10 +401,10 @@ rxosd_namei_ops.o: ${srcdir}/rxosd_namei_ops.c
 	${CCRULERXOSD}
 
 devname.o: ${VOL}/devname.c
-	${CCRULERXOSD}
+	${CRULERXOSD}
 
 common.o: ${VOL}/common.c
-	${CCRULERXOSD}
+	${CRULERXOSD}
 
 rxosd_ihandle.o: ${srcdir}/rxosd_ihandle.c
 	${CCRULERXOSD}
@@ -424,6 +432,7 @@ a_osddbuser.c: ${srcdir}/osddbuser.c
 a_osddbuser.o: a_osddbuser.c vicedosd.h volserosd.h fs_rxosd_common.h osddb.h volint.h
 	${CCRULE} -DBUILD_LIBAFSOSD_A
 
+#create a hard linked second name for the same source to match dependency rule for another target
 r_osddbuser.c: ${srcdir}/osddbuser.c
 	ln -fs $? $@
 
@@ -450,6 +459,10 @@ rxosd.h: ${srcdir}/rxosd.xg
 rxosd.cs.c: ${srcdir}/rxosd.xg
 	${RXGEN} -A -x -C -o $@ ${srcdir}/rxosd.xg
 
+#create a hard linked second name for the same source to match dependency rule for another target
+l_rxosd.cs.c: rxosd.cs.c
+	ln -fs $? $@
+
 Krxosd.cs.c: ${srcdir}/rxosd.xg
 	${RXGEN} -A -x -k -C -o $@ ${srcdir}/rxosd.xg
 
@@ -465,7 +478,7 @@ Krxosd.xdr.c: ${srcdir}/rxosd.xg
 rxosd.cs.o: rxosd.cs.c rxosd.h
 	${CCRULE} -DBUILDING_RXOSD
 
-l_rxosd.cs.o: rxosd.cs.c rxosd.h
+l_rxosd.cs.o: l_rxosd.cs.c rxosd.h
 	${CCRULE} -DBUILD_SHLIBAFSOSD
 
 rxosd.xdr.o: rxosd.xdr.c rxosd.h
@@ -489,16 +502,18 @@ osd.o: ${srcdir}/osd.c
 policies.tab.c: policies.y
 	${YACC} -b policies ${srcdir}/policies.y
 
+#use CRULE... here because dependiency and target have different names
 policy_parser.o: policies.tab.c
-	${CCRULERXOSD}
+	${CRULERXOSD}
 
 libafshsm.o: ${srcdir}/libafshsm.c ${srcdir}/rxosd_hsm.h
 	${CCRULE}
 
 # salvager stuff
 
+#use CRULE... here because dependiency and target have different names
 vol_osd_salv.o: ${srcdir}/vol_osd.c
-	${CCRULESALV}
+	${CRULESALV}
 
 d_vol_osd_salv.c: ${srcdir}/vol_osd.c
 	ln -sf $? $@
@@ -573,11 +588,9 @@ vicedosd.cs.o: vicedosd.cs.c vicedosd.h afsint.h fs_rxosd_common.h
 vicedosd.o: ${srcdir}/vicedosd.c
 	${CCRULE}
 
-d_vicedosd.c: ${srcdir}/vicedosd.c
-	ln -sf $? $@
-
+#use CRULE... here because dependiency and target have different names
 d_vicedosd.o: ${srcdir}/vicedosd.c
-	${CCRULE} -DAFS_DEMAND_ATTACH_FS
+	${CRULE} -DAFS_DEMAND_ATTACH_FS
 
 # volserver stuff
 
@@ -614,7 +627,7 @@ volserosd.o: ${srcdir}/volserosd.c volser.h
 d_volserosd.c: ${srcdir}/volserosd.c
 	ln -sf $? $@
 
-d_volserosd.o: ${srcdir}/volserosd.c volser.h
+d_volserosd.o: d_volserosd.c volser.h
 	${CCRULE} -DAFS_DEMAND_ATTACH_FS
 
 volint.xdr.c: ${VOLSER}/volint.xg
@@ -647,33 +660,33 @@ vol_osdutil.o: ${srcdir}/vol_osdutil.c vol_osd.h
 # util stuff
 
 uuid.o: ${UTIL}/uuid.c
-	${CCRULE}
+	${CRULE}
 
 serverLog.o: ${UTIL}/serverLog.c
-	${CCRULE}
+	${CRULE}
 
 fileutil.o: ${UTIL}/fileutil.c
-	${CCRULE}
+	${CRULE}
 
 volparse.o: ${UTIL}/volparse.c
-	${CCRULE}
+	${CRULE}
 
 flipbase64.o: ${UTIL}/flipbase64.c
-	${CCRULE}
+	${CRULE}
 
 dirpath.o: ${UTIL}/dirpath.c
-	${CCRULE}
+	${CRULE}
 
 softsig.o: ${UTIL}/softsig.c
-	${CCRULE}
+	${CRULE}
 
 # lwp stuff
 
 lock.o: ${LWP}/lock.c
-	${CCRULE}
+	${CRULE}
 
 threadname.o: ${LWP}/threadname.c
-	${CCRULE}
+	${CRULE}
 
 # venus stuff
 

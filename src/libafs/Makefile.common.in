@@ -49,6 +49,8 @@ COMMON_INCLUDE = -I. -I.. -I../nfs \
 .c.o:
 	$(CC) $(COMMON_INCLUDE) $(CFLAGS) $(CFLAGS-$(@)) $(KERN_DBG) -c $<
 CRULE_NOOPT=	$(CC) $(COMMON_INCLUDE) $(KERN_DBG) $(CFLAGS) $(CFLAGS-$(@)) -o $@ -c $?
+#new duplicate rule just referring differently to the dependency list (Take first dependency conforming to the applicable suffix rule.)
+CCRULE_NOOPT=	$(CC) $(COMMON_INCLUDE) $(KERN_DBG) $(CFLAGS) $(CFLAGS-$(@)) -o $@ -c $<
 CRULE_OPT=	$(CC) $(COMMON_INCLUDE) $(KERN_DBG) $(KERN_OPTMZ) $(CFLAGS) $(CFLAGS-$@) -o $@ -c $?
 
 system:	all
@@ -461,9 +463,9 @@ rx_kcommon.o: $(TOP_SRC_RX)/rx_kcommon.c
 # Files for the interface to rxosd.
 
 Krxosd.cs.o: $(TOP_OBJDIR)/src/rxosd/Krxosd.cs.c
-	$(CRULE_NOOPT)
+	$(CCRULE_NOOPT)
 Krxosd.xdr.o: $(TOP_OBJDIR)/src/rxosd/Krxosd.xdr.c
-	$(CRULE_NOOPT)
+	$(CCRULE_NOOPT)
 rxosd.h: $(TOP_OBJDIR)/src/rxosd/rxosd.h
 	$(CP) -p $(TOP_OBJDIR)/src/rxosd/rxosd.h ./
 Kvicedosd.cs.o: $(TOP_OBJDIR)/src/rxosd/Kvicedosd.cs.c vicedosd.h
