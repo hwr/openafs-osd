@@ -4964,6 +4964,7 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
 	p.RWparm_u.p3.length = length;
 	p.RWparm_u.p3.atime.type = 1;
 	p.RWparm_u.p3.atime.afstm_u.sec = at;
+	p.RWparm_u.p3.mtime.type = 1;
 	p.RWparm_u.p3.mtime.afstm_u.sec = mt;
 	if (legacy) {
 	    afs_uint32 asec = (at / 10000000);
