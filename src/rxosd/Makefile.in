@@ -333,7 +333,7 @@ readabyte.o: readabyte.c rxosd_hsm.h
 
 readabyte: readabyte.o libafshsm.o
 	${CC} ${LDFLAGS} -o readabyte readabyte.o libafshsm.o \
-			${LIBS} ${MT_LIBS} -ldl
+			${LIBS} ${MT_LIBS} -ldl ${XLIBS}
 
 osd: osd.o rxosd.cs.o rxosd.xdr.o a_osddbuser.o osddb.cs.o osddb.xdr.o policy_parser.o
 	${CC} ${LDFLAGS} -o osd osd.o rxosd.cs.o rxosd.xdr.o a_osddbuser.o \
@@ -643,16 +643,16 @@ volint.cs.o: volint.cs.c volint.h
 	${CCRULE}
 
 lockprocs.o: ${VOLSER}/lockprocs.c
-	${CCRULE}
+	${CRULE}
 
 vsprocs.o: ${VOLSER}/vsprocs.c 
-	${CCRULE}
+	${CRULE}
 
 vsutils.o: ${VOLSER}/vsutils.c 
-	${CCRULE}
+	${CRULE}
 
 volerr.o: ../volser/volerr.c
-	${CCRULE}
+	${CRULE}
 
 vol_osdutil.o: ${srcdir}/vol_osdutil.c vol_osd.h
 	${CCRULE}
@@ -691,10 +691,10 @@ threadname.o: ${LWP}/threadname.c
 # venus stuff
 
 fs.o: ${VENUS}/fs_t.c
-	${CCRULEVENUS}
+	${CRULEVENUS}
 
 venus_libafsosd.o: ${srcdir}/libafsosd.c
-	${CCRULEVENUS} 
+	${CRULEVENUS} 
 
 fs: fs.o venus_libafsosd.o ${LIBS}
 	${CC} ${LDFLAGS} -o fs fs.o venus_libafsosd.o \
@@ -704,10 +704,10 @@ venusosd.o: ${srcdir}/venusosd.c
 	${CCRULE} -DBUILDING_CLIENT_COMMAND
 
 vldbint.cs.o: ../vlserver/vldbint.cs.c
-	${CCRULEVENUS}
+	${CRULEVENUS}
 
 vldbint.xdr.o: ../vlserver/vldbint.xdr.c
-	${CCRULEVENUS}
+	${CRULEVENUS}
 
 vlserver.h vl_errors.c: ${VLSERVER}/vl_errors.et ${VLSERVER}/vlserver.p.h
 	$(RM) -f vlserver.h vl_errors.c; ${COMPILE_ET} -p ${VLSERVER} vl_errors -h vlserver
@@ -716,10 +716,10 @@ vl_errors.o: vl_errors.c
 	${CCRULEVENUS}
 
 vos.o: ${VOLSER}/vos_t.c
-	${CCRULEVENUS}
+	${CRULEVENUS}
 
 vos_libafsosd.o: ${srcdir}/libafsosd.c
-	${CCRULEVENUS} -DBUILDING_VOS -DBUILDING_CLIENT_COMMAND
+	${CRULEVENUS} -DBUILDING_VOS -DBUILDING_CLIENT_COMMAND
 
 vos: vos.o vos_libafsosd.o ${VOSCMDOBJS} ${VLSERVEROBJS} ${LIBS}
 	${CC} ${LDFLAGS} -o vos vos.o vos_libafsosd.o ${VOSCMDOBJS} ${VLSERVEROBJS} \
@@ -796,4 +796,4 @@ clean:
 		volser.h libafsosd.a osdmetadata fs osd rxosd  readabyte \
 		linkcounts osddbserver libhpss.so.* hpss_read hpss_restore \
 		hpss_write hpss_tapeinfo fs vos vl_errors.c vlserver.h \
-		d_*.c  c_*.c l_*.c
+		a_*.c c_*.c d_*.c l_*.c r_*.c
