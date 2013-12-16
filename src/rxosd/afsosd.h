@@ -428,7 +428,7 @@ extern int init_viced_afsosd(char *afsversion, char** afsosdVersion, void *inroc
 #endif
 struct volser_ops_v0 {
     int (*DeleteTrans) (struct volser_trans *atrans, afs_int32 lock);
-    int (*NewTrans) (afs_uint32 avol, afs_int32 apart);
+    struct volser_trans* (*NewTrans) (afs_uint32 avol, afs_int32 apart);
 };
 
 /* 

@@ -153,6 +153,13 @@ SetDotDefault(struct cmd_item **aitemp)
     *aitemp = ti;
 }
 
+#if 0
+
+/*
+  PrintTime() already defined in 'src/cmd/cmd_out.c'. We shouldn't duplicate
+  code here.
+ */
+
 void PrintTime(afs_uint32 intdate)
 {
     time_t now, date;
@@ -178,6 +185,7 @@ void PrintTime(afs_uint32 intdate)
     }
     return;
 }
+#endif 
 
 void
 InitializeCBService_LWP()

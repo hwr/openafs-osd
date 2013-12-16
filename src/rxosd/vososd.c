@@ -565,7 +565,7 @@ Archcand(struct cmd_syndesc *as, void *arock)
             else if (str[0] == 'd' || str[0] == 'D')
                 delay = delay * 3600 * 24;
             else if (str[0] != 's' && str[0] != 'S') {
-                sprintf(stderr, "Unknown time unit %s, aborting\n", str);
+                fprintf(stderr, "Unknown time unit %s, aborting\n", str);
                 return EINVAL;
             }
         }
@@ -1264,7 +1264,7 @@ Traverse(struct cmd_syndesc *as, void *arock)
         }
         printf("----------------------------------------------------------------\n");
         bytes = totalbytes;
-        printf("Totals:      %11lu Files         ", totalfiles);
+        printf("Totals:      %llu Files         ", totalfiles);
         printlength(totalbytes);
         printf("\n");
         totalfiles = 0;
@@ -1310,7 +1310,7 @@ Traverse(struct cmd_syndesc *as, void *arock)
             list->osd_infoList_val[k].osdid |= 0x8000000;
         }
         printf("---------------------------------------------------------------\n");
-        printf("Total                       %11u objects  ", totalfiles);
+        printf("Total                       %llu objects  ", totalfiles);
         printlength(totalbytes);
         printf("\n");
 
@@ -1354,7 +1354,7 @@ Traverse(struct cmd_syndesc *as, void *arock)
             list->osd_infoList_val[k].osdid = 0xfffffff;
         }
         printf("---------------------------------------------------------------\n");
-        printf("Total                       %11u objects  ", totalfiles);
+        printf("Total                       %llu objects  ", totalfiles);
         printlength(totalbytes);
         printf("\n");
     } else

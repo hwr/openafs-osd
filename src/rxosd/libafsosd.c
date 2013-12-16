@@ -428,12 +428,6 @@ static struct vol_ops_v0 vol_ops_v0, *vol = NULL;
 #endif /* BUILDING_CLIENT_COMMAND */
 
 #if defined(BUILDING_VOLSERVER) || defined BUILD_SHLIBAFSOSD
-#if 0
-struct volser_ops_v0 {
-    int (*DeleteTrans) (struct volser_trans *atrans, afs_int32 lock);
-    int (*NewTrans) (afs_uint32 avol, afs_int32 apart);
-};
-#endif
 static struct volser_ops_v0 volser_ops_v0, *volser = NULL;
 #endif /* BUILDING_VOLSERVER */
 
@@ -727,10 +721,6 @@ extern int IsPartValid(afs_int32 partId, afs_uint32 server, afs_int32 *code);
 #ifdef BUILDING_VOLSERVER
     volser = &volser_ops_v0;
     fill_ops_volser(volser);
-#if 0
-    volser->DeleteTrans = DeleteTrans;
-    volser->NewTrans = NewTrans;
-#endif
     opsptr->volser = volser;
 #endif /* BUILDING_VOLSERVER */
 }
@@ -2265,7 +2255,7 @@ DeleteTrans(struct volser_trans *atrans, afs_int32 lock)
     return (volser->DeleteTrans)(atrans, lock);
 }
 
-int
+struct volser_trans*
 NewTrans(afs_uint32 avol, afs_int32 apart)
 {
     return (volser->NewTrans)(avol, apart);

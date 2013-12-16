@@ -4831,9 +4831,9 @@ struct cmd_syndesc *as;
 			printf("\n");
                         printf("\tdataVersion\t = %u\n", *(p+13));
                         printf("\tunixModifyTime\t =");
-                        PrintTime(p+14); printf("\n");
+                        PrintTime(p[14]); printf("\n");
                         printf("\tserverModifyTime =");
-                        PrintTime(p+15); printf("\n");
+                        PrintTime(p[15]); printf("\n");
                         printf("\tvn_ino_lo\t = %u\t(0x%x)",
                                 *(p+16), *(p+16));
                         if ((*(p+16) & NAMEI_VNODEMASK) == *(p+1))
@@ -4843,7 +4843,7 @@ struct cmd_syndesc *as;
 #if 0
 			if (type != vDirectory && *(p+19)) {
                             printf("\tlastUsageTime\t =");
-                            PrintTime(p+17); printf("\n");
+                            PrintTime(p[17]); printf("\n");
 			} else
 #endif
                             printf("\tvn_ino_hi\t = %u\t(0x%x)\n", *(p+17), *(p+17));
@@ -5372,7 +5372,7 @@ ListLine(AFSFetchStatus *Status, char *fname, char *what, AFSFid *fid)
 	    strcat(str, " ");
 	printf(" %s ", str);
     } else
-        PrintTime(&Status->ClientModTime);
+        PrintTime(Status->ClientModTime);
     printf(" %s", fname);
     if (Status->FileType == SymbolicLink && what) {
         printf(" -> %s", what);
@@ -6015,7 +6015,7 @@ struct cmd_syndesc *as;
 		printf("rpc %5u %20s for %u.%u.%u since ",
 		    	w->num & 0x7fffffff,
 			name, w->volume, w->vnode, w->unique);
-		PrintTime(&w->timeStamp);
+		PrintTime(w->timeStamp);
 		printf(" from %u.%u.%u.%u\n",
 			(w->ip >> 24) & 255,
 			(w->ip >> 16) & 255,
@@ -6179,7 +6179,7 @@ Statistic(struct cmd_syndesc *as, void *rock)
     
         TM_GetTimeOfDay(&now, 0);
 	printf("Since ");
-	PrintTime(&since);
+	PrintTime(since);
 	seconds = tsec = now.tv_sec - since;
 	days = tsec / 86400;
 	tsec = tsec % 86400;

@@ -2605,7 +2605,7 @@ SetOsd(struct cmd_syndesc *as, void *rock)
 	        i = 3;
 	} 
 	if (i != 1 && i != 2) {
-	    fprintf(stderr,"%s: invalid value for maxsize %s.\n",
+	    fprintf(stderr,"Invalid value for maxsize: %s.\n",
 			as->parms[5].items->data);
 	    return EINVAL;
         }

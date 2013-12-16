@@ -7122,7 +7122,7 @@ Statistic(struct cmd_syndesc *as, void *arock)
     }
     TM_GetTimeOfDay(&now, 0);
     printf("Since ");
-    PrintTime(&since);
+    PrintTime(since);
     seconds = tsec = now.tv_sec - since;
     days = tsec / 86400;
     tsec = tsec % 86400;

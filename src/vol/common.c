@@ -78,8 +78,8 @@ afs_int64 lastSent = 0;
 
 void TransferRate()
 {
-    time_t now;
-    static time_t last = 0;
+    unsigned int now;                   /* FT_ApproxTime() returns a value of type 'unsigned int' not 'time_t' */
+    static unsigned int last = 0;
     afs_int32 basetime, i;
     static afs_int32 inited = 0;
     

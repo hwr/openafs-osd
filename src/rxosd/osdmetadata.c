@@ -270,7 +270,7 @@ handleit(struct cmd_syndesc *as, void *unused)
 				base, volumeId,
 				entry->vnode, entry->unique,
 				entry->next, entry->prev);
-		PrintTime((afs_uint64) entry->timestamp);
+		PrintTime(entry->timestamp);
 		if (verbose && entry->unique && !entry->prev) 
 		    printentry(fd, base, entrylength);
 		else 
@@ -281,7 +281,7 @@ handleit(struct cmd_syndesc *as, void *unused)
 				base, volumeId,
 				entry->vnode, entry->unique,
 				entry->next, entry->prev);
-		    PrintTime(&entry->timestamp);
+		    PrintTime(entry->timestamp);
 		    printf("\n");
 		    if (verbose && entry->unique && !entry->prev) 
 		        printentry(fd, base, entrylength);
