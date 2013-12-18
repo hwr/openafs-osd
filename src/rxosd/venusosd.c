@@ -10,7 +10,6 @@
 #include <afs/stds.h>
 
 #include <ctype.h>
-#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
@@ -2345,7 +2344,7 @@ Threads(struct cmd_syndesc *as, void *unused)
                         fid->Unique >> 8 & 0xff,
                         fid->Unique & 0xff);
         else
-            printf("rpc %lu on %u.%u from %u.%u.%u.%u\n",
+            printf("rpc %u on %u.%u from %u.%u.%u.%u\n",
                         Outputs->int32s[i],
                         fid->Volume,
                         fid->Vnode,
@@ -2596,14 +2595,14 @@ WhereIsCmd(struct cmd_syndesc *as, void *unused)
     for (ti = as->parms[0].items; ti; ti = ti->next) {
         fname = ti->data;
         if (fid) {
-            code = get_vnode_hosts(fname, &cell, &space, &Fid, 1);
+                code = get_vnode_hosts(fname, &cell, (afs_int32*)space, &Fid, 1);
             if (code) {
                 Die(errno, ti->data);
                 error = 1;
                 continue;
             }
         } else {
-            code = get_file_cell(fname, &cell, &space, &Fid, &OutStatus);
+                code = get_file_cell(fname, &cell, (afs_int32*)space, &Fid, &OutStatus);
             if (code) {
                 /* old fileserver */
                 blob.out_size = AFS_PIOCTL_MAXSIZE;
