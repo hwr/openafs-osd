@@ -61,6 +61,7 @@
  * status information:
  * FDH_SIZE - returns the size of the file.
  * FDH_NLINK - returns the link count of the file.
+ * FDH_ISUNLINKED - returns if the file has been unlinked out from under us
  *
  * Miscellaneous:
  * FDH_FDOPEN - create a descriptor for buffered I/O
@@ -71,25 +72,25 @@
 #define _IHANDLE_H_
 
 #ifdef AFS_PTHREAD_ENV
-#include <pthread.h>
+# include <pthread.h>
 extern pthread_once_t ih_glock_once;
 extern pthread_mutex_t ih_glock_mutex;
 extern void ih_glock_init(void);
-#define IH_LOCK \
+# define IH_LOCK \
     do { osi_Assert(pthread_once(&ih_glock_once, ih_glock_init) == 0);	\
 	MUTEX_ENTER(&ih_glock_mutex); \
     } while (0)
-#define IH_UNLOCK MUTEX_EXIT(&ih_glock_mutex)
+# define IH_UNLOCK MUTEX_EXIT(&ih_glock_mutex)
 #else /* AFS_PTHREAD_ENV */
-#define IH_LOCK
-#define IH_UNLOCK
+# define IH_LOCK
+# define IH_UNLOCK
 #endif /* AFS_PTHREAD_ENV */
 
 #ifndef DLL_INIT_LIST
 /*
  * Macro to initialize a doubly linked list, lifted from Encina
  */
-#define DLL_INIT_LIST(head, tail)	\
+# define DLL_INIT_LIST(head, tail)	\
     do {			 	\
 	(head) = NULL;			\
 	(tail) = NULL;			\
@@ -98,7 +99,7 @@ extern void ih_glock_init(void);
 /*
  * Macro to remove an element from a doubly linked list
  */
-#define DLL_DELETE(ptr,head,tail,next,prev)	\
+# define DLL_DELETE(ptr,head,tail,next,prev)	\
     do {					\
 	if ((ptr)->next) 			\
 	    (ptr)->next->prev = (ptr)->prev;	\
@@ -115,7 +116,7 @@ extern void ih_glock_init(void);
 /*
  * Macro to insert an element at the tail of a doubly linked list
  */
-#define DLL_INSERT_TAIL(ptr,head,tail,next,prev) \
+# define DLL_INSERT_TAIL(ptr,head,tail,next,prev) \
     do {					 \
 	(ptr)->next = NULL;			 \
         (ptr)->prev = (tail);			 \
@@ -130,7 +131,7 @@ extern void ih_glock_init(void);
 /*
  * Macro to insert an element at the head of a doubly linked list
  */
-#define DLL_INSERT_HEAD(ptr,head,tail,next,prev) \
+# define DLL_INSERT_HEAD(ptr,head,tail,next,prev) \
     do {                                         \
         (ptr)->next = (head);                    \
         (ptr)->prev = NULL;                      \
@@ -147,7 +148,7 @@ extern void ih_glock_init(void);
 #ifdef AFS_NT40_ENV
 typedef __int64 Inode;
 #else
-#include <afs/afssyscalls.h>
+# include <afs/afssyscalls.h>
 #endif
 
 /* The dir package's page hashing function is dependent upon the layout of
@@ -164,10 +165,10 @@ struct IHandle_s;
  */
 #ifdef AFS_NT40_ENV
 typedef HANDLE FD_t;
-#define INVALID_FD INVALID_HANDLE_VALUE
+# define INVALID_FD INVALID_HANDLE_VALUE
 #else
 typedef int FD_t;
-#define INVALID_FD ((FD_t)-1)
+# define INVALID_FD ((FD_t)-1)
 #endif
 
 /* file descriptor handle */
@@ -214,6 +215,26 @@ typedef struct StreamHandle_s {
 #define FD_HANDLE_MALLOCSIZE	((size_t)((4096/sizeof(FdHandle_t))))
 #define STREAM_HANDLE_MALLOCSIZE 1
 
+/* Possible values for the vol_io_params.sync_behavior option.
+ * These dictate what actually happens when you call FDH_SYNC or IH_CONDSYNC. */
+#define IH_SYNC_ALWAYS (1)  /* This makes FDH_SYNCs do what you'd probably
+                             * expect: a synchronous fsync() */
+#define IH_SYNC_ONCLOSE (2) /* This makes FDH_SYNCs just flag the ih as "I
+                             * need to sync", and does not perform the actual
+                             * fsync() until we IH_REALLYCLOSE. This provides a
+                             * little assurance over IH_SYNC_NEVER when a volume
+                             * has gone offline, and a few other situations. */
+#define IH_SYNC_NEVER   (3) /* This makes FDH_SYNCs do nothing. Faster, but
+                             * obviously less durable. The OS may ensure that
+                             * our data hits the disk eventually, depending on
+                             * the platform and various OS-specific tuning
+                             * parameters. */
+#define IH_SYNC_DELAYED (4) /* This makes FDH_SYNCs set a flag in the ih that
+                             * says "I need to sync". And in a separate thread,
+                             * ih_sync_thread finds all IHs that have this
+                             * flag set, and it syncs them. Such IHs are also
+                             * synced when closed, as in IH_SYNC_ONCLOSE. */
+
 
 /* READ THIS.
  *
@@ -232,8 +253,9 @@ typedef struct ih_init_params
     afs_uint32 fd_handle_setaside; /* for non-cached i/o, trad. was 128 */
     afs_uint32 fd_initial_cachesize; /* what was 'default' */
     afs_uint32 fd_max_cachesize; /* max open files if large-cache activated */
-} ih_init_params;
 
+    int sync_behavior; /* one of the IH_SYNC_* constants */
+} ih_init_params;
 
 /* Number of file descriptors needed for non-cached I/O */
 #define FD_HANDLE_SETASIDE	128 /* Match to MAX_FILESERVER_THREAD */
@@ -305,10 +327,10 @@ typedef struct IHashBucket_s {
 
 /* Prototypes for handle support routines. */
 #ifdef AFS_NAMEI_ENV
-#ifdef AFS_NT40_ENV
-#include "ntops.h"
-#endif
-#include "rxosd_namei_ops.h"
+# ifdef AFS_NT40_ENV
+#  include "ntops.h"
+# endif
+# include "rxosd_namei_ops.h"
 
 extern void ih_clear(IHandle_t * h);
 extern Inode ih_create(IHandle_t * h, int dev, char *part, Inode nI, int p1,
@@ -322,6 +344,7 @@ extern FILE *ih_fdopen(FdHandle_t * h, char *fdperms);
 extern void ih_PkgDefaults(void);
 extern void ih_Initialize(void);
 extern void ih_UseLargeCache(void);
+extern int ih_SetSyncBehavior(const char *behavior);
 extern IHandle_t *ih_init(int /*@alt Device@ */ dev, int /*@alt VolId@ */ vid,
 			  Inode ino);
 extern IHandle_t *ih_copy(IHandle_t * ihP);
@@ -388,182 +411,201 @@ extern int ih_condsync(IHandle_t * ihP);
 
 #define IH_CONDSYNC(H) ih_condsync(H)
 
-#if defined(HAVE_PIO)
-
- #if defined(AFS_NT40_ENV)
-  #define OS_PREAD(FD, B, S, O) nt_pread(FD, B, S, O)
-  #define OS_PWRITE(FD, B, S, O) nt_pwrite(FD, B, S, O)
- #else
-  #define OS_PREAD(FD, B, S, O) pread64(FD, B, S, O)
-  #define OS_PWRITE(FD, B, S, O) pwrite64(FD, B, S, O)
- #endif /* AFS_NT40_ENV */
-
+#ifdef HAVE_PIO
+# ifdef AFS_NT40_ENV
+#  define OS_PREAD(FD, B, S, O) nt_pread(FD, B, S, O)
+#  define OS_PWRITE(FD, B, S, O) nt_pwrite(FD, B, S, O)
+# else
+#  ifdef O_LARGEFILE
+#   define OS_PREAD(FD, B, S, O) pread64(FD, B, S, O)
+#   define OS_PWRITE(FD, B, S, O) pwrite64(FD, B, S, O)
+#  else /* !O_LARGEFILE */
+#   define OS_PREAD(FD, B, S, O) pread(FD, B, S, O)
+#   define OS_PWRITE(FD, B, S, O) pwrite(FD, B, S, O)
+#  endif /* !O_LARGEFILE */
+# endif /* AFS_NT40_ENV */
 #else /* !HAVE_PIO */
-
- extern ssize_t ih_pread(int fd, void * buf, size_t count, afs_foff_t offset);
- extern ssize_t ih_pwrite(int fd, const void * buf, size_t count, afs_foff_t offset);
- #define OS_PREAD(FD, B, S, O) ih_pread(FD, B, S, O)
- #define OS_PWRITE(FD, B, S, O) ih_pwrite(FD, B, S, O)
-
+extern ssize_t ih_pread(int fd, void * buf, size_t count, afs_foff_t offset);
+extern ssize_t ih_pwrite(int fd, const void * buf, size_t count, afs_foff_t offset);
+# define OS_PREAD(FD, B, S, O) ih_pread(FD, B, S, O)
+# define OS_PWRITE(FD, B, S, O) ih_pwrite(FD, B, S, O)
 #endif /* !HAVE_PIO */
 
 #ifdef AFS_NT40_ENV
- #define OS_LOCKFILE(FD, O) (!LockFile(FD, (DWORD)((O) & 0xFFFFFFFF), (DWORD)((O) >> 32), 2, 0))
- #define OS_UNLOCKFILE(FD, O) (!UnlockFile(FD, (DWORD)((O) & 0xFFFFFFFF), (DWORD)((O) >> 32), 2, 0))
- #define OS_ERROR(X) nterr_nt2unix(GetLastError(), X)
- #define OS_UNLINK(X) nt_unlink(X)
- #define OS_DIRSEP "\\"
- #define OS_DIRSEPC '\\'
+# define OS_LOCKFILE(FD, O) (!LockFile(FD, (DWORD)((O) & 0xFFFFFFFF), (DWORD)((O) >> 32), 2, 0))
+# define OS_UNLOCKFILE(FD, O) (!UnlockFile(FD, (DWORD)((O) & 0xFFFFFFFF), (DWORD)((O) >> 32), 2, 0))
+# define OS_ERROR(X) nterr_nt2unix(GetLastError(), X)
+# define OS_UNLINK(X) nt_unlink(X)
+/* we can't have a file unlinked out from under us on NT */
+# define OS_ISUNLINKED(X) (0)
+# define OS_DIRSEP "\\"
+# define OS_DIRSEPC '\\'
 #else
- #define OS_LOCKFILE(FD, O) flock(FD, LOCK_EX)
- #define OS_UNLOCKFILE(FD, O) flock(FD, LOCK_UN)
- #define OS_ERROR(X) X
- #define OS_UNLINK(X) unlink(X)
- #define OS_DIRSEP "/"
- #define OS_DIRSEPC '/'
+# define OS_LOCKFILE(FD, O) flock(FD, LOCK_EX)
+# define OS_UNLOCKFILE(FD, O) flock(FD, LOCK_UN)
+# define OS_ERROR(X) X
+# define OS_UNLINK(X) unlink(X)
+# define OS_ISUNLINKED(X) ih_isunlinked(X)
+extern int ih_isunlinked(FD_t fd);
+# define OS_DIRSEP "/"
+# define OS_DIRSEPC '/'
 #endif
-
-
 
 #ifdef AFS_NAMEI_ENV
 
- #ifdef AFS_NT40_ENV
-  #define OS_OPEN(F, M, P) nt_open(F, M, P)
-  #define OS_CLOSE(FD) nt_close(FD)
+# ifdef AFS_NT40_ENV
+#  define OS_OPEN(F, M, P) nt_open(F, M, P)
+#  define OS_CLOSE(FD) nt_close(FD)
 
-  #define OS_READ(FD, B, S) nt_read(FD, B, S)
-  #define OS_WRITE(FD, B, S) nt_write(FD, B, S)
-  #define OS_SEEK(FD, O, F) nt_seek(FD, O, F)
+#  define OS_READ(FD, B, S) nt_read(FD, B, S)
+#  define OS_WRITE(FD, B, S) nt_write(FD, B, S)
+#  define OS_SEEK(FD, O, F) nt_seek(FD, O, F)
 
-  #define OS_SYNC(FD) nt_fsync(FD)
-  #define OS_TRUNC(FD, L) nt_ftruncate(FD, L)
+#  define OS_SYNC(FD) nt_fsync(FD)
+#  define OS_TRUNC(FD, L) nt_ftruncate(FD, L)
 
-#else /* AFS_NT40_ENV */
+# else /* AFS_NT40_ENV */
 
 /*@+fcnmacros +macrofcndecl@*/
- #ifdef S_SPLINT_S
-  extern Inode IH_CREATE(IHandle_t * H, int /*@alt Device @ */ D,
-  		       char *P, Inode N, int /*@alt VolumeId @ */ P1,
+#  ifdef S_SPLINT_S
+extern Inode IH_CREATE(IHandle_t * H, int /*@alt Device @ */ D,
+		       char *P, Inode N, int /*@alt VolumeId @ */ P1,
 		       int /*@alt VnodeId @ */ P2,
 		       int /*@alt Unique @ */ P3,
 		       int /*@alt unsigned @ */ P4);
-  extern FD_t OS_IOPEN(IHandle_t * H);
-  extern int OS_OPEN(const char *F, int M, mode_t P);
-  extern int OS_CLOSE(int FD);
-  extern ssize_t OS_READ(int FD, void *B, size_t S);
-  extern ssize_t OS_WRITE(int FD, void *B, size_t S);
-  extern ssize_t OS_PREAD(int FD, void *B, size_t S, afs_foff_t O);
-  extern ssize_t OS_PWRITE(int FD, void *B, size_t S, afs_foff_t O);
-  extern int OS_SYNC(int FD);
-  extern afs_sfsize_t OS_SIZE(int FD);
-  extern int IH_INC(IHandle_t * H, Inode I, int /*@alt VolId, VolumeId @ */ P);
-  extern int IH_DEC(IHandle_t * H, Inode I, int /*@alt VolId, VolumeId @ */ P);
-  extern afs_sfsize_t IH_IREAD(IHandle_t * H, afs_foff_t O, void *B,
+extern FD_t OS_IOPEN(IHandle_t * H);
+extern int OS_OPEN(const char *F, int M, mode_t P);
+extern int OS_CLOSE(int FD);
+extern ssize_t OS_READ(int FD, void *B, size_t S);
+extern ssize_t OS_WRITE(int FD, void *B, size_t S);
+extern ssize_t OS_PREAD(int FD, void *B, size_t S, afs_foff_t O);
+extern ssize_t OS_PWRITE(int FD, void *B, size_t S, afs_foff_t O);
+extern int OS_SYNC(int FD);
+extern afs_sfsize_t OS_SIZE(int FD);
+extern int IH_INC(IHandle_t * H, Inode I, int /*@alt VolId, VolumeId @ */ P);
+extern int IH_DEC(IHandle_t * H, Inode I, int /*@alt VolId, VolumeId @ */ P);
+extern afs_sfsize_t IH_IREAD(IHandle_t * H, afs_foff_t O, void *B,
 			     afs_fsize_t S);
-  extern afs_sfsize_t IH_IWRITE(IHandle_t * H, afs_foff_t O, void *B,
+extern afs_sfsize_t IH_IWRITE(IHandle_t * H, afs_foff_t O, void *B,
 			      afs_fsize_t S);
-  #define OFFT off64_t
+#   ifdef O_LARGEFILE
+#    define OFFT off64_t
+#   else
+#    define OFFT off_t
+#   endif
 
-  extern OFFT OS_SEEK(int FD, OFFT O, int F);
-  extern int OS_TRUNC(int FD, OFFT L);
- #endif /*S_SPLINT_S */
- 
- #if defined (AFS_DARWIN_ENV)
+extern OFFT OS_SEEK(int FD, OFFT O, int F);
+extern int OS_TRUNC(int FD, OFFT L);
+#  endif /*S_SPLINT_S */
 
-  #define OS_OPEN(F, M, P) open(F, M, P)
-  #define OS_CLOSE(FD) close(FD)
-  #define OS_READ(FD, B, S) read(FD, B, S)
-  #define OS_WRITE(FD, B, S) write(FD, B, S)
-  #define OS_SEEK(FD, O, F) lseek(FD, (off_t) (O), F)
-  #define OS_TRUNC(FD, L) ftruncate(FD, (off_t) (L))
-  #define OS_SYNC(FD) fsync(FD)
+#  ifdef O_LARGEFILE
+#   define OS_OPEN(F, M, P) open64(F, M, P)
+#  else /* !O_LARGEFILE */
+#   define OS_OPEN(F, M, P) open(F, M, P)
+#  endif /* !O_LARGEFILE */
+#  define OS_CLOSE(FD) close(FD)
 
- #else /* AFS_DARWIN_ENV */
+#  define OS_READ(FD, B, S) read(FD, B, S)
+#  define OS_WRITE(FD, B, S) write(FD, B, S)
+#  ifdef O_LARGEFILE
+#   define OS_SEEK(FD, O, F) lseek64(FD, (off64_t) (O), F)
+#   define OS_TRUNC(FD, L) ftruncate64(FD, (off64_t) (L))
+#  else /* !O_LARGEFILE */
+#   define OS_SEEK(FD, O, F) lseek(FD, (off_t) (O), F)
+#   define OS_TRUNC(FD, L) ftruncate(FD, (off_t) (L))
+#  endif /* !O_LARGEFILE */
 
-  #define OS_OPEN(F, M, P) open64(F, M, P)
-  #define OS_CLOSE(FD) close(FD)
-  #define OS_READ(FD, B, S) read(FD, B, S)
-  #define OS_WRITE(FD, B, S) write(FD, B, S)
-  #define OS_SEEK(FD, O, F) lseek64(FD, (off64_t) (O), F)
-  #define OS_TRUNC(FD, L) ftruncate64(FD, (off64_t) (L))
-  #define OS_SYNC(FD) fsync(FD)
+#  define OS_SYNC(FD) fsync(FD)
 
- #endif /* AFS_DARWIN_ENV */
-
- /*@=fcnmacros =macrofcndecl@*/
-#endif /* AFS_NT40_ENV */
-
-#define IH_INC(H, I, P) namei_inc(H, I, P)
-#define IH_DEC(H, I, P) namei_dec(H, I, P)
-#define IH_IREAD(H, O, B, S) namei_iread(H, O, B, S)
-#define IH_IWRITE(H, O, B, S) namei_iwrite(H, O, B, S)
-#define IH_CREATE(H, D, P, N, P1, P2, P3, P4) \
-	namei_icreate(H, P, P1, P2, P3, P4)
-#define OS_IOPEN(H) namei_iopen(H)
+/*@=fcnmacros =macrofcndecl@*/
+# endif /* AFS_NT40_ENV */
+# define IH_INC(H, I, P) namei_inc(H, I, P)
+# define IH_DEC(H, I, P) namei_dec(H, I, P)
+# define IH_IREAD(H, O, B, S) namei_iread(H, O, B, S)
+# define IH_IWRITE(H, O, B, S) namei_iwrite(H, O, B, S)
+# define IH_CREATE(H, D, P, N, P1, P2, P3, P4) \
+         namei_icreate(H, P, P1, P2, P3, P4)
+# define OS_IOPEN(H) namei_iopen(H)
 
 
 #else /* AFS_NAMEI_ENV */
 extern Inode ih_icreate(IHandle_t * ih, int dev, char *part, Inode nI, int p1,
 			int p2, int p3, int p4);
 
-#define IH_CREATE(H, D, P, N, P1, P2, P3, P4) \
-	ih_icreate(H, D, P, N, P1, P2, P3, P4)
+# define IH_CREATE(H, D, P, N, P1, P2, P3, P4) \
+        ih_icreate(H, D, P, N, P1, P2, P3, P4)
 
-#ifdef AFS_LINUX22_ENV
-#define OS_IOPEN(H) -1
-#else
-#define OS_IOPEN(H) (IOPEN((H)->ih_dev, (H)->ih_ino, O_RDWR|O_LARGEFILE))
-#endif
-#define OS_OPEN(F, M, P) open(F, M, P)
-#define OS_CLOSE(FD) close(FD)
+# ifdef AFS_LINUX22_ENV
+#  define OS_IOPEN(H) -1
+# else
+#  ifdef O_LARGEFILE
+#   define OS_IOPEN(H) (IOPEN((H)->ih_dev, (H)->ih_ino, O_RDWR|O_LARGEFILE))
+#  else
+#   define OS_IOPEN(H) (IOPEN((H)->ih_dev, (H)->ih_ino, O_RDWR))
+#  endif
+# endif
+# define OS_OPEN(F, M, P) open(F, M, P)
+# define OS_CLOSE(FD) close(FD)
 
-#define OS_READ(FD, B, S) read(FD, B, S)
-#define OS_WRITE(FD, B, S) write(FD, B, S)
-#define OS_SEEK(FD, O, F) lseek64(FD, (off64_t) (O), F)
-#define OS_TRUNC(FD, L) ftruncate64(FD, (off64_t) (L))
+# define OS_READ(FD, B, S) read(FD, B, S)
+# define OS_WRITE(FD, B, S) write(FD, B, S)
+# ifdef O_LARGEFILE
+#  define OS_SEEK(FD, O, F) lseek64(FD, (off64_t) (O), F)
+#  define OS_TRUNC(FD, L) ftruncate64(FD, (off64_t) (L))
+# else /* !O_LARGEFILE */
+#  define OS_SEEK(FD, O, F) lseek(FD, (off_t) (O), F)
+#  define OS_TRUNC(FD, L) ftruncate(FD, (off_t) (L))
+# endif /* !O_LARGEFILE */
 
-#define OS_SYNC(FD) fsync(FD)
+# define OS_SYNC(FD) fsync(FD)
 
-#ifdef AFS_LINUX22_ENV
-#define IH_INC(H, I, P) -1
-#define IH_DEC(H, I, P) -1
-#define IH_IREAD(H, O, B, S) -1
-#define IH_IWRITE(H, O, B, S) -1
-#else
-#define IH_INC(H, I, P) IINC((H)->ih_dev, I, P)
-#define IH_DEC(H, I, P) IDEC((H)->ih_dev, I, P)
-#define IH_IREAD(H, O, B, S) inode_read((H)->ih_dev, (H)->ih_ino, (H)->ih_vid,\
-					O, B, S)
-#define IH_IWRITE(H, O, B, S) \
-	inode_write((H)->ih_dev, (H)->ih_ino, (H)->ih_vid, O, B, S)
-#endif /* AFS_LINUX22_ENV */
-
+# ifdef AFS_LINUX22_ENV
+#  define IH_INC(H, I, P) -1
+#  define IH_DEC(H, I, P) -1
+#  define IH_IREAD(H, O, B, S) -1
+#  define IH_IWRITE(H, O, B, S) -1
+# else
+#  define IH_INC(H, I, P) IINC((H)->ih_dev, I, P)
+#  define IH_DEC(H, I, P) IDEC((H)->ih_dev, I, P)
+#  define IH_IREAD(H, O, B, S) inode_read((H)->ih_dev, (H)->ih_ino, (H)->ih_vid,\
+                                          O, B, S)
+#  define IH_IWRITE(H, O, B, S) \
+          inode_write((H)->ih_dev, (H)->ih_ino, (H)->ih_vid, O, B, S)
+# endif /* AFS_LINUX22_ENV */
 
 #endif /* AFS_NAMEI_ENV */
+
 #define OS_SIZE(FD) ih_size(FD)
 extern afs_sfsize_t ih_size(FD_t);
 
+#ifndef AFS_NT40_ENV
+# define FDH_READV(H, I, N) ((H)->fd_ih->ih_ops->readv)((H)->fd_fd, I, N)
+# define FDH_WRITEV(H, I, N) ((H)->fd_ih->ih_ops->writev)((H)->fd_fd, I, N)
+#endif
+
+#ifdef HAVE_PIOV
+# define FDH_PREADV(H, I, N, O) ((H)->fd_ih->ih_ops->preadv)((H)->fd_fd, I, N, O)
+# define FDH_PWRITEV(H, I, N, O) ((H)->fd_ih->ih_ops->pwritev)((H)->fd_fd, I, N, O)
+#endif
+
+#define FDH_PREAD(H, B, S, O) ((H)->fd_ih->ih_ops->pread)((H)->fd_fd, B, S, O)
+#define FDH_PWRITE(H, B, S, O) ((H)->fd_ih->ih_ops->pwrite)((H)->fd_fd, B, S, O)
 #define FDH_READ(H, B, S) ((H)->fd_ih->ih_ops->read)((H)->fd_fd, B, S)
-#define FDH_READV(H, I, N) ((H)->fd_ih->ih_ops->readv)((H)->fd_fd, I, N)
 #define FDH_WRITE(H, B, S) ((H)->fd_ih->ih_ops->write)((H)->fd_fd, B, S)
-#define FDH_WRITEV(H, I, N) ((H)->fd_ih->ih_ops->writev)((H)->fd_fd, I, N)
 #define FDH_SEEK(H, O, F) ((H)->fd_ih->ih_ops->lseek)((H)->fd_fd, O, F)
+
+#define FDH_SYNC(H) ((H->fd_ih!=NULL) ? ( H->fd_ih->ih_synced = 1) - 1 : 1)
+#define FDH_TRUNC(H, L) ((H)->fd_ih->ih_ops->ftruncate)((H)->fd_fd, L)
+#define FDH_SIZE(H) OS_SIZE((H)->fd_fd)
+#define FDH_LOCKFILE(H, O) rxosdlock(H, LOCK_EX)
+#define FDH_UNLOCKFILE(H, O) rxosdlock(H, LOCK_UN)
+#define FDH_ISUNLINKED(H) OS_ISUNLINKED((H)->fd_fd)
+
+extern int ih_fdsync(FdHandle_t *fdP);
+
 #define IH_OPENDIR(N, H) ((H)->ih_ops->opendir)(N)
 #define IH_READDIR(D, H) ((H)->ih_ops->readdir)(D)
 #define IH_CLOSEDIR(D, H) ((H)->ih_ops->closedir)(D)
 #define IH_STAT(N, S, H) ((H)->ih_ops->stat64)(N, S)
-#define FDH_PREAD(H, B, S, O) ((H)->fd_ih->ih_ops->pread)((H)->fd_fd, B, S, O)
-#define FDH_PWRITE(H, B, S, O) ((H)->fd_ih->ih_ops->pwrite)((H)->fd_fd, B, S, O)
-#define FDH_TRUNC(H, L) ((H)->fd_ih->ih_ops->ftruncate)((H)->fd_fd, L)
-#ifdef HAVE_PIOV
-#define FDH_PREADV(H, I, N, O) ((H)->fd_ih->ih_ops->preadv)((H)->fd_fd, I, N, O)
-#define FDH_PWRITEV(H, I, N, O) ((H)->fd_ih->ih_ops->pwritev)((H)->fd_fd, I, N, O)
-#endif
-
-#define FDH_SYNC(H) ((H->fd_ih!=NULL) ? ( H->fd_ih->ih_synced = 1) - 1 : 1)
-#define FDH_SIZE(H) OS_SIZE((H)->fd_fd)
-
-#define FDH_LOCKFILE(H, O) rxosdlock(H, LOCK_EX)
-#define FDH_UNLOCKFILE(H, O) rxosdlock(H, LOCK_UN)
 
 #endif /* _IHANDLE_H_ */
