@@ -119,8 +119,8 @@
 #define afs_stat                stat
 #define afs_open                open
 #define afs_fopen               fopen
-#define afs_fstat               fstat64
-#define afs_lseek               lseek64
+#define afs_fstat               fstat
+#define afs_lseek               lseek
 #ifndef AFS_NT40_ENV
 #if defined (AFS_HAVE_STATVFS)
 #  define afs_statvfs           statvfs
@@ -177,9 +177,8 @@ struct ih_posix_ops clib_ops = {
 
 struct ih_posix_ops *myops = &clib_ops;
 
-main(argc, argv)
-int argc;
-char **argv;
+int
+main(int argc, char *argv[])
 {
     char filename[256];
     char buffer;
