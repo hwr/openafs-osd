@@ -55,6 +55,8 @@
 #include <strings.h>
 #endif
 
+#include <afs/cmd.h>
+
 #ifdef O_LARGEFILE
 #define afs_open	open64
 #else /* !O_LARGEFILE */
