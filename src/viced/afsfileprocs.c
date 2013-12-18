@@ -630,7 +630,7 @@ createAsyncTransaction(struct rx_call *call, AFSFid *Fid, afs_int32 flag,
 #ifdef AFS_PTHREAD_ENV
 	        CV_WAIT(&a->cond, &async_glock_mutex);
 #else
-	        if (code = LWP_WaitProcess(&(a->writer)) != LWP_SUCCESS)
+	        if ((code = LWP_WaitProcess(&(a->writer))) != LWP_SUCCESS)
 		    ViceLog(0, ("LWP_WaitProcess returned %d\n", code));
 #endif
 	    }  
@@ -650,7 +650,7 @@ createAsyncTransaction(struct rx_call *call, AFSFid *Fid, afs_int32 flag,
 #ifdef AFS_PTHREAD_ENV
 	        CV_WAIT(&a->cond, &async_glock_mutex);
 #else
-	        if (code = LWP_WaitProcess(&(a->writer)) != LWP_SUCCESS)
+	        if ((code = LWP_WaitProcess(&(a->writer))) != LWP_SUCCESS)
 		    ViceLog(0, ("LWP_WaitProcess returned %d\n", code));
 #endif
 	    }
@@ -688,7 +688,6 @@ static afs_int32
 extendAsyncTransaction(struct rx_call *call, AFSFid *Fid, afs_uint64 transid, 
 			afs_uint32 *expires)
 {
-    afs_int32 code;
     struct asyncAccess *a, *a2;
     struct asyncTrans *t, *t2;
     afs_uint32 host = 0;
@@ -730,10 +729,8 @@ extendAsyncTransaction(struct rx_call *call, AFSFid *Fid, afs_uint64 transid,
 static afs_int32
 EndAsyncTransaction(struct rx_call *call, AFSFid *Fid, afs_uint64 transid)
 {
-    afs_int32 code;
     struct asyncAccess *a, *a2;
     struct asyncTrans *t, *t2;
-    struct written *p;
     afs_uint32 host = 0;
     afs_uint16 port = 0;
 
@@ -826,10 +823,8 @@ Volume *
 getAsyncVolptr(struct rx_call *call, AFSFid *Fid, afs_uint64 transid,
 	       afs_uint64 *offset, afs_uint64 *length)
 {
-    afs_int32 code;
     struct asyncAccess *a, *a2;
     struct asyncTrans *t, *t2;
-    struct written *p;
     afs_uint32 host = 0;
     afs_uint16 port = 0;
     Volume *volptr = 0;
@@ -949,7 +944,7 @@ Out:
 }
 
 afs_int32
-TimeoutAsyncTransactions()
+TimeoutAsyncTransactions(void)
 {
     afs_int32 code;
     struct asyncAccess *a, *a2;
@@ -4086,21 +4081,6 @@ common_StoreData64(struct rx_call *acall, struct AFSFid *Fid,
     struct in_addr logHostAddr;	/* host ip holder for inet_ntoa */
     struct rx_connection *tcon;
     struct host *thost;
-#ifdef AFS_NT40_ENV
-    char *tbuffer;	/* data copying buffer */
-#else /* AFS_NT40_ENV */
-    struct iovec tiov[RX_MAXIOVECS];	/* no data copying with iovec */
-    int tnio;			/* temp for iovec size */
-#endif /* AFS_NT40_ENV */
-    afs_sfsize_t tlen;		/* temp for xfr length */
-    Inode tinode;		/* inode for I/O */
-    afs_int32 optSize;		/* optimal transfer size */
-    afs_sfsize_t TruncatedLength;	/* size after ftruncate */
-    afs_fsize_t NewLength;	/* size after this store completes */
-    afs_sfsize_t adjustSize;	/* bytes to call VAdjust... with */
-    int linkCount;		/* link count on inode */
-    DirHandle dir;
-    char fileName[256];
     afs_uint64 transid = 0;
 #if FS_STATS_DETAILED
     struct fs_stats_opTimingData *opP;	/* Ptr to this op's timing struct */
@@ -4111,8 +4091,6 @@ common_StoreData64(struct rx_call *acall, struct AFSFid *Fid,
     afs_sfsize_t bytesToXfer;	/* # bytes to xfer */
     afs_sfsize_t bytesXferred;	/* # bytes actually xfer */
     static afs_int32 tot_bytesXferred;	/* shared access protected by FS_LOCK */
-    afs_sfsize_t bytesTransfered;	/* number of bytes actually transfered */
-    struct timeval StartTime, StopTime;	/* Used to measure how long the store takes */
     FT_GetTimeOfDay(&opStartTime, 0);
 #endif /* FS_STATS_DETAILED */
 
@@ -5038,7 +5016,7 @@ SRXAFS_InverseLookup (struct rx_call *acall, struct AFSFid *Fid,
             Fid->Volume, Fid->Vnode, Fid->Unique, parent));
 /*  AFSCallStats.Lookup++, AFSCallStats.TotalCalls++; */
     *nextparent = 0;
-    if (errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost))
+    if ((errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
         goto Bad_InverseLookup;
 
     dirFid.Volume = Fid->Volume;
@@ -5064,9 +5042,9 @@ SRXAFS_InverseLookup (struct rx_call *acall, struct AFSFid *Fid,
     VPutVolume(volptr);
     volptr = (Volume *) 0;
 
-    if (errorCode = GetVolumePackage(acall, &dirFid, &volptr, &parentptr,
+    if ((errorCode = GetVolumePackage(acall, &dirFid, &volptr, &parentptr,
                                      MustBeDIR, &parentwhentargetnotdir,
-                                     &client, READ_LOCK, &rights, &anyrights))
+                                      &client, READ_LOCK, &rights, &anyrights)))
         goto Bad_InverseLookup;
 
     if ((VanillaUser(client)) && (!(rights & PRSFS_READ))) {
@@ -7672,12 +7650,12 @@ SRXAFS_Lookup(struct rx_call * acall, struct AFSFid * afs_dfid_p,
                 afs_name_p, afs_dfid_p->Volume, afs_dfid_p->Vnode,
                 afs_dfid_p->Unique));
 /*  AFSCallStats.Lookup++, AFSCallStats.TotalCalls++; */
-    if (errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost))
+    if ((errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
         goto Bad_Lookup;
 
-    if (errorCode = GetVolumePackage(acall, afs_dfid_p, &volptr, &parentptr,
+    if ((errorCode = GetVolumePackage(acall, afs_dfid_p, &volptr, &parentptr,
                                      MustBeDIR, &parentwhentargetnotdir,
-                                     &client, READ_LOCK,&rights, &anyrights))
+                                     &client, READ_LOCK,&rights, &anyrights)))
         goto Bad_Lookup;
 
     /* set volume synchronization information */
@@ -7687,12 +7665,12 @@ SRXAFS_Lookup(struct rx_call * acall, struct AFSFid * afs_dfid_p,
     dirInUse = 1;
 
     afs_fid_p->Volume = afs_dfid_p->Volume;
-    if (errorCode = Lookup(&dir, afs_name_p, afs_fid_p))
+    if ((errorCode = Lookup(&dir, afs_name_p, afs_fid_p)))
         goto Bad_Lookup;
 
-    if (errorCode = GetVolumePackage(acall, afs_fid_p, &volptr, &targetptr,
+    if ((errorCode = GetVolumePackage(acall, afs_fid_p, &volptr, &targetptr,
                                      DONTCHECK, &parentwhentargetnotdir,
-                                     &client, READ_LOCK, &rights, &anyrights))
+                                      &client, READ_LOCK, &rights, &anyrights)))
         goto Bad_Lookup;
 
     /* set up the return status for the parent dir and the Fid we found */
@@ -8443,7 +8421,6 @@ FetchData_RXStyle(Volume * volptr, Vnode * targetptr,
     )
 {
     struct timeval StartTime, StopTime;	/* used to calculate file  transfer rates */
-    IHandle_t *ihP;
     FdHandle_t *fdP;
 #ifndef HAVE_PIOV
     char *tbuffer;
@@ -9034,16 +9011,16 @@ SRXAFS_StartAsyncFetch(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
         return errorCode;
     }
 
-    if (errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost))
+    if ((errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
 	goto bad;
 
-    if (errorCode = GetVolumePackage(acall, Fid, &volptr, &targetptr,
+    if ((errorCode = GetVolumePackage(acall, Fid, &volptr, &targetptr,
                                  MustNOTBeDIR, &parentwhentargetnotdir,
-                                 &client, READ_LOCK, &rights, &anyrights))
+                                     &client, READ_LOCK, &rights, &anyrights)))
 	goto bad;
 
-    if (errorCode = Check_PermissionRights(targetptr, client, rights,
-                        CHK_FETCHDATA, NULL))
+    if ((errorCode = Check_PermissionRights(targetptr, client, rights,
+                                            CHK_FETCHDATA, NULL)))
 	goto bad;
 
     GetStatus(targetptr, OutStatus, rights, anyrights, 0);
@@ -9119,8 +9096,6 @@ SRXAFS_ExtendAsyncFetch(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
     afs_int32 errorCode = RXGEN_OPCODE;
     Vnode *targetptr = 0;       /* pointer to input fid */
     Vnode *parentwhentargetnotdir = 0;  /* parent of Fid to get ACL */
-    Vnode tparentwhentargetnotdir;      /* parent vnode for GetStatus */
-    int fileCode = 0;           /* return code from vol package */
     Volume *volptr = 0;         /* pointer to the volume header */
     struct client *client = 0;  /* pointer to client structure */
     afs_int32 rights, anyrights;        /* rights for this and any user */
@@ -9216,17 +9191,17 @@ SRXAFS_StartAsyncStore(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
         return errorCode;
     }
 
-    if (errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost))
+    if ((errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
 	goto bad;
 
-    if (errorCode = GetVolumePackage(acall, Fid, &volptr, &targetptr,
+    if ((errorCode = GetVolumePackage(acall, Fid, &volptr, &targetptr,
                                  MustNOTBeDIR, &parentwhentargetnotdir,
-                                 &client, WRITE_LOCK, &rights, &anyrights))
+                                 &client, WRITE_LOCK, &rights, &anyrights)))
 	goto bad;
 
     memset(&InStatus, 0, sizeof(InStatus));
-    if (errorCode = Check_PermissionRights(targetptr, client, rights,
-                        CHK_STOREDATA, &InStatus))
+   if ((errorCode = Check_PermissionRights(targetptr, client, rights,
+                                 CHK_STOREDATA, &InStatus)))
 	goto bad;
 
     GetStatus(targetptr, OutStatus, rights, anyrights, 0);
@@ -9483,7 +9458,7 @@ Bad_EndAsyncStore:
 afs_int32
 SRXAFS_Threads(struct rx_call *acall, struct activecallList *list)
 {
-    Error errorCode = 0, i, j;
+    Error i, j;
     SETTHREADACTIVE(acall, 65550, (AFSFid *)0);
 
     list->activecallList_len = 0;
@@ -9514,7 +9489,7 @@ SRXAFS_Statistic(struct rx_call *acall, afs_int32 reset, afs_uint32* since,
 			viced_statList *l, struct viced_kbps *kbpsrcvd,
 			struct viced_kbps *kbpssent)
 {
-    Error errorCode = 0, i, j;
+    Error errorCode = 0, i;
     static struct afsconf_dir *tdir = 0;
 
     SETTHREADACTIVE(acall, 65566, (AFSFid *)0);

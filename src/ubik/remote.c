@@ -821,8 +821,6 @@ SDISK_UpdateInterfaceAddr(struct rx_call *rxcall,
     afs_uint32 remoteAddr;	/* in net byte order */
     int i, j, found = 0, probableMatch = 0;
     char hoststr[16];
-    char ipstr[32];
-    char *msg;
 
     /* copy the output parameters */
     for (i = 0; i < UBIK_MAX_INTERFACE_ADDR; i++)

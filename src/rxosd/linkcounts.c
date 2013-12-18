@@ -87,7 +87,7 @@ Display(struct cmd_syndesc *as, void *arock)
     int bless, unbless, nofssync;
     int volumeId;
     int lun = 0;
-    lb64_string_t V1, V2, AA, BB, N;
+    lb64_string_t V1, V2, N;
     afs_uint64 tmp;
     char path[256];
     char partition[12] = "vicepa";

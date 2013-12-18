@@ -503,6 +503,7 @@ Shutdown(struct cmd_syndesc *as, void *arock)
     return 0;
 }
 
+#if 0
 static int
 BlockScannerCmd(struct cmd_syndesc *as, void *arock)
 {
@@ -534,6 +535,7 @@ UnBlockScannerCmd(struct cmd_syndesc *as, void *arock)
 	     em(code));
     return 0;
 }
+#endif
 
 static int
 GetRestartCmd(struct cmd_syndesc *as, void *arock)
@@ -1135,7 +1137,6 @@ DoSalvage(struct rx_connection * aconn, char * aparm1, char * aparm2,
     FILE *outFile;
     int closeIt;
     char partName[20];		/* canonical name for partition */
-    char pbuffer[PARMBUFFERSSIZE];
     afs_int32 partNumber;
     char *notifier = NONOTIFIER;
 
@@ -1398,12 +1399,12 @@ static int
 SalvageCmd(struct cmd_syndesc *as, void *arock)
 {
     struct rx_connection *tconn;
-    afs_int32 code, rc, i;
+    afs_int32 code, rc;
     char *outName;
     char tname[BOZO_BSSIZE];
     afs_int32 newID;
     extern struct ubik_client *cstruct;
-    afs_int32 curGoal, showlog = 0, dafs = 0, mrafs = 0;
+    afs_int32 curGoal, showlog = 0, dafs = 0;
     char *parallel;
     char *tmpDir;
     char *orphans;

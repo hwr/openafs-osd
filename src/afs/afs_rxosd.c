@@ -256,7 +256,7 @@ getRxosdConn(struct rxosd_Variables *v, struct osd_obj *o,
     return code;
 }
 
-
+#if 0
 static afs_int32
 check_for_vicep_access(struct rxosd_Variables *v, int writing, afs_uint32 *osd_id)
 {
@@ -315,6 +315,7 @@ check_for_vicep_access(struct rxosd_Variables *v, int writing, afs_uint32 *osd_i
 #endif
     return code;
 }
+#endif
 	    
 afs_int32
 rxosd_Destroy(void **r, afs_int32 error)
@@ -1169,7 +1170,6 @@ rxosd_storeInit(struct vcache *avc, struct afs_conn *tc,
     struct rxosd_Variables *v;
     afs_int32 waitcount = 0;
     afs_int32 startTime;
-    afs_uint32 osd_id;
     struct RWparm p;
 #ifdef NEW_OSD_FILE
     afs_int32 listType = 1;
@@ -2113,7 +2113,6 @@ rxosd_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
     struct osd_segm *segm = 0;
     afs_int32 waitcount = 0;
     afs_int32 startTime;
-    afs_uint32 osd_id;
 #if defined(AFS_CACHE_BYPASS) && defined(AFS_LINUX24_ENV)
     struct nocache_read_request *bparms;
 

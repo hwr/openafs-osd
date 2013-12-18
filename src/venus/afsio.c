@@ -150,13 +150,12 @@ struct cellLookup * FindCell(char *cellName);
 
 char pnp[255];
 int rxInitDone = 0;
-static afs_int32 rx_mtu = -1;
 static int verbose = 0;		/* Set if -verbose option given */
 static int rxstats = 0;		/* Set if -rxstats option given */
 static int CBServiceNeeded = 0;
 static struct timeval starttime, opentime, readtime, writetime;
 afs_uint64 xfered=0, oldxfered=0;
-static struct timeval now, before, after;
+static struct timeval now, after;
 struct timezone Timezone;
 static float seconds, datarate, oldseconds;
 #ifdef AFS_NT40_ENV
@@ -637,8 +636,6 @@ afs_int32
 SRXAFSCB_TellMeAboutYourself(struct rx_call *a_call, struct interfaceAddr *
                              addr, Capabilities *capabilities)
 {
-    int code;
-
 #ifdef AFS_NT40_ENV
     int cm_noIPAddr;                        /* number of client network interfaces */
     int cm_IPAddr[CM_MAXINTERFACE_ADDR];    /* client's IP address in host order */
@@ -1064,7 +1061,7 @@ osd_io(struct osd_file *file, afs_uint64 offset, afs_int64 length,
     afs_uint64 striperesid[8];
     afs_uint64 XferLength;
     afs_uint32 fullstripes, initiallength;
-    afs_int32 i, j, k, l, m, n, code, usenext, count, metadatachanged = 0;
+    afs_int32 i, j, k, l, m, code, usenext, count;
     char *buffer = 0;
     afs_uint32 bsize, tlen;
     int storing = buf ? 1 : 0;
@@ -1285,7 +1282,6 @@ osd_io(struct osd_file *file, afs_uint64 offset, afs_int64 length,
         /* Now we can start the data transfer for this segment */
         b = (char *) buffer;
         while (XferLength) {
-            char  *tmprock;
             afs_uint32 ll;
             if (initiallength) {
                 tlen = initiallength;
@@ -1302,8 +1298,9 @@ osd_io(struct osd_file *file, afs_uint64 offset, afs_int64 length,
     	    	    gettimeofday(&now, &Timezone);
 	       	    if (now.tv_sec > expires) {
 			if (verbose)
-			    fprintf(stderr, "extend async store, %d seconds over %d\n",
-				now.tv_sec - expires, expires);
+			    fprintf(stderr, "extend async store, %lld seconds over %lld\n",
+                                    (long long int)(now.tv_sec - expires),
+                                    (long long int)expires);
 			code = RXAFS_ExtendAsyncStore(RXConn, Fid, transid, 
 							&expires);
 			if (code) {
@@ -1357,8 +1354,9 @@ osd_io(struct osd_file *file, afs_uint64 offset, afs_int64 length,
     	    	    gettimeofday(&now, &Timezone);
 	       	    if (now.tv_sec > expires) {
 		        if (verbose)
-			fprintf(stderr, "extend async fetch, %d seconds over %d\n",
-				now.tv_sec - expires, expires);
+			fprintf(stderr, "extend async fetch, %lld seconds over %lld\n",
+				(long long int)(now.tv_sec - expires),
+                                (long long int)expires);
 			code = RXAFS_ExtendAsyncFetch(RXConn, Fid, transid, 
 							&expires);
 			if (code) {
@@ -1495,7 +1493,6 @@ readAFSFile(AFSFid *Fid, afs_int32 *hosts, afs_int32 fd,
     afs_int64 Pos;
     afs_int32 len;
     afs_int64 length, Len;
-    u_char vnode = 0;
     u_char first = 1;
     int bytes;
     int worstCode = 0;
@@ -1785,24 +1782,8 @@ readFile(struct cmd_syndesc *as, void *unused)
     afs_int32 code;
     afs_int32 hosts[MAXHOSTS];
     AFSFid Fid;
-    int j;
-    struct rx_connection *RXConn;
-    struct cellLookup *cl;
-    struct rx_call *tcall;
-    struct AFSVolSync tsync;
     struct AFSFetchStatus OutStatus;
-    struct AFSCallBack CallBack;
-    afs_int64 Pos;
-    afs_int32 len;
-    afs_int64 length, Len;
     u_char vnode = 0;
-    u_char first = 1;
-    int bytes, fd;
-    int worstCode = 0;
-    char *buf = 0;
-    int bufflen = BUFFLEN;
-    char answer[16];
-    struct async a;
 #define async_list a.async_u.l
 
 #ifdef AFS_NT40_ENV
@@ -2291,24 +2272,8 @@ copyFile(struct cmd_syndesc *as, void *unused)
     char *cell = 0;
     afs_int32 hosts[MAXHOSTS];
     AFSFid Fid;
-    int i, j;
-    struct rx_connection *RXConn;
-    struct cellLookup *cl;
-    struct rx_call *tcall;
-    struct AFSVolSync tsync;
     struct AFSFetchStatus OutStatus;
-    struct AFSCallBack CallBack;
-    afs_int64 Pos;
-    afs_int32 len;
-    afs_int64 length, Len;
-    u_char vnode = 0;
-    u_char first = 1;
-    u_char fromlocal = 0;
-    u_char tolocal = 0;
     int bytes, fd;
-    int worstCode = 0;
-    char *buf = 0;
-    int bufflen = BUFFLEN;
     char answer[16];
     struct afs_stat statusfrom, statusto;
 

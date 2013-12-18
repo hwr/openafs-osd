@@ -400,7 +400,7 @@ ubik_ServerInitCommon(afs_uint32 myHost, short myPort, afs_int32 index,
 		      struct ubik_dbase **dbase)
 {
     struct ubik_dbase *tdb;
-    afs_int32 code, i;
+    afs_int32 code;
 #ifdef AFS_PTHREAD_ENV
     pthread_t rxServerThread;        /* pthread variables */
     pthread_t ubeacon_InteractThread;

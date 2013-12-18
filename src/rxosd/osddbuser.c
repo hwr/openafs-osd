@@ -229,7 +229,6 @@ void free_regexes(pol_cond *condition)
 void free_policy(struct osddb_policy *policy)
 {
     int r;
-    afs_int32 code;
     XDR xdr;
     for ( r = 0 ; r < policy->rules.pol_ruleList_len ; r++ )
 	free_regexes(&policy->rules.pol_ruleList_val[r].condition);
@@ -240,7 +239,6 @@ void free_policy(struct osddb_policy *policy)
 
 void free_pol_info(struct pol_info *info)
 {
-    int i;
     if (info == NULL)
 	return;
     free_pol_info(info->next);
@@ -272,8 +270,8 @@ void annotate_condition(struct pol_info *info, pol_cond *cond)
 		    tmp += strlen(tmp) + 1;
 		    flags = REG_EXTENDED 
 		    		| (pred.type & PREDFLAG_ICASE ? REG_ICASE : 0); 
-		    if ( code = regcomp(
-				(regex_t*)tmp, pred.pol_pred_u.regex, flags) ) {
+		    if (( code = regcomp(
+                                  (regex_t*)tmp, pred.pol_pred_u.regex, flags) )) {
 			ViceLog(0, ("regex compile failed for /%s/: %d\n",
 						pred.pol_pred_u.regex, code)); 
 		    }
@@ -299,7 +297,7 @@ void annotate_condition(struct pol_info *info, pol_cond *cond)
 struct pol_info *make_pol_info(osddb_policy *pol, afs_uint32 id, char *name,
 				struct pol_info *dest)
 {
-    int r, p;
+    int r;
 
     if ( !dest ) { /* osd calls without allocating space */
 	dest = malloc(sizeof(struct pol_info));
@@ -327,7 +325,7 @@ void buildPolicyIndex(struct OsdList *l)
 {
     static int initialized = 0;
     static struct pol_info *new_index[POLINDEX_LEN];
-    int i, r, code, changes = 1, passes;
+    int i, r, changes = 1, passes;
     if ( !l ) return;
 
     memset(&new_index, 0, sizeof(new_index));
@@ -339,7 +337,6 @@ void buildPolicyIndex(struct OsdList *l)
 	osddb_policy pol = entry.t.etype_u.pol;
 	int index = entry.id % POLINDEX_LEN;
 	struct pol_info *parent, *current;
-	int uses_file_size = 0, uses_file_name = 0;
 
 	if ( new_index[index] != NULL ) {
 	    parent = new_index[index];
@@ -366,7 +363,7 @@ void buildPolicyIndex(struct OsdList *l)
 	for ( i = 0 ; i < l->OsdList_len ; i++ ) {
 	    struct Osd entry = l->OsdList_val[i];
 	    osddb_policy pol = entry.t.etype_u.pol;
-	    int index = entry.id % POLINDEX_LEN, used_index;
+	    int index = entry.id % POLINDEX_LEN;
 	    struct pol_info *used = NULL, *me = NULL;
 
 	    me = new_index[index];
@@ -424,7 +421,7 @@ void buildPolicyIndex(struct OsdList *l)
     OSDDB_UNLOCK;
 }
 
-void FillPolicyTable()
+void FillPolicyTable(void)
 {
     struct OsdList l;
     afs_int32 code;
@@ -465,11 +462,9 @@ void FillPolicyTable()
 }
 
 void
-FillOsdTable()
+FillOsdTable(void)
 {
-    FILE *fp;
-    int i, j, k, f, ip0, ip1, ip2, ip3;
-    afs_uint32 tableSize = 0;
+    int i;
     char line[64];
     struct hostent *he;
     struct OsdList l;
@@ -766,7 +761,7 @@ init_pol_statList(struct osd_infoList *list)
 }
 
 afs_uint64
-get_max_move_osd_size()
+get_max_move_osd_size(void)
 {
     static afs_uint64 value = 1024*1024;
     int i;
@@ -822,7 +817,7 @@ DoFindOsd(afs_uint64 size, afs_uint32 *osd, afs_uint32 *lun,
         afs_uint32 stripes, afs_uint32 archival, int useSize,
 	afs_uint32 *avoid, afs_int32 navoid)
 {
-    afs_int32 i, j, k, imax, needed, pass;
+    afs_int32 i, j, imax, needed, pass;
     afs_uint32 skip[16];
     afs_int32 nskip = 0;
     afs_int64 tsize;
@@ -981,12 +976,14 @@ FindOsdBySize(afs_uint64 size, afs_uint32 *osd, afs_uint32 *lun,
     return DoFindOsd(size, osd, lun, stripes, archival, 1, NULL, 0);
 }
 
+afs_int32
 FindAnyOsd(afs_uint32 *osd, afs_uint32 *lun,
 	afs_uint32 stripes, afs_uint32 archival)
 {
     return DoFindOsd((afs_uint64)0, osd, lun, stripes, archival, 0, NULL, 0);
 }
 
+afs_int32
 FindOsdBySizeAvoid(afs_uint64 size, afs_uint32 *osd, afs_uint32 *lun,
         afs_uint32 nosds, afs_uint32 *avoid, afs_int32 navoid)
 {
@@ -1118,7 +1115,7 @@ policy_uses_file_name(afs_int32 policyIndex)
     if ( policyIndex < 2 )
 	return 0;
     OSDDB_LOCK;
-    if ( entry = get_pol_info(policyIndex) )
+    if (( entry = get_pol_info(policyIndex) ))
 	result = entry->uses_file_name;
     OSDDB_UNLOCK;
     return result;
@@ -1467,6 +1464,7 @@ eval_condtree(pol_cond *cond, afs_uint64 size, char *fileName,
 	}
 	return *result;
     }
+    return EINVAL; /* ? we should return something here ... */
 }
 
 #define UPDATE(P, M) if ( P(rule.properties) ) *props = ( *props & ~M ) | (rule.properties & M)
@@ -1530,14 +1528,12 @@ eval_policy(unsigned int policyIndex, afs_uint64 size, char *fileName,
 	afs_uint32 *force)
 {
     afs_uint32 tcode = 0;
-    struct pol_info *policy;
     /* stripes=1, copies=1, stripe_size=12, location=dynamic */
     afs_uint32 props = 
     	*force << 20 | *copies << 16 | *stripe_size << 8 | *stripes << 4 |
 	(*use_osd ? POL_LOC_OSD 
 		  : *dyn_location ? POL_LOC_DYNAMIC
 		  : POL_LOC_LOCAL);
-    int r;
 
 #ifdef AFS_PTHREAD_ENV
     OSDDB_POL_LOCK;

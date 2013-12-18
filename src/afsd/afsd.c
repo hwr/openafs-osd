@@ -1636,17 +1636,15 @@ BkgHandler(void)
 #endif
 
 static void
-FindFileserverPartitions()
+FindFileserverPartitions(void)
 {
-    afs_int32 fd, nentries, i;
+    afs_int32 fd;
     struct versionStamp {
 	afs_uint32 magic;
 	afs_uint32 version;
     } vsn;
     char filename[32];
     char symlink[256];
-    afs_int32 uniquifier;
-    afsUUID uuid;
     DIR *cdirp;                 /*Ptr to cache directory structure */
 #ifdef AFS_SGI62_ENV
     struct dirent64 *currp;     /*Current directory entry */

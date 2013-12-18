@@ -2359,13 +2359,13 @@ SalvageVolumeHeaderFile(struct SalvInfo *salvinfo, struct InodeSummary *isp,
 			osdvol = osdvolsave;
 			code = 0;
 		    } else {
+#ifdef AFS_PTHREAD_ENV
         	        struct init_salv_inputs input = {
 			    &vol_data_v0
         	        };
         	        struct init_salv_outputs output = {
             		    &osdvol
         	        };
-#ifdef AFS_PTHREAD_ENV
 		        code = load_libafsosd("init_salv_afsosd", (void *)&input,
 			 		  (void *)&output);
 #else

@@ -803,12 +803,10 @@ S_output(char *infile, char *define, int extend, char *outfile, int append)
 static void
 t_output(char *infile, int extend, char *outfile, int append)
 {
-    char *include;
     char *outfilename;
     char fullname[1024];
     definition *def;
     long tell;
-    char *currfile = (OutFileFlag ? OutFile : infile);
 
     put_directives = 0;
 
@@ -824,7 +822,7 @@ t_output(char *infile, int extend, char *outfile, int append)
 
     tell = ftell(fout);
     fflush(fout);
-    while (def = get_definition()) {
+    while ((def = get_definition())) {
         if ( def->def_kind != DEF_PROC )
             continue;
         fflush(fout);

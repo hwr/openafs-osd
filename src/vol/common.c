@@ -76,7 +76,8 @@ afs_uint32 KBpsSent[96];
 afs_int64 lastRcvd = 0;
 afs_int64 lastSent = 0;
 
-void TransferRate()
+void
+TransferRate(void)
 {
     unsigned int now;                   /* FT_ApproxTime() returns a value of type 'unsigned int' not 'time_t' */
     static unsigned int last = 0;

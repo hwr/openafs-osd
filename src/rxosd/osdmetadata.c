@@ -106,10 +106,8 @@ printentry(afs_int32 fd, afs_int32 index, afs_uint32 entrylength)
     struct osd_p_fileList mylist, *list;
     struct osdMetadaEntry *entry = (struct osdMetadaEntry *)dummyentry;
     struct osdMetadataHandle *mh;
-    afs_uint32 version;
     afs_uint64 offset;
-    int code, bytes, i, j, k;
-    XDR xdr;
+    int code, bytes, i;
 
     list = &mylist;
     list->osd_p_fileList_len = 0;
@@ -135,29 +133,17 @@ printentry(afs_int32 fd, afs_int32 index, afs_uint32 entrylength)
 static int
 handleit(struct cmd_syndesc *as, void *unused)
 {
-    Volume *vp;
-    Error ec;
-    int bless, unbless, nofssync;
     int volumeId, rwid;
     int lun = 0;
-    lb64_string_t V1, V2, AA, BB, N;
+    lb64_string_t V1, V2, N;
     afs_uint64 tmp;
     char path[256];
     char partition[12] = "vicepa";
-    int length, shift, mask, maxindex;
-    int col;
-    int coldata;
-    unsigned short shortrow = 0;
-    afs_uint32 row = 0;
     int code;
     int version = 0;
     int magic = 0;
     int fd, bytes;
-    int num, count;
     int vnodes = 0;
-    int highest = 0;
-    int highesttag = 0;
-    int highestcount = 0;
     struct osdMetadaEntry *entry = (struct osdMetadaEntry*)buf;
     afs_uint32 entrylength = MAXOSDMETADATAENTRYLEN;
     byte *bp, *ep;

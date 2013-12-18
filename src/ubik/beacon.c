@@ -352,7 +352,7 @@ ubeacon_Interact(void *dummy)
     struct timeval tt;
     struct rx_connection *connections[MAXSERVERS];
     struct ubik_server *servers[MAXSERVERS];
-    afs_int32 i, j, k, l;
+    afs_int32 i, k, l;
     struct ubik_server *ts;
     afs_int32 temp, yesVotes, lastWakeupTime, oldestYesVote, syncsite;
     struct ubik_db_stateList list;

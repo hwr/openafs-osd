@@ -64,7 +64,7 @@ struct osd_vol_ops_v0 {
     void (*op_purge_add_to_list) (struct Volume *vp, struct VnodeDiskObject *vnode,
 				  afs_int32 vN, void **rock);
     void (*op_purge_clean_up) (void **rock);
-    void (*op_osd_5min_check) ();
+    void (*op_osd_5min_check) (void);
     int (*op_actual_length) (struct Volume *vol, struct VnodeDiskObject *vd,
 			     afs_uint32 vN, afs_uint64 *size);
     int (*op_remove) (struct Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN);

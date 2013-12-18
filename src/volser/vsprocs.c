@@ -7381,16 +7381,7 @@ UV_Traverse(afs_uint32 *server, afs_int32 vid, afs_uint32 nservers,
     afs_int32 code;
     struct sizerangeList localsrl, *srl;
     struct osd_infoList locallist, *list;
-    afs_uint64 max, min = 0;
-    int i, j, k, n;
-    char unit[8], minunit[8];
-    afs_uint32 totalfiles;
-    afs_uint64 totalbytes;
-    afs_uint64 runningbytes;
-    afs_uint32 runningfiles;
-    int highest = 0;
-    float bytes, percentfiles, percentdata, runpercfiles, runpercdata;
-    afs_uint64 maxsize = 4096;
+    int i, j, n;
     int policy_statistic = (tsrl == NULL);
     srl = &localsrl;
     list = &locallist;

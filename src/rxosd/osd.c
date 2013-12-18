@@ -188,6 +188,7 @@ fill_ometa(char *s)
     return code;
 }
 
+afs_int32
 fill_ometa_volume(char *s)
 {
     afs_int32 fields, code = 0;
@@ -210,11 +211,10 @@ fill_ometa_volume(char *s)
 }
 
 static void 
-scan_osd_or_host()
+scan_osd_or_host(void)
 {
-    char *p;
     afs_uint32 ip0, ip1, ip2, ip3;
-    afs_int32 code, fields, i, j, len;
+    afs_int32 code, fields, j, len;
     struct OsdList l;
 
     /* look for ip-address */
@@ -511,7 +511,7 @@ int psread_obj(struct cmd_syndesc *as, void *rock)
     struct timeval readtime;
     struct timeval starttime, lasttime;
     struct timezone timezone;
-    int sync = 1, i, j, k;
+    int i, k;
 
     int display = 0;
     float seconds, datarate;
@@ -1007,8 +1007,7 @@ int pswrite_obj(struct cmd_syndesc *as, void *rock)
     struct timeval writetime;
     struct timeval starttime, lasttime;
     struct timezone timezone;
-    int sync = 1, i, j, k;
-    int display = 0;
+    int i, j, k;
     float seconds, datarate;
     int fd =0, code, num, number = 0; 
     afs_uint32 count,l,ll;
@@ -1174,7 +1173,6 @@ int pswrite_obj(struct cmd_syndesc *as, void *rock)
 
     for (i=0; i<segm->nstripes; i++) {
 	struct RWparm p;
-	struct ometa out;
         if (Conn) {
 	    for (j=0; j<4; j++) {
 		if (Conn->call[j] && Conn->call[j]->state & RX_STATE_ACTIVE)
@@ -1293,8 +1291,7 @@ int write_obj(struct cmd_syndesc *as, void *rock)
     struct timeval writetime;
     struct timeval starttime, lasttime;
     struct timezone timezone;
-    int sync = 1, i;
-    int display = 0;
+    int i;
     float seconds, datarate;
     int fd =0, code, num, number = 0; 
     afs_uint32 count,l,ll;
@@ -1671,12 +1668,9 @@ int objects(struct cmd_syndesc *as, void *rock)
 static int 
 examine(struct cmd_syndesc *as, void *rock) 
 {
-    afs_uint64 size;
-    afs_uint32 high, vid, vnode, unique, tag, linkCount, time, atime;
-    afs_int32 status = 0;
-    afs_uint32 stripe, stripes, stripespower, stripesize, stripesizepower;
-    int code, i;
-    int dsmls = 0;
+    afs_uint32 high, vid, vnode, unique, tag, linkCount, time;
+    afs_uint32 stripe, stripes, stripespower, stripesize;
+    int code;
     afs_int32 mask = WANTS_SIZE | WANTS_LINKCOUNT | WANTS_MTIME;
     struct exam e;
 
@@ -1783,7 +1777,7 @@ examine(struct cmd_syndesc *as, void *rock)
 		    e.exam_u.e5.size, e.exam_u.e5.linkcount);
 	    if (mask & WANTS_HSM_STATUS) {
 		unsigned char uc = e.exam_u.e5.status;
-	        printf(" HSM status %s", uc);
+	        printf(" HSM status %d", uc);
 	    } else if (mask & WANTS_CTIME)
         	PrintTime(e.exam_u.e5.ctime);
 	    else if (mask & WANTS_ATIME)
@@ -1800,7 +1794,7 @@ examine(struct cmd_syndesc *as, void *rock)
     } else {
 #ifdef ALLOW_OLD
 	afs_uint64 part, oid, size;
-	afs_uint32 lc, time, atime, status;
+	afs_uint32 lc, time, status;
 	part = ((afs_uint64)Oprm.ometa_u.f.lun << 32) | Oprm.ometa_u.f.rwvol;
 	oid = (Oprm.ometa_u.f.unique << 32) | Oprm.ometa_u.f.vN
 					 | (Oprm.ometa_u.f.tag << 26);
@@ -1874,8 +1868,7 @@ examine(struct cmd_syndesc *as, void *rock)
 
 int md5sum(struct cmd_syndesc *as, void *rock) 
 {
-    afs_uint64 size;
-    afs_uint32 vid, vnode, unique, tag, linkCount, time;
+    afs_uint32 vid, vnode, unique, tag, linkCount;
     struct osd_md5 md5;
     struct osd_cksum cksum;
     int code;
@@ -2063,9 +2056,7 @@ bad:
 struct ubik_client *
 my_init_osddb_client(char *unused)
 {
-    afs_int32 code, scIndex = 0, i;
-    struct rx_securityClass *sc;
-    struct afsconf_cell info;
+    afs_int32 code;
     struct ubik_client *cstruct = 0;
     struct rx_connection *serverconns[MAXSERVERS];
 
@@ -2094,7 +2085,6 @@ ListOsds(struct cmd_syndesc *as, void *rock)
     int long_status = 0;
     int obsolete = 0;
     int hostname_maxlen = 0;
-    char hostnamepadding[256];
     char *unit[] = {"  ", "kb", "mb", "gb", "tb"};
 
     /* basic definition of output-table */
@@ -2119,7 +2109,6 @@ ListOsds(struct cmd_syndesc *as, void *rock)
     int current_osd_id,current_osd_index,index,customlayout=0;
     struct TableCell *aTableCell,*currentTableCell;
     struct Table *aTable;
-    int *CellWidth;
     int diff2next = 0xfffffff;
     char content[T_MAX_CELLCONTENT_LEN];
     int owner,location;
@@ -2369,8 +2358,8 @@ ListOsds(struct cmd_syndesc *as, void *rock)
 afs_int32 
 CreateOsd(struct cmd_syndesc *as, void *rock)
 {
-    afs_int32 code, i, j, k;
-    afs_uint64 id, size;
+    afs_int32 code, i;
+    afs_uint64 size;
     struct osddb_osd_tab *e = 0;
     char str[16];
     
@@ -2518,8 +2507,8 @@ CreateOsd(struct cmd_syndesc *as, void *rock)
 afs_int32 
 SetOsd(struct cmd_syndesc *as, void *rock)
 {
-    afs_int32 code, i, j, k;
-    afs_uint64 id, size;
+    afs_int32 code, i;
+    afs_uint64 size;
     struct osddb_osd_tab u;
     char str[16];
     
@@ -2762,10 +2751,8 @@ SetOsd(struct cmd_syndesc *as, void *rock)
 afs_int32 
 DeleteOsd(struct cmd_syndesc *as, void *rock)
 {
-    afs_int32 code, i, j, k;
-    afs_uint64 id, size;
+    afs_int32 code;
     struct osddb_osd_tab u;
-    char str[16];
     
     memset(&u, 0, sizeof(u));
     code = util_GetInt32(as->parms[0].items->data, &u.id);
@@ -2809,8 +2796,8 @@ DeleteOsd(struct cmd_syndesc *as, void *rock)
 afs_int32
 ShowOsd(struct cmd_syndesc *as, void *rock)
 {
-    afs_int32 code, i, j, k;
-    afs_uint32 id, ip = 0, flags, all = 0;
+    afs_int32 code, i;
+    afs_uint32 id, ip = 0, all = 0;
     afs_uint32 loc[2] = {0, 0};
     struct OsdList l;
     char string[256];
@@ -2938,10 +2925,8 @@ ShowOsd(struct cmd_syndesc *as, void *rock)
 afs_int32 
 AddServer(struct cmd_syndesc *as, void *rock)
 {
-    afs_int32 code, i, j, k;
-    afs_uint64 id, size;
+    afs_int32 code;
     struct osddb_server_tab *e = 0;
-    char str[16];
     
     e = (struct osddb_server_tab *) malloc(sizeof(struct osddb_server_tab));
     memset(e, 0, sizeof(struct osddb_server_tab));
@@ -3000,9 +2985,7 @@ AddServer(struct cmd_syndesc *as, void *rock)
 afs_int32 
 DeleteServer(struct cmd_syndesc *as, void *rock)
 {
-    afs_int32 code, i, j, k;
-    char str[16];
-    afs_uint32 id = 0;
+    afs_int32 code;
     struct osddb_server_tab *e = 0;
     char c;
     
@@ -3042,11 +3025,10 @@ DeleteServer(struct cmd_syndesc *as, void *rock)
 afs_int32
 ShowServer(struct cmd_syndesc *as, void *rock)
 {
-    afs_int32 code, i, j, k;
-    afs_uint32 id, ip = 0, flags, all = 1;
+    afs_int32 code, i;
+    afs_uint32 ip = 0, all = 1;
     afs_uint32 loc[2] = {0, 0};
     struct OsdList l;
-    char string[32];
     char *name = 0;
     
     l.OsdList_len = 0;
@@ -3156,7 +3138,7 @@ printfetchq(struct FetchEntryList *q, struct Osd *o)
             case SET_FILE_READY:
                 printf("Xfer to server\n");
                 break;
-            deafult:
+            default:
                 printf("unknown\n");
             }
 	}
@@ -3204,7 +3186,7 @@ printfetchq0(struct FetchEntry0List *q, struct Osd *o)
             case SET_FILE_READY:
                 printf("Xfer to server\n");
                 break;
-            deafult:
+            default:
                 printf("unknown\n");
             }
 	}
@@ -3214,10 +3196,8 @@ printfetchq0(struct FetchEntry0List *q, struct Osd *o)
 afs_int32
 Fetchq(struct cmd_syndesc *as, void *rock)
 {
-    afs_int32 code, i, j, k;
-    afs_uint64 max;
+    afs_int32 code, i;
     struct OsdList l;
-    char hostname[24];
     struct FetchEntryList q;
  
     if (as->parms[0].items) 
@@ -3260,7 +3240,6 @@ Fetchq(struct cmd_syndesc *as, void *rock)
 		    printf("Archival osd %s is presently down\n",
 			l.OsdList_val[i].name);
 		else {
-		    int j = l.OsdList_val[i].t.etype_u.osd.ip;
 		    Host = htonl(l.OsdList_val[i].t.etype_u.osd.ip);
         	    GetConnection();
 		    q.FetchEntryList_len = 0;
@@ -3291,7 +3270,7 @@ Fetchq(struct cmd_syndesc *as, void *rock)
 afs_int32
 WipeCand(struct cmd_syndesc *as, void *rock)
 {
-    afs_int32 code, i, j, k;
+    afs_int32 code, i;
     afs_uint32 criteria = 0, max = 100, minMB = 0, spare = 0;
     afs_int32 atimeSeconds = 0;
     struct WipeCandidateList q;
@@ -3434,7 +3413,7 @@ WipeCand(struct cmd_syndesc *as, void *rock)
 afs_int32
 Threads(struct cmd_syndesc *as, void *rock)
 {
-    afs_int32 code, i, j;
+    afs_int32 code, i;
     struct activerpcList l;
 #ifdef ALLOW_OLD
     struct activerpc0List l0;
@@ -3607,7 +3586,7 @@ char *quarters[96] = {
 afs_int32
 Statistic(struct cmd_syndesc *as, void *rock)
 {
-    afs_int32 code, i, j;
+    afs_int32 code, i;
     afs_int32 reset = 0;
     rxosd_statList l;
     afs_uint64 received, sent, t64;
@@ -3703,7 +3682,7 @@ Statistic(struct cmd_syndesc *as, void *rock)
 afs_int32
 OsddbStatistic(struct cmd_syndesc *as, void *rock)
 {
-    afs_int32 code, i, j;
+    afs_int32 code, i;
     afs_int32 reset = 0;
     osddb_statList l;
     afs_uint32 since;
@@ -3752,10 +3731,9 @@ OsddbStatistic(struct cmd_syndesc *as, void *rock)
 afs_int32
 AddPolicy(struct cmd_syndesc *as, void *rock)
 {
-    int i,j;
+    int i;
     afs_uint32 code;
-    afs_uint32 id, force, use_osd = 0, local = 0, stripes = 0,
-    	log2size = 0, copies = 0, minKB, suflen;
+    afs_uint32 id;
     char name[OSDDB_MAXNAMELEN];
 							/* -id */
     if ( code = util_GetInt32(as->parms[0].items->data, &id) ) {
@@ -3780,7 +3758,7 @@ AddPolicy(struct cmd_syndesc *as, void *rock)
 
     pp_input = as->parms[2].items->data;
     /* call the generated parser from policy_parser.c */
-    if ( code = yyparse() ) {
+    if (( code = yyparse() )) {
 	if ( code == 1 ) { /* parser said invalid input */
 	    return EINVAL;
 	}
@@ -3798,8 +3776,8 @@ AddPolicy(struct cmd_syndesc *as, void *rock)
     }
 
     for ( i = 0 ; i < pp_output->pol_ruleList_len ; i++ )
-	if ( consider_policy_properties(
-	    		id, i, pp_output->pol_ruleList_val[i], 1) ) {
+        if (( consider_policy_properties(
+                      id, i, pp_output->pol_ruleList_val[i], 1) )) {
 	    fprintf(stderr, "invalid policy, bailing out.\n");
 	    code = EINVAL;
 	    goto badAddPolicy;
@@ -3852,11 +3830,9 @@ badAddPolicy:
 afs_int32
 ShowPolicy(struct cmd_syndesc *as, void *rock)
 {
-    afs_int32 code, i, j, k;
-    afs_uint32 id, ip = 0, flags, all = 1;
-    afs_uint32 loc[2] = {0, 0};
+    afs_int32 code, i;
+    afs_uint32 id;
     struct OsdList l;
-    char *name = 0;
     int format = POL_OUTPUT_CRYPTIC, unroll = 0;
 
     if (as->parms[5].items) 			/* -cell */
@@ -3882,7 +3858,7 @@ ShowPolicy(struct cmd_syndesc *as, void *rock)
 	    }
 	} 
 	else
-	    if ( code = util_GetInt32(as->parms[0].items->data, &id) ) {
+            if (( code = util_GetInt32(as->parms[0].items->data, &id) )) {
 	    fprintf(stderr, "invalid id: %s\n", as->parms[0].items->data);
 	    return code;
 	}
@@ -3929,9 +3905,7 @@ ShowPolicy(struct cmd_syndesc *as, void *rock)
 afs_int32 
 DeletePolicy(struct cmd_syndesc *as, void *rock)
 {
-    afs_int32 code, i, j, k;
-    char str[16];
-    struct osddb_policy_tab *e = 0;
+    afs_int32 code;
     afs_uint32 id;
     
     if (as->parms[1].items)		/* -cell */ 
@@ -3957,7 +3931,7 @@ DeletePolicy(struct cmd_syndesc *as, void *rock)
 	    return code;
 	}
     }
-    else if ( code = util_GetInt32(as->parms[0].items->data, &id) ) {
+    else if (( code = util_GetInt32(as->parms[0].items->data, &id) )) {
 	fprintf(stderr, "invalid id: %s\n", as->parms[0].items->data);
 	return code;
     }
@@ -4098,7 +4072,7 @@ relinkCmd(struct cmd_syndesc *as, void *rock)
 afs_int32
 inventoryCmd(struct cmd_syndesc *as, void *rock)
 {
-    afs_int32 code, fields;
+    afs_int32 code;
     afs_int32 i, flag = 0;
     struct ometa o;
     struct rx_call *call;
@@ -4111,7 +4085,6 @@ inventoryCmd(struct cmd_syndesc *as, void *rock)
     afs_uint64 u64, unlinkedbytes = 0;
     afs_uint32 totalobjs = 0;
     afs_uint32 unlinkedobjs = 0;
-    afs_int32 type = 1;
     char *unit[6] = {"bytes", "KB", "MB", "GB", "TB", "PB"};
 
     thost = as->parms[0].items->data;
@@ -4148,7 +4121,7 @@ inventoryCmd(struct cmd_syndesc *as, void *rock)
 	    totalobjs++;
             sprintDate(date1, (afs_int64)inv1->mtime);
             sprintDate(date2, (afs_int64)inv1->atime);
-	    if (inv1->o.obj_id & RXOSD_VNODEMASK == (afs_uint64)RXOSD_VNODEMASK) {
+	    if ((inv1->o.obj_id & RXOSD_VNODEMASK) == (afs_uint64)RXOSD_VNODEMASK) {
 		afs_uint32 rwvol, unique, tag;
 		rwvol = (afs_uint32)(inv1->o.part_id & RXOSD_VOLIDMASK);
 		unique = (afs_uint32)(inv1->o.obj_id >> RXOSD_UNIQUESHIFT);
@@ -4262,7 +4235,7 @@ move_fetch(struct cmd_syndesc *as, void *rock)
    	return EINVAL;     
     }
     
-    steps = as->parms[2].items->data;
+    steps = *(afs_int32*)as->parms[2].items->data;
 
     if ( abs(steps) >  MAX_FETCHQUEUE_MOVE ) {
 	fprintf(stderr, "abs(num steps) %d too high\n",steps);
@@ -4330,7 +4303,7 @@ remove_fetch(struct cmd_syndesc *as, void *rock)
 }
 
 static
-int GetConnection()
+int GetConnection(void)
 {
     struct ktc_principal sname;
     struct ktc_token ttoken;

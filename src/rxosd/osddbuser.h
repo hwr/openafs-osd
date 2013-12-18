@@ -15,8 +15,8 @@ typedef struct OsdInfoList {
 
 extern struct ubik_client *osddb_client;
 
-extern void FillPolicyTable();
-extern void FillOsdTable();
+extern void FillPolicyTable(void);
+extern void FillOsdTable(void);
 extern afs_uint32 MinOsdWipeMB(afs_uint32 osd);
 extern afs_int32 fillRxEndpoint(afs_uint32 id, struct rx_endp *endp, afs_int32 *type,
 			        afs_int32 ignore);
@@ -29,7 +29,7 @@ extern afs_int32 FindOsdPort(afs_uint32 id, afs_uint32 *ip, afs_uint32 *lun,
 			     afs_int32 ignore, afs_uint32 *service, afs_uint32 *port);
 extern afs_int32 init_osd_infoList(struct osd_infoList *list);
 extern afs_int32 init_pol_statList(struct osd_infoList *list);
-extern afs_uint64 et_max_move_osd_size();
+extern afs_uint64 et_max_move_osd_size(void);
 extern afs_int32 FindOsdBySize(afs_uint64 size, afs_uint32 *osd, afs_uint32 *lun,
         		       afs_uint32 stripes, afs_uint32 archival);
 extern afs_int32 FindAnyOsd(afs_uint32 *osd, afs_uint32 *lun,

@@ -96,8 +96,6 @@ afs_TransitionToBypass(struct vcache *avc,
 		       afs_ucred_t *acred, int aflags)
 {
 
-    afs_int32 code;
-    struct vrequest treq;
     int setDesire = 0;
     int setManual = 0;
     int bypasscache = 0;

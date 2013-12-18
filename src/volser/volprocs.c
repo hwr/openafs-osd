@@ -3104,7 +3104,6 @@ SAFSVolConvertROtoRWvolume(struct rx_call *acid, afs_int32 partId,
         }
 	
 	if (volid == volumeId) {        /*copy other things too */
-	    afs_uint32 newId;
 #ifndef AFS_PTHREAD_ENV
             IOMGR_Poll();       /*make sure that the client doesnot time out */
 #endif

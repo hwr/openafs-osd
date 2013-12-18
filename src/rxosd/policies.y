@@ -100,7 +100,7 @@ struct pol_cond *make_neg(pol_cond *c) {
     return set_operand(make_node(POLCOND_NOT), c);
 }
 
-static struct pp_rule *makeRule() {
+static struct pp_rule *makeRule(void) {
     struct pp_rule *result = malloc(sizeof(struct pp_rule));
     memset(result, 0, sizeof(struct pp_rule));
     return result;

@@ -1167,7 +1167,6 @@ VGetVnode_r(Error * ec, Volume * vp, VnodeId vnodeNumber, int locktype)
     Vnode *vnp;
     VnodeClass class;
     struct VnodeClassInfo *vcp;
-    Inode ino;
 
     *ec = 0;
 
