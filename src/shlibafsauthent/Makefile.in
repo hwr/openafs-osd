@@ -34,6 +34,7 @@ PTSERVER = ../ptserver
 VOLSER = ../volser
 VLSERVER = ../vlserver
 SYS = ../sys
+RXOSD = ../rxosd
 
 AUDITOBJS = audit.o audit-file.o audit-sysvmq.o
 
@@ -111,7 +112,9 @@ VOLSEROBJS = \
 	lockprocs.o \
 	volint.xdr.o \
 	volint.cs.o \
-	volerr.o
+	volerr.o  \
+	volserosd.xdr.o \
+	volserosd.cs.o
 
 VLDBOBJS = \
 	vldbint.xdr.o \
@@ -313,6 +316,8 @@ ticket5_keytab.o: ${RXKAD}/ticket5_keytab.c
 ptclient.o: ${PTSERVER}/ptclient.c
 	${CCRULE}
 
+
+
 # The special treatment of this file for hp_ux110 is because of a bug
 # in version A.11.01.00 of the HP C compiler.  This bug appears to be
 # fixed in version A.11.01.02 of the HP C compiler, however this version
@@ -394,6 +399,12 @@ vldbint.cs.o: ../vlserver/vldbint.cs.c
 
 vl_errors.o: ../vlserver/vl_errors.c
 	$(CCRULE)
+
+volserosd.xdr.o: $(RXOSD)/volserosd.xdr.c
+	${CCRULE}
+
+volserosd.cs.o: $(RXOSD)/volserosd.cs.c
+	${CCRULE}
 
 et_name.o: ../comerr/et_name.c
 	$(CCRULE)
