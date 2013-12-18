@@ -80,6 +80,15 @@ static struct auth_ops_v0 *auth = NULL;
 #include <afs/volint.h>
 #include <afs/usd.h>
 
+#include <afs/sys_prototypes.h>
+#include <afs/com_err.h>
+#include <afs/vldbint.h>
+
+#include <afs/volser.h>
+#include "../volser/volser_internal.h"
+#include <afs/volser_prototypes.h>
+#include <afs/vsutils_prototypes.h>
+
 struct vldbentry;
 struct nvldbentry;
 struct ViceIoctl;
@@ -147,7 +156,7 @@ struct cmd_ops_v0 {
                            int (*secproc)(struct rx_securityClass *, afs_int32),
                            struct ubik_client **uclientp);
 #endif
-    int (*vsu_GetVolumeID) (char *astring, struct ubik_client *acstruct,
+    afs_uint32 (*vsu_GetVolumeID) (char *astring, struct ubik_client *acstruct,
                             afs_int32 *errp);
     int (*usd_Open) (const char *path, int oflag, int mode, usd_handle_t * usdP);
     int (*usd_StandardInput) (usd_handle_t * usdP);
@@ -468,9 +477,6 @@ fill_ops(struct ops_ptr *opsptr)
 #endif
 
 #ifdef BUILDING_CLIENT_COMMAND
-#include <afs/sys_prototypes.h>
-#include <afs/com_err.h>
-#include <afs/vldbint.h>
     cmd = &cmd_ops_v0;
     cmd->AssertionFailed = AssertionFailed;
     cmd->afs_error_message = afs_error_message;
@@ -484,19 +490,15 @@ fill_ops(struct ops_ptr *opsptr)
     cmd->rxkad_NewServerSecurityObject = rxkad_NewServerSecurityObject;
     cmd->VL_GetEntryByID = VL_GetEntryByID;
 #ifdef BUILDING_VOS
-#include <afs/volser.h>
-#include "../volser/volser_internal.h"
-#include <afs/volser_prototypes.h>
-#include <afs/vsutils_prototypes.h>
-extern int VLDB_GetEntryByID(afs_uint32 volid, afs_int32 voltype,
-                            struct nvldbentry *entryp);
-extern afs_uint32 GetServer(char *aname);
-extern struct rx_connection * UV_BindOsd(afs_uint32 aserver, afs_int32 port);
-extern int VolNameOK(char *name);
-extern int GetServerAndPart(struct nvldbentry *entry, int voltype, afs_uint32 *server,
-                 afs_int32 *part, int *previdx);
-extern int IsNumeric(char *name);
-extern int IsPartValid(afs_int32 partId, afs_uint32 server, afs_int32 *code);
+int VLDB_GetEntryByID(afs_uint32 volid, afs_int32 voltype,
+                      struct nvldbentry *entryp);
+afs_uint32 GetServer(char *aname);
+struct rx_connection * UV_BindOsd(afs_uint32 aserver, afs_int32 port);
+int VolNameOK(char *name);
+void GetServerAndPart(struct nvldbentry *entry, int voltype, afs_uint32 *server,
+                     afs_int32 *part, int *previdx);
+int IsNumeric(char *name);
+int IsPartValid(afs_int32 partId, afs_uint32 server, afs_int32 *code);
     cmd->GetServer = GetServer;
     cmd->GetServerAndPart = GetServerAndPart;
     cmd->init_volintInfo = init_volintInfo;
@@ -840,7 +842,7 @@ load_libcafsosd(char *initroutine, void *inrock, void *outrock)
 #endif /* BUILDING_CLIENT_COMMAND */
 
 void
-unload_lib()
+unload_lib(void)
 {
     dlclose(libHandle);
 }
@@ -1161,7 +1163,7 @@ vsu_ClientInit(const char *confDir, char *cellName, int secFlags,
 }
 #endif
 
-int
+afs_uint32
 vsu_GetVolumeID(char *astring, struct ubik_client *acstruct, afs_int32 *errp)
 {
     return (cmd->vsu_GetVolumeID)(astring, acstruct, errp);
