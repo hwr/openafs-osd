@@ -1592,7 +1592,7 @@ XferData(void *_f)
 	        RemoveFromFetchq(f);
         }
     } else {
-        ViceLog(0, ("Xfer: fetch entry for %u.%u.%u has bad desc list len %d, val 0x%x\n",
+        ViceLog(0, ("Xfer: fetch entry for %u.%u.%u has bad desc list len %d, val %p\n",
                 fid.Volume, fid.Vnode, fid.Unique, 
 		list.osd_segm_descList_len,
 		 list.osd_segm_descList_val));
