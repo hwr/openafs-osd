@@ -563,13 +563,15 @@ extern int ubik_ClientInit(struct rx_connection **serverconns,
 extern afs_int32 ubik_ClientDestroy(struct ubik_client *aclient);
 extern struct rx_connection *ubik_RefreshConn(struct rx_connection *tc);
 #ifdef UBIK_LEGACY_CALLITER
-extern afs_int32 ubik_CallIter(int (*aproc) (), struct ubik_client *aclient,
+extern afs_int32 ubik_CallIter(int (*aproc) (struct rx_connection*, ...),
+                               struct ubik_client *aclient,
 			       afs_int32 aflags, int *apos, long p1, long p2,
 			       long p3, long p4, long p5, long p6, long p7,
 			       long p8, long p9, long p10, long p11, long p12,
 			       long p13, long p14, long p15, long p16);
-extern afs_int32 ubik_Call_New(int (*aproc) (), struct ubik_client
-			       *aclient, afs_int32 aflags, long p1, long p2,
+extern afs_int32 ubik_Call_New(int (*aproc) (struct rx_connection*, ...),
+                               struct ubik_client *aclient,
+                               afs_int32 aflags, long p1, long p2,
 			       long p3, long p4, long p5, long p6, long p7,
 			       long p8, long p9, long p10, long p11, long p12,
 			       long p13, long p14, long p15, long p16);

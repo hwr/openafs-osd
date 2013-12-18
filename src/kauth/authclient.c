@@ -440,7 +440,7 @@ CheckTicketAnswer(ka_BBS * oanswer, afs_int32 challenge,
  * this doesn't handle UNOTSYNC very well, should use ubik_Call if you care
  */
 static afs_int32
-kawrap_ubik_Call(int (*aproc) (), struct ubik_client *aclient,
+kawrap_ubik_Call(int (*aproc) (struct rx_connection*, ...), struct ubik_client *aclient,
                  afs_int32 aflags, void *p1, void *p2, void *p3, void *p4,
                  void *p5, void *p6, void *p7, void *p8)
 {
