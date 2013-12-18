@@ -96,9 +96,9 @@ udisk_Debug_new(afs_int32 *lockedPages, afs_int32 *writeLockedPages)
         tb = Buffers[j];
         for (i = 0; i < nbuffers[j]; i++, tb++) {
 	    if (tb->lockers) {
-	        *lockedPages++;
+                (*lockedPages)++;
 	        if (tb->dirty)
-		    *writeLockedPages++;
+                    (*writeLockedPages)++;
 	    }
 	}
     }
