@@ -413,6 +413,7 @@ case $AFS_SYSNAME in
 		SHLIB_LINKER="${MT_CC} -dynamiclib"
 		SHLIB_SUFFIX="dylib"
 		RANLIB="ranlib"
+                XCFLAGS="-fPIC"
 		XLIBS="${LIB_AFSDB} ${XBSA_XLIBS} -framework CoreFoundation"
 		;;
 
