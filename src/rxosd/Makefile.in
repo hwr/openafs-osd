@@ -353,7 +353,7 @@ ${LIBDAFSOSD}: ${DLIBOBJS} libdafsosd.map
 ${LIBCAFSOSD}: ${CLIBOBJS} libcafsosd.map
 	../config/shlib-build -d $(srcdir) -l libcafsosd \
 		-M ${LIBAFSOSDMAJOR} -m ${LIBAFSOSDMINOR} -- \
-		${CLIBOBJS} ${MT_LIBS}
+		${CLIBOBJS} ${MT_LIBS} ${TOP_LIBDIR}/libcmd.a
 
 libafsosd.a: ${LIBAOBJS}
 	$(RM) -f $@
