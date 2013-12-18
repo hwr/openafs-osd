@@ -94,9 +94,9 @@ struct fsbnode {
 };
 
 struct bnode * fs_create(char *ainstance, char *afilecmd, char *avolcmd,
-			 char *asalcmd, char *dummy);
+			 char *asalcmd, char *dummy, char  *dummy2);
 struct bnode * dafs_create(char *ainstance, char *afilecmd, char *avolcmd,
-			   char * asalsrvcmd, char *asalcmd);
+			   char * asalsrvcmd, char *asalcmd, char *dummy);
 
 static int fs_hascore(struct bnode *abnode);
 static int fs_restartp(struct bnode *abnode);
@@ -349,7 +349,7 @@ AppendExecutableExtension(char *cmd)
 
 struct bnode *
 fs_create(char *ainstance, char *afilecmd, char *avolcmd, char *asalcmd,
-	  char *dummy)
+	  char *dummy, char *dummy2)
 {
     struct stat tstat;
     struct fsbnode *te;
@@ -441,7 +441,7 @@ fs_create(char *ainstance, char *afilecmd, char *avolcmd, char *asalcmd,
 /* create a demand attach fs bnode */
 struct bnode *
 dafs_create(char *ainstance, char *afilecmd, char *avolcmd,
-	    char * asalsrvcmd, char *asalcmd)
+	    char * asalsrvcmd, char *asalcmd, char *dummy)
 {
     struct stat tstat;
     struct fsbnode *te;
