@@ -155,7 +155,7 @@ static int rxstats = 0;		/* Set if -rxstats option given */
 static int CBServiceNeeded = 0;
 static struct timeval starttime, opentime, readtime, writetime;
 afs_uint64 xfered=0, oldxfered=0;
-static struct timeval now, after;
+static struct timeval now;
 struct timezone Timezone;
 static float seconds, datarate, oldseconds;
 #ifdef AFS_NT40_ENV
