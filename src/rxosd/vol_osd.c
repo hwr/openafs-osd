@@ -1035,7 +1035,6 @@ SalvageOsdMetadata(FdHandle_t *fd, struct VnodeDiskObject *vd, afs_uint32 vn,
 			afs_int32 Testing)
 {
     afs_uint64 offset;
-    afs_int32 bytes;
     struct osdMetadaEntry *entry = (struct osdMetadaEntry *) rock;
 
     if (vd->type != vFile || !vd->osdMetadataIndex)
@@ -1214,7 +1213,7 @@ GetMetadataByteString(Volume *vol, VnodeDiskObject *vd, void **rock, byte **data
 }
 
 afs_int32
-AllocMetadataByteString(void **rock, byte **data, afs_int32 **length)
+AllocMetadataByteString(void **rock, byte **data, afs_uint32 **length)
 {
     struct metadataBuffer *mh;
     mh = (struct metadataBuffer *) malloc(sizeof(struct metadataBuffer));
@@ -1222,7 +1221,7 @@ AllocMetadataByteString(void **rock, byte **data, afs_int32 **length)
 	return ENOMEM;
     memset((char *)mh, 0, sizeof(struct metadataBuffer));
     *rock = (char *) mh;
-    *data = (char *) &mh->data;
+    *data = (byte *) &mh->data;
     *length = &mh->length;
     mh->length = MAX_OSD_METADATA_LENGTH;
     return 0;
@@ -1239,7 +1238,6 @@ FlushMetadataHandle(Volume *vol, struct VnodeDiskObject *vd,
     afs_uint64 offset = 0;
     struct osdMetadaEntry *entry = 0;
     afs_int32 index, mainIndex, oldindex, code = EIO;
-    int bytes;
 
     if (!vol || !vd)
 	return EINVAL;
@@ -1625,7 +1623,7 @@ read_osd_p_fileList(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN,
 	    break;
 	default:
 	    ViceLog(0, ("Unknown osd_file version for %u.%u.%u\n",
-			version, V_id(vol), vN, vd->uniquifier));
+			V_id(vol), vN, vd->uniquifier));
 	    code = EINVAL;
         }
     }
@@ -1648,7 +1646,7 @@ afs_int32
 extract_objects(Volume *vol, VnodeDiskObject *vd, afs_uint32 vN, struct osdobjectList *list)
 {
     struct osd_p_fileList fl;
-    afs_int32 code = 0, i, j, k, l, m;
+    afs_int32 code = 0, i, j, k, m;
 
     list->osdobjectList_len = 0;
     list->osdobjectList_val = 0;
@@ -1715,7 +1713,7 @@ write_osd_p_fileList(Volume *vol, struct VnodeDiskObject *vd,
 {
     XDR xdr;
     afs_uint32 version = OSD_P_FILE_CURRENT_VERSION;
-    afs_int32 bytes, code = EIO;
+    afs_int32 code = EIO;
     int i, j, k;
     struct metadataBuffer *mh = 0;
 
@@ -1806,6 +1804,7 @@ bad:
  * when restoreing a dump to a temporary volume - create hard links to the
  * original objects.
  */
+afs_int32
 check_and_flush_metadata(struct Volume *vp, struct VnodeDiskObject *vnode,
 			 afs_uint32 vnodeNumber, void *rock, int *lcOk)
 {
@@ -1882,7 +1881,6 @@ check_and_flush_metadata(struct Volume *vp, struct VnodeDiskObject *vnode,
 	if (changed)
     	    code = write_osd_p_fileList(vp, vnode, vnodeNumber, &list, &changed, 1);
     }
-bad:
     destroy_osd_p_fileList(&list);
     return code;
 }
@@ -1921,7 +1919,6 @@ copy_osd_p_file_to_osd_segm_descList(osd_p_file *pf, osd_segm_descList *rl,
         for (j=0; j<rs->objList.osd_obj_descList_len; j++) {
 	    struct osd_obj_desc *ro = &rs->objList.osd_obj_descList_val[j];
 	    struct osd_p_obj * po = &ps->objList.osd_p_objList_val[j];
-	    afs_uint32 lun;
 	    ro->o.vsn = 1;
 	    ro->o.ometa_u.t.obj_id = po->obj_id;
 	    ro->o.ometa_u.t.osd_id = po->osd_id;
@@ -2036,7 +2033,6 @@ fill_osd_file(Vnode *vn, struct async *a,
 		goto bad;
 	    vn->changed_newTime = 1;
    	} else if (*fileno < 0) {
-	    struct rxosd_conn *conn = 0;
 	    /*
 	     *  Start prefetch from tape
 	     */
@@ -2152,7 +2148,6 @@ retry:
 		    afs_int32 changed = 0;
 		    afs_uint32 lun, ip;
 		    afs_uint64 p_id;
-		    struct rxosd_conn *conn;
 		    struct osd_p_segm *ps = &pf->segmList.osd_p_segmList_val[0];
 		    struct osd_p_obj *po = &ps->objList.osd_p_objList_val[0];
 	    	    code = FindOsd(osd, &ip, &lun, 0);
@@ -2373,7 +2368,7 @@ bad:
 void
 destroy_async_list(struct async *a)
 {
-    afs_int32 i, j;
+    afs_int32 i;
 
     if (a->type == 0) {
         for (i=0; i<a->async_u.l0.osd_file0List_val[0].segmList.osd_segm0List_len; i++) {
@@ -2516,7 +2511,6 @@ remove_osd_online_file(Vnode *vn, afs_uint32 version)
     afs_int32 good_archive = 0, good_archives_found = 0;
     afs_int32 changed = 0;
     struct osd_p_fileList list;
-    afs_uint64 objsize;
     afs_uint64 filesize;
     afs_uint32 modTime = vn->disk.unixModifyTime;
 
@@ -2545,7 +2539,6 @@ remove_osd_online_file(Vnode *vn, afs_uint32 version)
 		        struct osd_p_segm *s = &f->segmList.osd_p_segmList_val[k];
 		        for (j=0; j<s->objList.osd_p_objList_len; j++) {
 			    struct osd_p_obj *o = &s->objList.osd_p_objList_val[j];
-			    struct rxosd_conn *conn = 0;
 			    struct exam e;
 			    afs_int32 mask = WANTS_SIZE | WANTS_HSM_STATUS;
         		    code = rxosd_examine(o->osd_id, o->part_id, 
@@ -2607,7 +2600,6 @@ remove_osd_online_file(Vnode *vn, afs_uint32 version)
 					vn->vnodeNumber, &list, &changed, 0);
 	    if (!code) { 
 		afs_int32 code2;
-		struct rxosd_conn *conn = 0;
 	   	vn->disk.osdFileOnline = 0;
                 vn->changed_newTime = 1;
 		if (version) {
@@ -2655,7 +2647,6 @@ remove_osd_online_file(Vnode *vn, afs_uint32 version)
 	    free(tf);
 	}
     }
-bad:
     destroy_osd_p_fileList(&list);
     return code;
 }
@@ -2681,7 +2672,6 @@ update_osd_file_v(Vnode *vn, Volume *vol, struct async *a,
 		afs_int32 fileno)
 {
     struct osd_p_fileList list;
-    struct osd_p_file *pfile;
     afs_int32 code, i, j, k;
     afs_int32 changed = 0;
 
@@ -2893,7 +2883,7 @@ static afs_uint32  local_host = 0;
 struct rxosd_conn * FindOsdConnection(afs_uint32 id)
 {
     afs_int32 code, i;
-    afs_uint32 tip, ip, lun, service, port;
+    afs_uint32 ip, lun, service, port;
     struct rxosd_host *h;
     struct rxosd_conn *c;
     static struct rx_securityClass *sc;
@@ -2981,9 +2971,8 @@ void PutOsdConn(struct rxosd_conn **conn)
 }
     
 void
-checkOSDconnections()
+checkOSDconnections(void)
 {
-    afs_uint32 tip;
     afs_int32 code;
     struct rxosd_conn *c, *c2;
     struct rxosd_host *h;
@@ -3032,7 +3021,7 @@ extern afs_uint64 max_move_osd_size;
 extern afs_int32 max_move_osd_size_set_by_hand;
 
 static void
-osd_5min_check()
+osd_5min_check(void)
 {
     FillOsdTable();
     checkOSDconnections();
@@ -3050,7 +3039,6 @@ static afs_int32
 add_segm(Volume *vol, struct VnodeDiskObject *vd, struct osd_p_fileList *l,
 		struct osd_p_segm **segmptr)
 {
-    afs_int32 code;
     struct osd_p_segm *ts = 0, *s;
     afs_uint64 size;
     int i;
@@ -3102,9 +3090,8 @@ osd_create_spec_file(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN,
     afs_uint64 obj_id;
     afs_size_t length;
     FdHandle_t *fd = 0;
-    struct rxosd_conn *conn;
     afs_uint32 stripesmask, sizemask;
-    afs_int32 i, j, k;
+    afs_int32 i, j;
     struct osd_p_obj *o;
     struct osd_p_fileList list;
     int newseg = 0;
@@ -3482,10 +3469,9 @@ add_simple_osdFile(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN,
     struct osd_p_segm *ts = 0;
     struct osd_p_obj *to = 0;
     char *bp;
-    afs_uint32 lun, osd;
+    afs_uint32 lun;
     afs_int32 code;
     afs_uint64 part_id, obj_id, new_id;
-    struct rxosd_conn *conn = 0;
     afs_int32 changed;
 
     tf = (struct osd_p_file *) malloc(sizeof(struct osd_p_file) * 
@@ -3582,7 +3568,7 @@ osdRemove(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN)
 afs_int32
 truncate_osd_file(Vnode *vn, afs_uint64 length)
 {
-    afs_int32 code, i, j, k, l, m, n;
+    afs_int32 code, i, j, k, l;
     struct osd_p_fileList list;
     afs_int32 changed = 0;
     
@@ -3713,14 +3699,11 @@ osd_archive(struct Vnode *vn, afs_uint32 Osd, afs_int32 flags)
     struct osd_p_fileList list;
     afs_uint32 osd = 0;
     afs_uint32 lun;
-    afs_uint32 priority;
-    struct osd_segm_descList o;
-    afs_uint64 o_id, p_id, new_id;
+    afs_uint64 o_id, p_id;
     afs_uint64 size;
     struct osd_p_segm *ps;
     struct osd_p_file *pf;
     struct osd_p_obj *po;
-    struct rxosd_conn *conn = 0;
     afs_int32 i, j, k;
     struct osd_cksum md5;
     afs_uint32 vN = vn->vnodeNumber;
@@ -4150,15 +4133,13 @@ replace_osd(struct Vnode *vn, afs_uint32 old, afs_int32 new, afs_int32 *result)
     struct osd_p_segm *s;
     struct osd_p_file *f;
     struct osd_p_obj *o;
-    struct rxosd_conn *conn = 0;
-    afs_int32 i, j, k, l, m, n;
-    struct osd_cksum md5;
+    afs_int32 i, j, k, l, m;
     afs_int32 changed = 0;
-    afs_uint32 old_lun, new_lun, ip;
+    afs_uint32 new_lun, ip;
     afs_int64 start = 0;
     afs_int32 (*ioroutine)(void *rock, char *buf, afs_uint32 len,
 			  afs_uint64 offset);
-    Inode ino, nearInode = 0;
+    Inode ino;
     FdHandle_t *fdP;
     struct osd_p_file *tf = 0;
     struct osd_p_objList tol = {0, 0};
@@ -4512,7 +4493,7 @@ bad:
 afs_int32
 recover_store(Vnode *vn, struct asyncError *ae)
 {
-    afs_int32 code, i, j, k;
+    afs_int32 code, i;
     afs_int32 worstCode = 0;
     afs_uint32 osd, new;
     afs_uint32 bad[MAXOSDSTRIPES];
@@ -4726,7 +4707,6 @@ get_osd_location1(Volume *vol, Vnode *vn, afs_uint32 flag, afs_uint32 user,
     }
     if (vn->disk.type != vFile || !vn->disk.osdMetadataIndex)
 	return EINVAL;
-restart:
     code = fill_osd_file(vn, a, flag, &fileno, user);
     if (code) {
 	if (code !=  OSD_WAIT_FOR_TAPE) {
@@ -4738,7 +4718,6 @@ restart:
     }
     VN_GET_LEN(file->length, vn);
     for (i=0; i<file->segmList.osd_segm1List_len; i++) {
-	struct rxosd_conn *osdconn = 0;
 	struct osd_segm1 *segm = &file->segmList.osd_segm1List_val[i];
 	if (!segm->length)
 	    segm->length = maxLength - segm->offset;
@@ -4820,7 +4799,7 @@ get_osd_location2(Volume *vol, Vnode *vn, afs_uint32 flag, afs_uint32 user,
     }
     if (vn->disk.type != vFile || !vn->disk.osdMetadataIndex)
 	return EINVAL;
-restart:
+
     code = fill_osd_file(vn, a, flag, &fileno, user);
     if (code) {
 	if (code !=  OSD_WAIT_FOR_TAPE) {
@@ -4833,7 +4812,6 @@ restart:
     VN_GET_LEN(file->length, vn);
     file->part_id = V_parentId(vol);
     for (i=0; i<file->segmList.osd_segm2List_len; i++) {
-	struct rxosd_conn *osdconn = 0;
 	struct osd_segm2 *segm = &file->segmList.osd_segm2List_val[i];
 	if (!segm->length)
 	    segm->length = maxLength - segm->offset;
@@ -4925,7 +4903,7 @@ DataXchange(afs_int32 (*ioroutine)(void *rock, char* buf, afs_uint32 lng,
     afs_uint32 osd[MAXOSDSTRIPES];
     afs_uint32 fullstripes, initiallength;
     struct osd_p_file *file;
-    afs_int32 i, j, k, l, m, n, code, usenext, count, metadatachanged = 0;
+    afs_int32 i, j, k, l, m, code, usenext, count, metadatachanged = 0;
     char *buffer = 0;
     afs_uint32 bsize, tlen;
     afs_uint32 replaceOSD[MAXOSDSTRIPES];
@@ -5169,7 +5147,6 @@ retry:
 	}
 	/* Now we can start the data transfer for this segment */
 	while (XferLength) {
-	    char  *tmprock;
 	    char *b;
 	    afs_uint32 ll;
 	    if (initiallength) {
@@ -5347,7 +5324,7 @@ xchange_data_with_osd(struct rx_call *acall, Vnode **vnP, afs_uint64 offset,
 {
     afs_int32 (*ioroutine)(void *rock, char *buf, afs_uint32 lng, afs_uint64 offset);
     void *rock = (void *) acall;
-    afs_int32 code;
+    Error code;
     Volume *vol = (*vnP)->volumePtr;
     afs_uint32 vN = (*vnP)->vnodeNumber;
     afs_uint32 unique = (*vnP)->disk.uniquifier;
@@ -5374,7 +5351,8 @@ xchange_data_with_osd(struct rx_call *acall, Vnode **vnP, afs_uint64 offset,
 	 * the sleep to allow the rxosd to do the RXAFS_SetOsdFileReady. 
 	 */
 	struct osd_file2 file;
-	afs_int32 fileno, code2;
+	afs_int32 fileno;
+        Error code2;
 	file.segmList.osd_segm2List_len = 0;
 	file.segmList.osd_segm2List_val = 0;
 	if (!storing) {		/* get vnode WRITE_LOCKed */
@@ -5460,7 +5438,7 @@ xchange_data_with_osd(struct rx_call *acall, Vnode **vnP, afs_uint64 offset,
     }
 #endif
 #endif
-    return code;
+    return (afs_int32)code;
 }
 
 /*
@@ -5486,17 +5464,17 @@ afs_int32 createFileWithPolicy(AFSFid *Fid,
         size, fileName, policyIndex, V_osdPolicy(volptr)));
 
     if ( V_osdPolicy(volptr) != USE_OSD_BYSIZE )
-	if ( tcode = eval_policy(V_osdPolicy(volptr), size, fileName, 
+        if ((tcode = eval_policy(V_osdPolicy(volptr), size, fileName, 
 				evalclient, client,
                                 &use_osd, &dyn_location, &stripes,
-                                &stripe_size, &copies, &force) )
+                                &stripe_size, &copies, &force)))
 	    return tcode;
 
     if ( policyIndex && policyIndex != USE_OSD_BYSIZE )
-        if ( tcode = eval_policy(policyIndex, size, fileName,
+        if ((tcode = eval_policy(policyIndex, size, fileName,
 				evalclient, (void *)client,
                                 &use_osd, &dyn_location, &stripes,
-                                &stripe_size, &copies, &force) )
+                                &stripe_size, &copies, &force)))
 	    return tcode;
 
     while ( stripes * copies > 8 )
@@ -5516,7 +5494,7 @@ afs_int32 createFileWithPolicy(AFSFid *Fid,
 
     if ( stripes == 1 && copies == 1 ) {
         if ( !osd_id )
-            if ( tcode = FindAnyOsd(&osd_id, &lun, 1, 0) ) {
+            if ((tcode = FindAnyOsd(&osd_id, &lun, 1, 0))) {
                 ViceLog(0, ("FindAnyOsd failed, code %d\n", tcode));
                 return tcode;
             }
@@ -5912,11 +5890,10 @@ static void
 purge_add_to_list(Volume *vp, struct VnodeDiskObject *vnode, afs_int32 vN,
 		   void **rock)
 {
-    afs_int32 i, j, code;
+    afs_int32 i, code;
     struct osdobjectList list;
     struct cloneRock *cloneRock = (struct cloneRock *) *rock;
-    afs_foff_t offset = 0;
-
+    
     if (!V_osdPolicy(vp)) 
 	return;
     if (!cloneRock) {
@@ -6414,7 +6391,6 @@ traverse(Volume *vol, struct sizerangeList *srl, struct osd_infoList *list,
     afs_int32 policy_statistics = operation & 2;
     afs_int32 only_osd_volumes = operation & 4;
     afs_int32 only_non_osd_volumes = operation & 8;
-    afs_int32 only_old_singles = operation & 0x10000;
     afs_uint32 now = FT_ApproxTime();
     afs_uint32 policy = V_osdPolicy(vol);
 
@@ -6566,7 +6542,6 @@ traverse(Volume *vol, struct sizerangeList *srl, struct osd_infoList *list,
                                         } else {
                                             afs_uint32 stripes;
                                             afs_uint32 laststripes;
-                                            afs_uint64 tlen2;
                                             stripes = length/s->stripe_size;
                                             laststripes = stripes % s->nstripes;
                                             tlen = s->stripe_size
@@ -6582,8 +6557,6 @@ traverse(Volume *vol, struct sizerangeList *srl, struct osd_infoList *list,
                                         if (verify) {
 					    struct exam e;
 					    afs_int32 mask = WANTS_SIZE;
-                                            struct rxosd_conn *conn;
-                                            afs_uint64 size;
                                             afs_uint64 p_id;
                                             afs_uint32 ip, lun;
                                             FindOsd(o->osd_id, &ip, &lun, 0);
@@ -6650,16 +6623,16 @@ void printsize(afs_uint64 s, char *str)
 #define MAX_UINT64 0xffffffffffffffff
 afs_int32
 actual_length(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN, 
-		afs_uint64 *size)
+		afs_sfsize_t *size)
 {
-    afs_int32 code, i, j, k, l, m, n;
+    afs_int32 code, j, k, l, m;
     struct osd_p_fileList fl;
     struct osd_p_file *f;
     struct osd_p_segm *s;
     struct osd_p_obj *o;
     afs_int64 stripelen[8];
     afs_uint64 tlen, p_id;
-    afs_uint32 lc, ctime, atime, ip, lun;
+    afs_uint32 ip, lun;
 
     *size = 0;		/* we will later only add what we find */
     if (vd->type != vFile || !V_osdPolicy(vol) || !vd->osdMetadataIndex) {
@@ -6698,7 +6671,7 @@ actual_length(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN,
 			    ViceLog(0, ("actual_size: %u.%u.%u segm %u stripe on %u shorter than other copy, reducing size by %llu\n",
 				V_id(vol), vN, vd->uniquifier, j, o->stripe, 
 				stripelen[o->stripe] - tlen));
-			stripelen[o->stripe] == tlen;
+			stripelen[o->stripe] = tlen;
 		    } else if (e.exam_u.e1.size != stripelen[o->stripe]) 
 			ViceLog(0, ("actual_size: %u.%u.%u segm %u stripe on %u longer than other copy, reducing size by %llu\n",
 				V_id(vol), vN, vd->uniquifier, j, o->stripe, 
@@ -6729,7 +6702,6 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
     afs_uint64 size, length;
     Inode ino;
     struct VnodeDiskObject vnode, *vd = &vnode;
-    struct osd_info *info;
     int i, j, k, l;
     afs_uint32 step, vN;
     char line[128];
@@ -6915,7 +6887,6 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 					struct exam e;
 					afs_int32 mask = WANTS_SIZE | WANTS_LINKCOUNT;
 				        afs_uint64 tlen;
-            				struct rxosd_conn *conn;
 					afs_uint64 objsize;
 					afs_uint64 p_id;
 					afs_uint32 ip, lun;
@@ -6924,7 +6895,6 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 				        } else {
 					    afs_uint32 stripes;
 					    afs_uint32 laststripes;
-					    afs_uint64 tlen2;
 					    stripes = length/s->stripe_size;
 					    laststripes = stripes % s->nstripes;
 					    tlen = ((afs_uint64)s->stripe_size)
@@ -7119,7 +7089,7 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 	sprintf(line, "Number of used blocks incorrect, %u instead of %llu",
 					V_diskused(vol), usedBlocks);
 	if (V_diskused(vol) != (usedBlocks & 0xffffffff) && (flag & SALVAGE_UPDATE)) {
-	    afs_int32 code2;
+	    Error code2;
 	    V_diskused(vol) = usedBlocks;
 	    VUpdateVolume(&code2, vol);
 	    strcat(line, ", repaired");
@@ -7142,7 +7112,7 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
     line[0] = 0;
     rx_Write(call, line, 1);
     code = 0;
-bad:
+
     if (fdP)
 	FDH_CLOSE(fdP);
     return code;
@@ -7165,7 +7135,7 @@ list_objects_on_osd(struct rx_call *call, Volume *vol,  afs_int32 flag,
     FdHandle_t *fdP = 0;
     afs_uint64 offset;
     struct VnodeDiskObject vnode, *vd = &vnode;
-    int i, j, k, l, m;
+    int i, j, k, l;
     afs_uint32 step, vN;
     char line[128];
     afs_uint32 errors = 0;
@@ -7176,8 +7146,8 @@ list_objects_on_osd(struct rx_call *call, Volume *vol,  afs_int32 flag,
     if (!V_osdPolicy(vol))	/* Makes sense only for OSD volumes */
 	return 0;
 
-    if ( (flag & POL_INDICES) && !osd )
-	if ( code = init_pol_statList(&list) ) {
+    if ( (flag & POL_INDICES) && !osd ) {
+        if ((code = init_pol_statList(&list))) {
 	    sprintf(line, "eFailed to fetch list of known policies, dumping all\n");
 	    rx_Write(call, line, strlen(line));
 	    list.osd_infoList_val = NULL;
@@ -7186,7 +7156,7 @@ list_objects_on_osd(struct rx_call *call, Volume *vol,  afs_int32 flag,
 	    sprintf(line, "oListing unknown policies\n");
 	    rx_Write(call, line, strlen(line));
 	}
-
+    }
     lhp = IH_OPEN(V_linkHandle(vol));
     for (i=0; i<nVNODECLASSES; i++) {
 	if ( flag & POL_INDICES ) {
@@ -7220,8 +7190,8 @@ list_objects_on_osd(struct rx_call *call, Volume *vol,  afs_int32 flag,
 	    vN = (offset >> (voldata->aVnodeClassInfo[i].logSize - 1)) - 1 + i;
 	    if ( flag & POL_INDICES ) {
 		if (vd->osdPolicyIndex && vd->osdPolicyIndex != USE_OSD_BYSIZE)
-		    if ( osd && (osd && vd->osdPolicyIndex == osd)
-			 || !osd && !findInfo(&list, vd->osdPolicyIndex) ) {
+                    if ((osd && (osd && vd->osdPolicyIndex == osd))
+                        || (!osd && !findInfo(&list, vd->osdPolicyIndex))) {
 			sprintf(line, "%u.%u.%u: %d\n", 
 				V_id(vol), vN, vd->uniquifier,
 				vd->osdPolicyIndex);
@@ -7338,7 +7308,7 @@ next:
     }
     FDH_CLOSE(lhp);
     code = 0;
-bad:
+
     if (list.osd_infoList_val)
 	free(list.osd_infoList_val);
     if (fdP)
@@ -7425,10 +7395,9 @@ get_arch_cand(Volume *vol, struct cand *cand, afs_uint64 minsize,
     afs_int32 code;
     FdHandle_t *fdP = 0;
     afs_uint64 offset;
-    afs_uint64 size, length;
-    Inode ino;
+    afs_uint64 size;
     struct VnodeDiskObject *vd;
-    int i, j, k, l, m;
+    int j, m;
     afs_uint32 step, vN;
     afs_uint32 weight;
     struct  osd_p_fileList fl;
@@ -7585,7 +7554,6 @@ osd_split_objects(Volume *vol, Volume *newvol, struct VnodeDiskObject *vd,
 {
     afs_int32 code = 0;
     osd_p_fileList l;
-    struct rxosd_conn *conn;
     afs_int32 changed = 0;
     afs_int32 i, j, k;
 
