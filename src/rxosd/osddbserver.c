@@ -553,7 +553,7 @@ FreeBlock(struct ubik_trans *trans, afs_int32 blockindex)
     return code;
 }
 
-afs_int32
+static afs_int32
 FindById(struct ubik_trans *trans, afs_int32 what, afs_int32 id,
 	 struct oe *e, afs_uint32 *offs)
 {
@@ -598,7 +598,7 @@ FindById(struct ubik_trans *trans, afs_int32 what, afs_int32 id,
 
 afs_int32
 FindByName(struct ubik_trans *trans, afs_int32 what, char *name, 
-	   struct oe *e, afs_int32 *offs)
+	   struct oe *e, afs_uint32 *offs)
 {
     afs_int32 hashindex, i, code;
 
@@ -906,7 +906,7 @@ policy_will_use(struct ubik_trans *trans,
 {
     struct oe e;
     osddb_policy pol;
-    int offset;
+    afs_uint32 offset;
     int i = 0;
     afs_int32 code = 0;
 
@@ -944,7 +944,7 @@ check_policy(struct ubik_trans *trans, afs_uint32 id, pol_ruleList *rules)
 		ViceLog(0, ("policy %d tries to refer to iteself\n", id));
 		return EINVAL;
 	    }
-	    if ( code = policy_will_use(trans, r.used_policy, id) ) {
+	    if ((code = policy_will_use(trans, r.used_policy, id))) {
 		if ( code == EEXIST ) {
 		    ViceLog(0, ("policy %d introduces use() cycle\n", id));
 		    code = EINVAL;
@@ -1114,7 +1114,8 @@ afs_int32
 AddOsd(struct rx_call *call, struct osddb_osd_tab *in)
 {
     struct ubik_trans *trans;
-    afs_int32 code, offs;
+    afs_int32 code;
+    afs_uint32 offs;
     struct oe *e = NULL;
 
     if (!afsconf_SuperUser(osddb_confdir, call, NULL))
@@ -1252,8 +1253,8 @@ GetOsdList(struct rx_call *call, struct OsdList *list)
     memset(list->OsdList_val, 0, header.nOsds * sizeof(struct Osd));
     list->OsdList_len = header.nOsds;
 
-    if ( code = fill_list_from_database(
-			trans, header.osdIdHash, OSDDB_OSD, list) )
+    if ((code = fill_list_from_database(
+                 trans, header.osdIdHash, OSDDB_OSD, list)))
 	goto abort;
 
     code = ubik_EndTrans(trans);
@@ -1368,7 +1369,8 @@ afs_int32
 SetOsd(struct rx_call *call, struct osddb_osd_tab *in)
 {
     struct ubik_trans *trans;
-    afs_int32 code, offs;
+    afs_int32 code;
+    afs_uint32 offs;
     struct oe *e = NULL;
 
     if (call && !afsconf_SuperUser(osddb_confdir, call, NULL)) {
@@ -1494,7 +1496,8 @@ SetOsdUsage(struct rx_call *call, afs_uint32 id, afs_uint32 bsize,
 	    afs_uint64 files, afs_uint64 filesFree)
 {
     struct ubik_trans *trans;
-    afs_int32 code, offs;
+    afs_int32 code;
+    afs_uint32 offs;
     struct oe e;
     afs_uint64 b, f;
     afs_int32 pmUsed = 0, pmFilesUsed = 0, update = 0;
@@ -1613,7 +1616,8 @@ afs_int32
 AddServer(struct rx_call *call, struct osddb_server_tab *in) 
 {
     struct ubik_trans *trans;
-    afs_int32 code, offs;
+    afs_int32 code;
+    afs_uint32 offs;
     struct oe *e = NULL;
 
     if (!afsconf_SuperUser(osddb_confdir, call, NULL)) {
@@ -1720,7 +1724,8 @@ SetServer(struct rx_call *call, afs_uint32 id, char *name,
 	  struct osddb_server_tab *in)
 {
     struct ubik_trans *trans;
-    afs_int32 code, offs;
+    afs_int32 code;
+    afs_uint32 offs;
     struct oe *e = NULL;
 
     if (call && !afsconf_SuperUser(osddb_confdir, call, NULL)) {
@@ -1839,7 +1844,8 @@ GetServer(struct rx_call *call, afs_uint32 id, char *name,
 	  struct osddb_server_tab *out)
 {
     struct ubik_trans *trans;
-    afs_int32 code, offs;
+    afs_int32 code;
+    afs_uint32 offs;
     struct oe *e = NULL;
 
     if ((code = init_dbase(&trans, LOCKREAD)))
@@ -1958,7 +1964,8 @@ afs_int32
 DeleteServer(struct rx_call *call, struct osddb_server_tab *in)
 {
     struct ubik_trans *trans;
-    afs_int32 code, offs;
+    afs_int32 code;
+    afs_uint32 offs;
     struct oe *e = NULL;
     char myName[OSDDB_MAXNAMELEN];
     afs_uint32 myId;
@@ -2022,7 +2029,8 @@ AddPolicy(struct rx_call *call, afs_uint32 id, char *name,
 	  pol_ruleList *rules)
 { 
     struct ubik_trans *trans;
-    afs_int32 code, offs;
+    afs_int32 code;
+    afs_uint32 offs;
     struct oe *e = NULL;
 
     if (!afsconf_SuperUser(osddb_confdir, call, NULL)) {
@@ -2216,7 +2224,8 @@ afs_int32
 DeletePolicy(struct rx_call *call, afs_uint32 id)
 {
     struct ubik_trans *trans;
-    afs_int32 code, offs;
+    afs_int32 code;
+    afs_uint32 offs;
     struct oe *e = NULL;
     char myName[OSDDB_MAXNAMELEN];
     afs_uint32 myId;
@@ -2283,7 +2292,8 @@ afs_int32
 GetPolicyID(struct rx_call *call,char *name, afs_uint32 *id)
 {
     struct ubik_trans *trans;
-    afs_int32 code, offset;
+    afs_int32 code;
+    afs_uint32 offset;
     struct oe e;
 
 #if 0  /* Why? */
