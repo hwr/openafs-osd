@@ -131,7 +131,7 @@ int load_libafshsm(afs_int32 interface, char *initroutine, void *inrock, void *o
 }
 
 void
-unload_lib()
+unload_lib(void)
 {
     dlclose(libHandle);
 }
