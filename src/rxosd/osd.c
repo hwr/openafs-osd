@@ -120,7 +120,7 @@ int Bsize = SIZE;
 #endif
 
 
-static int GetConnection();
+static void GetConnection(void);
 
 static u_long GetHost(char *hostname)
 {
@@ -307,7 +307,7 @@ static int create(struct cmd_syndesc *as, void *rock)
     } 
 #endif
     if (as->parms[2].items) {  		/* -lun */
-        code = util_GetInt32(as->parms[2].items->data, &lun);
+        code = util_GetUInt32(as->parms[2].items->data, &lun);
         if (code) {
 	    fprintf(stderr, "Invalid lun: %s\n", 
 		    as->parms[2].items->data);
@@ -382,7 +382,7 @@ static int incrlc_obj(struct cmd_syndesc *as, void *rock)
     } 
 #endif
     if (as->parms[2].items) {  		/* -lun */
-        code = util_GetInt32(as->parms[2].items->data, &lun);
+        code = util_GetUInt32(as->parms[2].items->data, &lun);
         if (code) {
 	    fprintf(stderr, "Invalid lun: %s\n", as->parms[2].items->data);
 	    return EINVAL;     
@@ -450,7 +450,7 @@ static int decrlc_obj(struct cmd_syndesc *as, void *rock)
     }
 #endif
     if (as->parms[2].items) {  		/* -lun */
-        code = util_GetInt32(as->parms[2].items->data, &lun);
+        code = util_GetUInt32(as->parms[2].items->data, &lun);
         if (code) {
 	    fprintf(stderr, "Invalid lun: %s\n", as->parms[2].items->data);
 	    return EINVAL;     
@@ -542,7 +542,7 @@ int psread_obj(struct cmd_syndesc *as, void *rock)
     }
 #endif
     if (as->parms[2].items) {  		/* -offset */
-        code = util_GetInt64(as->parms[2].items->data, &offset);
+        code = util_GetUInt64(as->parms[2].items->data, &offset);
         if (code) {
 	    fprintf(stderr, "Invalid value for offset: %s\n", 
 		    as->parms[2].items->data);
@@ -550,7 +550,7 @@ int psread_obj(struct cmd_syndesc *as, void *rock)
         }
     }
     if (as->parms[3].items) {  		/* -length */
-        code = util_GetInt64(as->parms[3].items->data, &length);
+        code = util_GetUInt64(as->parms[3].items->data, &length);
         if (code) {
 	    fprintf(stderr, "Invalid value for length: %s\n", 
 		    as->parms[3].items->data);
@@ -566,7 +566,7 @@ int psread_obj(struct cmd_syndesc *as, void *rock)
         }
     }
     if (as->parms[5].items) {  		/* -lun */
-        code = util_GetInt32(as->parms[5].items->data, &lun);
+        code = util_GetUInt32(as->parms[5].items->data, &lun);
         if (code) {
 	    fprintf(stderr, "Invalid lun: %s\n", 
 		    as->parms[5].items->data);
@@ -576,7 +576,7 @@ int psread_obj(struct cmd_syndesc *as, void *rock)
     if (as->parms[6].items)   		/* -cell   */
         cellp = as->parms[6].items->data;
     if (as->parms[7].items) {  		/* -stripesize   */
-        code = util_GetInt32(as->parms[7].items->data, &stripe_size);
+        code = util_GetUInt32(as->parms[7].items->data, &stripe_size);
 	if (stripe_size > SIZE)
 	    code = E2BIG;
         if (code) {
@@ -586,7 +586,7 @@ int psread_obj(struct cmd_syndesc *as, void *rock)
         }
     }
     if (as->parms[8].items) {  		/* -nstripes   */
-        code = util_GetInt32(as->parms[8].items->data, &nstripes);
+        code = util_GetUInt32(as->parms[8].items->data, &nstripes);
 	if (nstripes > 8)
 	    code = E2BIG;
         if (code) {
@@ -813,7 +813,7 @@ int read_obj(struct cmd_syndesc *as, void *rock)
     struct timeval readtime;
     struct timeval starttime, lasttime;
     struct timezone timezone;
-    int sync = 1, i;
+    int i;
     int display = 0;
     float seconds, datarate;
     int  code, num, number = 0; 
@@ -839,7 +839,7 @@ int read_obj(struct cmd_syndesc *as, void *rock)
     }
 #endif
     if (as->parms[2].items) {  		/* -offset */
-        code = util_GetInt64(as->parms[2].items->data, &offset);
+        code = util_GetUInt64(as->parms[2].items->data, &offset);
         if (code) {
 	    fprintf(stderr, "Invalid value for offset: %s\n", 
 		    as->parms[2].items->data);
@@ -847,7 +847,7 @@ int read_obj(struct cmd_syndesc *as, void *rock)
         }
     }
     if (as->parms[3].items) {  		/* -length */
-        code = util_GetInt64(as->parms[3].items->data, &length);
+        code = util_GetUInt64(as->parms[3].items->data, &length);
         if (code) {
 	    fprintf(stderr, "Invalid value for length: %s\n", 
 		    as->parms[3].items->data);
@@ -863,7 +863,7 @@ int read_obj(struct cmd_syndesc *as, void *rock)
         }
     }
     if (as->parms[5].items) {  		/* -lun */
-        code = util_GetInt32(as->parms[5].items->data, &lun);
+        code = util_GetUInt32(as->parms[5].items->data, &lun);
         if (code) {
 	    fprintf(stderr, "Invalid lun: %s\n", 
 		    as->parms[5].items->data);
@@ -1033,7 +1033,7 @@ int pswrite_obj(struct cmd_syndesc *as, void *rock)
     }
 #endif
     if (as->parms[2].items) {  		/* -offset */
-        code = util_GetInt64(as->parms[2].items->data, &offset);
+        code = util_GetUInt64(as->parms[2].items->data, &offset);
         if (code) {
 	    fprintf(stderr, "Invalid value for offset: %s\n", 
 		    as->parms[2].items->data);
@@ -1041,7 +1041,7 @@ int pswrite_obj(struct cmd_syndesc *as, void *rock)
         }
     }
     if (as->parms[3].items) {  		/* -length */
-        code = util_GetInt64(as->parms[3].items->data, &length);
+        code = util_GetUInt64(as->parms[3].items->data, &length);
         if (code) {
 	    fprintf(stderr, "Invalid value for length: %s\n", 
 		    as->parms[3].items->data);
@@ -1072,7 +1072,7 @@ int pswrite_obj(struct cmd_syndesc *as, void *rock)
         }
     }
     if (as->parms[5].items) {  		/* -lun */
-        code = util_GetInt32(as->parms[5].items->data, &lun);
+        code = util_GetUInt32(as->parms[5].items->data, &lun);
         if (code) {
 	    fprintf(stderr, "Invalid lun: %s\n", as->parms[5].items->data);
 	    return EINVAL;     
@@ -1081,7 +1081,7 @@ int pswrite_obj(struct cmd_syndesc *as, void *rock)
     if (as->parms[6].items)    		/* -cell   */
         cellp = as->parms[6].items->data;
     if (as->parms[7].items) {   		/* -stripesize   */
-        code = util_GetInt32(as->parms[7].items->data, &stripe_size);
+        code = util_GetUInt32(as->parms[7].items->data, &stripe_size);
 	if (stripe_size > SIZE)
 	    code = E2BIG;
         if (code) {
@@ -1091,7 +1091,7 @@ int pswrite_obj(struct cmd_syndesc *as, void *rock)
         }
     }
     if (as->parms[8].items) {  		/* -nstripes   */
-        code = util_GetInt32(as->parms[8].items->data, &nstripes);
+        code = util_GetUInt32(as->parms[8].items->data, &nstripes);
 	if (nstripes > 8)
 	    code = E2BIG;
         if (code) {
@@ -1314,7 +1314,7 @@ int write_obj(struct cmd_syndesc *as, void *rock)
     }
 #endif
     if (as->parms[2].items) {  		/* -offset */
-        code = util_GetInt64(as->parms[2].items->data, &offset);
+        code = util_GetUInt64(as->parms[2].items->data, &offset);
         if (code) {
 	    fprintf(stderr, "Invalid value for offset: %s\n", 
 		    as->parms[2].items->data);
@@ -1322,7 +1322,7 @@ int write_obj(struct cmd_syndesc *as, void *rock)
         }
     }
     if (as->parms[3].items) {  		/* -length */
-        code = util_GetInt64(as->parms[3].items->data, &length);
+        code = util_GetUInt64(as->parms[3].items->data, &length);
         if (code) {
 	    fprintf(stderr, "Invalid value for length: %s\n", 
 		    as->parms[3].items->data);
@@ -1353,7 +1353,7 @@ int write_obj(struct cmd_syndesc *as, void *rock)
         }
     }
     if (as->parms[5].items) {  		/* -lun */
-        code = util_GetInt32(as->parms[5].items->data, &lun);
+        code = util_GetUInt32(as->parms[5].items->data, &lun);
         if (code) {
 	    fprintf(stderr, "Invalid lun: %s\n", 
 		    as->parms[5].items->data);
@@ -1465,7 +1465,7 @@ int objects(struct cmd_syndesc *as, void *rock)
     afs_uint64 unlinkedTotalLength = 0;
     afs_uint32 vid, vnode, unique, tag;
     afs_uint32 nObjects = 0, nGoodObjects = 0, nUnlinkedObjects = 0;
-    afs_int32 linkCount;
+    afs_uint32 linkCount;
     afs_uint32 high, stripe, stripes, stripesize, stripespower, stripesizepower;
     int error, code, i;
     int unlinked = 0;
@@ -1473,7 +1473,7 @@ int objects(struct cmd_syndesc *as, void *rock)
     XDR xdr;
 
     thost = as->parms[0].items->data;
-    code = util_GetInt32(as->parms[1].items->data, &vid);
+    code = util_GetUInt32(as->parms[1].items->data, &vid);
     if (code) {
         fprintf(stderr, "Invalid lun: %s\n", 
 		    as->parms[1].items->data);
@@ -1482,7 +1482,7 @@ int objects(struct cmd_syndesc *as, void *rock)
     Oprm.vsn = 2;
     Oprm.ometa_u.f.rwvol = vid;
     if (as->parms[2].items) {  		/* -lun */
-        code = util_GetInt32(as->parms[2].items->data, &lun);
+        code = util_GetUInt32(as->parms[2].items->data, &lun);
         if (code) {
 	    fprintf(stderr, "Invalid lun: %s\n", 
 		    as->parms[2].items->data);
@@ -1668,8 +1668,7 @@ int objects(struct cmd_syndesc *as, void *rock)
 static int 
 examine(struct cmd_syndesc *as, void *rock) 
 {
-    afs_uint32 high, vid, vnode, unique, tag, linkCount, time;
-    afs_uint32 stripe, stripes, stripespower, stripesize;
+    afs_uint32 vid, linkCount;
     int code;
     afs_int32 mask = WANTS_SIZE | WANTS_LINKCOUNT | WANTS_MTIME;
     struct exam e;
@@ -1689,7 +1688,7 @@ examine(struct cmd_syndesc *as, void *rock)
     vid = part;
 #endif
     if (as->parms[2].items) {  		/* -lun */
-        code = util_GetInt32(as->parms[2].items->data, &lun);
+        code = util_GetUInt32(as->parms[2].items->data, &lun);
         if (code) {
 	    fprintf(stderr, "Invalid lun: %s\n", 
 		    as->parms[2].items->data);
@@ -1794,7 +1793,7 @@ examine(struct cmd_syndesc *as, void *rock)
     } else {
 #ifdef ALLOW_OLD
 	afs_uint64 part, oid, size;
-	afs_uint32 lc, time, status;
+	afs_uint32 time, status;
 	part = ((afs_uint64)Oprm.ometa_u.f.lun << 32) | Oprm.ometa_u.f.rwvol;
 	oid = (Oprm.ometa_u.f.unique << 32) | Oprm.ometa_u.f.vN
 					 | (Oprm.ometa_u.f.tag << 26);
@@ -1868,7 +1867,7 @@ examine(struct cmd_syndesc *as, void *rock)
 
 int md5sum(struct cmd_syndesc *as, void *rock) 
 {
-    afs_uint32 vid, vnode, unique, tag, linkCount;
+    afs_uint32 vid, vnode, unique, tag;
     struct osd_md5 md5;
     struct osd_cksum cksum;
     int code;
@@ -1888,7 +1887,7 @@ int md5sum(struct cmd_syndesc *as, void *rock)
     vid = part;
 #endif
     if (as->parms[2].items) {  		/* -lun */
-        code = util_GetInt32(as->parms[2].items->data, &lun);
+        code = util_GetUInt32(as->parms[2].items->data, &lun);
         if (code) {
 	    fprintf(stderr, "Invalid lun: %s\n", 
 		    as->parms[2].items->data);
@@ -1968,7 +1967,7 @@ int volumes(struct cmd_syndesc *as, void *rock)
     Oprm.vsn = 2;
     thost = as->parms[0].items->data;
     if (as->parms[1].items) {  		/* -lun */
-        code = util_GetInt32(as->parms[1].items->data, &lun);
+        code = util_GetUInt32(as->parms[1].items->data, &lun);
         if (code) {
 	    fprintf(stderr, "Invalid lun: %s\n", as->parms[1].items->data);
 	    return EINVAL;     
@@ -2367,7 +2366,7 @@ CreateOsd(struct cmd_syndesc *as, void *rock)
     memset(e, 0, sizeof(struct osddb_osd_tab));
     e->unavail = OSDDB_OSD_DEAD;
     e->type = 2; /* send only CAP, not full T10 stuff */
-    code = util_GetInt32(as->parms[0].items->data, &e->id);
+    code = util_GetUInt32(as->parms[0].items->data, &e->id);
     if (code) {
 	fprintf(stderr, "Invalid id: %s\n", as->parms[0].items->data);
 	return EINVAL;     
@@ -2387,7 +2386,7 @@ CreateOsd(struct cmd_syndesc *as, void *rock)
 	}
     }
     if (as->parms[3].items) {			/* lun */
-        code = util_GetInt32(as->parms[3].items->data, &e->lun);
+        code = util_GetUInt32(as->parms[3].items->data, &e->lun);
         if (code) {
 	    fprintf(stderr, "Invalid lun: %s\n", as->parms[3].items->data);
 	    return EINVAL;     
@@ -2436,10 +2435,10 @@ CreateOsd(struct cmd_syndesc *as, void *rock)
 	e->maxSize = size >> 10;
     }
     if (as->parms[6].items) {			/* wrprior */
-        code = util_GetInt32(as->parms[6].items->data, &e->alprior);
+        code = util_GetUInt32(as->parms[6].items->data, &e->alprior);
     }
     if (as->parms[7].items) {			/* rdprior */
-        code = util_GetInt32(as->parms[7].items->data, &e->rdprior);
+        code = util_GetUInt32(as->parms[7].items->data, &e->rdprior);
     }
     if (as->parms[8].items) {			/* archival */
         e->flags |= OSDDB_ARCHIVAL;
@@ -2461,7 +2460,7 @@ CreateOsd(struct cmd_syndesc *as, void *rock)
         e->minWipeSize = 64; 		/* default minWipseSize 64 MB */
     }
     if (as->parms[11].items) {			/* highwatermark */
-        code = util_GetInt32(as->parms[11].items->data, &e->highWaterMark);
+        code = util_GetUInt32(as->parms[11].items->data, &e->highWaterMark);
     } else 
 	e->highWaterMark = 800;			/* start at 80 % */
     if (as->parms[12].items) {			/* owner */
@@ -2513,7 +2512,7 @@ SetOsd(struct cmd_syndesc *as, void *rock)
     char str[16];
     
     memset(&u, 0, sizeof(u));
-    code = util_GetInt32(as->parms[0].items->data, &u.id);
+    code = util_GetUInt32(as->parms[0].items->data, &u.id);
     if (code) {
 	fprintf(stderr, "Invalid id: %s\n", as->parms[0].items->data);
 	return EINVAL;     
@@ -2552,7 +2551,7 @@ SetOsd(struct cmd_syndesc *as, void *rock)
 	}
     }
     if (as->parms[3].items) {			/* lun */
-        code = util_GetInt32(as->parms[3].items->data, &u.lun);
+        code = util_GetUInt32(as->parms[3].items->data, &u.lun);
         if (code) {
 	    fprintf(stderr, "Invalid lun: %s\n", as->parms[3].items->data);
 	    return EINVAL;     
@@ -2601,10 +2600,10 @@ SetOsd(struct cmd_syndesc *as, void *rock)
 	u.maxSize = size >> 10;
     }
     if (as->parms[6].items) {			/* wrprior */
-        code = util_GetInt32(as->parms[6].items->data, &u.alprior);
+        code = util_GetUInt32(as->parms[6].items->data, &u.alprior);
     }
     if (as->parms[7].items) {			/* rdprior */
-        code = util_GetInt32(as->parms[7].items->data, &u.rdprior);
+        code = util_GetUInt32(as->parms[7].items->data, &u.rdprior);
     }
     if (as->parms[8].items) {			/* archival */
 	afs_int32 val;
@@ -2653,7 +2652,7 @@ SetOsd(struct cmd_syndesc *as, void *rock)
 	return EINVAL;
     }
     if (as->parms[12].items) {			/* highwatermark */
-        code = util_GetInt32(as->parms[12].items->data, &u.highWaterMark);
+        code = util_GetUInt32(as->parms[12].items->data, &u.highWaterMark);
     }
     if (as->parms[13].items) {			/* minsize */
 	i = sscanf(as->parms[13].items->data, "%llu%s", &size, str);
@@ -2705,7 +2704,7 @@ SetOsd(struct cmd_syndesc *as, void *rock)
         u.location = ntohl(loc);
     }
     if (as->parms[16].items) {			/* newestwiped */
-        code = util_GetInt32(as->parms[16].items->data, &u.newestWiped);
+        code = util_GetUInt32(as->parms[16].items->data, &u.newestWiped);
     }
     if (as->parms[17].items) {			/* hsmaccess */
 	afs_int32 val;
@@ -2755,7 +2754,7 @@ DeleteOsd(struct cmd_syndesc *as, void *rock)
     struct osddb_osd_tab u;
     
     memset(&u, 0, sizeof(u));
-    code = util_GetInt32(as->parms[0].items->data, &u.id);
+    code = util_GetUInt32(as->parms[0].items->data, &u.id);
     if (code) {
 	fprintf(stderr, "Invalid id: %s\n", as->parms[0].items->data);
 	return EINVAL;     
@@ -2805,7 +2804,7 @@ ShowOsd(struct cmd_syndesc *as, void *rock)
     l.OsdList_len = 0;
     l.OsdList_val = 0;
     if (as->parms[0].items) {                   /* id */
-        code = util_GetInt32(as->parms[0].items->data, &id);
+        code = util_GetUInt32(as->parms[0].items->data, &id);
         if (code) {
 	    fprintf(stderr, "Invalid id: %s\n", as->parms[0].items->data);
 	    return EINVAL;     
@@ -3281,7 +3280,7 @@ WipeCand(struct cmd_syndesc *as, void *rock)
     if (as->parms[0].items)					/* -server */ 
         thost = as->parms[0].items->data;
     if (as->parms[1].items) {  					/* -lun */
-        code = util_GetInt32(as->parms[1].items->data, &lun);
+        code = util_GetUInt32(as->parms[1].items->data, &lun);
         if (code) {
 	    fprintf(stderr, "Invalid lun: %s\n", 
 		    as->parms[1].items->data);
@@ -3289,7 +3288,7 @@ WipeCand(struct cmd_syndesc *as, void *rock)
         }
     }
     if (as->parms[2].items) {  					/* -max */
-        code = util_GetInt32(as->parms[2].items->data, &max);
+        code = util_GetUInt32(as->parms[2].items->data, &max);
 	if (code || max < 1 || max > 1000) {
 	    fprintf(stderr, "invalid value for max: %s, using default (100)\n",
 		as->parms[2].items->data);
@@ -3297,7 +3296,7 @@ WipeCand(struct cmd_syndesc *as, void *rock)
         }
     }
     if (as->parms[3].items) {  					/* -criteria */
-        code = util_GetInt32(as->parms[3].items->data, &criteria);
+        code = util_GetUInt32(as->parms[3].items->data, &criteria);
 	if (code || criteria < 0 || criteria > 2) {
 	    fprintf(stderr, "invalid value for criteria: %s, using default (0)\n",
 		as->parms[3].items->data);
@@ -3305,7 +3304,7 @@ WipeCand(struct cmd_syndesc *as, void *rock)
         }
     }
     if (as->parms[4].items) {  					/* -minMB */
-        code = util_GetInt32(as->parms[4].items->data, &minMB);
+        code = util_GetUInt32(as->parms[4].items->data, &minMB);
 	if (code) {
 	    fprintf(stderr, "invalid value for minMB: %s\n",
 		as->parms[4].items->data);
@@ -3736,7 +3735,7 @@ AddPolicy(struct cmd_syndesc *as, void *rock)
     afs_uint32 id;
     char name[OSDDB_MAXNAMELEN];
 							/* -id */
-    if ( code = util_GetInt32(as->parms[0].items->data, &id) ) {
+    if ((code = util_GetUInt32(as->parms[0].items->data, &id))) {
 	fprintf(stderr, "invalid ID: %s\n", as->parms[0].items->data);
 	return code;
     }
@@ -3858,7 +3857,7 @@ ShowPolicy(struct cmd_syndesc *as, void *rock)
 	    }
 	} 
 	else
-            if (( code = util_GetInt32(as->parms[0].items->data, &id) )) {
+            if (( code = util_GetUInt32(as->parms[0].items->data, &id) )) {
 	    fprintf(stderr, "invalid id: %s\n", as->parms[0].items->data);
 	    return code;
 	}
@@ -3931,7 +3930,7 @@ DeletePolicy(struct cmd_syndesc *as, void *rock)
 	    return code;
 	}
     }
-    else if (( code = util_GetInt32(as->parms[0].items->data, &id) )) {
+    else if (( code = util_GetUInt32(as->parms[0].items->data, &id) )) {
 	fprintf(stderr, "invalid id: %s\n", as->parms[0].items->data);
 	return code;
     }
@@ -4089,7 +4088,7 @@ inventoryCmd(struct cmd_syndesc *as, void *rock)
 
     thost = as->parms[0].items->data;
     if (as->parms[1].items)					/* -volume */
-        code = util_GetInt32(as->parms[1].items->data, &volume);
+        code = util_GetUInt32(as->parms[1].items->data, &volume);
     if (as->parms[2].items)					/* -unlinked */
 	flag |= INVENTORY_UNLINKED;
     if (as->parms[3].items)					/* -onlyunlinked */
@@ -4303,7 +4302,7 @@ remove_fetch(struct cmd_syndesc *as, void *rock)
 }
 
 static
-int GetConnection(void)
+void GetConnection(void)
 {
     struct ktc_principal sname;
     struct ktc_token ttoken;
@@ -4327,7 +4326,7 @@ int GetConnection(void)
         ttoken.kvno = kvno;
         if (code) {
             fprintf(stderr,"afsconf_GetLatestKey returned %d\n", code);
-            return -1;
+            return;
         }
 	code = afsconf_ClientAuthSecure(tdir, &sc[2], &scIndex);
 	if (code) 
