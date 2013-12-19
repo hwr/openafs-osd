@@ -177,6 +177,13 @@ struct ih_posix_ops clib_ops = {
 
 struct ih_posix_ops *myops = &clib_ops;
 
+static void
+usage(void)
+{
+    fprintf(stderr,"usage: %s [-hpss] [-dcache] filename\n", whoami);
+    exit(5);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -297,11 +304,5 @@ main(int argc, char *argv[])
 		filename, seconds, (long long unsigned)status.st_size);
     }
  
-    exit(0);
-}
-
-usage()
-{
-    fprintf(stderr,"usage: %s [-hpss] [-dcache] filename\n", whoami);
-    exit(5);
+    return 0;
 }
