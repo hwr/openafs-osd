@@ -582,7 +582,8 @@ ReadVolumeHeader(struct iod *iodp, VolumeDiskData * vol, Volume *vp,
 	case 'F':	/* Old non policy aware servers send F */
 	case 'P':
 	    {
-		afs_int32 newOsdPolicy, code;
+		afs_uint32 newOsdPolicy;
+		afs_int32 code;
 	        if (!ReadInt32(iodp, &newOsdPolicy))
 		    return VOLSERREAD_DUMPERROR;
 		if (osdvol) { /* only if we were started with -libafsosd  */
@@ -745,6 +746,7 @@ DumpByteString(struct iod *iodp, char tag, byte * bs,
     return 0;
 }
 
+#if 0
 static int
 DumpByteStringWithLength(struct iod *iodp, char tag, byte * bs,
 	       int nbytes)
@@ -759,6 +761,7 @@ DumpByteStringWithLength(struct iod *iodp, char tag, byte * bs,
 	return VOLSERDUMPERROR;
     return 0;
 }
+#endif
 
 static afs_int32
 DumpStandardTag(struct iod *iodp, char tag, afs_uint32 section) 
@@ -1694,7 +1697,7 @@ ReadVnodes(struct iod *iodp, Volume * vp, int incremental,
 	    case 'd': 
 	    case 'P':	/* old stuff */ 
 		if (osdvol && vnode->type == vDirectory) {
-		    afs_int32 dummy;
+		    afs_uint32 dummy;
 		    if (!ReadInt32(iodp, &dummy)) 
                         return VOLSERREAD_DUMPERROR;
 		    if (V_osdPolicy(vp))
@@ -1707,7 +1710,7 @@ ReadVnodes(struct iod *iodp, Volume * vp, int incremental,
 		    void *rock;
 		    byte *data;
 		    afs_int32 code;
-		    afs_int32 *length;
+		    afs_uint32 *length;
 		    afs_size_t taglen;
 		    code = (osdvol->op_restore_allocmetadata)(&rock, &data, &length);
 		    if (code) {
@@ -1741,7 +1744,7 @@ ReadVnodes(struct iod *iodp, Volume * vp, int incremental,
 		    void *rock;
 		    byte *data;
 		    afs_int32 code;
-		    afs_int32 *length, maxlength;
+		    afs_uint32 *length, maxlength;
 		    code = (osdvol->op_restore_allocmetadata)(&rock, &data, &length);
 		    if (code) {
         	        Log("1 Volser: ReadVnodes: Restore aborted couldn't allocate osd metadata handle\n");
