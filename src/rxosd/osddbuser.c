@@ -617,7 +617,7 @@ retry:
 
 afs_int32
 FindOsdType(afs_uint32 id, afs_uint32 *ip, afs_uint32 *lun, afs_int32 ignore,
-		afs_uint32 *type, afs_int32 *service, afs_int32 *port)
+		afs_uint32 *type, afs_uint32 *service, afs_uint32 *port)
 {
     afs_int32 i, code = ENOENT;
  
@@ -784,6 +784,7 @@ get_max_move_osd_size(void)
     return value;
 }
 
+#ifndef BUILD_LIBAFSOSD_A
 static
 void incrementChosen(struct Osd *o)
 {
@@ -797,7 +798,6 @@ void incrementChosen(struct Osd *o)
         (o->t.etype_u.osd.chosen)++;
 }
 
-#ifndef BUILD_LIBAFSOSD_A
 /*
  * DoFindOsd is called with osd and lun being pointers either to single
  * variables (in case stripes == 1) or arrays.
