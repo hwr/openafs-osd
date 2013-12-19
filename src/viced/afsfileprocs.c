@@ -402,7 +402,7 @@ afs_int32 MyThreadEntry = setActive(c, n, f, 0)
 
 #define SETTHREADINACTIVE() setInActive(MyThreadEntry)
 
-static int GetLinkCountAndSize(Volume * vp, FdHandle_t * fdP, int *lc,
+static int GetLinkCountAndSize(Volume * vp, FdHandle_t * fdP, afs_uint32 *lc,
 		    afs_sfsize_t * size);
 
 struct afs_FSStats {
@@ -897,11 +897,13 @@ getAsyncVolptr(struct rx_call *call, AFSFid *Fid, afs_uint64 transid,
 afs_int32
 FakeEndAsyncStore(AFSFid *fid, afs_uint64 transid)
 {
-    afs_int32 errorCode, blocks;
+    Error errorCode;
+    afs_int32 blocks;
     Vnode *targetptr = 0;
     Volume *volptr = 0;
     Inode ino;
-    afs_uint64 DataLength, VnodeLength;
+    afs_uint64 VnodeLength;
+    afs_sfsize_t DataLength;
     afs_uint32 linkCount;
     FdHandle_t *fdP;
 
@@ -940,7 +942,7 @@ FakeEndAsyncStore(AFSFid *fid, afs_uint64 transid)
     VPutVolume(volptr);
 Out:
     EndAsyncTransaction(NULL, fid, transid);
-    return errorCode;
+    return (afs_int32)errorCode;
 }
 
 afs_int32
@@ -2979,7 +2981,8 @@ SRXAFS_FsCmd(struct rx_call * acall, struct AFSFid * Fid,
     case CMD_LISTDISKVNODE:
         {
             struct Volume *vp = 0;
-            afs_int32 code, localcode;
+            Error localcode;
+            Error code;
             afs_uint32 *p = (afs_uint32 *)&Outputs->int32s[0];
             afs_uint32 Vnode = Inputs->int32s[0];
 
@@ -5002,8 +5005,8 @@ SRXAFS_InverseLookup (struct rx_call *acall, struct AFSFid *Fid,
     Vnode * parentptr = 0;              /* vnode of input Directory */
     Vnode * targetptr = 0;              /* pointer to vnode to fetch */
     Vnode * parentwhentargetnotdir = 0; /* parent vnode if targetptr is a file */
-    int     errorCode = 0;              /* return code to caller */
-    int     localErrorCode = 0;              /* return code to caller */
+    Error   errorCode = 0;              /* return code to caller */
+    Error   localErrorCode = 0;         /* return code to caller */
     Volume * volptr = 0;                /* pointer to the volume */
     struct client *client = 0;              /* pointer to the client data */
     afs_int32 rights, anyrights;            /* rights for this and any user */
@@ -8598,7 +8601,7 @@ FetchData_RXStyle(Volume * volptr, Vnode * targetptr,
 }				/*FetchData_RXStyle */
 
 static int
-GetLinkCountAndSize(Volume * vp, FdHandle_t * fdP, int *lc,
+GetLinkCountAndSize(Volume * vp, FdHandle_t * fdP, afs_uint32 *lc,
 		    afs_sfsize_t * size)
 {
     struct afs_stat status;
@@ -8676,7 +8679,7 @@ StoreData_RXStyle(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
     afs_sfsize_t TruncatedLength;	/* size after ftruncate */
     afs_fsize_t NewLength;	/* size after this store completes */
     afs_sfsize_t adjustSize;	/* bytes to call VAdjust... with */
-    int linkCount = 0;		/* link count on inode */
+    afs_uint32 linkCount = 0;		/* link count on inode */
     ssize_t nBytes;
     FdHandle_t *fdP = NULL;
     struct in_addr logHostAddr;	/* host ip holder for inet_ntoa */
@@ -9175,7 +9178,8 @@ SRXAFS_StartAsyncStore(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
     struct host *thost;
     afs_int32 rights, anyrights;        /* rights for this and any user */
     struct AFSStoreStatus InStatus;      /* needed for Check_Permissions */
-    afs_size_t DataLength, diff;
+    afs_size_t diff;
+    afs_sfsize_t DataLength;
 
     SETTHREADACTIVE(acall, 65591, Fid);
     ViceLog(1,("StartAsyncStore for %u.%u.%u backend %d offs %llu len %llu\n", 
@@ -9238,7 +9242,7 @@ SRXAFS_StartAsyncStore(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
 	    goto bad;
 	}
 	if (VN_GET_INO(targetptr)) {
-	    afs_int32 linkCount;
+	    afs_uint32 linkCount;
 	    FdHandle_t *fdP;
 
 	    fdP = IH_OPEN(targetptr->handle);

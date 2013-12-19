@@ -118,15 +118,8 @@ static void ResetCheckSignal(void);
 static void *CheckSignal(void *);
 
 static afs_int32 Do_VLRegisterRPC(void);
-extern void checkOSDconnections();
-extern void TimeoutAsyncTransactions();
-extern int registerthread();
-extern int swapthreadname();
-extern char *threadname();
-extern int (*registerProgram)();
-extern int (*swapNameProgram)();
-extern char *(*threadNameProgram)();
-extern void TransferRate();
+extern void TimeoutAsyncTransactions(void);
+extern void TransferRate(void);
 struct timeval statisticStart;
 
 int eventlog = 0, rxlog = 0;
