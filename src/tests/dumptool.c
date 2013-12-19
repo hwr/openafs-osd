@@ -232,7 +232,7 @@ printOsdMetadata(struct osdMetadataHandle *mh, char *name)
 	    if (pfile->archiveVersion) {
                 printf("Archive, dv=%u,",
                         pfile->archiveVersion);
-	        PrintTime(&pfile->archiveTime);
+	        PrintTime(pfile->archiveTime);
 	    } else 
 		printf("On-line");
             printf(", %u segm, flags=0x%x\n",
@@ -269,7 +269,7 @@ printOsdMetadata(struct osdMetadataHandle *mh, char *name)
 				meta->data[2], meta->data[3]);
 				if (meta->time) {
 				    printf(" as from ");
-                                    PrintTime(&meta->time);
+                                    PrintTime(meta->time);
                                 }
                                 printf("\n");
 	    }
@@ -830,10 +830,10 @@ ListVnode(int argc, char **argv, struct vnodeData *vdatacwd, FILE *f,
 				vdata->vnode->length); 
     printf("\tdataVersion\t = %u\n", vdata->vnode->dataVersion);
     printf("\tunixModifyTime\t =");
-    PrintTime(&vdata->vnode->unixModifyTime);
+    PrintTime(vdata->vnode->unixModifyTime);
     printf("\n");
     printf("\tserverModifyTime  =");
-    PrintTime(&vdata->vnode->serverModifyTime);
+    PrintTime(vdata->vnode->serverModifyTime);
     printf("\n");
     printf("\tvn_ino_lo\t = %u	(0x%x) tag = %u\n",
 				vdata->vnode->vn_ino_lo, 
@@ -1570,7 +1570,7 @@ DirListInternal(struct vnodeData *vdata, char *pathnames[], int numpathnames,
 				| lvdata->vnode->length;
 		printf(" %-3d %-8d %10lld", lvdata->vnode->linkCount,
 		       lvdata->vnode->owner, filesize);
-		PrintTime(&lvdata->vnode->unixModifyTime);
+		PrintTime(lvdata->vnode->unixModifyTime);
 		printf(" %s\n", eplist[i]->name);
 	    }
     }
@@ -1671,8 +1671,7 @@ ChangeDirectory(int argc, char **argv, struct vnodeData *vdatacwd)
 }
 
 #ifdef AFS_RXOSD_SUPPORT
-PrintTime(intdate)
-int *intdate;
+PrintTime(int intdate)
 {
     time_t now, date;
     char month[4];
@@ -1683,8 +1682,8 @@ int *intdate;
                          "Sep", "Oct", "Nov", "Dec"};
     int i;
 
-    if (!*intdate) printf(" never       "); else {
-        date = *intdate;
+    if (!intdate) printf(" never       "); else {
+        date = intdate;
         timestring = ctime(&date);
         sscanf(timestring, "%s %s %d %d:%d:%d %d",
                 (char *)&weekday,
