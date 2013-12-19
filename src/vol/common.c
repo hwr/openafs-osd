@@ -25,6 +25,7 @@
 #include <afs/afsutil.h>
 
 #include "common.h"
+#include "lwp.h"
 
 int Statistics = 0;
 
@@ -79,7 +80,7 @@ afs_int64 lastSent = 0;
 void
 TransferRate(void)
 {
-    unsigned int now;                   /* FT_ApproxTime() returns a value of type 'unsigned int' not 'time_t' */
+    unsigned int now;   /* FT_ApproxTime() returns a value of type 'unsigned int' not 'time_t' */
     static unsigned int last = 0;
     afs_int32 basetime, i;
     static afs_int32 inited = 0;

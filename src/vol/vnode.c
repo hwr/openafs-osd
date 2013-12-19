@@ -2010,11 +2010,13 @@ int ListLockedVnodes(afs_uint32 *count, afs_uint32 maxcount, afs_uint32 **ptr)
     return 0;
 }
 
-int ListDiskVnode(struct Volume *vp,  afs_uint32 vnodeNumber, afs_uint32 **ptr,
-                afs_uint32 length, char *aclbuf)
+afs_int32
+ListDiskVnode(struct Volume *vp,  afs_uint32 vnodeNumber, afs_uint32 **ptr,
+              afs_uint32 length, char *aclbuf)
 {
     struct Vnode *vnp;
-    afs_int32 code, code2, hash, dontPutVnode;
+    Error code, code2;
+    afs_int32 hash, dontPutVnode;
     afs_uint32 v = vnodeNumber;
     afs_int32 l = length;
 
@@ -2076,5 +2078,5 @@ int ListDiskVnode(struct Volume *vp,  afs_uint32 vnodeNumber, afs_uint32 **ptr,
         } else
             v = 0;
     }
-    return code;
+    return (afs_int32)code;
 }
