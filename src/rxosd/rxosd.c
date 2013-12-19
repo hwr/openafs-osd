@@ -406,7 +406,6 @@ oh_release(struct o_handle *oh)
 
 void oh_free(struct o_handle *oh)
 {
-    struct o_handle *ohP;
     FdHandle_t *fdP = 0;
     afs_int32 h;
     if (!oh)
@@ -438,7 +437,7 @@ void oh_free(struct o_handle *oh)
     OSD_UNLOCK;
 }
 
-void oh_ShutDown()
+void oh_ShutDown(void)
 {
     afs_int32 h;
     FdHandle_t *fdP;
@@ -813,7 +812,6 @@ int
 setActiveFromOprm(afs_int32 num, struct rx_call *call, struct ometa *o,
 		  afs_int32 exclusive)
 {
-    int code;
     struct oparmFree of;
 
     if (!o)
@@ -853,12 +851,14 @@ afs_int32 MyThreadEntry = setActiveFromOprm(n, c, o, 1)
 
 extern int RXOSD_ExecuteRequest(struct rx_call *acall);
 extern int         mrafsStyleLogs;
-extern int         (*registerProgram)();
-extern int         (*swapNameProgram)();
-extern char        *(*threadNameProgram)();
-extern int         registerthread();
-extern int         swapthreadname();
-extern char        *threadname();
+extern int         registerthread(
+#ifdef AFS_PTHREAD_ENV
+                  pthread_t id,
+#else				/* AFS_PTHREAD_ENV */
+		  PROCESS id,
+#endif				/* AFS_PTHREAD_ENV */
+		  char *name);
+
 
 afs_uint32 HostAddr_NBO = 0;
 afs_uint32 HostAddr_HBO = 0;
@@ -907,7 +907,7 @@ struct fetch_process {
 };
 
 struct ubik_client *
-my_init_osddb_client()
+my_init_osddb_client(void)
 {
     afs_int32 code, scIndex = 0, i;
     struct rx_securityClass *sc;
@@ -1052,7 +1052,7 @@ afs_int32 CheckMount(char *partname)
 }
  
 
-extern void TransferRate();
+extern void TransferRate(void);
 
 static void*
 FiveMinuteCheckLWP(void* unused)
@@ -1239,11 +1239,10 @@ void
 xdrfetchq_create(XDR * xdrs, enum xdr_op op);
 
 void
-StartFetch()
+StartFetch(void)
 {
     struct fetch_entry *f;
     namei_t name;
-    afs_uint32 lun, vid;
     afs_int32 i, Maxfd;
     int do_release = 0;
 
@@ -1312,7 +1311,7 @@ StartFetch()
     return;
 }
 
-void WriteFetchQueue()
+void WriteFetchQueue(void)
 {
     XDR xdr;
     struct fetch_entry *f;
@@ -1816,7 +1815,7 @@ restart2:
 extern void (*namei_lock)(FdHandle_t *fdP, afs_int32 mode);
 extern void (*namei_unlock)(FdHandle_t *fdP);
 
-int Command(char *command, int mask, int I_O(), void *rock)
+int Command(char *command, int mask, int I_O(FILE *, FILE *, char *), void *rock)
 {
     pid_t pid, p;
     FILE *cmd_stdin, *cmd_stdout;
@@ -1967,7 +1966,7 @@ CheckCAP(struct rx_call *call, t10rock *r, struct oparmT10 *o, afs_int32 command
                         cap->cid, cap->epoch));
     for (i=0; i<8; i++)
        ViceLog(3, ("Encrypted CAP%d = 0x%x, 0x%x 0x%x 0x%x\n",
-                        i, *rp++, *rp++, *rp++, *rp++));
+                   i, rp[0], rp[1], rp[2], rp[3]));
     if (!cid && !epoch)
         return -1;
     hashindex = CONN_HASH(0, 7000, cid, epoch, RX_SERVER_CONNECTION);
@@ -2232,6 +2231,8 @@ struct rx_connection *GetConnection(afs_uint32 host,  afs_uint32 limit, short po
     return Connection;
 }
 
+#if 0
+/* UNUSED */
 static
 struct rx_connection *GetConnFromUnion(struct ipadd *info)
 {
@@ -2247,6 +2248,7 @@ struct rx_connection *GetConnFromUnion(struct ipadd *info)
     tc = GetConnection(ip, 1, port, service);
     return tc;    
 }
+#endif
 
 static
 struct rx_connection *GetConnToOsd(afs_uint32 id)
@@ -2287,7 +2289,7 @@ FreeSendBuffer(struct afs_buffer *adata)
 
 /* allocate space for sender */
 static char *
-AllocSendBuffer()
+AllocSendBuffer(void)
 {
     struct afs_buffer *tp;
 
@@ -2338,7 +2340,7 @@ afs_int32
 create_volume(struct rx_call *call, afs_uint64 part_id)
 {
     Inode ino;
-    afs_int32 code = 0, tbuf[2];
+    afs_int32 code = 0;
     char tmp[NAMEI_LCOMP_LEN];
     afs_uint32 vid, lun;
     struct o_handle *oh = 0;
@@ -2510,7 +2512,7 @@ create(struct rx_call *call, afs_uint64 part_id, afs_uint64 from_id,
 	      afs_uint64 * obj_id)
 {
     struct o_handle *lh = 0;
-    Inode linkinode, inode = 0;
+    Inode inode = 0;
     afs_uint32 vid, vnode, unique, lun;
 #define PARTNAMELEN 64
     char partition[PARTNAMELEN];
@@ -2603,7 +2605,7 @@ incdec(struct rx_call *call, struct oparmT10 *o, afs_int32 diff)
     struct o_handle *oh = NULL;
     struct o_handle *lh = NULL;
     FdHandle_t *fdP = NULL;
-    Inode linkinode, inode = 0;
+    Inode inode = 0;
     afs_uint32 vid, vnode, unique, lun;
     afs_int32 lc, code = 0;
     char string[FIDSTRLEN];
@@ -2906,7 +2908,7 @@ send_inv2(XDR *xdr, struct inventory *inv,  afs_uint64 p_id, afs_uint64 o_id,
     memset(inv2, 0, sizeof(struct inventory2));
     inv2->o.rwvol = p_id & RXOSD_VOLIDMASK;
     inv2->o.lun = p_id >> RXOSD_LUNSHIFT;
-    if (o_id & RXOSD_VNODEMASK == RXOSD_VNODEMASK) { /* vol. special file */
+    if ((o_id & RXOSD_VNODEMASK) == RXOSD_VNODEMASK) { /* vol. special file */
 	inv2->o.vN = (o_id & RXOSD_VNODEMASK);
         inv2->o.tag = (o_id >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK;
         inv2->o.unique = o_id >> RXOSD_UNIQUESHIFT;
@@ -2961,7 +2963,7 @@ send_inv4(XDR *xdr, struct inventory *inv,  afs_uint64 p_id, afs_uint64 o_id,
     memset(inv4, 0, sizeof(struct inventory4));
     inv4->o.rwvol = p_id & RXOSD_VOLIDMASK;
     inv4->o.lun = p_id >> RXOSD_LUNSHIFT;
-    if (o_id & RXOSD_VNODEMASK == RXOSD_VNODEMASK) { /* vol. special file */
+    if ((o_id & RXOSD_VNODEMASK) == RXOSD_VNODEMASK) { /* vol. special file */
 	inv4->o.vN = (o_id & RXOSD_VNODEMASK);
         inv4->o.tag = (o_id >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK;
         inv4->o.unique = o_id >> RXOSD_UNIQUESHIFT;
@@ -3099,8 +3101,6 @@ traverse_osd(struct rx_call *call, afs_uint64 part_id, afs_int32 type,
     FdHandle_t *fdP = NULL;
     IHandle_t myIH;
     int code = 0, i;
-    afs_uint32 cand = 0;
-    afs_uint32 nvolumes;
     DIR *dirp1 = NULL;
     DIR *dirp2 = NULL;
     DIR *dirp3 = NULL;
@@ -3113,7 +3113,6 @@ traverse_osd(struct rx_call *call, afs_uint64 part_id, afs_int32 type,
     struct dirent *dp1;
     char path1[80];
     struct inventory inv;
-    struct inventory1 *inv1;
     afs_uint64 p_id, o_id;
     afs_uint32 volume;
     afs_uint32 lun;
@@ -3157,7 +3156,7 @@ traverse_osd(struct rx_call *call, afs_uint64 part_id, afs_int32 type,
 	code = EIO;
 	goto finis;
     }
-    while (dp1 = IH_READDIR(dirp1, &myIH)) {
+    while ((dp1 = IH_READDIR(dirp1, &myIH))) {
 	if (*dp1->d_name == '.') 
 	    continue;
 	(void)strcpy(path2, path1);
@@ -3166,7 +3165,7 @@ traverse_osd(struct rx_call *call, afs_uint64 part_id, afs_int32 type,
 	dirp2 = IH_OPENDIR(path2, &myIH);
 	if (!dirp2)
 	    continue; 
-	while (dp2 = IH_READDIR(dirp2, &myIH)) {
+	while ((dp2 = IH_READDIR(dirp2, &myIH))) {
 	    if (*dp2->d_name == '.') 
 	    	continue;
 	    (void)strcpy(path3, path2);
@@ -3188,7 +3187,7 @@ single_volume:
         	    ViceLog(0,("inventory: IH_OPEN for linktable failed for %u\n",
 			    (afs_uint32)p_id));
     	    }
-	    while (dp3 = IH_READDIR(dirp3, &myIH)) {
+	    while ((dp3 = IH_READDIR(dirp3, &myIH))) {
 		struct dirent *dp4;
 		char path4[80];
 		if (*dp3->d_name == '.') 
@@ -3202,7 +3201,7 @@ single_volume:
 		    dirp4 = opendir(path4);
 		    if (!dirp4)
 			continue;
-		    while (dp4 = readdir(dirp4)) {
+		    while ((dp4 = readdir(dirp4))) {
 			char path5[80];
 
     		        if (*dp4->d_name == '.') 
@@ -3228,7 +3227,7 @@ single_volume:
 		dirp4 = IH_OPENDIR(path4, &myIH);
 		if (!dirp4)
 		    continue;
-	   	while (dp4 = IH_READDIR(dirp4, &myIH)) {
+	   	while ((dp4 = IH_READDIR(dirp4, &myIH))) {
 		    struct dirent *dp5;
 		    char path5[80];
     		    if (*dp4->d_name == '.') 
@@ -3239,7 +3238,7 @@ single_volume:
 		    dirp5 = IH_OPENDIR(path5, &myIH);
 		    if (!dirp5) 
 			continue;
-		    while (dp5 = IH_READDIR(dirp5, &myIH)) {
+		    while ((dp5 = IH_READDIR(dirp5, &myIH))) {
 			char *p;
 			afs_uint32 unlinked = 0;
 			afs_int32 lc;
@@ -3387,7 +3386,6 @@ int examine(struct rx_call *call, t10rock *rock, struct oparmT10 *o,
     IHandle_t h;
     struct afs_stat tstat;
     namei_t name;
-    afs_int64 blocks;
     afs_int32 result;
     char string[FIDSTRLEN];
     afs_uint64 *sizep = 0;
@@ -3724,17 +3722,16 @@ int writePS(struct rx_call *call, t10rock *rock,
                    afs_uint32 nstripes, afs_uint32 mystripe,
 		   afs_uint64 atime, afs_uint64 mtime)
 {
-    int code = 0, bytes, nbytes, linkCount, written;
+    int code = 0, bytes, linkCount, written;
     struct o_handle *oh = 0;
     struct o_handle *lh = 0;
     FdHandle_t *fdP = 0, *lhp;
     afs_uint32 vid, lun;
     char *buffer = (char*) 0;
     afs_int64 bytesToXfer;
-    afs_uint64 toffset, tlength;
+    afs_uint64 toffset;
     afs_uint32 skip, firstlen;
     afs_uint32 bufsize = sendBufSize;
-    struct t10cdb *cdb;
     struct utimbuf u;
     afs_uint32 fs_host = 0;		/* NBO */
     afs_uint16 fs_port = 0;		/* NBO */
@@ -4049,7 +4046,6 @@ SRXOSD_write_keep122(struct rx_call *call,  afs_uint64 part_id,
 {
     afs_int32 code;
     struct oparmT10 o1;
-    struct RWparm p;
     SETTHREADACTIVE_OLD(122, call, part_id, obj_id);
 
     o1.part_id = part_id;
@@ -4303,12 +4299,11 @@ afs_int32
 Truncate(struct rx_call *call, struct oparmT10 *o, afs_uint64 length,
 	struct oparmT10 *out)
 {
-    afs_int32 code = 0, bytes, nbytes, lc;
+    afs_int32 code = 0, lc;
     struct o_handle *oh = 0;
     struct o_handle *lh = 0;
     FdHandle_t *fdP = 0, *lhp = 0;
     afs_uint32 vid;
-    char *buffer = (char*) 0;
     Inode inode;
     char string[FIDSTRLEN];
 
@@ -4435,7 +4430,7 @@ readPS(struct rx_call *call, t10rock *rock, struct oparmT10 * o,
        afs_uint64 offset, afs_uint64 length, afs_uint32 stripe_size,
        afs_uint32 nstripes, afs_uint32 mystripe)
 {
-    int code = 0, bytes, nbytes, written;
+    int code = 0, bytes, written;
     FdHandle_t *fdP = 0;
     afs_uint32 vid, lun;
     Inode inode;
@@ -4446,7 +4441,6 @@ readPS(struct rx_call *call, t10rock *rock, struct oparmT10 * o,
     afs_uint32 bufsize = sendBufSize;
     afs_uint32 oStripe, onStripes, oStripeSize;
     struct o_handle *oh = 0;
-    afs_offs_t result;
 
     char *buffer = (char*) 0;
     XDR xdr;
@@ -4460,7 +4454,7 @@ readPS(struct rx_call *call, t10rock *rock, struct oparmT10 * o,
                 (afs_uint32)((o->obj_id >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK),
 		stripe_size, nstripes,
                 mystripe, offset, length));
-    if (code = CheckCAP(call, rock, o, 2, 0, 0)) {
+    if ((code = CheckCAP(call, rock, o, 2, 0, 0))) {
     	if (!afsconf_SuperUser(confDir, call, (char *)0))
 	    goto finis;
 	code = 0;
@@ -4475,7 +4469,7 @@ readPS(struct rx_call *call, t10rock *rock, struct oparmT10 * o,
 	goto finis;
     }
     lun = (afs_uint64)(o->part_id >> 32);
-    if (o->obj_id & 0xffffffff == 0xffffffff) { /* Volume special file */
+    if ((o->obj_id & 0xffffffff) == 0xffffffff) { /* Volume special file */
 	oStripe = 0;
 	onStripes = 0;
 	oStripeSize = 0;
@@ -4639,7 +4633,6 @@ finis:
     if (fdP) {
 	unlock_file(fdP, mystripe);
 	if (HSM || oh->ih->ih_dev == hsmDev) {
-            char cmd[100];
 	    FDH_REALLYCLOSE(fdP);
             if (oh->ih->ih_dev == hsmDev && hsmPath) 
                 ViceLog(0,("HSM migrate %s/%s\n", hsmPath, name.n_path));
@@ -4676,8 +4669,7 @@ SRXOSD_read(struct rx_call *call, t10rock *rock, struct RWparm *p,
     afs_uint32 stripe_size = sendBufSize;
     afs_uint32 nStripes = 1;
     afs_uint32 myStripe = 0;
-    afs_uint32 atime = 0;
-    afs_uint32 mtime = 0;
+
     SETTHREADACTIVE(12, call, o);
 
     switch (p->type) {
@@ -4759,7 +4751,6 @@ hardlink(struct rx_call *call, afs_uint64 from_part,
     afs_uint32 from_vid, from_vnode, from_unique, from_lun;
     afs_uint32 to_vid, to_vnode, to_unique, to_lun;
 #define PARTNAMELEN 64
-    char partition[PARTNAMELEN];
     afs_int32 code = 0;
 
     if (!afsconf_SuperUser(confDir, call, (char *)0)) {
@@ -4863,7 +4854,7 @@ SRXOSD_hardlink115(struct rx_call *call, afs_uint64 from_part,
 afs_int32
 copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint32 to_osd,     afs_int32 legacy)
 {
-    int ret, bytes, nbytes;
+    int bytes, nbytes;
     struct o_handle *from_oh = 0, *to_oh = 0;
     FdHandle_t *from_fdP = 0;
     FdHandle_t *to_fdP = 0;
@@ -4873,15 +4864,12 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
     struct afs_stat tstat;
     struct timespec mtime, atime;
     afs_uint64 at, mt;
-    afs_uint32 mtimesec, atimesec;
     namei_t name;
     struct rx_connection *conn;
     struct rx_call *tcall = 0;
     afs_uint64 offset, length;
     afs_uint32 bufsize = sendBufSize;
     char *buffer = (char*) 0;
-    XDR xdr;
-    afs_int64 bytesToXfer;
     char string[FIDSTRLEN];
 
     if (!afsconf_SuperUser(confDir, call, (char *)0)) {
@@ -4952,7 +4940,6 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
     length = tstat.st_size;
     buffer = AllocSendBuffer();
     if (to_osd) {
-	afs_uint32 ip, lun;
 	struct RWparm p;
         conn = GetConnToOsd(to_osd);
         tcall = rx_NewCall(conn);
@@ -5033,7 +5020,6 @@ copy(struct rx_call *call, struct oparmT10 *from, struct oparmT10 *to, afs_uint3
             code = EAGAIN;
         }
     } else { /* internal copy (CopyOnWrite) */
-        Inode to_inode = to->obj_id;
         to_oh = oh_init_oparmT10(to);
         if (to_oh == NULL) {
             ViceLog(0,("copy: oh_init failed for %s\n",
@@ -5230,7 +5216,6 @@ md5sum(struct rx_call *call, struct oparmT10 *o, struct osd_cksum *md5)
     afs_int32 code;
     struct afs_stat tstat;
     namei_t name;
-    afs_uint64 length;
     char input[256];
 
     if (!afsconf_SuperUser(confDir, call, (char *)0)) {
@@ -5322,10 +5307,10 @@ SRXOSD_md5sum230(struct rx_call *call, afs_uint64 part_id,
 
 int check_dsmls(FILE *cmd_stdin, FILE *cmd_stdout, char *rock)
 {
-    afs_int32 *status = (afs_uint32 *)rock;
+    afs_int32 *status = (afs_int32 *)rock;
     char string[256];
     char *p, *c;
-    int i, j = 0;
+    int i;
 
     p = c = (char *)&string;
     for (i = getc(cmd_stdout); i != EOF; i = getc(cmd_stdout)) {
@@ -5362,7 +5347,6 @@ create_archive(struct rx_call *call, struct oparmT10 *o,
     afs_int32 i, j, k;
     afs_uint32 stripe_size;
     MD5_CTX md5;
-    char tmp[16];
     namei_t name;
     struct timeval start, end;
     struct timezone tz;
@@ -5691,7 +5675,7 @@ SRXOSD_create_archive(struct rx_call *call, struct ometa *o,
 		      struct osd_cksum *output)
 {
     afs_int32 code;
-    struct oparmT10 o1, *optr;
+    struct oparmT10 *optr;
 
     SETTHREADEXCLUSIVEACTIVE(17, call, o);
 
@@ -5748,9 +5732,6 @@ convert_osd_segm_desc0List(struct osd_segm_desc0List *lin,
         }
         out->objList.osd_obj_descList_len = k;
         for (m=0; m<k; m++) {
-            afs_uint32 stripemask = 0;
-            afs_uint32 sizemask = 0;
-            afs_uint64 tmp;
             struct osd_obj_desc0 *oin;
             struct osd_obj_desc *oout;
             oin = &in->objList.osd_obj_desc0List_val[m];
@@ -5771,7 +5752,7 @@ SRXOSD_create_archive240(struct rx_call *call, afs_uint64 part_id,
 			afs_uint64 obj_id, struct osd_segm_desc0List *list,
 			struct osd_md5 *output)
 {
-    afs_int32 code, i, j, k, m;
+    afs_int32 code, i;
     struct oparmT10 o;
     struct osd_segm_descList l;
     struct osd_cksum out;
@@ -5809,9 +5790,8 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
     struct o_handle *oh = 0;
     FdHandle_t *fd = 0;
     Inode inode = 0;
-    afs_uint32 vid, vnode, unique, lun;
+    afs_uint32 vid, lun;
 #define PARTNAMELEN 64
-    char partition[PARTNAMELEN];
     afs_int32 code;
     struct rx_call *rcall[MAXOSDSTRIPES];
     afs_uint64 striperesid[MAXOSDSTRIPES];
@@ -6069,7 +6049,6 @@ bad:
     if (oh)  {
         if (HSM || oh->ih->ih_dev == hsmDev) {
             namei_t name;
-            char cmd[100];
             namei_HandleToName(&name, oh->ih);
             if (oh->ih->ih_dev == hsmDev && hsmPath) 
                 ViceLog(0,("HSM migrate %s/%s\n", hsmPath, name.n_path));
@@ -6099,7 +6078,6 @@ SRXOSD_restore_archive(struct rx_call *call, struct ometa *o, afs_uint32 user,
 			struct osd_cksum *output)
 {
     afs_int32 code;
-    afs_uint64 p_id, o_id;
     struct oparmT10 o1, *optr;
 
     SETTHREADEXCLUSIVEACTIVE(18, call, o);
@@ -6186,7 +6164,6 @@ wipe_candidates(struct rx_call *call, afs_uint32 lun, afs_uint32 maxcand,
 {
     int code = 0, i;
     afs_uint32 cand = 0;
-    afs_uint32 nvolumes;
     DIR *dirp1;
     struct dirent *dp1;
     struct w_obj *w, *newest = 0;
@@ -6208,7 +6185,7 @@ wipe_candidates(struct rx_call *call, afs_uint32 lun, afs_uint32 maxcand,
 	code = EIO;
 	goto finis;
     }
-    while (dp1 = readdir(dirp1)) {
+    while ((dp1 = readdir(dirp1))) {
     	DIR *dirp2;
 	struct dirent *dp2;
 	char path2[80];
@@ -6220,7 +6197,7 @@ wipe_candidates(struct rx_call *call, afs_uint32 lun, afs_uint32 maxcand,
 	dirp2 = opendir(path2);
 	if (!dirp2)
 	    continue; 
-	while (dp2 = readdir(dirp2)) {
+	while ((dp2 = readdir(dirp2))) {
     	    DIR *dirp3;
 	    struct dirent *dp3;
 	    char path3[80];
@@ -6234,7 +6211,7 @@ wipe_candidates(struct rx_call *call, afs_uint32 lun, afs_uint32 maxcand,
 	    if (!dirp3)
 		continue; 
 	    p_id = flipbase64_to_int64(dp2->d_name);
-	    while (dp3 = readdir(dirp3)) {
+	    while ((dp3 = readdir(dirp3))) {
    		DIR *dirp4;
 		struct dirent *dp4;
 		char path4[80];
@@ -6246,7 +6223,7 @@ wipe_candidates(struct rx_call *call, afs_uint32 lun, afs_uint32 maxcand,
 		dirp4 = opendir(path4);
 		if (!dirp4)
 		    continue;
-	   	while (dp4 = readdir(dirp4)) {
+	   	while ((dp4 = readdir(dirp4))) {
 		    DIR *dirp5;
 		    struct dirent *dp5;
 		    char path5[80];
@@ -6258,7 +6235,7 @@ wipe_candidates(struct rx_call *call, afs_uint32 lun, afs_uint32 maxcand,
 		    dirp5 = opendir(path5);
 		    if (!dirp5) 
 			continue;
-		    while (dp5 = readdir(dirp5)) {
+		    while ((dp5 = readdir(dirp5))) {
 			afs_int64 tweight;
 			char path6[80];
 			struct afs_stat tstat;
@@ -6399,7 +6376,6 @@ SRXOSD_wipe_candidates291(struct rx_call *call, afs_uint32 lun, afs_uint32 maxca
 	else
 	    list->WipeCandidate0List_val = 0;
 	for (i=0; i<l.WipeCandidateList_len; i++) {
-	    struct oparmT10 o;
 	    struct WipeCandidate *w = &l.WipeCandidateList_val[i];
 	    struct WipeCandidate0 *w0 = &list->WipeCandidate0List_val[i];
 	    w0->p_id = w->o.ometa_u.t.part_id;
@@ -6858,7 +6834,7 @@ statistic(struct rx_call *call, afs_int32 reset,
 			struct rxosd_kbps *kbpsrcvd,
 			struct rxosd_kbps *kbpssent)
 {
-    afs_int32 code = 0, i, j;
+    afs_int32 code = 0, i;
 
     l->rxosd_statList_len = 0;
     l->rxosd_statList_val = 0;
@@ -6981,20 +6957,14 @@ write_to_hpss(struct rx_call *call, struct oparmT10 *o,
     struct o_handle *ohin = 0;
     FdHandle_t *fd = 0;
     FdHandle_t *fdin = 0;
-    Inode inode = 0;
-    int open_fd = -1;
     afs_uint32 vid;
 #define PARTNAMELEN 64
-    char partition[PARTNAMELEN];
-    afs_uint64 striperesid[MAXOSDSTRIPES];
-    char *buf = 0, *bp;
+    char *buf = 0;
     afs_int32 bytes, tlen, writelen;
     afs_uint64 length, offset;
     afs_uint64 tpart_id;
-    afs_int32 i, j, k;
+    afs_int32 i;
     MD5_CTX md5;
-    char tmp[16];
-    namei_t name;
     struct timeval start, end;
     struct timezone tz;
     afs_uint64 datarate;
@@ -7137,7 +7107,7 @@ SRXOSD_write_to_hpss(struct rx_call *call, struct ometa *o,
 		     struct osd_cksum *output)
 {
     afs_int32 code;
-    struct oparmT10 o1, *optr;
+    struct oparmT10  *optr;
 
     SETTHREADEXCLUSIVEACTIVE(26, call, o);
 
@@ -7209,16 +7179,12 @@ read_from_hpss(struct rx_call *call, struct oparmT10 *o,
     struct o_handle *oh = 0, *ohout = 0;
     FdHandle_t *fd = 0, *fdout = 0;
     Inode inode = 0;
-    afs_uint32 vid, vnode, unique, lun;
-#define PARTNAMELEN 64
-    char partition[PARTNAMELEN];
+    afs_uint32 vid, lun;
     char *buf = 0;
-    afs_int32 bytes, tlen, readlen;
-    afs_uint32 fullstripes;
+    afs_int32 bytes, readlen;
     afs_uint64 length, offset;
     afs_uint64 tpart_id;
-    afs_int32 i, j, k;
-    afs_uint32 stripe_size;
+    afs_int32 i;
     afs_uint32 start_sec = time(0);
     afs_uint32 end_sec;
     struct osd_obj_desc *odsc;
@@ -7374,7 +7340,7 @@ SRXOSD_read_from_hpss(struct rx_call *call, struct ometa *o,
 			struct osd_cksum *output)
 {
     afs_int32 code;
-    struct oparmT10 o1, *optr;
+    struct oparmT10 *optr;
 
     SETTHREADEXCLUSIVEACTIVE(27, call, o);
 
@@ -7507,7 +7473,6 @@ SRXOSD_hard_delete(struct rx_call *call, struct ometa *o, afs_uint32 packed_unli
 		   afs_int32 flag)
 {
     afs_int32 code;
-    afs_uint32 year, month, day;
     struct o_handle *oh = NULL;
     struct unlinkParms u;
 
@@ -7518,10 +7483,6 @@ SRXOSD_hard_delete(struct rx_call *call, struct ometa *o, afs_uint32 packed_unli
     u.flag = flag;
     u.packed = packed_unlinkdate;
     if (flag & WHOLE_VOLUME) {
-        afs_uint32 vid, lun;
-	char tmp[NAMEI_LCOMP_LEN];
-	afs_int32 nObjects;
-
         if (o->vsn == 1) {
             code = traverse_osd(call, o->ometa_u.t.part_id, 99, 
 				INVENTORY_UNLINKED | INVENTORY_ONLY_UNLINKED, &u); 
@@ -7574,7 +7535,6 @@ SRXOSD_relink(struct rx_call *call, struct ometa *o, afs_uint32 packed_unlinkdat
 		   afs_int32 flag)
 {
     afs_int32 code;
-    afs_uint32 year, month, day;
     struct o_handle *oh = NULL;
     struct unlinkParms u;
 
@@ -7804,6 +7764,7 @@ get_key(void *arock, int akvno, struct ktc_encryptionKey *akey)
 
 }                               /*get_key */
 
+int
 main(int argc, char *argv[]) 
 {
     afs_int32 code;
@@ -7812,11 +7773,8 @@ main(int argc, char *argv[])
     
     int lwps = MAX_RXOSD_THREADS;
     int stackSize, i;
-    int rxlog = 1;
     int nojumbo = 1;
-    int num_listeners = 1;
     int bufSize = 0;        /* temp variable to read in udp socket buf size */
-    FILE *debugFile = NULL;
     short port = OSD_SERVER_PORT;
     pthread_t serverPid;
     pthread_attr_t tattr;
@@ -8010,5 +7968,6 @@ main(int argc, char *argv[])
     softsig_init();
     softsig_signal(SIGQUIT, ShutDown_Signal);
     TM_GetTimeOfDay(&statisticStart, 0);
-    rx_StartServer(1);	/* now start handling requests */    
+    rx_StartServer(1);	/* now start handling requests */
+    return 0;
 }/* main */
