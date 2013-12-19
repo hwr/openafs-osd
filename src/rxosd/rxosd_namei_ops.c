@@ -1319,7 +1319,7 @@ namei_GetLinkCount(FdHandle_t * h, Inode ino, int lockit, int fixup, int nowrite
     int shared = 0;
     afs_foff_t offset;
     ssize_t rc;
-    int length, index, mask, junk;
+    int length, index, mask;
     char *buf;
 
     /* there's no linktable yet. the salvager will create one later */
