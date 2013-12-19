@@ -99,9 +99,6 @@ extern int DoLogging;
 
 extern void LogError(afs_int32 errcode);
 
-/* Forward declarations */
-static int GetPartName(afs_int32 partid, char *pname);
-
 #define OneDay (24*60*60)
 
 #ifdef AFS_NT40_ENV
@@ -110,6 +107,8 @@ static int GetPartName(afs_int32 partid, char *pname);
 
 afs_int32 localTid = 1;
  
+#if 0
+/* UNUSED */
 static afs_int32 VolPartitionInfo(struct rx_call *, char *pname,
 				  struct diskPartition64 *);
 static afs_int32 VolNukeVolume(struct rx_call *, afs_int32, afs_uint32);
@@ -153,6 +152,7 @@ static afs_int32 VolSetIdsTypes(struct rx_call *, afs_int32, char [],
 				afs_int32, afs_uint32, afs_uint32,
 				afs_uint32);
 static afs_int32 VolSetDate(struct rx_call *, afs_int32, afs_int32);
+#endif 
 
 /* get partition id from a name */
 afs_int32
@@ -192,6 +192,8 @@ PartitionID(char *aname)
     }
 }
 
+#if 0
+/* UNUSED */
 static int
 ConvertVolume(afs_uint32 avol, char *aname, afs_int32 asize)
 {
@@ -221,6 +223,7 @@ ConvertPartition(int apartno, char *aname, int asize)
     }
     return 0;
 }
+#endif
 
 #ifdef AFS_DEMAND_ATTACH_FS
 /* normally we should use the regular salvaging functions from the volume
@@ -244,6 +247,8 @@ SalvageUnknownVolume(VolumeId volid, char *part)
 }
 #endif /* AFS_DEMAND_ATTACH_FS */
 
+#if 0
+/* UNUSED */
 static struct Volume *
 VAttachVolumeByName_retry(Error *ec, char *partition, char *name, int mode)
 {
@@ -277,6 +282,7 @@ VAttachVolumeByName_retry(Error *ec, char *partition, char *name, int mode)
     return vp;
 }
 
+/* UNUSED */
 static struct Volume *
 VAttachVolume_retry(Error *ec, afs_uint32 avolid, int amode)
 {
@@ -303,6 +309,7 @@ VAttachVolume_retry(Error *ec, afs_uint32 avolid, int amode)
     return vp;
 }
 
+/* UNUSED */
 /* the only attach function that takes a partition is "...ByName", so we use it */
 static struct Volume *
 XAttachVolume(afs_int32 *error, afs_uint32 avolid, afs_int32 apartid, int amode)
@@ -320,6 +327,7 @@ XAttachVolume(afs_int32 *error, afs_uint32 avolid, afs_int32 apartid, int amode)
 
     return VAttachVolumeByName_retry((Error *)error, pbuf, vbuf, amode);
 }
+#endif
 
 afs_int32
 SAFSVOLOSD_Statistic(struct rx_call *acall, afs_int32 reset, afs_uint32 *since,
@@ -433,15 +441,15 @@ SAFSVOLOSD_Traverse(struct rx_call *acall, afs_uint32 vid, afs_uint32 delay,
                                 afs_int32 flag, struct sizerangeList *srl,
                                 struct osd_infoList *list)
 {
-    afs_int32 code, code2;
-    Volume *vol, *vol2;
+    Error code, code2;
+    Volume *vol;
     char namehead[9];
     struct DiskPartition64 *dp;
     DIR *dirp = 0;
     struct dirent *d;
     struct VolumeDiskHeader h;
     struct volser_trans *tt = 0;
-    int i, j, k;
+    int i, k;
     char caller[MAXKTCNAMELEN];
     int policy_statistics = (srl == NULL);
 
@@ -492,7 +500,7 @@ SAFSVOLOSD_Traverse(struct rx_call *acall, afs_uint32 vid, afs_uint32 delay,
             else
                 dirp = 0;
             if (dirp) {
-                while (d = readdir(dirp)) {
+                while ((d = readdir(dirp))) {
                     if (d->d_name[0] == 'V'
                       && !strcmp(&(d->d_name[11]), VHDREXT)) {
                         afs_int32 bytes;
@@ -508,7 +516,7 @@ SAFSVOLOSD_Traverse(struct rx_call *acall, afs_uint32 vid, afs_uint32 delay,
                         else {                  /* skip all except RW volumes */
                             h.id = 0;
                             afs_lseek(fd, 0, SEEK_SET);
-                            if (bytes = read(fd, &h, sizeof(h)) != sizeof(h))
+                            if ((bytes = read(fd, &h, sizeof(h))) != sizeof(h))
                                 ViceLog(0, ("1 Traverse: couldn't read %s (%d, %d, %d)\n",
                                                 path, bytes, errno, fd));
                             close(fd);
@@ -531,7 +539,7 @@ SAFSVOLOSD_Traverse(struct rx_call *acall, afs_uint32 vid, afs_uint32 delay,
                 DeleteTrans(tt, 1);
         }
     }
-    return code;
+    return (afs_int32)code;
 }
 
 afs_int32
@@ -545,15 +553,15 @@ afs_int32
 SAFSVOLOSD_ListObjects(struct rx_call *acall, afs_uint32 vid, afs_int32 flag,
                 afs_int32 osd, afs_uint32 minage)
 {
-    afs_int32 code = 0, code2;
-    Volume *vol, *vol2;
+    Error code = 0, code2;
+    Volume *vol;
     char namehead[9];
     struct DiskPartition64 *dp;
     DIR *dirp = 0;
     struct dirent *d;
     struct VolumeDiskHeader h;
     struct volser_trans *tt = 0;
-    int i, j, k;
+    int i, k;
     int null = 0;
     char caller[MAXKTCNAMELEN];
 
@@ -594,7 +602,7 @@ SAFSVOLOSD_ListObjects(struct rx_call *acall, afs_uint32 vid, afs_int32 flag,
             else
                 dirp = 0;
             if (dirp) {
-                while (d = readdir(dirp)) {
+                while ((d = readdir(dirp))) {
                     if (d->d_name[0] == 'V'
                       && !strcmp(&(d->d_name[11]), VHDREXT)) {
                         afs_int32 bytes;
@@ -610,7 +618,7 @@ SAFSVOLOSD_ListObjects(struct rx_call *acall, afs_uint32 vid, afs_int32 flag,
                         else {                  /* skip all except RW volumes */
                             h.id = 0;
                             afs_lseek(fd, 0, SEEK_SET);
-                            if (bytes = read(fd, &h, sizeof(h)) != sizeof(h))
+                            if ((bytes = read(fd, &h, sizeof(h))) != sizeof(h))
                                 ViceLog(0, ("1 ListObjects: couldn't read %s (%d, %d, %d)\n",
                                                 path, bytes, errno, fd));
                             close(fd);
@@ -634,21 +642,16 @@ SAFSVOLOSD_ListObjects(struct rx_call *acall, afs_uint32 vid, afs_int32 flag,
         }
     }
     rx_Write(acall, (char *)&null, 1);
-    return code;
+    return (afs_int32)code;
 }
 
 afs_int32
 SAFSVOLOSD_Salvage(struct rx_call *acall, afs_uint32 vid, afs_int32 flag,
                 afs_int32 instances, afs_int32 localinst)
 {
-    afs_int32 code = ENOSYS, code2;
+    Error code = ENOSYS, code2;
     Volume *vol;
-    char namehead[9];
-    struct DiskPartition64 *dp;
     struct volser_trans *tt;
-    DIR *dirp = 0;
-    struct dirent *d;
-    int i, j, k;
     afs_int32 locktype = V_VOLUPD;
     char caller[MAXKTCNAMELEN];
 
@@ -658,8 +661,8 @@ SAFSVOLOSD_Salvage(struct rx_call *acall, afs_uint32 vid, afs_int32 flag,
         return VOLSERBAD_ACCESS;        /*not a super user */
     }
     if ((flag & 1)                      /* obsolete: was -nowrite */
-      || ((flag & 8))                   /* indicates new syntax */
-      && !(flag & (SALVAGE_UPDATE | SALVAGE_DECREM)))
+        || (((flag & 8))                   /* indicates new syntax */
+            && !(flag & (SALVAGE_UPDATE | SALVAGE_DECREM))))
         locktype = V_PEEK;
     vol = VAttachVolume(&code, vid, locktype);
     if (vol) {
@@ -699,13 +702,13 @@ SAFSVOLOSD_GetArchCandidates(struct rx_call *acall, afs_uint64 minsize,
                         afs_int32 maxcandidates, afs_int32 osd, afs_int32 flag,
                         afs_uint32 delay, hsmcandList *list)
 {
-    afs_int32 code = 0, code2;
+    Error code = 0, code2;
     Volume *vol;
     char namehead[9];
     struct DiskPartition64 *dp;
     DIR *dirp = 0;
     struct dirent *d;
-    int i, j, k, nosds;
+    int i, k;
     afs_int32 minweight = 0;
     struct VolumeDiskHeader *h;
     struct volser_trans *tt = 0;
@@ -739,7 +742,6 @@ SAFSVOLOSD_GetArchCandidates(struct rx_call *acall, afs_uint64 minsize,
         else
             dirp = 0;
         if (dirp) {
-            int loopcnt = 0;
             tt = NewTrans(0, i);
             if (tt) {
 		VTRANS_OBJ_LOCK(tt);
@@ -748,9 +750,8 @@ SAFSVOLOSD_GetArchCandidates(struct rx_call *acall, afs_uint64 minsize,
                 TSetRxCall_r(tt, NULL, "GetArchCandidates");
 		VTRANS_OBJ_UNLOCK(tt);
             }
-            while (d = readdir(dirp)) {
+            while ((d = readdir(dirp))) {
                 if (d->d_name[0] == 'V' && !strcmp(&(d->d_name[11]), VHDREXT)) {
-                    afs_uint32 tvid;
                     int fd;
                     afs_int32 bytes;
                     char path[32];
@@ -764,7 +765,7 @@ SAFSVOLOSD_GetArchCandidates(struct rx_call *acall, afs_uint64 minsize,
                     else {                      /* skip all except RW volumes */
                         h->id = 0;
                         afs_lseek(fd, 0, SEEK_SET);
-                        if (bytes = read(fd, h, sizeof(struct VolumeDiskHeader))
+                        if ((bytes = read(fd, h, sizeof(struct VolumeDiskHeader)))
 			   != sizeof(struct VolumeDiskHeader))
                             ViceLog(0, ("1 GetArchCandidates: couldn't read %s (%d, %d, %d)\n",
                                                 path, bytes, errno, fd));
@@ -811,11 +812,13 @@ SAFSVOLOSD_GetArchCandidates(struct rx_call *acall, afs_uint64 minsize,
         	DeleteTrans(tt, 1);
         }
     }
-bad:
+
     free(h);
-    return code;
+    return (afs_int32) code;
 }
 
+#if 0
+/* UNUSED */
 /* GetPartName - map partid (a decimal number) into pname (a string)
  * Since for NT we actually want to return the drive name, we map through the
  * partition struct.
@@ -840,6 +843,7 @@ GetPartName(afs_int32 partid, char *pname)
     } else
 	return -1;
 }
+#endif
 
 extern int AFSVOLOSD_ExecuteRequest(struct rx_call *z_call);
 
