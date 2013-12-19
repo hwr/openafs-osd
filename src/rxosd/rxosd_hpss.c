@@ -341,7 +341,7 @@ authenticate_for_hpss(void)
 }
 
 void
-unauthenticate_for_hpss()
+unauthenticate_for_hpss(void)
 {
     hpss_ClientAPIReset();
     hpss_PurgeLoginCred();
