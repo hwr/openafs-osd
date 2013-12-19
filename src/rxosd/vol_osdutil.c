@@ -136,7 +136,7 @@ alloc_osd_metadata(afs_int32 length, char **data)
     memset(mh, 0, sizeof(struct osdMetadataHandle));
     mh->offset = 0;
     mh->length = length;
-    *data = (byte *)&mh->data;
+    *data = (char *)&mh->data;
     return mh;
 }
 
@@ -290,7 +290,7 @@ print_osd_metadata_verb(struct osdMetadataHandle *mh, afs_int32 verbose,
 		        if (pfile->nFetches) {
 			    printf(", %u fetches, last:",
 					pfile->nFetches);
-                            PrintDate(&pfile->fetchTime);
+                            PrintDate(pfile->fetchTime);
 			}
 		    } else {
 			if (pfile->flags & RESTORE_IN_PROGRESS)
