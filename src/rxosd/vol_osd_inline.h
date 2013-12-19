@@ -79,7 +79,7 @@ convert_ometa_1_2(struct oparmT10 *in, struct oparmFree *out)
     memset(out, 0, sizeof(struct oparmFree));
     out->rwvol = (in->part_id & RXOSD_VOLIDMASK);
     out->lun = (in->part_id >> RXOSD_LUNSHIFT);
-    if (in->obj_id & RXOSD_VNODEMASK == RXOSD_VNODEMASK) { /* vol. special file */
+    if ((in->obj_id & RXOSD_VNODEMASK) == RXOSD_VNODEMASK) { /* vol. special file */
         out->vN = (in->obj_id & RXOSD_VNODEMASK);
         out->tag = (in->obj_id >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK;
         out->unique = in->obj_id >> RXOSD_UNIQUESHIFT;
@@ -102,8 +102,6 @@ convert_ometa_2_1(struct oparmFree *in, struct oparmT10 *out)
     afs_uint32 stripemask = 0;
     afs_uint32 sizemask = 0;
     afs_uint64 tmp;
-    struct osd_obj_desc2 *oin;
-    struct osd_obj_desc *oout;
     out->part_id = in->rwvol;
     out->part_id |= ((afs_uint64)in->lun << RXOSD_LUNSHIFT);
     out->obj_id = in->vN;
