@@ -277,7 +277,7 @@ struct cellLookup *FindCell(char *cellName)
     static struct afsconf_dir *tdir;
     struct ktc_principal sname;
     struct ktc_token ttoken;
-    afs_int32 len, code, i;
+    afs_int32 len, code;
 
     if (cellName)
         np = cellName;
@@ -378,7 +378,7 @@ get_file_cell(
     } else {
         *cellp = (char *) malloc(strlen(buf)+1);
         strcpy(*cellp, buf);
-        SetCellFname(cellp);
+        SetCellFname(*cellp);
         bzero(buf, sizeof(buf));
         status.in = 0;
         status.in_size = 0;
@@ -533,36 +533,29 @@ SRXAFSCB_GetCEold(struct rx_call *rxcall)
     return(0);
 }
 afs_int32
-SRXAFSCB_GetLock(rxcall)
-    struct rx_call *rxcall;
+SRXAFSCB_GetLock(struct rx_call *rxcall)
 {
     return(0);
 }
 
 afs_int32
-SRXAFSCB_XStatsVersion(rxcall)
-    struct rx_call *rxcall;
+SRXAFSCB_XStatsVersion(struct rx_call *rxcall)
 {
     return(0);
 }
 
 afs_int32
-SRXAFSCB_GetXStats(rxcall)
-    struct rx_call *rxcall;
+SRXAFSCB_GetXStats(struct rx_call *rxcall)
 {
     return(0);
 }
 
-int SRXAFSCB_ProbeUuid(a_call, a_uuid)
-struct rx_call *a_call;
-afsUUID *a_uuid;
+int SRXAFSCB_ProbeUuid(struct rx_call *a_call, afsUUID *a_uuid)
 {
     return(0);
 }
 
-int SRXAFSCB_WhoAreYou(a_call, addr)
-struct rx_call *a_call;
-struct interfaceAddr *addr;
+int SRXAFSCB_WhoAreYou(struct rx_call *a_call, struct interfaceAddr *addr)
 {
     int code = 0;
 
@@ -572,16 +565,12 @@ struct interfaceAddr *addr;
     return code;
 }
 
-int SRXAFSCB_InitCallBackState2(a_call, addr)
-struct rx_call *a_call;
-struct interfaceAddr * addr;
+int SRXAFSCB_InitCallBackState2(struct rx_call *a_call, struct interfaceAddr * addr)
 {
         return RXGEN_OPCODE;
 }
 
-int SRXAFSCB_InitCallBackState3(a_call, a_uuid)
-struct rx_call *a_call;
-afsUUID *a_uuid;
+int SRXAFSCB_InitCallBackState3(struct rx_call *a_call, afsUUID *a_uuid)
 {
     return 0;
 }
@@ -684,7 +673,7 @@ ZapAcl(struct Acl *acl)
     free(acl);
 }
 
-static
+static int
 foldcmp(char *a, char *b)
 {
     char t, u;
@@ -2184,7 +2173,6 @@ WhereIsCmd(struct cmd_syndesc *as, void *arock)
     AFSFid Fid;
     struct AFSFetchStatus OutStatus;
 #ifdef AFS_RXOSD_SUPPORT
-    char buf[256];
     struct OsdList l;
     struct ubik_client *osddb_client = 0;
     struct ViceIoctl status;
@@ -2203,7 +2191,7 @@ WhereIsCmd(struct cmd_syndesc *as, void *arock)
     for (ti = as->parms[0].items; ti; ti = ti->next) {
 	fname = ti->data;
         if (fid) {
-            code = get_vnode_hosts(fname, &cell, &space, &Fid, 1);
+                code = get_vnode_hosts(fname, &cell, (afs_int32*)space, &Fid, 1);
             if (code) { 
 	    	Die(errno, ti->data);
 	    	error = 1;
@@ -2246,7 +2234,7 @@ WhereIsCmd(struct cmd_syndesc *as, void *arock)
 	code = pioctl(fname, VIOC_FS_CMD, &status, 0);
 	if (!code && !Outputs->code) {
 	    afs_int32 i;
-	    afs_int32 *p = &Outputs->int32s[0];
+	    afs_uint32 *p = &Outputs->int32s[0];
 	    if (*p) {
     		if (!osddb_client)
     		    osddb_client = init_osddb_client(cell, 0);
@@ -3087,8 +3075,6 @@ ProtocolCmd(struct cmd_syndesc *as, void *arock)
     struct cmd_item *ti;
     afs_uint32 protocol = 0;
     afs_uint32 streams = 0;
-    char *tp;
-    int setp;
 
     /* get current state */
     blob.in_size = 0;
@@ -3225,7 +3211,7 @@ ProtocolCmd(struct cmd_syndesc *as, void *arock)
 	    fprintf(stderr,"Client doesn't support streams parameter\n");
 	    return EINVAL;
 	}
-	code = util_GetInt32(as->parms[2].items->data, &streams);
+	code = util_GetUInt32(as->parms[2].items->data, &streams);
 	if (streams != 1 && streams !=2 && streams !=4 && streams != 8) {
 	    fprintf(stderr,"Invalid value for streams %d\n", streams);
 	    return EINVAL;
@@ -3273,8 +3259,8 @@ ProtocolCmd(struct cmd_syndesc *as, void *arock)
     return 0;
 }
 
-translate_name(as)
-struct cmd_syndesc *as;
+int
+translate_name(struct cmd_syndesc *as, void *unused)
 {
     struct cmd_item *nm_itemP;
     char *fname, *p, *p2, *cell = 0;
@@ -3285,7 +3271,7 @@ struct cmd_syndesc *as;
     afs_uint32 parent = 0;
     afs_uint64 t;
     afs_uint32 volume, vnode, uniquifier, tag, stripeinfo;
-    afs_int32 type, code;
+    afs_int32 code;
     char name[256];
     char tmpstr[256];
     char *cwd="";
@@ -3439,7 +3425,7 @@ struct cmd_syndesc *as;
         }
     } else { /* read file names from stdin */
 	fname = name;
-	while (scanf("%s\n", fname, fname) == 1) {
+	while (scanf("%s\n", fname) == 1) {
 	    if (fid) {
 		b64_string_t V1, V2, AA, BB;
 		lb64_string_t N;
@@ -4659,9 +4645,8 @@ DisconCmd(struct cmd_syndesc *as, void *arock)
     return 0;
 }
 
-ScanVnode(fname, cell)
-    char *fname;
-    char *cell;
+afs_int32
+ScanVnode(char *fname, char *cell)
 {
     afs_int32 i, code = 0;
 
@@ -4734,15 +4719,12 @@ void printlength(afs_uint64 length)
 #define NAMEI_TAGSHIFT  26
 #define NAMEI_TAGMASK   63
 static afs_int32
-ListVnode(as)
-struct cmd_syndesc *as;
+ListVnode(struct cmd_syndesc *as, void *unused)
 {
     struct cmd_item *nm_itemP;
     char *fname;
-    afs_int32 code, i, j, verbose = 0, fid = 0;
+    afs_int32 code, verbose = 0, fid = 0;
     char *cell = 0;
-    AFSFid Fid;
-    struct cellLookup *cl;
     struct ViceIoctl status;
     struct FsCmdInputs * Inputs;
     struct FsCmdOutputs * Outputs;
@@ -4773,9 +4755,7 @@ struct cmd_syndesc *as;
             return code;
         } else {
             afs_uint32 type;
-            afs_uint32 date;
-            afs_uint64 Length, gb;
-	    char unit[4];
+            afs_uint64 Length;
             afs_uint32 *p;
 
             for (p = &Outputs->int32s[0]; *p; p+=20) {
@@ -4955,8 +4935,6 @@ afs_int32 Wipe(struct cmd_syndesc *as, void *arock)
     afs_int32 code;
     char *fname;
     char *cell;
-    char *t;
-    afs_uint32 osd = 0;
     struct FsCmdInputs * Inputs;
     struct FsCmdOutputs * Outputs;
     afs_uint32 version = 0;
@@ -4968,7 +4946,7 @@ afs_int32 Wipe(struct cmd_syndesc *as, void *arock)
     if (as->parms[1].items) 
 	cell = as->parms[1].items->data;
     if (as->parms[2].items) {		/* version if called as fidoldversion */
-	code = util_GetInt32(as->parms[2].items->data, &version);
+	code = util_GetUInt32(as->parms[2].items->data, &version);
 	if (code) {
 	    fprintf(stderr,
 		    "%s: bad version number specified.\n",
@@ -5124,8 +5102,6 @@ afs_int32 ListArch(struct cmd_syndesc *as, void *arock)
     struct ViceIoctl status;
     afs_int32 code, i;
     char *fname;
-    char *t;
-    afs_uint32 old, new = 0;
     struct FsCmdInputs * Inputs;
     struct FsCmdOutputs * Outputs;
     afs_int32 fid = 0;
@@ -5166,12 +5142,11 @@ Prefetch(struct cmd_syndesc *as, void *arock)
     char *fname, *fn;
     char *cell = 0;
     afs_int32 code;
-    int i=0, j;
+    int i = 0;
     u_char shouldWait = 0;
     u_char inWaitPass = 0;
     u_char haveWaited = 0;
     u_char fid = 0;
-    char answer[16];
     int sleepSeconds = 10;
     AFSFid Fid;
     struct ViceIoctl status;
@@ -5248,9 +5223,7 @@ Retry:
 struct ubik_client *
 init_osddb_client(char *cell, afs_uint32 server)
 {
-    afs_int32 code, scIndex = 0, i;
-    struct rx_securityClass *sc;
-    struct afsconf_cell info;
+    afs_int32 code;
     struct ubik_client *cstruct = 0;
     struct rx_connection *serverconns[MAXSERVERS];
 
@@ -5262,6 +5235,8 @@ init_osddb_client(char *cell, afs_uint32 server)
     return cstruct;
 }
 
+#if 0
+/* UNUSED */
 static afs_uint32 
 GetHost(char *hostname)
 {
@@ -5295,14 +5270,13 @@ struct rx_connection *GetConnection(char *host)
                                 scIndex);
     return conn;
 }
+#endif
 
 afs_int32
 ListLine(AFSFetchStatus *Status, char *fname, char *what, AFSFid *fid)
 {
     afs_int32 code;
-    struct AFSVolSync tsync;
     afs_int64 length;
-    afs_int32 fd, bytes;
     struct passwd *pwd;
 
     if (Status->FetchStatusProtocol & RX_OSD) {
@@ -5334,7 +5308,7 @@ ListLine(AFSFetchStatus *Status, char *fname, char *what, AFSFid *fid)
     if (Status->UnixModeBits & 01) printf("x"); else printf("-");
     printf("%3d ",Status->LinkCount);
 #endif
-    if (pwd = (struct passwd *)getpwuid(Status->Owner))
+    if ((pwd = (struct passwd *)getpwuid(Status->Owner)))
         printf("%8s", pwd->pw_name);
     else
         printf("%8d", Status->Owner);
@@ -5437,10 +5411,10 @@ List(struct cmd_syndesc *as, void *arock)
         fn = buf;
         DirPtr = (DIR *) opendir(fname);
 #ifdef HAVE_DIRENT_H
-        while (ep = (struct dirent *) readdir(DirPtr)) {
+        while ((ep = (struct dirent *) readdir(DirPtr))) {
             np = ep->d_name;
 #else
-        while (ep = (struct direct *) readdir(DirPtr)) {
+        while ((ep = (struct direct *) readdir(DirPtr))) {
             np = ep->d_name;
 #endif
             if (!np) continue;
@@ -5484,7 +5458,6 @@ List(struct cmd_syndesc *as, void *arock)
 				fidOption ? &d->fid : 0);
         }
     }
-Finis:
     return code;
 }
 
@@ -5524,7 +5497,7 @@ afs_int32 osd_parms(struct cmd_syndesc *as, void *arock)
 	}
     }
     if (fid) {
-        code = get_vnode_hosts(fname, &cell, &hosts, &Fid, 0);
+        code = get_vnode_hosts(fname, &cell, hosts, &Fid, 0);
         if (code) return code;
     } else
         code = get_file_cell(fname, &cell, hosts, &Fid, &OutStatus);
@@ -5743,7 +5716,7 @@ SetPolicy(struct cmd_syndesc *as, void *arock)
     }
 
     if ( !(Fid.Vnode & 1) ) {
-        fprintf(stderr, "Not a directory: %s\n", fname, Fid.Vnode);
+        fprintf(stderr, "Not a directory: %s\n", fname);
         return ENOTDIR;
     }
 
@@ -5839,7 +5812,7 @@ GetPolicies(struct cmd_syndesc *as, void *arock)
 #endif /* AFS_RXOSD_SUPPORT */
 
 static afs_int32
-        ListLocked(struct cmd_syndesc *as)
+        ListLocked(struct cmd_syndesc *as, void *unused)
 {
     struct cmd_item *nm_itemP;
     char *fname;
@@ -5889,7 +5862,7 @@ static afs_int32
 }
 
 static afs_int32
-Threads(struct cmd_syndesc *as)
+        Threads(struct cmd_syndesc *as, void *unused)
 {
     char *fname;
     afs_int32 code, i;
