@@ -3326,7 +3326,6 @@ SAFSVolVariable(struct rx_call *acall, afs_int32 cmd, char *name,
         } else
             return ENOENT;
     }
-finis:
     return code;
 }
 

@@ -147,7 +147,7 @@ TryUnlock(void)
         VTRANS_UNLOCK;
 }
 
-extern void TransferRate();
+extern void TransferRate(void);
 
 /* background daemon for timing out transactions */
 static void*
