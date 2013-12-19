@@ -24,7 +24,7 @@ struct client;
  *	change configure must be executed!
  */
  
-#define LIBAFSOSD_VERSION 23
+#define LIBAFSOSD_VERSION 24
 
 /*
  * In git master the major version number is 1 
