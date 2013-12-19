@@ -1596,6 +1596,7 @@ XferData(void *_f)
                 fid.Volume, fid.Vnode, fid.Unique, 
 		list.osd_segm_descList_len,
 		 list.osd_segm_descList_val));
+	f->refcnt--;
 	RemoveFromFetchq(f);
     }
 
@@ -1633,6 +1634,7 @@ CheckFetchProc(void *unused)
                     break;
                 }
 		f->index = -1;
+		f->refcnt = 0;	/* Don't remember old XferData reference */
                 for (f2=rxosd_fetchq; f2; f2=f2->next) {		
 	            if (f2->d.user == f->d.user) 
 	                (f->rank)++;
