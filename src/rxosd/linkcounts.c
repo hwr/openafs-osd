@@ -79,12 +79,9 @@ char *part[] = {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l",
 static int
 Display(struct cmd_syndesc *as, void *arock)
 {
-    Volume *vp;
-    Error ec;
     struct afs_stat tstat;
     int verbose = 0;
     int truncate = 0;
-    int bless, unbless, nofssync;
     int volumeId;
     int lun = 0;
     lb64_string_t V1, V2, N;
@@ -241,13 +238,10 @@ Display(struct cmd_syndesc *as, void *arock)
 static int
 Convert(struct cmd_syndesc *as, void *arock)
 {
-    Volume *vp;
-    Error ec;
     struct afs_stat tstat;
-    int bless, unbless, nofssync;
     int volumeId;
     int lun = 0;
-    lb64_string_t V1, V2, AA, BB, N;
+    lb64_string_t V1, V2, N;
     afs_uint64 tmp;
     char path[256];
     char newpath[256];
