@@ -23,10 +23,10 @@ extern afs_int32 set_osd_file_ready(struct rx_call *call, Vnode *vn,
 				struct cksum *checksum);
 extern afs_int32 wipe_osd_file(Vnode *vn);
 extern afs_int32 remove_osd_online_version(Vnode *vn, afs_uint32 version);
-extern void FillOsdTable();
+extern void FillOsdTable(void);
 extern struct rxosd_conn * FindOsdConnection(afs_uint32 id);
 extern void PutOsdConn(struct rxosd_conn **conn);
-extern void checkOSDconnections();
+extern void checkOSDconnections(void);
 extern afs_int32 osd_create_simple(Volume *vol, struct VnodeDiskObject *vd, 
 				afs_uint32 vN, afs_uint32 osd, afs_uint32 lun);
 extern afs_int32 CreateSimpleOsdFile(AFSFid *fid, Vnode *vn, Volume *vol, 
@@ -90,7 +90,7 @@ extern afs_int32 FindOsdBySizeAvoid(afs_uint64 size, afs_uint32 *osd, afs_uint32
         afs_uint32 stripes, afs_uint32 *avoid, afs_int32 navoid);
 extern afs_int32 FindOsd(afs_uint32 id, afs_uint32 *ip, afs_uint32 *lun, afs_int32 ignore);
 extern afs_uint32 MinOsdWipeMB(afs_uint32 osd);
-extern void FillOsdTable();
+extern void FillOsdTable(void);
 extern afs_int32 list_objects_on_osd(struct rx_call *call, Volume *vol, 
 				afs_int32 flag, afs_int32 osd, afs_uint32 minage);
 extern afs_int32 get_arch_osds(Vnode *vn, afs_uint64 *length, afs_int32 *osds);
