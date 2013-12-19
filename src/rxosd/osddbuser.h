@@ -21,8 +21,8 @@ extern afs_uint32 MinOsdWipeMB(afs_uint32 osd);
 extern afs_int32 fillRxEndpoint(afs_uint32 id, struct rx_endp *endp, afs_int32 *type,
 			        afs_int32 ignore);
 extern afs_int32 FindOsdType(afs_uint32 id, afs_uint32 *ip, afs_uint32 *lun,
-			     afs_int32 ignore, afs_uint32 *type, afs_int32 *service,
-			     afs_int32 *port);
+			     afs_int32 ignore, afs_uint32 *type, afs_uint32 *service,
+			     afs_uint32 *port);
 extern afs_int32 FindOsd(afs_uint32 id, afs_uint32 *ip, afs_uint32 *lun,
 			 afs_int32 ignore);
 extern afs_int32 FindOsdPort(afs_uint32 id, afs_uint32 *ip, afs_uint32 *lun,
