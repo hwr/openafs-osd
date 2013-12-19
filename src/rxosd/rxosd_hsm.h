@@ -26,8 +26,8 @@ struct hsm_interface_input {
 };
 
 struct hsm_auth_ops {
-    afs_int32 (*authenticate)();
-    void (*unauthenticate)();
+    afs_int32 (*authenticate)(void);
+    void (*unauthenticate)(void);
 };
 
 struct hsm_interface_output {
