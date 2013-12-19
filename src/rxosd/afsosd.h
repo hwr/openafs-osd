@@ -66,7 +66,7 @@ struct osd_vol_ops_v0 {
     void (*op_purge_clean_up) (void **rock);
     void (*op_osd_5min_check) (void);
     int (*op_actual_length) (struct Volume *vol, struct VnodeDiskObject *vd,
-			     afs_uint32 vN, afs_uint64 *size);
+			     afs_uint32 vN, afs_sfsize_t *size);
     int (*op_remove) (struct Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN);
     int (*op_FindOsdBySize) (afs_uint64 size, afs_uint32 *osd, afs_uint32 *lun,
         		     afs_uint32 stripes, afs_uint32 archival);
@@ -81,7 +81,7 @@ struct osd_vol_ops_v0 {
 			     struct VnodeDiskObject *vd, afs_uint32 vN,
 			     afs_uint64 offset, afs_int64 length);
     int (*op_dump_metadata_time) (struct Volume *vol, struct VnodeDiskObject *vd);
-    int (*op_restore_allocmetadata) (void **rock, byte **data, afs_int32 **length);
+    int (*op_restore_allocmetadata) (void **rock, byte **data, afs_uint32 **length);
     int (*op_restore_flushmetadata) (struct Volume *vol, struct VnodeDiskObject *vd,
                         afs_uint32 vN, void *mrock, int *lcOk);
     int (*op_restore_osd_file) (afs_int32 (*ioroutine)(void *rock, char *buf,
