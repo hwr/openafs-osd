@@ -188,7 +188,6 @@ extern struct afsconf_dir *confDir;
 extern afs_int32 dataVersionHigh;
 
 extern int SystemId;
-static struct AFSCallStatistics AFSCallStats;
 #if FS_STATS_DETAILED
 struct fs_stats_FullPerfStats afs_FullPerfStats;
 extern int AnonymousID;
@@ -254,7 +253,7 @@ afs_int32 MyThreadEntry = setActive(c, n, f, 1)
 
 #define SETTHREADINACTIVE() setInActive(MyThreadEntry)
 
-static int GetLinkCountAndSize(Volume * vp, FdHandle_t * fdP, int *lc,
+static int GetLinkCountAndSize(Volume * vp, FdHandle_t * fdP, afs_uint32 *lc,
 		    afs_sfsize_t * size);
 
 struct afs_FSStats {
@@ -265,12 +264,13 @@ struct afs_FSStats afs_fsstats;
 
 int ClientsWithAccessToFileserverPartitions = 0;
 
+#if 0
 afs_int32 MaybeStore_OSD(Volume * volptr, Vnode * targetptr,
 		struct AFSFid * Fid,
 		struct client * client, struct rx_call * Call,
 		afs_fsize_t Pos, afs_fsize_t Length, afs_fsize_t FileLength,
 		Vnode *parentwhentargetnotdir, char *fileName);
-
+#endif
 afs_int32 FetchData_OSD(Volume * volptr, Vnode **targetptr,
 		struct rx_call * Call, afs_sfsize_t Pos,
 		afs_sfsize_t Len, afs_int32 Int64Mode,
@@ -297,9 +297,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 		    struct FsCmdInputs * Inputs,
 		    struct FsCmdOutputs * Outputs)
 {
-    afs_int32 code = 0;
-    struct AFSCallBack callback;
-    struct AFSVolSync sync;
+    Error code = 0;
 
     switch (Inputs->command) {
     case CMD_SHOWTHREADS:	/* Obsolete in 1.6 but called by 1.4 fs */
@@ -330,7 +328,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 	    struct host *thost = 0;
 	    Volume *volptr = 0;
 	    Vnode *targetptr = 0, *parentwhentargetnotdir = 0;
-	    afs_uint32 rights, anyrights;
+	    afs_int32 rights, anyrights;
 	    struct client *client = 0;
   	    afs_uint64 transid = 0;
 
@@ -381,7 +379,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 	    struct host *thost = 0;
 	    Volume *volptr = 0;
 	    Vnode *targetptr = 0, *parentwhentargetnotdir = 0;
-	    afs_uint32 rights, anyrights;
+	    afs_int32 rights, anyrights;
 	    struct client *client = 0;
 	    struct AFSStoreStatus InStatus;
 	    afs_uint32 version = Inputs->int32s[0];
@@ -437,7 +435,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 	    struct host *thost = 0;
 	    Volume *volptr = 0;
 	    Vnode *targetptr = 0, *parentwhentargetnotdir = 0;
-	    afs_uint32 rights, anyrights;
+	    afs_int32 rights, anyrights;
 	    struct client *client = 0;
 	    struct AFSStoreStatus InStatus;
 
@@ -475,7 +473,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 	    struct host *thost = 0;
 	    Volume *volptr = 0;
 	    Vnode *targetptr = 0, *parentwhentargetnotdir = 0;
-	    afs_uint32 rights, anyrights;
+	    afs_int32 rights, anyrights;
 	    struct client *client = 0;
 	    struct AFSStoreStatus InStatus;
 	    afs_uint64 transid = 0;
@@ -530,7 +528,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 	    struct host *thost = 0;
 	    Volume *volptr = 0;
 	    Vnode *targetptr = 0, *parentwhentargetnotdir = 0;
-	    afs_uint32 rights, anyrights;
+	    afs_int32 rights, anyrights;
 	    struct client *client = 0;
 
     	    if ((code = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
@@ -563,7 +561,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 	    struct host *thost = 0;
 	    Volume *volptr = 0;
 	    Vnode *targetptr = 0, *parentwhentargetnotdir = 0;
-	    afs_uint32 rights, anyrights;
+	    afs_int32 rights, anyrights;
 	    struct client *client = 0;
 	    struct AFSStoreStatus InStatus;
 
@@ -602,9 +600,8 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 	    struct host *thost = 0;
 	    Volume *volptr = 0;
 	    Vnode *targetptr = 0, *parentwhentargetnotdir = 0;
-	    afs_uint32 rights, anyrights;
+	    afs_int32 rights, anyrights;
 	    struct client *client = 0;
-	    afs_uint64 transid = 0;
 	    afs_uint32 policy = Inputs->int32s[0];
 
     	    if ((code = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
@@ -649,9 +646,8 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
             struct host *thost = 0;
             Volume *volptr = 0;
             Vnode *targetptr = 0, *parentwhentargetnotdir = 0;
-            afs_uint32 rights, anyrights;
+            afs_int32 rights, anyrights;
             struct client *client = 0;
-            struct AFSStoreStatus InStatus;
  
     	    if ((code = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
                 goto Bad_Get_Policies;
@@ -727,7 +723,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
     }
     ViceLog(1,("FsCmd: cmd = %d, code=%d\n", 
 			Inputs->command, Outputs->code));
-    return code;
+    return (afs_int32)code;
 }
 
 afs_int32
@@ -914,7 +910,7 @@ startvicepfetch(Volume *volptr, Vnode *targetptr,
 afs_int32
 endosdfetch(AsyncParams *Inputs)
 {
-    afs_int32 len, code = 0;
+    afs_int32 code = 0;
     XDR xdr;
     afs_uint32 osd;
     afs_uint64 bytes_sent;
@@ -959,8 +955,7 @@ startosdstore(Volume *volptr, Vnode *targetptr, struct client *client,
     XDR xdr;
     struct async a;
     afsUUID *tuuid;
-    afs_uint64 maxlength, Delta;
-    afs_uint32 blocks;
+    afs_uint64 maxlength;
     afs_int32 flag = 0;
 
     Outputs->AsyncParams_val = NULL;
@@ -1102,7 +1097,7 @@ afs_int32
 endosdstore(Volume *volptr, Vnode *targetptr, struct rx_connection *tcon,
 	    AsyncParams *Inputs, afs_int32 *sameDataVersion)
 {
-    afs_int32 len, code = 0;
+    afs_int32 code = 0;
     XDR xdr;
     struct asyncError ae;
 
@@ -1146,7 +1141,7 @@ endvicepstore(Volume *volptr, Vnode *targetptr,
 	    struct rx_connection *tcon,
 	    AsyncParams *Inputs, afs_int32 *sameDataVersion)
 {
-    afs_int32 len, code = 0;
+    afs_int32 code = 0;
     XDR xdr;
     struct asyncError ae;
     afs_uint32 osd;
@@ -1197,9 +1192,7 @@ GetOSDlocation(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
 #if defined(AFS_NAMEI_ENV)
     Vnode * targetptr = 0;              /* pointer to input fid */
     Vnode * parentwhentargetnotdir = 0; /* parent of Fid to get ACL */
-    int storing = 0;
-    int     errorCode = 0;              /* return code for caller */
-    int     fileCode =  0;              /* return code from vol package */
+    Error   errorCode = 0;              /* return code for caller */
     Volume * volptr = 0;                /* pointer to the volume header */
     struct client * client = 0;         /* pointer to client structure */
     struct rx_connection *tcon;
@@ -1208,17 +1201,9 @@ GetOSDlocation(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
     struct client *t_client;            /* tmp ptr to client data */
     struct in_addr logHostAddr;         /* host ip holder for inet_ntoa */
     struct AFSStoreStatus InStatus;      /* Input status for new dir */
-    struct osd_segm * segm;
-    struct osd_obj * obj;
-    afs_uint32 copies;
     afs_int64 InitialVnodeFileLength;
     afs_int64 maxLength;
     afs_int64 Delta, blocks;
-    afs_int32 i, j;
-    char allowWriting = 0;
-    char metadataChanged = 0;
-    afs_uint32 segments = 0;
-    afs_uint32 fileno;
     afs_int32 writing = flag & OSD_WRITING;
     afsUUID *tuuid;
 
@@ -1265,8 +1250,8 @@ GetOSDlocation(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
     }
 
     if (!(flag & FS_OSD_COMMAND) && !(flag & CALLED_FROM_START_ASYNC)) {
-        if (errorCode = createAsyncTransaction(acall, Fid, flag,
-					   offset, length, NULL, NULL))
+        if ((errorCode = createAsyncTransaction(acall, Fid, flag,
+                                                offset, length, NULL, NULL)))
 	    goto Bad_GetOSDloc; /* shouldn't happen, only ENOMEM possible */
     }
 
@@ -1274,24 +1259,24 @@ GetOSDlocation(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
      * Get associated volume/vnode for the stored file; caller's rights
      * are also returned
      */
-    if (errorCode = GetVolumePackage(acall, Fid, &volptr, &targetptr,
+    if ((errorCode = GetVolumePackage(acall, Fid, &volptr, &targetptr,
                                  MustNOTBeDIR, &parentwhentargetnotdir,
                                  &client,
                                  flag & FS_OSD_COMMAND ? READ_LOCK : WRITE_LOCK,
-                                 &rights, &anyrights)) {
+                                 &rights, &anyrights))) {
 	if (writing || (flag & FS_OSD_COMMAND))  
             goto Bad_GetOSDloc;
-	if (errorCode = GetVolumePackage(acall, Fid, &volptr, &targetptr,
+	if ((errorCode = GetVolumePackage(acall, Fid, &volptr, &targetptr,
                                  MustNOTBeDIR, &parentwhentargetnotdir,
                                  &client, READ_LOCK,
-                                 &rights, &anyrights)) 
+                                 &rights, &anyrights)))
             goto Bad_GetOSDloc;
     }
     rx_KeepAliveOn(acall); 
 
     memset(&InStatus, 0, sizeof(InStatus));
-    if (errorCode = Check_PermissionRights(targetptr, client, rights,
-                        writing ? CHK_STOREDATA : CHK_FETCHDATA, &InStatus))
+    if ((errorCode = Check_PermissionRights(targetptr, client, rights,
+                                 writing ? CHK_STOREDATA : CHK_FETCHDATA, &InStatus)))
             goto Bad_GetOSDloc;
 
     /* Get the updated File's status back to the caller */
@@ -1373,7 +1358,7 @@ Bad_GetOSDloc:
     errorCode = CallPostamble(tcon, errorCode, thost);
     if (errorCode < 0)
         errorCode = EIO;
-    return errorCode;
+    return (afs_int32)errorCode;
 #else 
     return ENOSYS;
 #endif
@@ -1385,10 +1370,7 @@ ApplyOsdPolicy(struct rx_call *acall, AFSFid *Fid, afs_uint64 length,
 {
     Vnode * targetptr = 0;              /* pointer to input fid */
     Vnode * parentwhentargetnotdir = 0; /* parent of Fid to get ACL */
-    Vnode   tparent;    		/* parent vnode for GetStatus */
-    int storing = 0;
     int     errorCode = 0;              /* return code for caller */
-    int     fileCode =  0;              /* return code from vol package */
     Volume * volptr = 0;                /* pointer to the volume header */
     struct client * client = 0;         /* pointer to client structure */
     struct rx_connection *tcon;
@@ -1397,11 +1379,9 @@ ApplyOsdPolicy(struct rx_call *acall, AFSFid *Fid, afs_uint64 length,
     struct client *t_client;            /* tmp ptr to client data */
     struct in_addr logHostAddr;         /* host ip holder for inet_ntoa */
     afs_int64 InitialVnodeFileLength;
-    afs_uint32 osd_id, lun;
     struct AFSStoreStatus InStatus;
     DirHandle dir;
     char fileName[256];
-    int i;
 
     ViceLog(1,("SRXAFSOSD_ApplyOsdPolicy for %u.%u.%u, length %llu\n",
 			Fid->Volume, Fid->Vnode, Fid->Unique, length));
@@ -1419,16 +1399,16 @@ ApplyOsdPolicy(struct rx_call *acall, AFSFid *Fid, afs_uint64 length,
      * Get associated volume/vnode for the stored file; caller's rights
      * are also returned
      */
-    if (errorCode = GetVolumePackage(acall, Fid, &volptr, &targetptr,
+    if ((errorCode = GetVolumePackage(acall, Fid, &volptr, &targetptr,
                                      MustNOTBeDIR, &parentwhentargetnotdir,
                                      &client, WRITE_LOCK,
-                                     &rights, &anyrights))
+                                     &rights, &anyrights)))
         goto Bad_ApplyOsdPolicy;
 	
     rx_KeepAliveOn(acall);
     memset(&InStatus, 0, sizeof(InStatus));
-    if (errorCode = Check_PermissionRights(targetptr, client, rights,
-                        CHK_STOREDATA, &InStatus))
+    if ((errorCode = Check_PermissionRights(targetptr, client, rights,
+                                            CHK_STOREDATA, &InStatus)))
             goto Bad_ApplyOsdPolicy;
 
     VN_GET_LEN(InitialVnodeFileLength, targetptr);
@@ -1447,8 +1427,8 @@ ApplyOsdPolicy(struct rx_call *acall, AFSFid *Fid, afs_uint64 length,
 	/* determine file name in case we need it for policy evaluation */
 	if ( nameNeeded ) {
 	    SetDirHandle(&dir, parentwhentargetnotdir);
-	    if (errorCode = InverseLookup(&dir, Fid->Vnode,
-				targetptr->disk.uniquifier, fileName, 255))
+	    if ((errorCode = InverseLookup(&dir, Fid->Vnode,
+                                targetptr->disk.uniquifier, fileName, 255)))
 		fileName[0] = '\0';
 	    FidZap(&dir);
 	} else
@@ -1552,7 +1532,6 @@ GetOsdMetadata(struct rx_call *acall, AFSFid *Fid)
     Vnode * targetptr = 0;              /* pointer to input fid */
     Vnode * parentwhentargetnotdir = 0; /* parent of Fid to get ACL */
     int     errorCode = 0;              /* return code for caller */
-    int     fileCode =  0;              /* return code from vol package */
     Volume * volptr = 0;                /* pointer to the volume header */
     struct client * client = 0;         /* pointer to client structure */
     struct rx_connection *tcon;
@@ -1577,18 +1556,18 @@ GetOsdMetadata(struct rx_call *acall, AFSFid *Fid)
      * Get associated volume/vnode for the stored file; caller's rights
      * are also returned
      */
-    if (errorCode = GetVolumePackage(acall, Fid, &volptr, &targetptr,
+    if ((errorCode = GetVolumePackage(acall, Fid, &volptr, &targetptr,
                                      MustNOTBeDIR, &parentwhentargetnotdir,
                                      &client, READ_LOCK,
-                                     &rights, &anyrights)) {
+                                     &rights, &anyrights))) {
 	if (errorCode == 102)
 	    errorCode = ENOENT;
         goto Bad_GetOsdMetadata;
     }
 
     memset(&InStatus, 0, sizeof(InStatus));
-    if (errorCode = Check_PermissionRights(targetptr, client, rights,
-                        CHK_FETCHDATA, &InStatus)) {
+    if ((errorCode = Check_PermissionRights(targetptr, client, rights,
+                         CHK_FETCHDATA, &InStatus))) {
 	if (VanillaUser(client)) {
 	    errorCode = EACCES;
             goto Bad_GetOsdMetadata;
@@ -1789,7 +1768,6 @@ common_GetPath(struct rx_call *acall, AFSFid *Fid, struct async *a)
     afs_int32 errorCode;
     Vnode *targetptr = 0;       /* pointer to input fid */
     Vnode *parentwhentargetnotdir = 0;  /* parent of Fid to get ACL */
-    int fileCode = 0;           /* return code from vol package */
     Volume *volptr = 0;         /* pointer to the volume header */
     struct client *client = 0;  /* pointer to client structure */
     afs_int32 rights, anyrights;        /* rights for this and any user */
@@ -1888,7 +1866,7 @@ afs_int32
 SRXAFSOSD_BringOnline(struct rx_call *acall, AFSFid *Fid, 
                       AFSFetchStatus *OutStatus, AFSCallBack *CallBack)
 {
-    afs_int32 errorCode;
+    Error errorCode;
     Vnode *targetptr = NULL;       		/* pointer to input fid */
     Vnode *parentwhentargetnotdir = NULL;  	/* parent of Fid to get ACL */
     Vnode tparent;      			/* parent vnode for GetStatus */
@@ -1897,9 +1875,6 @@ SRXAFSOSD_BringOnline(struct rx_call *acall, AFSFid *Fid,
     afs_int32 rights, anyrights;        	/* rights for this and any user */
     struct rx_connection *tcon;
     struct host *thost;
-    afs_uint64 maxlen;
-    afsUUID *tuuid;
-    struct async a;
 
     SETTHREADACTIVE(acall, 7, Fid);
     if ((errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
@@ -1912,8 +1887,8 @@ SRXAFSOSD_BringOnline(struct rx_call *acall, AFSFid *Fid,
         goto Bad_BringOnline;
 
     rx_KeepAliveOn(acall);
-    if (errorCode = Check_PermissionRights(targetptr, client, rights,
-                        CHK_FETCHDATA, NULL)) {
+    if ((errorCode = Check_PermissionRights(targetptr, client, rights,
+                       CHK_FETCHDATA, NULL))) {
 	if (VanillaUser(client))
             goto Bad_BringOnline;
     }
@@ -1954,11 +1929,11 @@ Bad_BringOnline:
                            volptr, &client);
     errorCode = CallPostamble(tcon, errorCode, thost);
     SETTHREADINACTIVE();
-    return errorCode;
+    return (afs_int32)errorCode;
 }
 
 static int
-GetLinkCountAndSize(Volume * vp, FdHandle_t * fdP, int *lc,
+GetLinkCountAndSize(Volume * vp, FdHandle_t * fdP, afs_uint32 *lc,
 		    afs_sfsize_t * size)
 {
     struct afs_stat status;
@@ -2043,6 +2018,8 @@ legacyStoreData(Volume * volptr, Vnode **targetptr, struct AFSFid * Fid,
     return 0;
 }
 
+#if 0
+/* UNUSED */
 /* with RxOSD, prepare an OSD file if applicable */
 afs_int32
 MaybeStore_OSD(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
@@ -2055,9 +2032,7 @@ MaybeStore_OSD(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
     unsigned int policyIndex = 0;
     VN_GET_LEN(InitialVnodeFileLength, targetptr);
     if (InitialVnodeFileLength <= max_move_osd_size) {
-	afs_uint32 osd_id, lun;
 	afs_uint32 tcode;
-	AFSFid tmpFid;
 	RealisticFileLength = Pos + Length;
 	if (FileLength > RealisticFileLength)
 	    RealisticFileLength = FileLength;
@@ -2073,7 +2048,7 @@ MaybeStore_OSD(Volume * volptr, Vnode * targetptr, struct AFSFid * Fid,
 			    policyIndex));
     }
 }
-
+#endif
 extern afs_int32 md5flag;
 
 afs_int32
@@ -2508,7 +2483,6 @@ SRXAFSOSD_ExtendAsyncFetch(struct rx_call *acall, AFSFid *Fid, afs_uint64 transi
     Error errorCode;
     Vnode *targetptr = 0;       /* pointer to input fid */
     Vnode *parentwhentargetnotdir = 0;  /* parent of Fid to get ACL */
-    int fileCode = 0;           /* return code from vol package */
     Volume *volptr = 0;         /* pointer to the volume header */
     struct client *client = 0;  /* pointer to client structure */
     afs_int32 rights, anyrights;        /* rights for this and any user */
@@ -3017,7 +2991,6 @@ ServerPath(struct rx_call * acall, AFSFid *Fid, afs_int32 writing,
 #ifdef AFS_ENABLE_VICEP_ACCESS
     Vnode *targetptr = 0;       /* pointer to input fid */
     Vnode *parentwhentargetnotdir = 0;  /* parent of Fid to get ACL */
-    int fileCode = 0;           /* return code from vol package */
     Volume *volptr = 0;         /* pointer to the volume header */
     struct client *client = 0;  /* pointer to client structure */
     afs_int32 rights, anyrights;        /* rights for this and any user */
@@ -3061,8 +3034,9 @@ ServerPath(struct rx_call * acall, AFSFid *Fid, afs_int32 writing,
 
     if (writing) {
         FdHandle_t *fdP;
-        afs_size_t DataLength, diff;
-        afs_int32 linkCount;
+        afs_sfsize_t DataLength;
+        afs_size_t diff;
+        afs_uint32 linkCount;
 
         if (!VolumeWriteable(volptr)) {
             errorCode = EIO;
@@ -3195,7 +3169,6 @@ SRXAFS_GetPath0(struct rx_call *acall, AFSFid *Fid, afs_uint64 *ino, afs_uint32 
     afs_int32 errorCode = RXGEN_OPCODE;
     Vnode *targetptr = 0;       /* pointer to input fid */
     Vnode *parentwhentargetnotdir = 0;  /* parent of Fid to get ACL */
-    int fileCode = 0;           /* return code from vol package */
     Volume *volptr = 0;         /* pointer to the volume header */
     struct client *client = 0;  /* pointer to client structure */
     afs_int32 rights, anyrights;        /* rights for this and any user */
@@ -3298,8 +3271,6 @@ SRXAFS_StartAsyncFetch0(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
                                    OutStatus, CallBack, a);
     } else if (a->type == 4) {
         afs_uint64 maxsize;
-        afs_uint32 RWvol;
-        afs_int32 algorithm;
 
         errorCode = ServerPath(acall, Fid, 0, offset, length, 0, a,
                                &maxsize, OutStatus);
