@@ -35,6 +35,10 @@ extern int namei_dec(IHandle_t * h, Inode ino, int p1);
 extern int namei_inc(IHandle_t * h, Inode ino, int p1);
 extern int namei_GetLinkCount(FdHandle_t * h, Inode ino, int lockit, int fixup, int nowrite);
 extern int namei_SetLinkCount(FdHandle_t * h, Inode ino, int count, int locked);
+extern int namei_SetNonZLC(FdHandle_t * h, Inode ino);
+extern int namei_copy_on_write(IHandle_t *h);
+
+
 extern int namei_ViceREADME(char *partition);
 #include "../vol/nfs.h"
 #include "../vol/viceinode.h"
