@@ -163,6 +163,10 @@
 #include "osddbuser.h"
 #include "../rxkad/md5.h"
 
+#include <afs/vicedosd.h>
+#include <afs/audit.h>
+#include <afs/softsig.h>
+
 #define AFS_HARDDEADTIME	120
 #define FIDSTRLEN 64
 #define BIGTIME	(0x7FFFFFFF)	/* Should be max u_int, rather than max int */
@@ -285,6 +289,20 @@ afs_int32 stat_index[STAT_INDICES];
 
 struct o_hash_bucket o_hash_table[O_HANDLE_HASH_SIZE];
 struct o_hash_bucket o_LRU;
+
+/* not in public header files */
+extern void Quit(char *msg, ...)
+    AFS_ATTRIBUTE_FORMAT(__printf__, 1, 2);
+
+/* forward declaration of functions */
+private afs_int32
+traverse_osd(struct rx_call *call, afs_uint64 part_id, afs_int32 type,
+	     afs_uint32 flag, void *rock);
+
+private int
+CopyOnWrite(struct rx_call *call, struct oparmT10 *o, afs_uint64 offs,
+            afs_uint64 leng, afs_uint64 size, struct oparmT10 *new);
+
 
 int o_cache_used = 0;
 int o_cache_entries = 0;
@@ -3093,7 +3111,7 @@ send_inv(XDR *xdr, struct inventory *inv, afs_uint64 p_id, afs_uint64 o_id,
 /*
  * Find all objects and send their details over the wire
  */
-afs_int32
+private afs_int32
 traverse_osd(struct rx_call *call, afs_uint64 part_id, afs_int32 type,
 	     afs_uint32 flag, void *rock)
 {
@@ -4056,8 +4074,9 @@ SRXOSD_write_keep122(struct rx_call *call,  afs_uint64 part_id,
     return code;
 }
 
-int CopyOnWrite(struct rx_call *call, struct oparmT10 *o, afs_uint64 offs,
-                       afs_uint64 leng, afs_uint64 size, struct oparmT10 *new)
+private int
+CopyOnWrite(struct rx_call *call, struct oparmT10 *o, afs_uint64 offs,
+            afs_uint64 leng, afs_uint64 size, struct oparmT10 *new)
 {
     struct o_handle *lh = 0, *oh = 0, *oh2 = 0;
     FdHandle_t *lhp, *fdP = 0, *fdP2 = 0;
@@ -6857,7 +6876,7 @@ statistic(struct rx_call *call, afs_int32 reset,
             for (i=0; i<NRXOSDRPCS; i++) {
 	        stats[i].cnt = 0;
 	    }
-	    TM_GetTimeOfDay(&statisticStart, 0);
+	    FT_GetTimeOfDay(&statisticStart, 0);
 	}
     }
     for (i=0; i<96; i++) {
@@ -7967,7 +7986,7 @@ main(int argc, char *argv[])
 
     softsig_init();
     softsig_signal(SIGQUIT, ShutDown_Signal);
-    TM_GetTimeOfDay(&statisticStart, 0);
+    FT_GetTimeOfDay(&statisticStart, 0);
     rx_StartServer(1);	/* now start handling requests */
     return 0;
 }/* main */
