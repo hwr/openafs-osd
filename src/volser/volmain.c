@@ -648,7 +648,7 @@ main(int argc, char **argv)
 
     LogCommandLine(argc, argv, "Volserver", VolserVersion, "Starting AFS",
 		   Log);
-    TM_GetTimeOfDay(&statisticStart, 0);
+    FT_GetTimeOfDay(&statisticStart, 0);
     if (TTsleep) {
 	Log("Will sleep %d second%s every %d second%s\n", TTsleep,
 	    (TTsleep > 1) ? "s" : "", TTrun + TTsleep,
