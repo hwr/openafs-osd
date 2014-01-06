@@ -394,15 +394,15 @@ struct exam_out5 {
 
 struct exam_out6 {
 	afs_uint64 size;
-	afs_int64 mtime;
+	afs_uint64 mtime;
 	afs_uint32 linkcount;
 };
 
 struct exam_out7 { 
 	afs_uint64 size;
-	afs_int64 mtime;
-	afs_int64 atime;
-	afs_int64 ctime;
+	afs_uint64 mtime;
+	afs_uint64 atime;
+	afs_uint64 ctime;
 	afs_int32 status;
 	afs_uint32 linkcount;
 };
