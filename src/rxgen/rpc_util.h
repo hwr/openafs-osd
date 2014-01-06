@@ -94,6 +94,8 @@ extern void expected2(tok_kind exp1, tok_kind exp2);
 extern void expected3(tok_kind exp1, tok_kind exp2, tok_kind exp3);
 extern void expected4(tok_kind exp1, tok_kind exp2, tok_kind exp3,
 		      tok_kind exp4);
+extern void expected5(tok_kind exp1, tok_kind exp2, tok_kind exp3,
+		      tok_kind exp4, tok_kind ext5);
 extern void tabify(FILE * f, int tab);
 
 #define STOREVAL(list,item)	\
@@ -172,6 +174,9 @@ extern void scan3(tok_kind expect1, tok_kind expect2, tok_kind expect3,
 		  token * tokp);
 extern void scan4(tok_kind expect1, tok_kind expect2, tok_kind expect3,
 		  tok_kind expect4, token * tokp);
+extern void scan5(tok_kind expect1, tok_kind expect2, tok_kind expect3,
+                  tok_kind expect4, tok_kind expect5, token * tokp);
+
 extern void scan_num(token * tokp);
 extern void peek(token * tokp);
 extern int peekscan(tok_kind expect, token * tokp);
