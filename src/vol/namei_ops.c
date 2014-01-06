@@ -1479,11 +1479,14 @@ namei_GetLinkCount(FdHandle_t * h, Inode ino, int lockit, int fixup, int nowrite
     return -1;
 }
 
+#if 0
+/* unused */
 int
 namei_SetNonZLC(FdHandle_t * h, Inode ino)
 {
     return namei_GetLinkCount(h, ino, 0, 1, 0);
 }
+#endif
 
 /* Return a free column index for this vnode. */
 static int
