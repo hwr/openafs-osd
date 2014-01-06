@@ -1174,10 +1174,6 @@ mini_PrintDiskStats(struct mini_line *a_srvline,
 		 * Turn the disk light on if the number of free blocks exceeds
 		 * the threshold the user set, either % used or min free blocks.
 		 */
-                if (curr_diskstat->BlocksAvailable > 10737418240)
-                    sprintf(s, "%s:%ut", diskname,
-                                curr_diskstat->BlocksAvailable >> 30);
-                else
                 if (curr_diskstat->BlocksAvailable > 1073741824)
                     sprintf(s, "%s:%u.%ut", diskname,
                         (curr_diskstat->BlocksAvailable >> 20) / 1000,
