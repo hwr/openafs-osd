@@ -543,7 +543,7 @@ ka_Authenticate(char *name, char *instance, char *cell, struct ubik_client * con
 
     version = 2;
     code =
-	kawrap_ubik_Call(KAA_AuthenticateV2, conn, 0, name, instance,
+       kawrap_ubik_Call((int(*)(struct rx_connection*,...))KAA_AuthenticateV2, conn, 0, name, instance,
 			 (void*)(uintptr_t)start, (void*)(uintptr_t)end, &arequest, &oanswer, 0, 0);
     if (code == RXGEN_OPCODE) {
 	oanswer.MaxSeqLen = sizeof(answer);
