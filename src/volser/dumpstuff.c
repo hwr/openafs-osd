@@ -81,9 +81,9 @@ static int DumpPartial(struct iod *iodp, Volume * vp,
 		       afs_int32 fromtime, int dumpAllDirs);
 static int DumpVnodeIndex(struct iod *iodp, Volume * vp,
 			  VnodeClass class, afs_int32 fromtime,
-			  int flag);
+			  int forcedump);
 static int DumpVnode(struct iod *iodp, struct VnodeDiskObject *v,
-		     Volume *vp, int vnodeNumber, int flag);
+		     Volume *vp, int vnodeNumber, int dumpEverything);
 static int HandleUnknownTag(struct iod *iodp,int tag,afs_int32 section, afs_int32 critical);
 static int ReadDumpHeader(struct iod *iodp, struct DumpHeader *hp);
 static int ReadVnodes(struct iod *iodp, Volume * vp, int incremental,
@@ -101,10 +101,10 @@ static int SizeDumpPartial(struct iod *iodp, Volume * vp,
 			   struct volintSize *size);
 static int SizeDumpVnodeIndex(struct iod *iodp, Volume * vp,
 			      VnodeClass class, afs_int32 fromtime,
-			      int flag,
+			      int forcedump,
 			      struct volintSize *size);
 static int SizeDumpVnode(struct iod *iodp, struct VnodeDiskObject *v,
-			 int volid, int vnodeNumber, int flag,
+			 int volid, int vnodeNumber, int dumpEverything,
 			 struct volintSize *size);
 static afs_int32 SkipData(struct iod *iodp, afs_size_t length);
 static int ReadInt32(struct iod *iodp, afs_uint32 * lp);
@@ -1020,7 +1020,7 @@ DumpEnd(struct iod *iodp)
 /* Dump a whole volume */
 int
 DumpVolume(struct rx_call *call, Volume * vp,
-	   afs_int32 fromtime, int flag)
+	   afs_int32 fromtime, int dumpAllDirs)
 {
     struct iod iod;
     int code = 0;
@@ -1031,7 +1031,7 @@ DumpVolume(struct rx_call *call, Volume * vp,
 	code = DumpDumpHeader(iodp, vp, fromtime);
 
     if (!code)
-	code = DumpPartial(iodp, vp, fromtime, flag);
+	code = DumpPartial(iodp, vp, fromtime, dumpAllDirs);
 
 /* hack follows.  Errors should be handled quite differently in this version of dump than they used to be.*/
     if (rx_Error(iodp->call)) {
@@ -1048,7 +1048,7 @@ DumpVolume(struct rx_call *call, Volume * vp,
 /* Dump a volume to multiple places*/
 int
 DumpVolMulti(struct rx_call **calls, int ncalls, Volume * vp,
-	     afs_int32 fromtime, int flag, int *codes)
+	     afs_int32 fromtime, int dumpAllDirs, int *codes)
 {
     struct iod iod;
     int code = 0;
@@ -1057,7 +1057,7 @@ DumpVolMulti(struct rx_call **calls, int ncalls, Volume * vp,
     if (!code)
 	code = DumpDumpHeader(&iod, vp, fromtime);
     if (!code)
-	code = DumpPartial(&iod, vp, fromtime, flag);
+	code = DumpPartial(&iod, vp, fromtime, dumpAllDirs);
     if (!code)
 	code = DumpEnd(&iod);
     return code;
@@ -1234,7 +1234,7 @@ DumpVnode(struct iod *iodp, struct VnodeDiskObject *v, Volume *vp,
 	    if (!code)
   	        code = DumpStandardTagLen(iodp, 'O', 2, length);	    
 	    if (!code)
-	        code = (iod_Write(iodp, data, length) == length ?  0 : 1);
+                code = (iod_Write(iodp, (char*)data, length) == length ?  0 : 1);
 	    free(rock);
 	    if (!code)
 	        code = DumpInt32(iodp, 'x', v->osdFileOnline ? 1 : 0);
