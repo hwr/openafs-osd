@@ -109,6 +109,10 @@ char * cellPtr = NULL;
 
 #define MIN_SIZE_FOR_STRIPING 1024 * 1024
 
+
+extern int ubik_Call (int (*aproc) (struct rx_connection*,...), struct ubik_client *aclient, afs_int32 aflags, ...);
+
+
 #ifdef BUILD_LIBAFSOSD_A
 struct ubik_client *
 init_osddb_client(char *cell)
@@ -433,9 +437,9 @@ void FillPolicyTable(void)
             return;
     }
 
-    code = ubik_Call(OSDDB_GetPoliciesRevision, osddb_client, 0, &db_revision);
+    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_GetPoliciesRevision, osddb_client, 0, &db_revision);
     if (code == RXGEN_OPCODE)
-        code = ubik_Call(OSDDB_GetPoliciesRevision68, osddb_client, 0, &db_revision);
+            code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_GetPoliciesRevision68, osddb_client, 0, &db_revision);
     if ( code ) {
 	ViceLog(0, ("failed to query for policy revision, error %d\n", code));
 	return;
@@ -447,9 +451,9 @@ void FillPolicyTable(void)
 
     l.OsdList_len = 0;
     l.OsdList_val = 0;
-    code = ubik_Call(OSDDB_PolicyList, osddb_client, 0, &l);
+    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_PolicyList, osddb_client, 0, &l);
     if (code == RXGEN_OPCODE)
-        code = ubik_Call(OSDDB_PolicyList66, osddb_client, 0, &l);
+        code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_PolicyList66, osddb_client, 0, &l);
     if (!code) {
 	buildPolicyIndex(&l);
 	/* the very policy structures are in the new index now */
@@ -502,9 +506,9 @@ FillOsdTable(void)
     }
     l.OsdList_len = 0;
     l.OsdList_val = 0;
-    code = ubik_Call(OSDDB_ServerList, osddb_client, 0, &l);
+    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_ServerList, osddb_client, 0, &l);
     if (code == RXGEN_OPCODE)
-        code = ubik_Call(OSDDB_ServerList63, osddb_client, 0, &l);
+        code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_ServerList63, osddb_client, 0, &l);
     if (!code) {
         afs_uint32 towner = 0;
         afs_uint32 tlocation = 0;
@@ -522,7 +526,7 @@ FillOsdTable(void)
 
     l.OsdList_len = 0;
     l.OsdList_val = 0;
-    code = ubik_Call(OSDDB_OsdList, osddb_client, 0, &l);
+    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_OsdList, osddb_client, 0, &l);
     if (!code) {
         OSDDB_LOCK;
 	if (osds.OsdList_val)
@@ -734,9 +738,9 @@ init_pol_statList(struct osd_infoList *list)
         if (!osddb_client)
             return EIO;
     }
-    code = ubik_Call(OSDDB_PolicyList, osddb_client, 0, &l);
+    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_PolicyList, osddb_client, 0, &l);
     if (code == RXGEN_OPCODE)
-        code = ubik_Call(OSDDB_PolicyList66, osddb_client, 0, &l);
+        code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_PolicyList66, osddb_client, 0, &l);
     if ( code ) {
 	ViceLog(0, ("init_pol_statList failed with %d\n", code));
 	return code;
