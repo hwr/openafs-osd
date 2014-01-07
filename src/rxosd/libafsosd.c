@@ -167,6 +167,7 @@ static struct cmd_ops_v0 *cmd = NULL;
 /* 
  *  from src/dir
  */
+#if !defined(BUILDING_VLSERVER) && !defined(BUILDING_CLIENT_COMMAND)
 struct dir_ops_v0 {
     void (*FidZap) (struct DirHandle *file);
     int (*InverseLookup) (void *dir, afs_uint32 vnode, afs_uint32 unique,
@@ -175,6 +176,7 @@ struct dir_ops_v0 {
 };
 private struct dir_ops_v0 dir_ops_v0;
 static struct dir_ops_v0 *dir = NULL;
+#endif
 
 #if defined(BUILDING_FILESERVER) || defined(BUILD_SHLIBAFSOSD) || defined(BUILDING_CLIENT_COMMAND)
 /* 
@@ -309,7 +311,7 @@ static struct rx_ops_v0 *rx = NULL;
  *  from src/ubik
  */
 #ifndef BUILD_SHLIBAFSOSD
-extern int ubik_Call();
+extern int ubik_Call(int (*aproc) (struct rx_connection*, ...), struct ubik_client *aclient, afs_int32 aflags, ...);
 #endif
 
 private struct ubik_ops_v0 {
@@ -319,7 +321,7 @@ private struct ubik_ops_v0 {
 			    struct ubik_trans **transPtr);
     int (*ubik_BeginTransReadAny) (struct ubik_dbase *dbase, afs_int32 transMode,
                                    struct ubik_trans **transPtr);
-    int (*ubik_Call) (int (*aproc) (), struct ubik_client *aclient,
+    int (*ubik_Call) (int (*aproc) (struct rx_connection*,...), struct ubik_client *aclient,
                       afs_int32 aflags, long p1, long p2, long p3, long p4,
 		      long p5, long p6, long p7, long p8, long p9, long p10,
 		      long p11, long p12, long p13, long p14, long p15,
@@ -380,7 +382,7 @@ void viced_fill_ops(struct viced_ops_v0 *viced);
 
 #endif /* BUILDING_FILESERVER */
 
-#ifndef BUILDING_CLIENT_COMMAND
+#if !defined(BUILDING_VLSERVER) && !defined(BUILDING_CLIENT_COMMAND)
 /* 
  *  from src/vol
  */
@@ -434,7 +436,7 @@ struct vol_ops_v0 {
     void (*LogOsd) (const char *format, va_list args);
 };
 static struct vol_ops_v0 vol_ops_v0, *vol = NULL;
-#endif /* BUILDING_CLIENT_COMMAND */
+#endif
 
 #if defined(BUILDING_VOLSERVER) || defined BUILD_SHLIBAFSOSD
 static struct volser_ops_v0 volser_ops_v0, *volser = NULL;
@@ -632,7 +634,7 @@ int IsPartValid(afs_int32 partId, afs_uint32 server, afs_int32 *code);
     ubik->ubik_BeginTrans = ubik_BeginTrans;
     ubik->ubik_BeginTransReadAny = ubik_BeginTransReadAny;
 #endif
-    ubik->ubik_Call = ubik_Call;
+    ubik->ubik_Call = (void*)&ubik_Call;
 #ifdef BUILDING_VLSERVER
     ubik->ubik_CheckCache = ubik_CheckCache;
 #endif
