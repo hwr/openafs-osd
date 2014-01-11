@@ -10365,7 +10365,7 @@ void viced_fill_ops(struct viced_ops_v0 *viced)
     viced->setLegacyFetch = setLegacyFetch;
 }
 
-extern int ubik_Call();
+extern int ubik_Call (int (*aproc) (struct rx_connection*,...), struct ubik_client *aclient, afs_int32 aflags, ...);
 
 extern int VInit;
 
