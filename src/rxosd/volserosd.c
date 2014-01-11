@@ -64,9 +64,11 @@
 #include "../volser/physio.h"
 #include "../volser/dumpstuff.h"
 #include "osddb.h"
+#include "osddbuser.h"
 #include "vol_osd.h"
 #include "vol_osd_prototypes.h"
 #include "afsosd.h"
+
 
 extern char **osdExportedVariablesPtr;
 
@@ -226,6 +228,9 @@ ConvertPartition(int apartno, char *aname, int asize)
 #endif
 
 #ifdef AFS_DEMAND_ATTACH_FS
+
+#if 0
+/* :FIXME: unused function */
 /* normally we should use the regular salvaging functions from the volume
  * package, but this is a special case where we have a volume ID, but no
  * volume structure to give the volume package */
@@ -245,6 +250,8 @@ SalvageUnknownVolume(VolumeId volid, char *part)
             part));
     }
 }
+#endif
+
 #endif /* AFS_DEMAND_ATTACH_FS */
 
 #if 0
@@ -784,7 +791,8 @@ SAFSVOLOSD_GetArchCandidates(struct rx_call *acall, afs_uint64 minsize,
                         }
                     }
                     if (vol) {
-                        code = get_arch_cand(vol, list->hsmcandList_val,
+                        /* :FIXME: why do we need 'struct cand' and 'struct hsmcand'? */
+                        code = get_arch_cand(vol, (struct cand*)list->hsmcandList_val,
                                         minsize, maxsize, copies, maxcandidates,
                                         &list->hsmcandList_len, &minweight, osd,
                                         flag, delay);
