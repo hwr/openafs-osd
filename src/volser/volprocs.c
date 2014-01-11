@@ -3439,7 +3439,7 @@ GetPartName(afs_int32 partid, char *pname)
 	return -1;
 }
 
-extern int ubik_Call();
+extern int ubik_Call (int (*aproc) (struct rx_connection*,...), struct ubik_client *aclient, afs_int32 aflags, ...);
 
 extern int VInit;
 extern afsUUID FS_HostUUID;
@@ -3465,9 +3465,10 @@ struct vol_data_v0 vol_data_v0 = {
 struct volser_data_v0 volser_data_v0 = {
     &convertToOsd
 };
-
+#if 0
 void fill_ops_volser(struct volser_ops_v0 *volser)
 {
     volser->DeleteTrans = DeleteTrans;
     volser->NewTrans = NewTrans;
 }
+#endif
