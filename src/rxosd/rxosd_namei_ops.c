@@ -102,8 +102,13 @@ extern int dcache;
  * HPSS needs to know the size of a file to be created in order to choose
  * the best ClassOfService. For other filesystems we don't need the size.
  */
-int myOpen(const char *path, int flags, mode_t mode, afs_uint64 size)
+int myOpen(const char *path, int flags, ...)
 {
+    mode_t mode;
+    va_list vl;
+    va_start (vl, flags);
+    mode = va_arg (vl, int);
+    va_end (vl);
     return open(path, flags, mode);
 }
 
