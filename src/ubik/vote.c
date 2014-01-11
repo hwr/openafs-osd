@@ -690,7 +690,7 @@ SVOTE_DebugOld(struct rx_call * rxcall,
     aparm->activeWrite = (ubik_dbase[0]->flags & DBWRITING);
     aparm->tidCounter = ubik_dbase[0]->tidCounter;
 
-    if (ubik_currentTrans) {
+    if (ubik_currentTrans[0]) {
 	aparm->currentTrans = 1;
 	if (ubik_currentTrans[0]->type == UBIK_WRITETRANS)
 	    aparm->writeTrans = 1;
