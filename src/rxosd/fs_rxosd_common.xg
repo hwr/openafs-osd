@@ -369,24 +369,24 @@ struct exam_out2 {		/*  mask 33 used by cache manager for vicep-access */
 
 struct exam_out3 {		/* good for mask 7 */
 	afs_uint64 size;
-	afs_int32 mtime;
+	afs_uint32 mtime;
 	afs_uint32 linkcount;
 };
 
 struct exam_out4 { 
 	afs_uint64 size;
-	afs_int32 mtime;
-	afs_int32 atime;
-	afs_int32 ctime;
+	afs_uint32 mtime;
+	afs_uint32 atime;
+	afs_uint32 ctime;
 	afs_int32 status;
 	afs_uint32 linkcount;
 };
 
 struct exam_out5 { 
 	afs_uint64 size;
-	afs_int32 mtime;
-	afs_int32 atime;
-	afs_int32 ctime;
+	afs_uint32 mtime;
+	afs_uint32 atime;
+	afs_uint32 ctime;
 	afs_uint32 linkcount;
 	afs_int32 status;
 	path_info path;
