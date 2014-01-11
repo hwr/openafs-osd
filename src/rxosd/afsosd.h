@@ -73,7 +73,7 @@ struct osd_vol_ops_v0 {
     int (*op_create_simple) (struct Volume *vol, struct VnodeDiskObject *vd,
 			     afs_uint32 vN, afs_uint32 osd, afs_uint32 lun);
     int (*op_dump_getmetadata) (struct Volume *vol, struct VnodeDiskObject *vd,
-			        void **rock, byte **data, afs_int32 *length,
+			        void **rock, byte **data, afs_uint32 *length,
 			        afs_uint32 vN);
     int (*op_dump_osd_file) (afs_int32 (*ioroutine)(void *rock, char *buf,
 			    	        afs_uint32 lng, afs_uint64 offset),
@@ -185,6 +185,10 @@ extern int createAsyncTransaction(struct rx_call *call, AFSFid *Fid,
 extern struct Volume * getAsyncVolptr(struct rx_call *call, AFSFid *Fid,
 				      afs_uint64 transid, afs_uint64 *offset,
 				      afs_uint64 *length);
+extern afs_int32  extendAsyncTransaction(
+        struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
+        afs_uint32 *expires);
+
 extern int setActive(struct rx_call *call, afs_uint32 num, AFSFid * fid,
 		     afs_int32 source);
 extern void setInActive(afs_int32 i);
@@ -483,7 +487,9 @@ struct init_salv_inputs {
     struct vol_data_v0 *voldata;
 };
 #ifdef BUILD_SALVAGER
+/*
 private struct vol_data_v0 *voldata;
+*/
 #else
 extern struct vol_data_v0 *voldata;
 #endif
@@ -529,5 +535,18 @@ extern afs_int32 libafsosd_init(void *rock, afs_int32 version);
 #endif /* BUILD_SALVAGER */
 #endif /* BUILD_LIBAFSOSD_A */
 #endif /* BUILD_SHLIBAFSOSD */
+
+/* more prototypes ... */
+extern afs_uint32 GetServer(char *aname);
+extern int IsNumeric(char *name);
+extern int IsPartValid(afs_int32 partId, afs_uint32 server, afs_int32 *code);
+int VolNameOK(char *name);
+struct nvldbentry;
+void GetServerAndPart(struct nvldbentry *entry, int voltype, afs_uint32 *server,
+                     afs_int32 *part, int *previdx);
+
+struct ubik_client;
+extern int ubik_Call (int (*aproc) (struct rx_connection*,...), struct ubik_client *aclient, afs_int32 aflags, ...);
+
 #endif
 
