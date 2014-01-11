@@ -21,6 +21,9 @@
 %struct osdMetadataHandle *alloc_osd_metadata(afs_int32 length, char **data);
 %void free_osd_metadata(struct osdMetadataHandle *mh);
 %afs_int32 print_osd_metadata(struct osdMetadataHandle *mh);
+%struct OsdList;
+%afs_int32 print_osd_metadata_verb(struct osdMetadataHandle *mh, afs_int32 verbose, struct OsdList *ol);
+
 
 %#define OSD_P_OBJ_MAGIC 0x03032004
 struct osd_p_obj {
