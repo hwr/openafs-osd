@@ -42,6 +42,7 @@
 
 #include <rx/xdr.h>
 #include <rx/rx.h>
+#include <rx/rxstat.h>
 #include <rx/rx_globals.h>
 #include <afs/cellconfig.h>
 #include <afs/keys.h>
@@ -49,6 +50,9 @@
 #include <lock.h>
 #include <ubik.h>
 #include <afs/afsutil.h>
+#include <afs/cellconfig.h>
+#include <afs/com_err.h>
+#include <afs/audit.h>
 #include "osddb.h"
 
 #define MAXLWP 16
@@ -57,8 +61,6 @@ struct afsconf_dir *osddb_confdir = NULL;	/* osddb configuration dir */
 int lwps = 9;
 
 struct ubik_dbase *OSD_dbase;
-extern int afsconf_CheckAuth();
-extern int afsconf_ServerAuth();
 extern afs_int32 ubik_nBuffers;
 
 extern int LogLevel;
@@ -82,7 +84,27 @@ struct dbBuffer {
     char data[OSDDB_ENTRY_LENGTH];
 };
 
-extern int OSDDB_ExecuteRequest();
+/*
+  defined in <ubik.h> if UBIK_INTERNALS is set
+ */
+extern int ubeacon_AmSyncSite(void);
+
+
+static afs_int32
+read_entry(struct ubik_trans *trans, afs_int32 offs, struct oe *e);
+
+static afs_int32
+write_entry(struct ubik_trans *trans, afs_int32 offs, struct oe *e);
+
+static afs_int32
+write_header(struct ubik_trans *trans);
+
+static afs_int32
+AllocBlock(struct ubik_trans *trans, struct oe *e);
+
+static int
+FreeBlock(struct ubik_trans *trans, afs_int32 blockindex);
+
 
 #include "AFS_component_version_number.c"
 
@@ -190,7 +212,7 @@ out:
     return code;
 }
 
-afs_int32
+static afs_int32
 write_header(struct ubik_trans *trans)
 {
     afs_int32 code, len;
@@ -412,7 +434,7 @@ db_write(struct ubik_trans *trans, afs_int32 offs, char *b)
     return code;
 }
 
-afs_int32
+static afs_int32
 read_entry(struct ubik_trans *trans, afs_int32 offs, struct oe *e)
 {
     char *b = malloc(OSDDB_ENTRY_LENGTH);
@@ -443,7 +465,7 @@ read_entry(struct ubik_trans *trans, afs_int32 offs, struct oe *e)
 
 afs_uint32 maxEntryLength = 0;
 
-afs_int32
+static afs_int32
 write_entry(struct ubik_trans *trans, afs_int32 offs, struct oe *e)
 {
     char *b = NULL;
@@ -499,7 +521,7 @@ free_entry(struct oe *e)
     return 0;
 }
 
-afs_int32
+static afs_int32
 AllocBlock(struct ubik_trans *trans, struct oe *e)
 {
     afs_int32 blockindex = 0;
@@ -525,7 +547,7 @@ AllocBlock(struct ubik_trans *trans, struct oe *e)
     return blockindex;
 }
 
-int
+static int
 FreeBlock(struct ubik_trans *trans, afs_int32 blockindex)
 {
     struct oe *e = NULL;
@@ -2387,7 +2409,6 @@ main(int argc, char *argv[])
     struct rx_service *tservice;
     struct rx_securityClass **sc;
     afs_int32 numSc = 3;
-    extern int RXSTATS_ExecuteRequest();
     struct afsconf_dir *tdir;
     struct ktc_encryptionKey tkey;
     struct afsconf_cell info;
@@ -2458,8 +2479,7 @@ main(int argc, char *argv[])
 	    strcpy(rxi_tracename, argv[++index]);
 
        } else if (strcmp(argv[index], "-auditlog") == 0) {
-	   int tempfd, flags;
-           FILE *auditout;
+	   int flags;
            char oldName[MAXPATHLEN];
            char *fileName = argv[++index];
 
@@ -2477,15 +2497,9 @@ main(int argc, char *argv[])
                renamefile(fileName, oldName);
                flags = O_WRONLY | O_TRUNC | O_CREAT;
            }
-           tempfd = open(fileName, flags, 0666);
-           if (tempfd > -1) {
-               auditout = fdopen(tempfd, "a");
-               if (auditout) {
-                   osi_audit_file(auditout);
-               } else
-                   printf("Warning: auditlog %s not writable, ignored.\n", fileName);
-           } else
+           if (osi_audit_file(fileName)) {
                printf("Warning: auditlog %s not writable, ignored.\n", fileName);
+           }
 	} else if (strcmp(argv[index], "-enable_peer_stats") == 0) {
 	    rx_enablePeerRPCStats();
 	} else if (strcmp(argv[index], "-enable_process_stats") == 0) {
