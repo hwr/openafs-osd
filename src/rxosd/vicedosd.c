@@ -92,6 +92,7 @@
 #include "vicedosd.h"
 #include "volser/volser.h"
 #include "afsosd.h"
+#include "osddbuser.h"
 
 extern struct vol_data_v0 *voldata;
 struct viced_data_v0 *viceddata = NULL;
@@ -182,7 +183,6 @@ extern afs_uint32 local_host;
 
 extern afs_uint64 max_move_osd_size;
 extern afs_int32 max_move_osd_size_set_by_hand;
-extern afs_int64 minOsdFileSize;
 
 extern struct afsconf_dir *confDir;
 extern afs_int32 dataVersionHigh;
@@ -917,7 +917,7 @@ endosdfetch(AsyncParams *Inputs)
 
     xdrmem_create(&xdr, Inputs->AsyncParams_val, Inputs->AsyncParams_len,
 		  XDR_DECODE);
-    if (!xdr_int(&xdr, &osd) || !xdr_int64(&xdr, &bytes_sent)) {
+    if (!xdr_int(&xdr, (afs_int32*)&osd) || !xdr_int64(&xdr, (afs_int64*)&bytes_sent)) {
 	xdr_destroy(&xdr);
 	code = RXGEN_SS_UNMARSHAL;
 	return code;
@@ -935,7 +935,7 @@ endvicepfetch(AsyncParams *Inputs)
 
     xdrmem_create(&xdr, Inputs->AsyncParams_val, Inputs->AsyncParams_len,
 		  XDR_DECODE);
-    if (!xdr_int64(&xdr, &bytes_sent)) {
+    if (!xdr_int64(&xdr, (afs_int64*)&bytes_sent)) {
 	xdr_destroy(&xdr);
 	return RXGEN_SS_UNMARSHAL;
     }
@@ -1149,8 +1149,8 @@ endvicepstore(Volume *volptr, Vnode *targetptr,
 
     xdrmem_create(&xdr, Inputs->AsyncParams_val, Inputs->AsyncParams_len,
 		  XDR_DECODE);
-    if (!xdr_asyncError(&xdr, &ae) || !xdr_int(&xdr, &osd) 
-      || !xdr_uint64(&xdr, &bytes_rcvd) || !xdr_int64(&xdr, &bytes_sent)) {
+    if (!xdr_asyncError(&xdr, &ae) || !xdr_int(&xdr, (afs_int32*)&osd) 
+        || !xdr_uint64(&xdr, &bytes_rcvd) || !xdr_int64(&xdr, (afs_int64*)&bytes_sent)) {
 	xdr_destroy(&xdr);
 	code = RXGEN_SS_UNMARSHAL;
 	return code;
@@ -1541,7 +1541,7 @@ GetOsdMetadata(struct rx_call *acall, AFSFid *Fid)
     struct in_addr logHostAddr;         /* host ip holder for inet_ntoa */
     struct AFSStoreStatus InStatus;      /* Input status for new dir */
     afs_int32 tlen = 0;
-    afs_int32 length;
+    afs_uint32 length;
     char *rock = 0;
     char *data = 0;
 
@@ -1575,8 +1575,8 @@ GetOsdMetadata(struct rx_call *acall, AFSFid *Fid)
     }
 
     if (targetptr->disk.osdMetadataIndex) {
-        errorCode = GetMetadataByteString(volptr, &targetptr->disk, &rock, 
-					&data, &length, targetptr->vnodeNumber);
+            errorCode = GetMetadataByteString(volptr, &targetptr->disk, (void**)&rock, 
+                                              (byte**)&data, &length, targetptr->vnodeNumber);
         if (!errorCode) 
             tlen = htonl(length);
         if (rx_Write(acall, (char *)&tlen, sizeof(tlen)) != sizeof(tlen))
@@ -1611,6 +1611,7 @@ SRXAFSOSD_GetOsdMetadata(struct rx_call *acall, AFSFid *Fid)
     return errorCode;
 }
 
+		
 afs_int32
 UpdateOSDmetadata(struct rx_call *acall, struct ometa *old, struct ometa *new)
 {
@@ -2285,6 +2286,147 @@ fill_status(Vnode *targetptr, afs_fsize_t targetLen, AFSFetchStatus *status)
  *****************************************************************************/
 
 #ifndef NO_BACKWARD_COMPATIBILITY    
+
+afs_int32
+ServerPath(struct rx_call * acall, AFSFid *Fid, afs_int32 writing,
+        afs_uint64 offset, afs_uint64 length, afs_uint64 filelength,
+        struct async *a, afs_uint64 *maxSize, AFSFetchStatus *OutStatus)
+{
+    afs_int32 errorCode = ENOSYS;
+#ifdef AFS_ENABLE_VICEP_ACCESS
+    Vnode *targetptr = 0;       /* pointer to input fid */
+    Vnode *parentwhentargetnotdir = 0;  /* parent of Fid to get ACL */
+    Volume *volptr = 0;         /* pointer to the volume header */
+    struct client *client = 0;  /* pointer to client structure */
+    afs_int32 rights, anyrights;        /* rights for this and any user */
+    struct rx_connection *tcon;
+    struct host *thost;
+
+    if (writing) {
+        ViceLog(1,("ServerPath: writing (%u.%u.%u) offset %llu length %llu filelength %llu\n",
+                Fid->Volume, Fid->Vnode, Fid->Unique, offset, length, filelength));
+    } else {
+        ViceLog(1,("ServerPath: reading (%u.%u.%u) offset %llu length %llu\n",
+                Fid->Volume, Fid->Vnode, Fid->Unique, offset, length));
+    }
+
+    *maxSize = 0;
+    if (a->type == 3) {
+        a->async_u.p3.path.path_info_val = NULL;
+        a->async_u.p3.path.path_info_len = 0;
+    }
+    if (a->type == 4)
+        a->async_u.p4.algorithm = 1; /* Only known type NAMEI */
+    if ((errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
+        goto Bad_ServerPath;
+
+    if ((errorCode =
+         GetVolumePackage(acall, Fid, &volptr, &targetptr, DONTCHECK,
+                          &parentwhentargetnotdir, &client,
+                          writing ? WRITE_LOCK : READ_LOCK,
+                          &rights, &anyrights)))
+        goto Bad_ServerPath;
+
+    if ((errorCode =
+         Check_PermissionRights(targetptr, client, rights,
+                        writing ? CHK_STOREDATA : CHK_FETCHDATA, NULL)))
+        goto Bad_ServerPath;
+
+    if (!VN_GET_INO(targetptr)) {
+        errorCode = ENOENT;
+        goto Bad_ServerPath;
+    }
+
+    if (writing) {
+        FdHandle_t *fdP;
+        afs_sfsize_t DataLength;
+        afs_size_t diff;
+        afs_uint32 linkCount;
+
+        if (!VolumeWriteable(volptr)) {
+            errorCode = EIO;
+            goto Bad_ServerPath;
+        }
+        if (V_maxquota(volptr) && (V_diskused(volptr) > V_maxquota(volptr))) {
+            errorCode = VOVERQUOTA;
+            goto Bad_ServerPath;
+        }
+        fdP = IH_OPEN(targetptr->handle);
+        if (fdP == NULL) {
+            errorCode = ENOENT;
+            goto Bad_ServerPath;
+        }
+        if (GetLinkCountAndSize(volptr, fdP, &linkCount, &DataLength) < 0) {
+            FDH_CLOSE(fdP);
+            VTakeOffline(volptr);
+            ViceLog(0, ("Volume of %u.%u.%u now offline, must be salvaged. ServerPath\n",
+                                volptr->hashid,
+                                targetptr->vnodeNumber,
+                                targetptr->disk.uniquifier));
+            errorCode = EIO;
+            goto Bad_ServerPath;
+        }
+        FDH_CLOSE(fdP);
+        if (linkCount > 1) {
+            volptr->partition->flags &= ~PART_DONTUPDATE;
+            VSetPartitionDiskUsage(volptr->partition);
+            volptr->partition->flags |= PART_DONTUPDATE;
+            if ((errorCode = VDiskUsage(volptr, nBlocks(DataLength)))) {
+                volptr->partition->flags &= ~PART_DONTUPDATE;
+                goto Bad_ServerPath;
+            }
+            if ((errorCode = PartialCopyOnWrite(targetptr,
+			volptr, offset, length, filelength))) {
+                ViceLog(0,("ServerPath: CopyOnWrite failed for %u.%u.%u\n",
+                        V_id(volptr), targetptr->vnodeNumber,
+                        targetptr->disk.uniquifier));
+                volptr->partition->flags &= ~PART_DONTUPDATE;
+                goto Bad_ServerPath;
+            }
+            volptr->partition->flags &= ~PART_DONTUPDATE;
+            VSetPartitionDiskUsage(volptr->partition);
+        }
+        if (V_maxquota(volptr))
+            diff = ((afs_int64)(V_maxquota(volptr) - V_diskused(volptr))) << 10;
+        else
+            diff = 0x40000000;  /* 1 gb */
+        if (diff > 0x40000000)
+            diff = 0x40000000;
+        *maxSize = DataLength + diff;
+    } else
+        VN_GET_LEN(*maxSize, targetptr);
+
+    if (a->type == 3) {
+        namei_t name;
+        char *c;
+        a->async_u.p3.ino = VN_GET_INO(targetptr);
+        a->async_u.p3.lun = V_device(volptr);
+        a->async_u.p3.uuid = *(voldata->aFS_HostUUID);
+        namei_HandleToName(&name, targetptr->handle);
+        c = strstr(name.n_path, "AFSIDat");
+        if (c) {
+            a->async_u.p3.path.path_info_val = malloc(strlen(c)+1);
+            if (a->async_u.p3.path.path_info_val) {
+                sprintf(a->async_u.p3.path.path_info_val, "%s", c);
+                a->async_u.p3.path.path_info_len = strlen(c)+1;
+            }
+        }
+    } else if (a->type == 4) {
+        a->async_u.p4.ino = VN_GET_INO(targetptr);
+        a->async_u.p4.lun = targetptr->handle->ih_dev;
+        a->async_u.p4.rwvol = V_parentId(volptr);
+    }
+    GetStatus(targetptr, OutStatus, rights, anyrights,
+              parentwhentargetnotdir);
+
+Bad_ServerPath:
+    (void)PutVolumePackage(acall, parentwhentargetnotdir, targetptr,
+					 (Vnode *) 0, volptr, &client);
+    errorCode = CallPostamble(tcon, errorCode, thost);
+#endif /* AFS_ENABLE_VICEP_ACCESS */
+    return errorCode;
+}
+
 afs_int32
 SRXAFS_UpdateOSDmetadata(struct rx_call *acall, struct ometa *old, struct ometa *new)
 {
@@ -2982,145 +3124,6 @@ SRXAFS_GetOSDlocation0(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
     return code;
 }
 
-afs_int32
-ServerPath(struct rx_call * acall, AFSFid *Fid, afs_int32 writing,
-        afs_uint64 offset, afs_uint64 length, afs_uint64 filelength,
-        struct async *a, afs_uint64 *maxSize, AFSFetchStatus *OutStatus)
-{
-    afs_int32 errorCode = ENOSYS;
-#ifdef AFS_ENABLE_VICEP_ACCESS
-    Vnode *targetptr = 0;       /* pointer to input fid */
-    Vnode *parentwhentargetnotdir = 0;  /* parent of Fid to get ACL */
-    Volume *volptr = 0;         /* pointer to the volume header */
-    struct client *client = 0;  /* pointer to client structure */
-    afs_int32 rights, anyrights;        /* rights for this and any user */
-    struct rx_connection *tcon;
-    struct host *thost;
-
-    if (writing) {
-        ViceLog(1,("ServerPath: writing (%u.%u.%u) offset %llu length %llu filelength %llu\n",
-                Fid->Volume, Fid->Vnode, Fid->Unique, offset, length, filelength));
-    } else {
-        ViceLog(1,("ServerPath: reading (%u.%u.%u) offset %llu length %llu\n",
-                Fid->Volume, Fid->Vnode, Fid->Unique, offset, length));
-    }
-
-    *maxSize = 0;
-    if (a->type == 3) {
-        a->async_u.p3.path.path_info_val = NULL;
-        a->async_u.p3.path.path_info_len = 0;
-    }
-    if (a->type == 4)
-        a->async_u.p4.algorithm = 1; /* Only known type NAMEI */
-    if ((errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
-        goto Bad_ServerPath;
-
-    if ((errorCode =
-         GetVolumePackage(acall, Fid, &volptr, &targetptr, DONTCHECK,
-                          &parentwhentargetnotdir, &client,
-                          writing ? WRITE_LOCK : READ_LOCK,
-                          &rights, &anyrights)))
-        goto Bad_ServerPath;
-
-    if ((errorCode =
-         Check_PermissionRights(targetptr, client, rights,
-                        writing ? CHK_STOREDATA : CHK_FETCHDATA, NULL)))
-        goto Bad_ServerPath;
-
-    if (!VN_GET_INO(targetptr)) {
-        errorCode = ENOENT;
-        goto Bad_ServerPath;
-    }
-
-    if (writing) {
-        FdHandle_t *fdP;
-        afs_sfsize_t DataLength;
-        afs_size_t diff;
-        afs_uint32 linkCount;
-
-        if (!VolumeWriteable(volptr)) {
-            errorCode = EIO;
-            goto Bad_ServerPath;
-        }
-        if (V_maxquota(volptr) && (V_diskused(volptr) > V_maxquota(volptr))) {
-            errorCode = VOVERQUOTA;
-            goto Bad_ServerPath;
-        }
-        fdP = IH_OPEN(targetptr->handle);
-        if (fdP == NULL) {
-            errorCode = ENOENT;
-            goto Bad_ServerPath;
-        }
-        if (GetLinkCountAndSize(volptr, fdP, &linkCount, &DataLength) < 0) {
-            FDH_CLOSE(fdP);
-            VTakeOffline(volptr);
-            ViceLog(0, ("Volume of %u.%u.%u now offline, must be salvaged. ServerPath\n",
-                                volptr->hashid,
-                                targetptr->vnodeNumber,
-                                targetptr->disk.uniquifier));
-            errorCode = EIO;
-            goto Bad_ServerPath;
-        }
-        FDH_CLOSE(fdP);
-        if (linkCount > 1) {
-            volptr->partition->flags &= ~PART_DONTUPDATE;
-            VSetPartitionDiskUsage(volptr->partition);
-            volptr->partition->flags |= PART_DONTUPDATE;
-            if ((errorCode = VDiskUsage(volptr, nBlocks(DataLength)))) {
-                volptr->partition->flags &= ~PART_DONTUPDATE;
-                goto Bad_ServerPath;
-            }
-            if ((errorCode = PartialCopyOnWrite(targetptr,
-			volptr, offset, length, filelength))) {
-                ViceLog(0,("ServerPath: CopyOnWrite failed for %u.%u.%u\n",
-                        V_id(volptr), targetptr->vnodeNumber,
-                        targetptr->disk.uniquifier));
-                volptr->partition->flags &= ~PART_DONTUPDATE;
-                goto Bad_ServerPath;
-            }
-            volptr->partition->flags &= ~PART_DONTUPDATE;
-            VSetPartitionDiskUsage(volptr->partition);
-        }
-        if (V_maxquota(volptr))
-            diff = ((afs_int64)(V_maxquota(volptr) - V_diskused(volptr))) << 10;
-        else
-            diff = 0x40000000;  /* 1 gb */
-        if (diff > 0x40000000)
-            diff = 0x40000000;
-        *maxSize = DataLength + diff;
-    } else
-        VN_GET_LEN(*maxSize, targetptr);
-
-    if (a->type == 3) {
-        namei_t name;
-        char *c;
-        a->async_u.p3.ino = VN_GET_INO(targetptr);
-        a->async_u.p3.lun = V_device(volptr);
-        a->async_u.p3.uuid = *(voldata->aFS_HostUUID);
-        namei_HandleToName(&name, targetptr->handle);
-        c = strstr(name.n_path, "AFSIDat");
-        if (c) {
-            a->async_u.p3.path.path_info_val = malloc(strlen(c)+1);
-            if (a->async_u.p3.path.path_info_val) {
-                sprintf(a->async_u.p3.path.path_info_val, "%s", c);
-                a->async_u.p3.path.path_info_len = strlen(c)+1;
-            }
-        }
-    } else if (a->type == 4) {
-        a->async_u.p4.ino = VN_GET_INO(targetptr);
-        a->async_u.p4.lun = targetptr->handle->ih_dev;
-        a->async_u.p4.rwvol = V_parentId(volptr);
-    }
-    GetStatus(targetptr, OutStatus, rights, anyrights,
-              parentwhentargetnotdir);
-
-Bad_ServerPath:
-    (void)PutVolumePackage(acall, parentwhentargetnotdir, targetptr,
-					 (Vnode *) 0, volptr, &client);
-    errorCode = CallPostamble(tcon, errorCode, thost);
-#endif /* AFS_ENABLE_VICEP_ACCESS */
-    return errorCode;
-}
 
 afs_int32
 SRXAFS_ServerPath(struct rx_call * acall, AFSFid *Fid, afs_int32 writing,
