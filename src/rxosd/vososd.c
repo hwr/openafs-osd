@@ -21,6 +21,7 @@
 #endif
 
 #include <lock.h>
+#include <ctype.h>
 #include <afs/stds.h>
 #include <rx/xdr.h>
 #include <rx/rx.h>
@@ -59,6 +60,8 @@
 
 #undef rx_SetRxDeadTime
 #define rx_SetRxDeadTime(seconds)   (*vos_data->rx_connDeadTime = (seconds))
+
+extern int ubik_Call (int (*aproc) (struct rx_connection*,...), struct ubik_client *aclient, afs_int32 aflags, ...);
 
 #define COMMONPARMS     cmd_Seek(ts, 12);\
 cmd_AddParm(ts, "-cell", CMD_SINGLE, CMD_OPTIONAL, "cell name");\
@@ -1182,7 +1185,7 @@ Traverse(struct cmd_syndesc *as, void *arock)
 
         osddb_client = init_osddb_client(cell);
         memset(&l, 0, sizeof(l));
-        code = ubik_Call(OSDDB_OsdList, osddb_client, 0, &l);
+        code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_OsdList, osddb_client, 0, &l);
         if (code) {
                 fprintf(stderr, "OSDDB_OsdList failed with code %d\n", code);
                 return code;
