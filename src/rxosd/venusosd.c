@@ -511,7 +511,7 @@ n",AFSDIR_CLIENT_ETC_DIRPATH);
     }
     code = VLDBInit(1, &info);
     if (code == 0) {
-            code = ubik_Call((int(*)(struct rx_connection*, ...))VL_GetEntryByID, uclient, 0, Fid->Volume,
+        code = ubik_Call((int(*)(struct rx_connection*, ...))VL_GetEntryByID, uclient, 0, Fid->Volume,
                                         -1, &vldbEntry);
         if (code == VL_NOENT)
             fprintf(stderr,"fs: volume %u does not exist in this cell.\n",
