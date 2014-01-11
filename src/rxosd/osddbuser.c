@@ -565,7 +565,7 @@ MinOsdWipeMB(afs_uint32 osd)
 }
 
 afs_int32
-fillRxEndpoint(afs_uint32 id, struct rx_endp *endp, afs_int32 *type, afs_int32 ignore)
+fillRxEndpoint(afs_uint32 id, struct rx_endp *endp, afs_uint32 *type, afs_int32 ignore)
 {
     afs_int32 i, code = ENOENT;
  
@@ -1042,45 +1042,6 @@ OsdHasAccessToHSM(afs_uint32 osd_id)
     return result;
 }
 
-afs_int32
-consider_policy_properties(afs_uint32 id, int num_rule, pol_rule r, int output)
-{
-    char *report = "policy %d: invalid %s %d in rule %d (properties 0x%06x)\n";
-    afs_int32 result = 0;
-    if ( POLPROP_LOCATION(r.properties) > 3 )  {
-	result = EINVAL;
-	printf(report, id, "location",
-		    POLPROP_LOCATION(r.properties), num_rule, r.properties);
-    }
-    if ( POLPROP_NSTRIPES(r.properties)
-	    && POLPROP_NSTRIPES(r.properties) != 1
-	    && POLPROP_NSTRIPES(r.properties) != 2
-	    && POLPROP_NSTRIPES(r.properties) != 4
-	    && POLPROP_NSTRIPES(r.properties) != 8 ) {
-	result = EINVAL;
-	printf(report, id, "number of stripes",
-		    POLPROP_NSTRIPES(r.properties), num_rule, r.properties);
-    }
-    if ( POLPROP_SSTRIPES(r.properties) &&
-	    ( POLPROP_SSTRIPES(r.properties) < 12
-	      || POLPROP_SSTRIPES(r.properties) > 19 ) ) {
-	result = EINVAL;
-	printf(report, id, "stripe-size",
-		    POLPROP_SSTRIPES(r.properties), num_rule, r.properties);
-    }
-    if ( POLPROP_NCOPIES(r.properties) > 8 ) {
-	result = EINVAL;
-	printf(report, id, "number of copies",
-		    POLPROP_NCOPIES(r.properties), num_rule, r.properties);
-    }
-    if (POLPROP_NSTRIPES(r.properties) * POLPROP_NCOPIES(r.properties) > 8){
-	result = EINVAL;
-	printf(report, id, "total number of objects",
-		    POLPROP_NCOPIES(r.properties)
-		    * POLPROP_NSTRIPES(r.properties), num_rule, r.properties);
-    }
-    return result;
-}
 
 /* call these only while holding the OSDDB_LOCK! */
 struct pol_info *get_pol_info(afs_uint32 id)
