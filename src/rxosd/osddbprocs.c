@@ -56,6 +56,8 @@
 #include <afs/ihandle.h>
 #include <afs/namei_ops.h>
 #include "afsosd.h"
+#include "AFS_component_version_number.c"
+
 
 struct vol_data_v0 *voldata;
 
@@ -66,8 +68,6 @@ struct afsconf_dir *osddb_confdir = NULL;	/* osddb configuration dir */
 int lwps = 9;
 
 static struct ubik_dbase *OSD_dbase;
-extern int afsconf_CheckAuth();
-extern int afsconf_ServerAuth();
 
 static afs_int32 write_osddb_header(struct ubik_trans *trans);
 static afs_int32 read_osddb_entry(struct ubik_trans *trans, afs_int32 offs,
@@ -98,9 +98,11 @@ struct dbBuffer {
     char data[OSDDB_ENTRY_LENGTH];
 };
 
-extern int OSDDB_ExecuteRequest();
-
-#include "AFS_component_version_number.c"
+/*
+  :FIXME: defined in <ubik.h> if UBIK_INTERNALS is set, but we cannot include
+  this file
+ */
+extern int ubeacon_AmSyncSite(void);
 
 /************************************************************************/
 
@@ -1854,7 +1856,7 @@ SOSDDB_SetServer61(struct rx_call *call, afs_uint32 id, char *name,
 }
 
 static afs_int32
-GetServer(struct rx_call *call, afs_uint32 id, char *name, 
+_GetServer(struct rx_call *call, afs_uint32 id, char *name, 
 	  struct osddb_server_tab *out)
 {
     struct ubik_trans *trans;
@@ -1899,7 +1901,7 @@ SOSDDB_GetServer(struct rx_call *call, afs_uint32 id, char *name,
     afs_int32 code;
     SETTHREADACTIVE(8, call);
 
-    code = GetServer(call, id, name, out);
+    code = _GetServer(call, id, name, out);
     SETTHREADINACTIVE();
     return code;
 }
@@ -1911,7 +1913,7 @@ SOSDDB_GetServer62(struct rx_call *call, afs_uint32 id, char *name,
     afs_int32 code;
     SETTHREADACTIVE(62, call);
 
-    code = GetServer(call, id, name, out);
+    code = _GetServer(call, id, name, out);
     SETTHREADINACTIVE();
     return code;
 }
