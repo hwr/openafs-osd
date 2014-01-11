@@ -1575,7 +1575,7 @@ GetOsdMetadata(struct rx_call *acall, AFSFid *Fid)
     }
 
     if (targetptr->disk.osdMetadataIndex) {
-            errorCode = GetMetadataByteString(volptr, &targetptr->disk, (void**)&rock, 
+	errorCode = GetMetadataByteString(volptr, &targetptr->disk, (void**)&rock, 
                                               (byte**)&data, &length, targetptr->vnodeNumber);
         if (!errorCode) 
             tlen = htonl(length);
@@ -1611,7 +1611,6 @@ SRXAFSOSD_GetOsdMetadata(struct rx_call *acall, AFSFid *Fid)
     return errorCode;
 }
 
-		
 afs_int32
 UpdateOSDmetadata(struct rx_call *acall, struct ometa *old, struct ometa *new)
 {
