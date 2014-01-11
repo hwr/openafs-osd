@@ -70,13 +70,13 @@
 #include "osddbuser.h"
 
 #include <afs/ptint.h>
+#include <afs/ptuser.h>
 #include <afs/cmd.h>
 
 extern char *pp_input;
 extern pol_ruleList *pp_output;
 extern void *pol_index[];
 extern afs_uint32 policies_revision;
-extern void *make_pol_info();
 
 struct ubik_client * my_init_osddb_client(char*);
 
@@ -119,6 +119,7 @@ int Bsize = SIZE;
 #define NAMEI_UNIQSHIFT    32
 #endif
 
+extern int ubik_Call (int (*aproc) (struct rx_connection*,...), struct ubik_client *aclient, afs_int32 aflags, ...);
 
 static void GetConnection(void);
 
@@ -238,7 +239,7 @@ scan_osd_or_host(void)
 	return;
     }
     memset(&l, 0, sizeof(l));
-    code = ubik_Call(OSDDB_OsdList, osddb_client, 0, &l);
+    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_OsdList, osddb_client, 0, &l);
     if (code) {
 	fprintf(stderr, "OSDDB_OsdList failed with code %d\n", code);
 	return;
@@ -1518,7 +1519,7 @@ int objects(struct cmd_syndesc *as, void *rock)
 		error = rx_Error(Call);
 	    while (code && Oprm.ometa_u.f.rwvol) {
 	        xdr_afs_uint64(&xdr, &length);
-	        xdr_afs_int32(&xdr, &linkCount);
+	        xdr_afs_uint32(&xdr, &linkCount);
 		if (Oprm.ometa_u.f.vN == VOLUME_SPECIAL) {
 		    goodTotalLength += length;
 		    nGoodObjects++;
@@ -1793,7 +1794,8 @@ examine(struct cmd_syndesc *as, void *rock)
     } else {
 #ifdef ALLOW_OLD
 	afs_uint64 part, oid, size;
-	afs_uint32 time, status;
+        afs_uint32 time;
+        afs_int32 status;
 	part = ((afs_uint64)Oprm.ometa_u.f.lun << 32) | Oprm.ometa_u.f.rwvol;
 	oid = (Oprm.ometa_u.f.unique << 32) | Oprm.ometa_u.f.vN
 					 | (Oprm.ometa_u.f.tag << 26);
@@ -2171,7 +2173,7 @@ ListOsds(struct cmd_syndesc *as, void *rock)
 	return -1;
     }
     memset(&l, 0, sizeof(l));
-    code = ubik_Call(OSDDB_OsdList, osddb_client, 0, &l);
+    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_OsdList, osddb_client, 0, &l);
     if (code) {
 	fprintf(stderr, "OSDDB_OsdList failed with code %d\n", code);
 	return code;
@@ -2492,7 +2494,7 @@ CreateOsd(struct cmd_syndesc *as, void *rock)
 	fprintf(stderr, "Could not get connection to OSDDB data base\n");
 	return -1;
     }
-    code = ubik_Call(OSDDB_AddOsd, osddb_client, 0, e);
+    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_AddOsd, osddb_client, 0, e);
     if (code) {
 	if (code == 17)
 	    fprintf(stderr, "Could not create osd, id or name already exist.\n");
@@ -2529,9 +2531,9 @@ SetOsd(struct cmd_syndesc *as, void *rock)
 	fprintf(stderr, "Could not get connection to OSDDB data base\n");
 	return -1;
     }
-    code = ubik_Call(OSDDB_GetOsd, osddb_client, 0, u.id, u.name, &u);
+    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_GetOsd, osddb_client, 0, u.id, u.name, &u);
     if (code == RXGEN_OPCODE)
-        code = ubik_Call(OSDDB_GetOsd20, osddb_client, 0, u.id, u.name, &u);
+	code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_GetOsd20, osddb_client, 0, u.id, u.name, &u);
     if (code) {
 	fprintf(stderr, "Osd with id %s not found\n", as->parms[0].items->data);
 	return ENOENT;
@@ -2739,9 +2741,9 @@ SetOsd(struct cmd_syndesc *as, void *rock)
 	}	
     }
     u.unavail &= ~OSDDB_OSD_OBSOLETE;
-    code = ubik_Call(OSDDB_SetOsd, osddb_client, 0, &u);
+    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_SetOsd, osddb_client, 0, &u);
     if (code == RXGEN_OPCODE)
-    code = ubik_Call(OSDDB_SetOsd30, osddb_client, 0, &u);
+	code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_SetOsd30, osddb_client, 0, &u);
     if (code) 
 	fprintf(stderr, "OSDDB_SetOsd failed with %d\n", code);
     return code;
@@ -2772,18 +2774,18 @@ DeleteOsd(struct cmd_syndesc *as, void *rock)
 	fprintf(stderr, "Could not get connection to OSDDB data base\n");
 	return -1;
     }
-    code = ubik_Call(OSDDB_GetOsd, osddb_client, 0, u.id, u.name, &u);
+    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_GetOsd, osddb_client, 0, u.id, u.name, &u);
     if (code == RXGEN_OPCODE)
-        code = ubik_Call(OSDDB_GetOsd20, osddb_client, 0, u.id, u.name, &u);
+	code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_GetOsd20, osddb_client, 0, u.id, u.name, &u);
     if (code) {
 	fprintf(stderr, "Osd with id %s not found\n",
 		    as->parms[0].items->data);
 	return ENOENT;
     }
     u.unavail |= OSDDB_OSD_OBSOLETE;
-    code = ubik_Call(OSDDB_SetOsd, osddb_client, 0, &u);
+    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_SetOsd, osddb_client, 0, &u);
     if (code == RXGEN_OPCODE)
-        code = ubik_Call(OSDDB_SetOsd30, osddb_client, 0, &u);
+	code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_SetOsd30, osddb_client, 0, &u);
     if (code) 
 	fprintf(stderr, "OSDDB_UpdateOsd failed with %d\n", code);
     else
@@ -2832,7 +2834,7 @@ ShowOsd(struct cmd_syndesc *as, void *rock)
 	fprintf(stderr, "Could not get connection to OSDDB data base\n");
 	return -1;
     }
-    code = ubik_Call(OSDDB_OsdList, osddb_client, 0, &l);
+    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_OsdList, osddb_client, 0, &l);
     if (code) {
 	fprintf(stderr, "Couldn't get list of OSDs\n");
 	return EIO;
@@ -2971,9 +2973,9 @@ AddServer(struct cmd_syndesc *as, void *rock)
 	fprintf(stderr, "Could not get connection to OSDDB data base\n");
 	return -1;
     }
-    code = ubik_Call(OSDDB_AddServer, osddb_client, 0, e);
+    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_AddServer, osddb_client, 0, e);
     if (code == RXGEN_OPCODE)
-        code = ubik_Call(OSDDB_AddServer60, osddb_client, 0, e);
+	code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_AddServer60, osddb_client, 0, e);
     if (code) {
 	fprintf(stderr, "OSDDB_AddServer failed with %d.\n", code);
 	return EINVAL;
@@ -3011,9 +3013,9 @@ DeleteServer(struct cmd_syndesc *as, void *rock)
 	fprintf(stderr, "Could not get connection to OSDDB data base\n");
 	return -1;
     }
-    code = ubik_Call(OSDDB_DeleteServer, osddb_client, 0, e);
+    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_DeleteServer, osddb_client, 0, e);
     if (code == RXGEN_OPCODE)
-        code = ubik_Call(OSDDB_DeleteServer64, osddb_client, 0, e);
+	code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_DeleteServer64, osddb_client, 0, e);
     if (code) {
 	fprintf(stderr, "OSDDB_DeleteServer failed with %d.\n", code);
 	return EINVAL;
@@ -3056,9 +3058,9 @@ ShowServer(struct cmd_syndesc *as, void *rock)
 	fprintf(stderr, "Could not get connection to OSDDB data base\n");
 	return -1;
     }
-    code = ubik_Call(OSDDB_ServerList, osddb_client, 0, &l);
+    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_ServerList, osddb_client, 0, &l);
     if (code == RXGEN_OPCODE)
-        code = ubik_Call(OSDDB_ServerList63, osddb_client, 0, &l);
+	code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_ServerList63, osddb_client, 0, &l);
     if (code) {
 	fprintf(stderr, "Couldn't get list of servers\n");
 	return EIO;
@@ -3210,7 +3212,7 @@ Fetchq(struct cmd_syndesc *as, void *rock)
 	return -1;
     }
     memset(&l, 0, sizeof(l));
-    code = ubik_Call(OSDDB_OsdList, osddb_client, 0, &l);
+    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_OsdList, osddb_client, 0, &l);
     if (code) {
 	fprintf(stderr, "OSDDB_OsdList failed with code %d\n", code);
 	return code;
@@ -3640,7 +3642,7 @@ Statistic(struct cmd_syndesc *as, void *rock)
         }
     }
 
-    TM_GetTimeOfDay(&now, 0);
+    FT_GetTimeOfDay(&now, 0);
     printf("Since ");
     PrintTime(since);
     seconds = tsec = now.tv_sec - since;
@@ -3699,13 +3701,13 @@ OsddbStatistic(struct cmd_syndesc *as, void *rock)
     scan_osd_or_host();
     l.osddb_statList_len = 0;
     l.osddb_statList_val = 0;
-    code = ubik_Call(OSDDB_Statistic, osddb_client, Host, reset, &since, &l);
+    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_Statistic, osddb_client, Host, reset, &since, &l);
     if (code) {
 	fprintf(stderr, "OSDDB_Statistic returns %d\n", code);
         return code;
     }
 
-    TM_GetTimeOfDay(&now, 0);
+    FT_GetTimeOfDay(&now, 0);
     printf("Since ");
     PrintTime(since);
     seconds = tsec = now.tv_sec - since;
@@ -3727,6 +3729,47 @@ OsddbStatistic(struct cmd_syndesc *as, void *rock)
     return code;
 }
 
+afs_int32
+consider_policy_properties(afs_uint32 id, int num_rule, pol_rule r, int output)
+{
+    char *report = "policy %d: invalid %s %d in rule %d (properties 0x%06x)\n";
+    afs_int32 result = 0;
+    if ( POLPROP_LOCATION(r.properties) > 3 )  {
+	result = EINVAL;
+	printf(report, id, "location",
+		    POLPROP_LOCATION(r.properties), num_rule, r.properties);
+    }
+    if ( POLPROP_NSTRIPES(r.properties)
+	    && POLPROP_NSTRIPES(r.properties) != 1
+	    && POLPROP_NSTRIPES(r.properties) != 2
+	    && POLPROP_NSTRIPES(r.properties) != 4
+	    && POLPROP_NSTRIPES(r.properties) != 8 ) {
+	result = EINVAL;
+	printf(report, id, "number of stripes",
+		    POLPROP_NSTRIPES(r.properties), num_rule, r.properties);
+    }
+    if ( POLPROP_SSTRIPES(r.properties) &&
+	    ( POLPROP_SSTRIPES(r.properties) < 12
+	      || POLPROP_SSTRIPES(r.properties) > 19 ) ) {
+	result = EINVAL;
+	printf(report, id, "stripe-size",
+		    POLPROP_SSTRIPES(r.properties), num_rule, r.properties);
+    }
+    if ( POLPROP_NCOPIES(r.properties) > 8 ) {
+	result = EINVAL;
+	printf(report, id, "number of copies",
+		    POLPROP_NCOPIES(r.properties), num_rule, r.properties);
+    }
+    if (POLPROP_NSTRIPES(r.properties) * POLPROP_NCOPIES(r.properties) > 8){
+	result = EINVAL;
+	printf(report, id, "total number of objects",
+		    POLPROP_NCOPIES(r.properties)
+		    * POLPROP_NSTRIPES(r.properties), num_rule, r.properties);
+    }
+    return result;
+}
+
+int yyparse (void);
 afs_int32
 AddPolicy(struct cmd_syndesc *as, void *rock)
 {
@@ -3802,9 +3845,9 @@ AddPolicy(struct cmd_syndesc *as, void *rock)
 	fprintf(stderr, "Could not get connection to OSDDB data base\n");
 	return -1;
     }
-    code = ubik_Call(OSDDB_AddPolicy, osddb_client, 0, id, name, pp_output);
+    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_AddPolicy, osddb_client, 0, id, name, pp_output);
     if (code == RXGEN_OPCODE)
-        code = ubik_Call(OSDDB_AddPolicy65, osddb_client, 0, id, name, pp_output);
+	code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_AddPolicy65, osddb_client, 0, id, name, pp_output);
     switch ( code ) {
 	case 0: break;
 	case EINVAL:
@@ -3845,10 +3888,10 @@ ShowPolicy(struct cmd_syndesc *as, void *rock)
 
     if ( as->parms[0].items ) {			/* -id */
 	if ( !isdigit(as->parms[0].items->data[0]) ) {
-	    code = ubik_Call(OSDDB_GetPolicyID, osddb_client, 0,
+	    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_GetPolicyID, osddb_client, 0,
 				as->parms[0].items->data, &id);
 	    if (code == RXGEN_OPCODE)
-	        code = ubik_Call(OSDDB_GetPolicyID69, osddb_client, 0,
+		code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_GetPolicyID69, osddb_client, 0,
 				as->parms[0].items->data, &id);
 	    if (code) {
 		fprintf(stderr, "failed to lookup policy '%s': %d\n",
@@ -3884,9 +3927,9 @@ ShowPolicy(struct cmd_syndesc *as, void *rock)
     l.OsdList_len = 0;
     l.OsdList_val = 0;
 
-    code = ubik_Call(OSDDB_PolicyList, osddb_client, 0, &l);
+    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_PolicyList, osddb_client, 0, &l);
     if (code == RXGEN_OPCODE)
-        code = ubik_Call(OSDDB_PolicyList66, osddb_client, 0, &l);
+	code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_PolicyList66, osddb_client, 0, &l);
     if (code) {
 	fprintf(stderr, "Couldn't get list of policies: %d\n", code);
 	return EIO;
@@ -3919,10 +3962,10 @@ DeletePolicy(struct cmd_syndesc *as, void *rock)
     }
 
     if ( !isdigit(as->parms[0].items->data[0]) ) {
-	code = ubik_Call(OSDDB_GetPolicyID, osddb_client, 0,
+	code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_GetPolicyID, osddb_client, 0,
 				as->parms[0].items->data, &id);
 	if (code == RXGEN_OPCODE)
-	        code = ubik_Call(OSDDB_GetPolicyID69, osddb_client, 0,
+	    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_GetPolicyID69, osddb_client, 0,
 				as->parms[0].items->data, &id);
 	if (code) {
 	    fprintf(stderr, "failed to lookup policy '%s': %d\n",
@@ -3935,9 +3978,9 @@ DeletePolicy(struct cmd_syndesc *as, void *rock)
 	return code;
     }
 
-    code = ubik_Call(OSDDB_DeletePolicy, osddb_client, 0, id);
+    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_DeletePolicy, osddb_client, 0, id);
     if (code == RXGEN_OPCODE)
-        code = ubik_Call(OSDDB_DeletePolicy67, osddb_client, 0, id);
+	code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_DeletePolicy67, osddb_client, 0, id);
     if (code) {
 	fprintf(stderr, "OSDDB_DeletePolicy failed with %d.\n", code);
 	return EINVAL;
