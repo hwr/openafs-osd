@@ -177,7 +177,9 @@ InitializeCBService_LWP(void)
 {
     struct rx_securityClass *CBsecobj;
     struct rx_service *CBService;
-    extern int RXAFSCB_ExecuteRequest();
+    /* :FIXME: declaration should be moved to usable header file.
+       The function is declared in <afs/afscbint.h>, but we cannot include this file ... */
+    extern int RXAFSCB_ExecuteRequest(struct rx_call *);
 
     afs_uuid_create(&uuid);
 
@@ -509,7 +511,7 @@ n",AFSDIR_CLIENT_ETC_DIRPATH);
     }
     code = VLDBInit(1, &info);
     if (code == 0) {
-        code = ubik_Call(VL_GetEntryByID, uclient, 0, Fid->Volume,
+            code = ubik_Call((int(*)(struct rx_connection*, ...))VL_GetEntryByID, uclient, 0, Fid->Volume,
                                         -1, &vldbEntry);
         if (code == VL_NOENT)
             fprintf(stderr,"fs: volume %u does not exist in this cell.\n",
@@ -1880,6 +1882,10 @@ WipeCmd(struct cmd_syndesc *as, void *unused)
 #define NAMEI_VNODEMASK 0x3ffffff
 #define NAMEI_TAGSHIFT  26
 #define NAMEI_TAGMASK   63
+
+/* :FIXME: should be moved to a header file */
+extern void printlength(afs_uint64 length);
+
 static afs_int32
 ListVnode(struct cmd_syndesc *as, void *unused)
 {
@@ -2577,7 +2583,8 @@ WhereIsCmd(struct cmd_syndesc *as, void *unused)
 	    	    return -1;
 		}
                 if (osddb_client && !l.OsdList_len)
-                    code = ubik_Call(OSDDB_OsdList, osddb_client, 0, &l);
+                    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_OsdList,
+                                     osddb_client, 0, &l);
                 printf(" Osds: ");
                 while (*p) {
                     for (i=0; i<l.OsdList_len; i++) {
