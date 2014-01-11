@@ -178,6 +178,101 @@
 
 #include "vol_osd_inline.h"
 
+/* moved from vol_osd_inline.h to this file, all this is only used here */
+#define SNPRINTF afs_snprintf
+private char *shortbuffer = "***buffer too short***";
+private char *notspecified = "no object spefified";
+
+static char *
+sprint_oparmT10(struct oparmT10 *o, char *buf, afs_int32 len)
+{
+    afs_int32 l;
+
+    if (!o)
+	return notspecified;
+
+    l = SNPRINTF(buf, len, "%u.%u.%u.%u",
+		(afs_uint32)(o->part_id & RXOSD_VOLIDMASK),
+		(afs_uint32)(o->obj_id & RXOSD_VNODEMASK),
+		(afs_uint32)((o->obj_id >> RXOSD_UNIQUESHIFT) & RXOSD_UNIQUEMASK),
+		(afs_uint32)((o->obj_id >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK));
+    if (l >= len)
+	return shortbuffer;
+    return buf;
+}
+
+static char *
+sprint_oparmFree(struct oparmFree *o, char *buf, afs_int32 len)
+{
+    afs_int32 l;
+
+    if (!o)
+	return notspecified;
+
+    l = SNPRINTF(buf, len, "%llu.%llu.%llu.%u",
+		o->rwvol, o->vN, o->unique, o->tag);
+    if (l >= len)
+	return shortbuffer;
+    
+    return buf;
+}
+
+static void
+extract_oparmT10(struct oparmT10 *o, afs_uint32 *lun, afs_uint32 *vid,
+	      afs_uint32 *vN, afs_uint32 *unique, afs_uint32 *tag)
+{
+    if (lun)
+	*lun = (o->part_id >> RXOSD_LUNSHIFT);
+    if (vid)
+	*vid = (o->part_id & RXOSD_VOLIDMASK);
+    if (vN)
+	*vN = (o->obj_id & RXOSD_VNODEMASK);
+    if (unique)
+	*unique = (o->obj_id >> RXOSD_UNIQUESHIFT);
+    if (tag)
+	*tag = ((o->obj_id >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK);
+}
+		
+static void
+convert_ometa_1_2(struct oparmT10 *in, struct oparmFree *out)
+{
+    afs_uint32 i;
+    memset(out, 0, sizeof(struct oparmFree));
+    out->rwvol = (in->part_id & RXOSD_VOLIDMASK);
+    out->lun = (in->part_id >> RXOSD_LUNSHIFT);
+    if ((in->obj_id & RXOSD_VNODEMASK) == RXOSD_VNODEMASK) { /* vol. special file */
+        out->vN = (in->obj_id & RXOSD_VNODEMASK);
+        out->tag = (in->obj_id >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK;
+        out->unique = in->obj_id >> RXOSD_UNIQUESHIFT;
+    } else {
+        out->vN = (in->obj_id & RXOSD_VNODEMASK);
+        out->tag = (in->obj_id >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK;
+        out->unique = (in->obj_id >> RXOSD_UNIQUESHIFT) & RXOSD_UNIQUEMASK;
+        out->myStripe = (in->obj_id >> RXOSD_STRIPESHIFT);
+        out->nStripes = 1 << ((in->obj_id >> RXOSD_NSTRIPESSHIFT) & RXOSD_NSTRIPESMASK);
+	if (out->nStripes > 1) {
+            i = ((in->obj_id >> RXOSD_STRIPESIZESHIFT) & RXOSD_STRIPESIZEMASK);
+	    out->stripeSize = 4096 << i;
+	}
+    }
+}
+
+static afs_int32
+oparmFree_equal(struct oparmFree *a, struct oparmFree *b)
+{
+    if (a->rwvol != b->rwvol)
+	return 0;
+    if (a->vN != b->vN)
+	return 0;
+    if (a->unique != b->unique)
+	return 0;
+    if (a->tag != b->tag)
+	return 0;
+    return 1;
+}
+
+/*  END */
+
 #define NAMEI_INODESPECIAL ((Inode)RXOSD_VNODEMASK)
 
 #define MAXARGS 64
@@ -295,6 +390,21 @@ extern void Quit(char *msg, ...)
     AFS_ATTRIBUTE_FORMAT(__printf__, 1, 2);
 
 /* forward declaration of functions */
+extern int ubik_Call (int (*aproc) (struct rx_connection*,...), struct ubik_client *aclient, afs_int32 aflags, ...);
+
+/*
+  from <afs/afscbint.h>
+  This file cannot be included due to conflicts with type definitions in <afs/afsint.h>
+ */
+extern int RXAFSCB_TellMeAboutYourself(
+	/*IN */ struct rx_connection *z_conn,
+	/*OUT*/ struct interfaceAddr * addr,
+	/*OUT*/ Capabilities * capabilities);
+
+extern int RXAFSCB_WhoAreYou(
+	/*IN */ struct rx_connection *z_conn,
+	/*OUT*/ struct interfaceAddr * addr);
+
 private afs_int32
 traverse_osd(struct rx_call *call, afs_uint64 part_id, afs_int32 type,
 	     afs_uint32 flag, void *rock);
@@ -1120,7 +1230,7 @@ FiveMinuteCheckLWP(void* unused)
 	if (osddb_client && HostAddr_HBO) { /* find out which OSDs we are */
             l.OsdList_len = 0;
             l.OsdList_val = 0;
-	    code = ubik_Call(OSDDB_OsdList, osddb_client, 0, &l);
+	    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_OsdList, osddb_client, 0, &l);
 	    if (code) {
 		ViceLog(0,("FiveMinuteCheckLWP: OSDDB_OsdList failed with %d\n",
 			code));
@@ -1205,7 +1315,8 @@ FiveMinuteCheckLWP(void* unused)
 			    blocksFree  = statbuf.f_bfree;
 			    files = statbuf.f_files; 
 			    filesFree  = statbuf.f_ffree; 
-			    code = ubik_Call(OSDDB_SetOsdUsage, osddb_client,
+			    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_SetOsdUsage,
+                                                 osddb_client,
 						 0, e->id, bsize,
 						 blocks, blocksFree,  
 						 files, filesFree);
@@ -3410,9 +3521,9 @@ int examine(struct rx_call *call, t10rock *rock, struct oparmT10 *o,
     afs_uint64 *mtime64p = 0;
     afs_uint64 *atime64p = 0;
     afs_uint64 *ctime64p = 0;
-    afs_int32 *mtimep = 0;
-    afs_int32 *atimep = 0;
-    afs_int32 *ctimep = 0;
+    afs_uint32 *mtimep = 0;
+    afs_uint32 *atimep = 0;
+    afs_uint32 *ctimep = 0;
     afs_uint32 *lcp = 0;
     afs_int32  *statusp = 0; 
     path_info *pathp = 0;
@@ -3519,7 +3630,7 @@ int examine(struct rx_call *call, t10rock *rock, struct oparmT10 *o,
 	    } else if (h.ih_ops->stat_tapecopies) { /* hpss or dcache */
 	        time_t before = time(0), after;
 	        char what[2];
-	        result = h.ih_ops->stat_tapecopies(name.n_path, statusp, sizep);
+	        result = h.ih_ops->stat_tapecopies(name.n_path, statusp, (afs_sfsize_t*)sizep);
 	        after = time(0);
 	        what[0] = *statusp;
 	        what[1] = 0;
