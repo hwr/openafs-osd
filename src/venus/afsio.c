@@ -98,6 +98,8 @@
 #include "../rxkad/md5.h"
 #define	MAXHOSTS 13
 #include <afs/rxosd.h>
+#include <afs/vicedosd.h>
+#include <afs/sys_prototypes.h>
 #ifdef NEW_OSD_FILE
 #define osd_obj osd_obj1
 #define osd_objList osd_obj1List
@@ -718,7 +720,9 @@ InitializeCBService_LWP(void *unused)
 {
     struct rx_securityClass *CBsecobj;
     struct rx_service *CBService;
-    extern int RXAFSCB_ExecuteRequest();
+    /* :FIXME: declaration should be moved to usable header file.
+       The function is declared in <afs/afscbint.h>, but we cannot include this file ... */
+    extern int RXAFSCB_ExecuteRequest(struct rx_call *);
 
     afs_uuid_create(&uuid);
 
