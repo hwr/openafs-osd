@@ -49,3 +49,6 @@ extern afs_int32 eval_policy(unsigned int policyIndex, afs_uint64 size, char *fi
                              afs_uint32 *force);
 
 extern void display_policy_by_id(afs_uint32 id, int format, int unroll, struct ubik_client *uc);
+
+extern struct pol_info *make_pol_info(osddb_policy *pol, afs_uint32 id, char *name,
+                                      struct pol_info *dest);
