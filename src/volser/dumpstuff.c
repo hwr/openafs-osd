@@ -1223,7 +1223,8 @@ DumpVnode(struct iod *iodp, struct VnodeDiskObject *v, Volume *vp,
           && (flag & FORCEMETADATA)) {
 	    void *rock;
             byte *data;
-	    afs_int32 code, length;
+	    afs_int32 code;
+	    afs_uint32 length;
 	    code = (osdvol->op_dump_getmetadata)(vp, v, &rock, &data, &length,
 						 vnodeNumber);
 	    if (code) {
