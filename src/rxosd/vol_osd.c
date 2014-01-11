@@ -100,6 +100,9 @@
 #include <strings.h>
 #endif
 
+
+#include "vol_osd_prototypes.h"
+
 #ifdef O_LARGEFILE
 #define afs_stat        stat64
 #define afs_fstat       fstat64
@@ -124,18 +127,36 @@
 #include "vol_osd_inline.h"
 #include "osddbuser.h"
 
-private int oldRxosdsPresent = 0;
 
 private char *libraryVersion = "OpenAFS 1.6.2-osd";
 private char *openafsVersion = NULL;
 #ifdef BUILD_SALVAGER
 extern void Log(const char *format, ...);
 #else
+private int oldRxosdsPresent = 0;
 #define MAX_MOVE_OSD_SIZE               1024*1024
 afs_uint64 max_move_osd_size = MAX_MOVE_OSD_SIZE;
 afs_int32 max_move_osd_size_set_by_hand = 0;
 
 struct vol_data_v0 *voldata = NULL;
+static afs_int32 DataXchange(afs_int32 (*ioroutine)(void *rock, char* buf, 
+	    afs_uint32 lng, afs_uint64 offset), 
+	    void *rock, Volume *vol, struct VnodeDiskObject *vd,
+	    afs_uint32 vN, afs_uint64 offset, afs_int64 length, 
+	    afs_uint64 filelength, afs_int32 storing, afs_int32 useArchive,
+	    struct asyncError *ae);
+static afs_int32 add_simple_osdFile(Volume *vol, struct VnodeDiskObject *vd, 
+				afs_uint32 vN,
+				struct osd_p_fileList *l, afs_uint64 size,
+				afs_uint32 flag);
+static afs_int32 read_local_file(void *rock, char *buf, afs_uint32 len,
+				afs_uint64 offset);
+static afs_int32 write_local_file(void *rock, char *buf, afs_uint32 len,
+				afs_uint64 offset);
+
+private t10rock dummyrock = {0, 0};
+private int believe = 1;
+
 #endif
 
 #define WRITING		1	/* same as in afsint.xg */
@@ -152,24 +173,6 @@ struct vol_data_v0 *voldata = NULL;
 
 struct rxosd_conn * FindOsdConnection(afs_uint32 id);
 void PutOsdConn(struct rxosd_conn **conn);
-static afs_int32 DataXchange(afs_int32 (*ioroutine)(void *rock, char* buf, 
-	    afs_uint32 lng, afs_uint64 offset), 
-	    void *rock, Volume *vol, struct VnodeDiskObject *vd,
-	    afs_uint32 vN, afs_uint64 offset, afs_int64 length, 
-	    afs_uint64 filelength, afs_int32 storing, afs_int32 useArchive,
-	    struct asyncError *ae);
-static afs_int32 add_simple_osdFile(Volume *vol, struct VnodeDiskObject *vd, 
-				afs_uint32 vN,
-				struct osd_p_fileList *l, afs_uint64 size,
-				afs_uint32 flag);
-static afs_int32 read_local_file(void *rock, char *buf, afs_uint32 len,
-				afs_uint64 offset);
-static afs_int32 write_local_file(void *rock, char *buf, afs_uint32 len,
-				afs_uint64 offset);
-
-private afs_int64 minOsdFileSize = -1;
-private t10rock dummyrock = {0, 0};
-private int believe = 1;
 
 struct osdMetadaEntry {
     afs_uint32 magic;  /* contains magic number for entry 0 */
@@ -181,7 +184,7 @@ struct osdMetadaEntry {
     afs_uint32 spare[2];
     afs_uint32 next;  /* next entry if spanned */
     afs_uint32 prev;  /* previous entry if spanned */
-    char data[1];
+    byte data[1];
 };
 
 #ifndef BUILD_SALVAGER
@@ -286,7 +289,8 @@ rxosd_create_archive(struct ometa *om, struct osd_segm_descList *list, afs_int32
         if (conn) {
 	    code = RXOSD_create_archive(conn->conn, om, list, flag, md5);
 	    if (code == RXGEN_OPCODE) {	/* 1.4 archival rxosd */
-		afs_int32 i, j, lun;
+                afs_int32 i, j;
+                afs_uint32 lun;
 		struct osd_segm_desc0List l0;
 		struct osd_md5 oldmd5;
 		l0.osd_segm_desc0List_len = list->osd_segm_descList_len;
@@ -543,7 +547,8 @@ rxosd_examine(afs_uint32 osd, afs_uint64 p_id, afs_uint64 o_id,
 	    t.t10rock_val = NULL;
             code = RXOSD_examine(conn->conn, &t, &o, mask, e);
 	    if (code == RXGEN_OPCODE) {
-		afs_int32 mtime, lc;
+                afs_uint32 mtime;
+                afs_uint32  lc;
 		if (mask == (WANTS_SIZE | WANTS_LINKCOUNT) || mask == WANTS_SIZE) {
 		    e->type = 1;
 		    code = RXOSD_examine185(conn->conn, p_id, o_id,
@@ -743,8 +748,8 @@ AllocMetadataEntry(FdHandle_t *callerfd, Volume *vol, afs_int32 *number,
     }
     *entrylength = entry->length;
     while (!n) {
-        bp = (byte *) &entry->data;
-        ep = (byte *) entry + *entrylength;
+        bp = entry->data;
+        ep = entry->data + *entrylength;
         while (bp < ep) {
 	    if ((*(bit32 *) bp) != (bit32) 0xffffffff) {
 	        int o;
@@ -758,7 +763,7 @@ AllocMetadataEntry(FdHandle_t *callerfd, Volume *vol, afs_int32 *number,
             bp += sizeof(bit32) /* i.e. 4 */ ;
         }
         if (!n) { 			/* proceed with next alloc table entry */
-            bp = (char *)&entry->data;
+            bp = entry->data;
 	    oldbase = base;
 	    base += (ep - bp) << 3;
 	    if (entry->next) { 				/* found one, read it */
@@ -1029,38 +1034,16 @@ isOsdFile(afs_int32 osdPolicy, afs_uint32 vid, struct VnodeDiskObject *vd,
     return 1;
 };
 
-static afs_int32
-SalvageOsdMetadata(FdHandle_t *fd, struct VnodeDiskObject *vd, afs_uint32 vn,
-			afs_uint32 entrylength, void *rock,
-			afs_int32 Testing)
-{
-    afs_uint64 offset;
-    struct osdMetadaEntry *entry = (struct osdMetadaEntry *) rock;
 
-    if (vd->type != vFile || !vd->osdMetadataIndex)
-	return 0;
-    if (!fd) {
-	ViceLog(0, ("SalvageOsdMetadata: no fd\n"));
-	return EIO;
-    }
-    offset = vd->osdMetadataIndex * entrylength;
-    if (FDH_PREAD(fd, entry, entrylength, offset) != entrylength) {
- 	ViceLog(0, ("SalvageOsdMetadata: entry %u not found for %u.%u\n",
-		vd->osdMetadataIndex, vn, vd->uniquifier));
-	goto bad;
-    } 
-    if (!entry->used || entry->vnode != vn || entry->unique != vd->uniquifier) {
- 	ViceLog(0, ("SalvageOsdMetadata: wrong entry %u for %u.%u\n",
-		vd->osdMetadataIndex, vn, vd->uniquifier));
-	goto bad;
-    } 
-    return 0;
-bad:
-    if (!Testing) {
-	vd->osdMetadataIndex = 0;
-    }
-    return EIO;
-}
+	 
+#ifndef BUILD_SALVAGER
+
+#define MAX_OSD_METADATA_LENGTH 2040
+struct metadataBuffer {
+    afs_uint32 length;
+    afs_uint32 offset;
+    char data[MAX_OSD_METADATA_LENGTH];
+};
 
 static afs_int32
 osd_metadata_time(Volume *vol, struct VnodeDiskObject *vd)
@@ -1098,15 +1081,6 @@ bad:
     FDH_CLOSE(fd);
     return metadatatime; 
 } 
-	 
-#ifndef BUILD_SALVAGER
-
-#define MAX_OSD_METADATA_LENGTH 2040
-struct metadataBuffer {
-    afs_uint32 length;
-    afs_uint32 offset;
-    char data[MAX_OSD_METADATA_LENGTH];
-};
 
 static void
 FillMetadataBuffer(Volume *vol, struct VnodeDiskObject *vd, afs_uint32 vN,
@@ -1191,7 +1165,7 @@ bad:
     
 afs_int32
 GetMetadataByteString(Volume *vol, VnodeDiskObject *vd, void **rock, byte **data,
-			 afs_int32 *length, afs_uint32 vN)
+			 afs_uint32 *length, afs_uint32 vN)
 {
     struct metadataBuffer *mh = 0;
     *rock = *data = 0;
@@ -1212,7 +1186,7 @@ GetMetadataByteString(Volume *vol, VnodeDiskObject *vd, void **rock, byte **data
     return 0;    
 }
 
-afs_int32
+static afs_int32
 AllocMetadataByteString(void **rock, byte **data, afs_uint32 **length)
 {
     struct metadataBuffer *mh;
@@ -1969,9 +1943,26 @@ int writeLocked(Vnode *vn)
 
 #define MAX_ARCHIVAL_COPIES 4
 
+
+static void
+free_osd_segm_descList(struct osd_segm_descList *l)
+{
+    int i;
+    if (l->osd_segm_descList_len && l->osd_segm_descList_val) {
+	for (i=0; i<l->osd_segm_descList_len; i++) {
+	    struct osd_segm_desc *s = &l->osd_segm_descList_val[i];
+	    if (s->objList.osd_obj_descList_len && s->objList.osd_obj_descList_val)
+		free(s->objList.osd_obj_descList_val);
+	}
+	free(l->osd_segm_descList_val);
+    }
+    l->osd_segm_descList_len = 0;
+    l->osd_segm_descList_val = NULL;
+}
+
 afs_int32
 fill_osd_file(Vnode *vn, struct async *a,
-	afs_int32 flag, afs_int32 *fileno, afs_uint32 user)
+	afs_int32 flag, afs_uint32 *fileno, afs_uint32 user)
 {
     struct osd_p_fileList list;
     struct osd_segm_descList rlist;
@@ -2878,7 +2869,6 @@ struct rxosd_addr {
 
 struct rxosd_host *rxosd_hosts = NULL;
 afs_uint32 rxosd_addresses = 0;
-static afs_uint32  local_host = 0;
  
 struct rxosd_conn * FindOsdConnection(afs_uint32 id)
 {
@@ -3309,12 +3299,12 @@ CreateSimpleOsdFile(AFSFid *fid, Vnode *vn, Volume *vol, afs_uint32 osd,
 	afs_uint32 lun) 
 {
     afs_int32 code;
-    afs_uint32 tosd;
+    afs_uint32 result;
     afs_uint64 oldLength;
 
     VN_GET_LEN(oldLength, vn);
     if (oldLength) {	/* We must copy the file to the OSD */
-	code = replace_osd(vn, 1, osd, &tosd);
+	code = replace_osd(vn, 1, osd, &result);
     } else {
         code = osd_create_file(vol, &vn->disk, vn->vnodeNumber, 
 				1  /* stripes */, 
@@ -4120,7 +4110,7 @@ read_local_file(void *rock, char *buf, afs_uint32 len, afs_uint64 offset)
  * Called from the fileserver processing "fs replaceosd ..."
  */
 afs_int32
-replace_osd(struct Vnode *vn, afs_uint32 old, afs_int32 new, afs_int32 *result)
+replace_osd(struct Vnode *vn, afs_uint32 old, afs_uint32 new, afs_uint32 *result)
 {
     struct VnodeDiskObject *vd = &vn->disk;
     Volume *vol = vn->volumePtr;
@@ -4540,7 +4530,7 @@ recover_store(Vnode *vn, struct asyncError *ae)
  *  Called from afsfileprocs.c on behalf of "fs whereis".
  */
 afs_int32
-list_osds(struct Vnode *vn, afs_int32 *out)
+list_osds(struct Vnode *vn, afs_uint32 *out)
 {
     afs_int32 code, i, j, k;
     struct osd_p_fileList list;
@@ -5351,7 +5341,7 @@ xchange_data_with_osd(struct rx_call *acall, Vnode **vnP, afs_uint64 offset,
 	 * the sleep to allow the rxosd to do the RXAFS_SetOsdFileReady. 
 	 */
 	struct osd_file2 file;
-	afs_int32 fileno;
+	afs_uint32 fileno;
         Error code2;
 	file.segmList.osd_segm2List_len = 0;
 	file.segmList.osd_segm2List_val = 0;
@@ -6176,7 +6166,7 @@ restore_osd_file(afs_int32 (*ioroutine)(void *rock, char *buf, afs_uint32 lng,
  * (for deleted files) or indirectly from CorrectOsdLinkCounts()
  * (for files where the metadata changed).
  */
-afs_int32
+static afs_int32
 IncDecObjectList(Volume *vol, struct osdobjectList *list, afs_int32 what)
 {
     afs_int32 code = 0, i;
@@ -7349,6 +7339,8 @@ afs_int32 init_candidates(char **alist)
     return 0;
 }
 
+#if 0
+/* unused */
 void
 destroy_candlist(void *rock)
 {
@@ -7359,7 +7351,8 @@ destroy_candlist(void *rock)
         free(l->osd[i]);
     free(l);
 }
-    
+#endif
+
 int
 is_wipeable(struct osd_p_fileList *l, afs_uint64 size)
 {
@@ -7525,7 +7518,7 @@ bad:
 }
 
 afs_int32 
-get_arch_osds(Vnode *vn, afs_uint64 *length, afs_int32 *osds)
+get_arch_osds(Vnode *vn, afs_int64 *length, afs_uint32 *osds)
 {
     afs_int32 code, i;
     struct osd_p_fileList l;
@@ -7628,6 +7621,39 @@ init_osdvol (char *version, char **afsosdVersion, struct osd_vol_ops_v0 **osdvol
     return 0;
 }
 #else /* BUILD_SALVAGER */
+static afs_int32
+SalvageOsdMetadata(FdHandle_t *fd, struct VnodeDiskObject *vd, afs_uint32 vn,
+			afs_uint32 entrylength, void *rock,
+			afs_int32 Testing)
+{
+    afs_uint64 offset;
+    struct osdMetadaEntry *entry = (struct osdMetadaEntry *) rock;
+
+    if (vd->type != vFile || !vd->osdMetadataIndex)
+	return 0;
+    if (!fd) {
+	ViceLog(0, ("SalvageOsdMetadata: no fd\n"));
+	return EIO;
+    }
+    offset = vd->osdMetadataIndex * entrylength;
+    if (FDH_PREAD(fd, entry, entrylength, offset) != entrylength) {
+ 	ViceLog(0, ("SalvageOsdMetadata: entry %u not found for %u.%u\n",
+		vd->osdMetadataIndex, vn, vd->uniquifier));
+	goto bad;
+    } 
+    if (!entry->used || entry->vnode != vn || entry->unique != vd->uniquifier) {
+ 	ViceLog(0, ("SalvageOsdMetadata: wrong entry %u for %u.%u\n",
+		vd->osdMetadataIndex, vn, vd->uniquifier));
+	goto bad;
+    } 
+    return 0;
+bad:
+    if (!Testing) {
+	vd->osdMetadataIndex = 0;
+    }
+    return EIO;
+}
+
 private struct vol_data_v0 *voldata;
 extern afs_int32 libafsosd_init(void *libafsosdrock, afs_int32 version);
 
@@ -7637,7 +7663,6 @@ int init_salv_afsosd (char *afsversion, char **afsosdVersion, void *inrock, void
     afs_int32 code = 0;
     struct init_salv_inputs *input = (struct init_salv_inputs *)inrock;
     struct init_salv_outputs *output = (struct init_salv_outputs *)outrock;
-    extern struct osd_vol_ops_v0 *osdvol;
     static struct osd_vol_ops_v0 osd_vol_ops_v0;
 
     voldata = input->voldata;
