@@ -71,6 +71,7 @@
 #include <afs/rxosd.h>
 #include "../rxosd/vol_osd.h"
 #include "../rxosd/osddb.h"
+#include "../rxosd/osddbuser.h"
 
 #ifdef NEW_OSD_FILE
 #define osd_obj osd_obj1
@@ -126,7 +127,7 @@ static int RxStatProcCmd(struct cmd_syndesc *, void *);
 static int RxStatPeerCmd(struct cmd_syndesc *, void *);
 static int GetFidCmd(struct cmd_syndesc *, void *);
 static int UuidCmd(struct cmd_syndesc *, void *);
-static struct ubik_client * init_osddb_client(char *, afs_uint32);
+static struct ubik_client * _init_osddb_client(char *);
 
 char tmpstr[1024];
 char tmpstr2[1024];
@@ -166,6 +167,10 @@ struct cellLookup {
 
 struct cellLookup *Cells = 0;
 char cellFname[256];
+
+/* :FIXME: move declaration to header file */
+extern int ubik_Call (int (*aproc) (struct rx_connection*,...), struct ubik_client *aclient, afs_int32 aflags, ...);
+
  
 #define InitPioctlParams(Inputs,Outputs,Command) \
     Inputs = &PioctlInputs; \
@@ -177,12 +182,13 @@ char cellFname[256];
     status.in = (char *) Inputs; \
     status.out = (char *) Outputs;
 
-int
-InitializeCBService_LWP(void)
+void*
+InitializeCBService_LWP(void* unused)
 {
     struct rx_securityClass *CBsecobj;
     struct rx_service *CBService;
-    extern int RXAFSCB_ExecuteRequest();
+    /* :FIXME: should be in header file */
+    extern int RXAFSCB_ExecuteRequest (struct rx_call *z_call); 
 
     afs_uuid_create(&uuid);
 
@@ -476,7 +482,7 @@ n",AFSDIR_CLIENT_ETC_DIRPATH);
     }
     code = VLDBInit(1, &info);
     if (code == 0) {
-        code = ubik_Call(VL_GetEntryByID, uclient, 0, Fid->Volume,
+	code = ubik_Call((int(*)(struct rx_connection*,...))VL_GetEntryByID, uclient, 0, Fid->Volume,
                                         -1, &vldbEntry);
         if (code == VL_NOENT)
             fprintf(stderr,"fs: volume %u does not exist in this cell.\n",
@@ -2237,9 +2243,9 @@ WhereIsCmd(struct cmd_syndesc *as, void *arock)
 	    afs_uint32 *p = &Outputs->int32s[0];
 	    if (*p) {
     		if (!osddb_client)
-    		    osddb_client = init_osddb_client(cell, 0);
+    		    osddb_client = _init_osddb_client(cell);
     		if (osddb_client && !l.OsdList_len)
-        	    code = ubik_Call(OSDDB_OsdList, osddb_client, 0, &l);
+        	    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_OsdList, osddb_client, 0, &l);
 		printf(" Osds: ");
 		while (*p) {
 		    for (i=0; i<l.OsdList_len; i++) {
@@ -5220,8 +5226,8 @@ Retry:
     return code;
 }
 
-struct ubik_client *
-init_osddb_client(char *cell, afs_uint32 server)
+static struct ubik_client *
+_init_osddb_client(char *cell)
 {
     afs_int32 code;
     struct ubik_client *cstruct = 0;
@@ -5230,13 +5236,13 @@ init_osddb_client(char *cell, afs_uint32 server)
     memset(&serverconns, 0, sizeof(serverconns));
     code = ugen_ClientInit(0, AFSDIR_CLIENT_ETC_DIRPATH, cell, 0, &cstruct,
                                 0, "osddb", 1, 13,
-                                (char *)0, 10, server, OSDDB_SERVER_PORT,
+                                (char *)0, 10, 0, OSDDB_SERVER_PORT,
                                 OSDDB_SERVICE_ID);
     return cstruct;
 }
 
 #if 0
-/* UNUSED */
+/* :FIXME: UNUSED */
 static afs_uint32 
 GetHost(char *hostname)
 {
@@ -5491,9 +5497,9 @@ afs_int32 osd_parms(struct cmd_syndesc *as, void *arock)
 	if (!cm) {
 	    l.OsdList_len = 0;
 	    l.OsdList_val = 0;
-    	    osddb_client = init_osddb_client(cell, 0);
+    	    osddb_client = _init_osddb_client(cell);
     	    if (osddb_client)
-                code = ubik_Call(OSDDB_OsdList, osddb_client, 0, &l);
+                code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_OsdList, osddb_client, 0, &l);
 	}
     }
     if (fid) {
@@ -5790,7 +5796,7 @@ GetPolicies(struct cmd_syndesc *as, void *arock)
             printf("Directory policy %d has no effect.\n", dir_policy);
     }
     else {
-        uc = init_osddb_client(cell, 0);
+        uc = _init_osddb_client(cell);
         if ( vol_policy == 1 )
             printf("OSD is enabled for this volume,"
                         " but no global policy chosen.\n");
@@ -6093,7 +6099,7 @@ Statistic(struct cmd_syndesc *as, void *rock)
 	    }
 	}
     
-        TM_GetTimeOfDay(&now, 0);
+        FT_GetTimeOfDay(&now, 0);
 	printf("Since ");
 	PrintTime(since);
 	seconds = tsec = now.tv_sec - since;
