@@ -1,4 +1,7 @@
 %{
+
+extern int yylex (void);
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -415,7 +418,7 @@ unit: /* empty */ 		{ $<num64>$ = 1; }
 #define TRY_POP_TOKEN(T,s,n) if ( strncmp(pos, s, n) == 0 ) POP_TOKEN(T,n)
 
 int
-yylex()
+yylex(void)
 {
     int len;
     char quote;
