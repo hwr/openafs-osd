@@ -63,6 +63,7 @@
 #define afs_open	open
 #endif /* !O_LARGEFILE */
 #include "rxosd.h"
+#include <afs/cmd.h>
 
 
 #define MAX_OSD_METADATA_LENGTH 2040

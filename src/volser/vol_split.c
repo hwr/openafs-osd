@@ -409,6 +409,9 @@ afs_int32 copyVnodes(struct Msg *m, Volume *vol, Volume *newvol,
 		/* Now update the vnode and write it back to disk */
 		VNDISK_SET_INO(vnode, newino);
 		vnode->cloned = 0;
+    		if (!vol->osdMetadataHandle) 
+        	    vnode->vnodeMagic = vcp->magic;
+		
 	        if (FDH_PWRITE(fdP, vnode, vcp->diskSize, offset) != vcp->diskSize) {
 		    Log("vol_split: Couldn't write in %s Index of volume %u at offset %"
 			AFS_UINT64_FMT "\n", class ? "small":"large",
@@ -465,6 +468,8 @@ afs_int32 copyVnodes(struct Msg *m, Volume *vol, Volume *newvol,
 		if (e->flag & CHANGEPARENT)
 		    vnode->parent = 1; /* in new root-directory */
 		vnode->cloned = 0;
+    		if (!newvol->osdMetadataHandle)
+        	    vnode->vnodeMagic = vcp->magic;
 	        if (FDH_PWRITE(newfdP, vnode, vcp->diskSize, offset) != vcp->diskSize) {
 		    Log("vol_split: Couldn't write in %s Index of volume %u to offset %"
 			AFS_UINT64_FMT "\n", class ? "small":"large",
@@ -517,6 +522,8 @@ afs_int32 copyVnodes(struct Msg *m, Volume *vol, Volume *newvol,
 	vnode->cloned = 0;
 	vnode->parent = vnode2->parent;
 	vnode->serverModifyTime = vnode2->serverModifyTime;
+    	if (!newvol->osdMetadataHandle)
+            vnode->vnodeMagic = vcp->magic;
 	if (FDH_PWRITE(newfdP, vnode, vcp->diskSize, newoffset) != vcp->diskSize) {
 	    Log("vol_split: couldn't write in large Index of %u at offset %u\n", 
 		    V_id(newvol), vcp->diskSize);
@@ -604,7 +611,11 @@ createMountpoint(Volume *vol, Volume *newvol, struct VnodeDiskObject *parent,
     vnode.dataVersion = 1;
     vnode.linkCount = 1;
     vnode.parent = vN;
-    if (!V_osdPolicy(vol))
+    /* 
+     * May be an 1.4-osd creatd volume with osdMetadataHandle
+     * even if it is not an osd volume. In this case magic remains empty.
+     */
+    if (!vol->osdMetadataHandle) 
         vnode.vnodeMagic = vcp->magic;
 
     newvN = (offset >> (VnodeClassInfo[class].logSize - 1)) - 1 + class;

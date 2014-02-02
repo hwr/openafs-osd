@@ -317,6 +317,20 @@ int HSM = 1;
 int HSM = 0;
 #endif
 
+struct myOsd {
+    struct myOsd *next;
+    afs_uint64 blocks;
+    afs_uint64 blocksFree;
+    afs_uint64 files;
+    afs_uint64 filesFree;
+    afs_uint32 bsize;
+    afs_uint32 lun;
+    afs_int32 id;
+    afs_int32 flags;
+};
+
+struct myOsd *myOsds = NULL;
+
 struct hsm_auth_ops *auth_ops = NULL;
 int withHPSS = 0;
 int maxDontUnlinkDev = 0;
@@ -1192,6 +1206,7 @@ FiveMinuteCheckLWP(void* unused)
     char HostName[128];
     time_t now;
     afs_int32 sleepseconds;
+    struct myOsd *myOsd;
 
     while (1) {
 	if (!HostAddr_HBO) {
@@ -1256,7 +1271,7 @@ FiveMinuteCheckLWP(void* unused)
 				found = 1;
 			}
 		    }
-		    if (found) {
+		    if (found) { /* OSD on server with our IP-address */
 			char partname[16];
 			char *p;
 			p = volutil_PartitionName_r(e->t.etype_u.osd.lun, 
@@ -1301,25 +1316,47 @@ FiveMinuteCheckLWP(void* unused)
 			if (code) {		
 			    ViceLog(0,("FiveMinuteCheckLWP: statfs for %s failed with code=%d, errno=%d\n",
 						p, code, errno));
+			    /* remove entry from myOsds */
+			    for (myOsd = (struct myOsd *)&myOsds; myOsd->next; myOsd = myOsd->next) {
+				if (myOsd->next->id == e->id) {
+				    struct myOsd *tmp;
+				    tmp = myOsd->next;
+				    myOsd->next = tmp->next;
+				    myOsd = NULL;
+				    free(tmp);
+				    break;
+				}
+			    }
 			} else {
 			    char osdIdFile[32];
-			    afs_uint32 bsize; 
-			    afs_uint64 blocks, blocksFree, files, filesFree;
 			    int fd;
+			    for (myOsd = myOsds; myOsd; myOsd = myOsd->next) {
+				if (myOsd->id == e->id)
+				    break;
+			    }
+			    if (!myOsd) {
+				myOsd = (struct myOsd *)malloc(sizeof(struct myOsd));
+				memset(myOsd, 0, sizeof(struct myOsd));
+				myOsd->id = e->id;
+				myOsd->lun = e->t.etype_u.osd.lun;
+				myOsd->flags = e->t.etype_u.osd.flags;
+				myOsd->next = myOsds;
+				myOsds = myOsd;
+			    }
 #if defined(AFS_HAVE_STATVFS) || defined(AFS_HAVE_STATVFS64)
-    			    bsize = statbuf.f_frsize;
+    			    myOsd->bsize = statbuf.f_frsize;
 #else
-    			    bsize = statbuf.f_bsize;
+    			    myOsd->bsize = statbuf.f_bsize;
 #endif
-			    blocks = statbuf.f_blocks;
-			    blocksFree  = statbuf.f_bfree;
-			    files = statbuf.f_files; 
-			    filesFree  = statbuf.f_ffree; 
+			    myOsd->blocks = statbuf.f_blocks;
+			    myOsd->blocksFree  = statbuf.f_bfree;
+			    myOsd->files = statbuf.f_files; 
+			    myOsd->filesFree  = statbuf.f_ffree; 
 			    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_SetOsdUsage,
-                                                 osddb_client,
-						 0, e->id, bsize,
-						 blocks, blocksFree,  
-						 files, filesFree);
+					         osddb_client,
+						 0, e->id, myOsd->bsize,
+						 myOsd->blocks, myOsd->blocksFree,  
+						 myOsd->files, myOsd->filesFree);
 			    if (code) {
 			        ViceLog(0,("FiveMinuteCheckLWP: OSDDB_SetOsdUsage for osd-id %u failed with %d\n",
 						e->id, code));
@@ -1477,7 +1514,7 @@ FindInFetchqueue(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
 		 struct fetch_entry **ptr, int anytag)
 {
     struct fetch_entry *f;
-    afs_uint64 mask = ((afs_uint64)UNIQUEMASK << 32) + RXOSD_VNODEMASK;
+    afs_uint64 mask = ((afs_uint64)RXOSD_UNIQUEMASK << 32) + RXOSD_VNODEMASK;
     int sameuser = 0;
     
     QUEUE_LOCK;
@@ -1724,6 +1761,7 @@ XferData(void *_f)
                 fid.Volume, fid.Vnode, fid.Unique, 
 		list.osd_segm_descList_len,
 		 list.osd_segm_descList_val));
+	f->refcnt--;
 	RemoveFromFetchq(f);
     }
 
@@ -1761,6 +1799,7 @@ CheckFetchProc(void *unused)
                     break;
                 }
 		f->index = -1;
+		f->refcnt = 0;  /* Don't remember old XferData reference */
                 for (f2=rxosd_fetchq; f2; f2=f2->next) {		
 	            if (f2->d.user == f->d.user) 
 	                (f->rank)++;
@@ -3527,6 +3566,7 @@ int examine(struct rx_call *call, t10rock *rock, struct oparmT10 *o,
     afs_uint32 *lcp = 0;
     afs_int32  *statusp = 0; 
     path_info *pathp = 0;
+    struct myOsd *myOsd = NULL;
 
     /* 
      * Do the check for SuperUser 1st because this use case happens more frequently
@@ -3605,6 +3645,10 @@ int examine(struct rx_call *call, t10rock *rock, struct oparmT10 *o,
     } else 
 	return EINVAL;
 	
+    for (myOsd = myOsds; myOsd; myOsd = myOsd->next) {
+	if (myOsd->id == o->osd_id)
+	    break;
+    }
     memset(&h, 0, sizeof(h));
     h.ih_vid = o->part_id & RXOSD_VOLIDMASK;
     h.ih_dev = o->part_id >> RXOSD_LUNSHIFT;
@@ -3622,6 +3666,8 @@ int examine(struct rx_call *call, t10rock *rock, struct oparmT10 *o,
     if ((mask & WANTS_HSM_STATUS) && statusp) {
         if (!HSM && h.ih_dev != hsmDev) {
 	    *statusp = 'r';
+	    if (myOsd && (myOsd->flags & OSDDB_ARCHIVAL))
+		*statusp = 'p'; 	/* fake premigrated state */
 	} else {
 	    struct fetch_entry *f;
 	    f = GetFetchEntry(o);
@@ -7905,6 +7951,11 @@ main(int argc, char *argv[])
     int stackSize, i;
     int nojumbo = 1;
     int bufSize = 0;        /* temp variable to read in udp socket buf size */
+<<<<<<< HEAD
+=======
+    int abort_threshold = 10;  
+    FILE *debugFile = NULL;
+>>>>>>> master
     short port = OSD_SERVER_PORT;
     pthread_t serverPid;
     pthread_attr_t tattr;
@@ -7992,6 +8043,13 @@ main(int argc, char *argv[])
 	    }
 	    LogLevel = atoi(argv[++i]);
 	}
+	else if (strcmp(argv[i], "-abortthreshold") == 0) {
+	    if ((i + 1) >= argc) {
+		fprintf(stderr, "missing argument for -d\n");
+		return -1;
+	    }
+	    abort_threshold = atoi(argv[++i]);
+	}
         else
             printf("Unsupported option: %s\n", argv[i]);
     }
@@ -8030,6 +8088,8 @@ main(int argc, char *argv[])
     confDir = afsconf_Open(AFSDIR_SERVER_ETC_DIRPATH);
     /* Initialize Rx, telling it port number this server will use for its single service */
     rx_extraPackets = 1000;
+    rx_SetCallAbortThreshold(abort_threshold);
+    rx_SetConnAbortThreshold(abort_threshold);
     if (rx_Init(port) < 0)
 	   Quit("Cannot initialize RX");
 

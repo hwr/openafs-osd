@@ -1675,8 +1675,7 @@ ChangeDirectory(int argc, char **argv, struct vnodeData *vdatacwd)
   Use PrintTime() defined in 'src/cmd/cmd_out.c'!
  */
 #ifdef AFS_RXOSD_SUPPORT
-PrintTime(intdate)
-int *intdate;
+PrintTime(int intdate)
 {
     time_t now, date;
     char month[4];
@@ -1687,8 +1686,8 @@ int *intdate;
                          "Sep", "Oct", "Nov", "Dec"};
     int i;
 
-    if (!*intdate) printf(" never       "); else {
-        date = *intdate;
+    if (!intdate) printf(" never       "); else {
+        date = intdate;
         timestring = ctime(&date);
         sscanf(timestring, "%s %s %d %d:%d:%d %d",
                 (char *)&weekday,
