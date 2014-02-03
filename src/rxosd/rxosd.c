@@ -7951,11 +7951,7 @@ main(int argc, char *argv[])
     int stackSize, i;
     int nojumbo = 1;
     int bufSize = 0;        /* temp variable to read in udp socket buf size */
-<<<<<<< HEAD
-=======
     int abort_threshold = 10;  
-    FILE *debugFile = NULL;
->>>>>>> master
     short port = OSD_SERVER_PORT;
     pthread_t serverPid;
     pthread_attr_t tattr;
@@ -8137,13 +8133,15 @@ main(int argc, char *argv[])
      */
     rx_EnableHotThread();
 
-    /* Some rx debugging *
+#if 0
+    /* Some rx debugging */
     if (rxlog) {
-	   debugFile = fopen("rx_dbg", "w");
-       rx_debugFile = debugFile;
-       rxevent_debugFile = debugFile;
-    }*/
-    
+        FILE *debugFile = NULL;
+        debugFile = fopen("rx_dbg", "w");
+        rx_debugFile = debugFile;
+        rxevent_debugFile = debugFile;
+    }
+#endif
     
     assert(pthread_attr_init(&tattr) == 0);
     assert(pthread_attr_setdetachstate(&tattr, PTHREAD_CREATE_DETACHED) == 0);
