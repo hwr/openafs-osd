@@ -233,9 +233,6 @@ tubik: ubik libafsrpc
 
 ubiktests: ubik
 
-osddb: cmd comerr ubik cmd comerr auth audit libafsrpc tubik libafsauthent
-	${COMPILE_PART1} osddb ${COMPILE_PART2}
-
 ptserver: cmd comerr ubik cmd comerr auth audit ptserver_depinstall
 	+${COMPILE_PART1} ptserver ${COMPILE_PART2}
 
@@ -770,7 +767,6 @@ clean2:
 	-${COMPILE_PART1} tvolser ${COMPILE_CLEAN}
 	-${COMPILE_PART1} dvolser ${COMPILE_CLEAN}
 	-${COMPILE_PART1} tsalvaged ${COMPILE_CLEAN}
-	-${COMPILE_PART1} osddb ${COMPILE_CLEAN}
 	-${COMPILE_PART1} rxosd ${COMPILE_CLEAN}
 	-${COMPILE_PART1} venus ${COMPILE_CLEAN}
 	-${COMPILE_PART1} venus/test ${COMPILE_CLEAN}
