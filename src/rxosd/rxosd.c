@@ -162,8 +162,7 @@
 #include "osddb.h"
 #include "osddbuser.h"
 #include "../rxkad/md5.h"
-
-#include <afs/vicedosd.h>
+#include "vicedosd.h"
 #include <afs/audit.h>
 #include <afs/softsig.h>
 
@@ -426,7 +425,6 @@ traverse_osd(struct rx_call *call, afs_uint64 part_id, afs_int32 type,
 private int
 CopyOnWrite(struct rx_call *call, struct oparmT10 *o, afs_uint64 offs,
             afs_uint64 leng, afs_uint64 size, struct oparmT10 *new);
-
 
 int o_cache_used = 0;
 int o_cache_entries = 0;
@@ -993,13 +991,7 @@ afs_int32 MyThreadEntry = setActiveFromOprm(n, c, o, 1)
 
 extern int RXOSD_ExecuteRequest(struct rx_call *acall);
 extern int         mrafsStyleLogs;
-extern int         registerthread(
-#ifdef AFS_PTHREAD_ENV
-                  pthread_t id,
-#else				/* AFS_PTHREAD_ENV */
-		  PROCESS id,
-#endif				/* AFS_PTHREAD_ENV */
-		  char *name);
+extern int         registerthread(pthread_t id, char *name);
 
 
 afs_uint32 HostAddr_NBO = 0;
@@ -1245,7 +1237,8 @@ FiveMinuteCheckLWP(void* unused)
 	if (osddb_client && HostAddr_HBO) { /* find out which OSDs we are */
             l.OsdList_len = 0;
             l.OsdList_val = 0;
-	    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_OsdList, osddb_client, 0, &l);
+	    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_OsdList,
+			     osddb_client, 0, &l);
 	    if (code) {
 		ViceLog(0,("FiveMinuteCheckLWP: OSDDB_OsdList failed with %d\n",
 			code));
@@ -1757,7 +1750,7 @@ XferData(void *_f)
 	        RemoveFromFetchq(f);
         }
     } else {
-        ViceLog(0, ("Xfer: fetch entry for %u.%u.%u has bad desc list len %d, val %p\n",
+        ViceLog(0, ("Xfer: fetch entry for %u.%u.%u has bad desc list len %d, val 0x%x\n",
                 fid.Volume, fid.Vnode, fid.Unique, 
 		list.osd_segm_descList_len,
 		 list.osd_segm_descList_val));
@@ -2132,7 +2125,7 @@ CheckCAP(struct rx_call *call, t10rock *r, struct oparmT10 *o, afs_int32 command
                         cap->pid_hi, cap->pid_lo,
                         cap->oid_hi, cap->oid_lo,
                         cap->cid, cap->epoch));
-    for (i=0; i<8; i++)
+    for (i=0; i<8; i+=4)
        ViceLog(3, ("Encrypted CAP%d = 0x%x, 0x%x 0x%x 0x%x\n",
                    i, rp[0], rp[1], rp[2], rp[3]));
     if (!cid && !epoch)
@@ -4926,7 +4919,6 @@ hardlink(struct rx_call *call, afs_uint64 from_part,
     struct o_handle *to_oh = 0;
     afs_uint32 from_vid, from_vnode, from_unique, from_lun;
     afs_uint32 to_vid, to_vnode, to_unique, to_lun;
-#define PARTNAMELEN 64
     afs_int32 code = 0;
 
     if (!afsconf_SuperUser(confDir, call, (char *)0)) {
@@ -5967,7 +5959,6 @@ restore_archive(struct rx_call *call, struct oparmT10 *o, afs_uint32 user,
     FdHandle_t *fd = 0;
     Inode inode = 0;
     afs_uint32 vid, lun;
-#define PARTNAMELEN 64
     afs_int32 code;
     struct rx_call *rcall[MAXOSDSTRIPES];
     afs_uint64 striperesid[MAXOSDSTRIPES];
@@ -7134,7 +7125,6 @@ write_to_hpss(struct rx_call *call, struct oparmT10 *o,
     FdHandle_t *fd = 0;
     FdHandle_t *fdin = 0;
     afs_uint32 vid;
-#define PARTNAMELEN 64
     char *buf = 0;
     afs_int32 bytes, tlen, writelen;
     afs_uint64 length, offset;
@@ -8133,16 +8123,6 @@ main(int argc, char *argv[])
      */
     rx_EnableHotThread();
 
-#if 0
-    /* Some rx debugging */
-    if (rxlog) {
-        FILE *debugFile = NULL;
-        debugFile = fopen("rx_dbg", "w");
-        rx_debugFile = debugFile;
-        rxevent_debugFile = debugFile;
-    }
-#endif
-    
     assert(pthread_attr_init(&tattr) == 0);
     assert(pthread_attr_setdetachstate(&tattr, PTHREAD_CREATE_DETACHED) == 0);
 
