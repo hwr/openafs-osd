@@ -71,7 +71,6 @@
 #include <afs/rxosd.h>
 #include "../rxosd/vol_osd.h"
 #include "../rxosd/osddb.h"
-#include "../rxosd/osddbuser.h"
 
 #ifdef NEW_OSD_FILE
 #define osd_obj osd_obj1
