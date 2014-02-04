@@ -177,6 +177,9 @@ afs_MemRead(struct vcache *avc, struct uio *auio,
 		ReleaseReadLock(&tdc->lock);
 		afs_PutDCache(tdc);	/* before reusing tdc */
 	    }
+#ifdef STRUCT_TASK_STRUCT_HAS_CRED
+    try_background:
+#endif
 	    tdc = afs_GetDCache(avc, filePos, &treq, &offset, &len, 2);
 	    ObtainReadLock(&tdc->lock);
 	    /* now, first try to start transfer, if we'll need the data.  If
@@ -662,6 +665,9 @@ afs_UFSRead(struct vcache *avc, struct uio *auio,
 		ReleaseReadLock(&tdc->lock);
 		afs_PutDCache(tdc);	/* before reusing tdc */
 	    }
+#ifdef STRUCT_TASK_STRUCT_HAS_CRED
+    try_background:
+#endif
 	    tdc = afs_GetDCache(avc, filePos, &treq, &offset, &len, 2);
 	    if (!tdc) {
 	        error = ENETDOWN;
