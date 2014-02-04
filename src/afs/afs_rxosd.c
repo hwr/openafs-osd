@@ -256,7 +256,7 @@ getRxosdConn(struct rxosd_Variables *v, struct osd_obj *o,
     return code;
 }
 
-#if 0
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
 static afs_int32
 check_for_vicep_access(struct rxosd_Variables *v, int writing, afs_uint32 *osd_id)
 {
@@ -1175,6 +1175,9 @@ rxosd_storeInit(struct vcache *avc, struct afs_conn *tc,
     afs_int32 listType = 1;
 #else
     afs_int32 listType = 2;
+#endif
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
+    afs_uint32 osd_id;
 #endif
 
     dummyInit();
@@ -2117,6 +2120,9 @@ rxosd_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
     struct nocache_read_request *bparms;
 
     bparms  = (struct nocache_read_request *) bypassparms;
+#endif
+#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
+    afs_uint32 osd_id;
 #endif
 
     dummyInit();
