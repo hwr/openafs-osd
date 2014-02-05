@@ -1777,7 +1777,7 @@ examine(struct cmd_syndesc *as, void *rock)
 		    e.exam_u.e5.size, e.exam_u.e5.linkcount);
 	    if (mask & WANTS_HSM_STATUS) {
 		unsigned char uc = e.exam_u.e5.status;
-	        printf(" HSM status %d", uc);
+	        printf(" HSM status %s", uc);
 	    } else if (mask & WANTS_CTIME)
         	PrintTime(e.exam_u.e5.ctime);
 	    else if (mask & WANTS_ATIME)
@@ -3774,7 +3774,7 @@ afs_int32
 AddPolicy(struct cmd_syndesc *as, void *rock)
 {
     int i;
-    afs_uint32 code;
+    afs_int32 code;
     afs_uint32 id;
     char name[OSDDB_MAXNAMELEN];
 							/* -id */
