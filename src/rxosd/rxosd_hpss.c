@@ -708,13 +708,13 @@ myhpss_Ftruncate(int fd, afs_foff_t pos)
 }
 
 ssize_t
-myhpss_pread(int fd, void *buf, size_t len, hpss_off_t pos)
+myhpss_pread(int fd, void *buf, size_t len, afs_foff_t pos)
 {
-    hpss_off_t offset;
+    afs_offs_t offset;
     ssize_t bytes;
     int myfd = fd - FDOFFSET;
     
-#if 0 /* not sure that works corrctly over 4gb , therefore just ignore pos */    
+#if 0 /* not sure that works corrctly over 4gb , therefore just ignore pos */
     offset = hpss_Lseek(myfd, pos, SEEK_SET);
     if (offset != pos) {
 	if (offset < 0)
@@ -727,12 +727,13 @@ myhpss_pread(int fd, void *buf, size_t len, hpss_off_t pos)
 }
 
 ssize_t
-myhpss_pwrite(int fd, void *buf, size_t len, hpss_off_t pos)
+myhpss_pwrite(int fd, void *buf, size_t len, afs_foff_t pos)
 {
-    hpss_off_t offset;
+    afs_offs_t offset;
     ssize_t bytes;
     int myfd = fd - FDOFFSET;
-#if 0 /* not sure that works corrctly over 4gb , therefore just ignore pos */    
+    
+#if 0 /* not sure that works corrctly over 4gb , therefore just ignore pos */
     offset = hpss_Lseek(myfd, pos, SEEK_SET);
     if (offset != pos) {
 	if (offset < 0)
