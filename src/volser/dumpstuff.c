@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- *
+ * 
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -81,9 +81,9 @@ static int DumpPartial(struct iod *iodp, Volume * vp,
 		       afs_int32 fromtime, int dumpAllDirs);
 static int DumpVnodeIndex(struct iod *iodp, Volume * vp,
 			  VnodeClass class, afs_int32 fromtime,
-			  int forcedump);
+			  int flag);
 static int DumpVnode(struct iod *iodp, struct VnodeDiskObject *v,
-		     Volume *vp, int vnodeNumber, int dumpEverything);
+		     Volume *vp, int vnodeNumber, int flag);
 static int HandleUnknownTag(struct iod *iodp,int tag,afs_int32 section, afs_int32 critical);
 static int ReadDumpHeader(struct iod *iodp, struct DumpHeader *hp);
 static int ReadVnodes(struct iod *iodp, Volume * vp, int incremental,
@@ -101,17 +101,17 @@ static int SizeDumpPartial(struct iod *iodp, Volume * vp,
 			   struct volintSize *size);
 static int SizeDumpVnodeIndex(struct iod *iodp, Volume * vp,
 			      VnodeClass class, afs_int32 fromtime,
-			      int forcedump,
+			      int flag,
 			      struct volintSize *size);
 static int SizeDumpVnode(struct iod *iodp, struct VnodeDiskObject *v,
-			 int volid, int vnodeNumber, int dumpEverything,
+			 int volid, int vnodeNumber, int flag,
 			 struct volintSize *size);
 static afs_int32 SkipData(struct iod *iodp, afs_size_t length);
 static int ReadInt32(struct iod *iodp, afs_uint32 * lp);
 
-#define MAX_SECTIONS    3
-#define MIN_TLV_TAG     5
-#define MAX_TLV_TAG     0x60
+#define MAX_SECTIONS 	3
+#define MIN_TLV_TAG	5
+#define MAX_TLV_TAG	0x60
 #define MAX_STANDARD_TAG 0x7a
 static afs_uint32 oldtags[MAX_SECTIONS][16];
 int oldtagsInited = 0;
@@ -228,8 +228,8 @@ iod_WriteSlowly(struct rx_call *call, char *buf, afs_int32 nbytes)
 /* For the single dump case, it's ok to just return the "bytes written"
  * that rx_Write returns, since all the callers of iod_Write abort when
  * the returned value is less than they expect.  For the multi dump case,
- * I don't think we want half the replicas to go bad just because one
- * connection timed out, but if they all time out, then we should give up.
+ * I don't think we want half the replicas to go bad just because one 
+ * connection timed out, but if they all time out, then we should give up. 
  */
 static int
 iod_Write(struct iod *iodp, char *buf, int nbytes)
@@ -290,10 +290,10 @@ ReadShort(struct iod *iodp, unsigned short *sp)
     int b1, b0;
     b1 = iod_getc(iodp);
     if (b1 == EOF)
-	return 0;
+        return 0;
     b0 = iod_getc(iodp);
     if (b0 == EOF)
-	return 0;
+        return 0;
     *sp = (b1 << 8) | b0;
     return 1;
 }
@@ -304,16 +304,16 @@ ReadInt32(struct iod *iodp, afs_uint32 * lp)
     afs_uint32 b3, b2, b1, b0;
     b3 = iod_getc(iodp);
     if (b3 == EOF)
-	return 0;
+        return 0;
     b2 = iod_getc(iodp);
     if (b2 == EOF)
-	return 0;
+        return 0;
     b1 = iod_getc(iodp);
     if (b1 == EOF)
-	return 0;
+        return 0;
     b0 = iod_getc(iodp);
     if (b0 == EOF)
-	return 0;
+        return 0;
     *lp = (((((b3 << 8) | b2) << 8) | b1) << 8) | b0;
     return 1;
 }
@@ -325,7 +325,7 @@ ReadString(struct iod *iodp, char *to, int maxa)
 
     *to = '\0';
     if (maxa == 0)
-	return;
+        return;
 
     while (maxa--) {
 	if ((*to++ = c = iod_getc(iodp)) == 0 || c == EOF)
@@ -349,8 +349,8 @@ ReadByteString(struct iod *iodp, byte * to,
  * returns 1 on success and 0 otherwise
  */
 static afs_int32
-ReadStandardTagLen(struct iod *iodp, unsigned char tag, afs_int32 section,
-                        afs_size_t *length)
+ReadStandardTagLen(struct iod *iodp, unsigned char tag, afs_int32 section, 
+			afs_size_t *length)
 {
     afs_int32 code, i;
     afs_uint32 off = tag >> 5;
@@ -359,34 +359,34 @@ ReadStandardTagLen(struct iod *iodp, unsigned char tag, afs_int32 section,
     unsigned char buf[8], *p;
 
     if (!oldtagsInited)
-        initNonStandardTags();
-
+	initNonStandardTags();
+	
     if (tag < MIN_TLV_TAG
       || tag > MAX_STANDARD_TAG
       || section >= MAX_SECTIONS
       || (oldtags[section][ off] & mask)) {
-        Log("Trying to use ReadStandardTag with tag 0x%02x for section %d, aborting\n", tag, section);
-        return 0;
+	Log("Trying to use ReadStandardTag with tag 0x%02x for section %d, aborting\n", tag, section);
+	return 0;
     }
     if (tag <= MAX_TLV_TAG) {
-        len = iod_getc(iodp);
+	len = iod_getc(iodp);
 	if (len == EOF)
 	    return VOLSERDUMPERROR;
 	else if (len < 128)
-            *length = len;
-        else {
-            len &= 0x7f;
-            if ((code = iod_Read(iodp, (char *)buf, len)) != len)
-                return VOLSERDUMPERROR;
-            *length = 0;
-            p = (unsigned char *)&buf;
-            for (i=0; i<len; i++) {
-                *length = ((*length) << 8) | *p++;
-            }
-        }
+	    *length = len;
+	else {
+	    len &= 0x7f;
+	    if ((code = iod_Read(iodp, (char *)buf, len)) != len) 
+		return VOLSERDUMPERROR;
+	    *length = 0;
+	    p = (unsigned char *)&buf;
+	    for (i=0; i<len; i++) {
+		*length = ((*length) << 8) | *p++;
+	    }
+	}
     } else {
-        if (tag < MAX_STANDARD_TAG)
-            *length = 4;
+	if (tag < MAX_STANDARD_TAG) 
+	    *length = 4;
     }
     return 1;
 }
@@ -397,12 +397,12 @@ static afs_int32
 SkipData(struct iod *iodp, afs_size_t length)
 {
     while (length > 256) {
-        if (iod_Read(iodp, (char *)&skipbuf, 256) != 256)
-            return 0;
-        length -= 256;
+	if (iod_Read(iodp, (char *)&skipbuf, 256) != 256)
+	    return 0;
+	length -= 256;
     }
     if (iod_Read(iodp, (char *)&skipbuf, length) != length)
-        return 0;
+	return 0;
     return 1;
 }
 
@@ -410,40 +410,40 @@ static char *secname[3] = {"ReadDumpHeader", "ReadVolumeHeader", "ReadVnodes"};
 
 static int
 HandleUnknownTag(struct iod *iodp, int tag, afs_int32 section,
-		afs_int32 critical)
+	         afs_int32 critical)
 {
     afs_size_t taglen = 0;
     afs_uint32 trash;
 
     if (critical) {
         Log("%s: unknown critical tag x%02x, aborting\n",
-                secname[section], tag);
-        return 0;
+		secname[section], tag);
+	return 0;
     }
     Log("%s: unknown tag x%02x found, skipping\n", secname[section], tag);
     if (tag >= 0x06 && tag <= 0x60) {
-        if (!ReadStandardTagLen(iodp, tag, 1, &taglen)) {
+	if (!ReadStandardTagLen(iodp, tag, 1, &taglen)) {
             Log("%s: error reading length field for tag x%02x, aborting\n",
-                secname[section], tag);
+		secname[section], tag);
             return 0;
         }
-        if (!SkipData(iodp, taglen)) {
+	if (!SkipData(iodp, taglen)) {
             Log("%s: error skipping %llu bytes for tag x%02x, aborting\n",
-                secname[section], taglen, tag);
+		secname[section], taglen, tag);
             return 0;
-        }
-        return 1;
+	}
+	return 1;
     }
     if (tag >= 0x61 && tag <= 0x7a) {
-        if (!ReadInt32(iodp, &trash)) {
+	if (!ReadInt32(iodp, &trash)) {
             Log("%s: error skipping int32 for tag x%02x, aborting\n",
-                secname[section], tag);
+		secname[section], tag);
             return 0;
-        }
-        return 1;
+	}
+	return 1;
     }
-    if (tag >= 0x7b && tag < 0x80)      /* dataless tag */
-        return 1;
+    if (tag >= 0x7b && tag < 0x80) 	/* dataless tag */
+	return 1;
     Log("%s: unknown invalid tag x%02x, aborting\n", secname[section], tag);
     return 0;
 }
@@ -457,8 +457,8 @@ ReadVolumeHeader(struct iod *iodp, VolumeDiskData * vol, Volume *vp,
     afs_int32 critical = 0;
     memset(vol, 0, sizeof(*vol));
     while ((tag = iod_getc(iodp)) > D_MAX && tag != EOF) {
-        if (critical)
-            critical--;
+	if (critical)
+	    critical--;
 	switch (tag) {
 	case 'i':
 	    if (!ReadInt32(iodp, &vol->id))
@@ -601,7 +601,11 @@ ReadVolumeHeader(struct iod *iodp, VolumeDiskData * vol, Volume *vp,
 		        *clearOsdPolicy = 1;
 		    } else
 		        vol->osdPolicy = newOsdPolicy;
+		} else {
+    		    Log("Invalid tag x%02x, aborting\n", tag);
+		    return VOLSERREAD_DUMPERROR;
 		}
+		    
 	    }
 	    break;
 	case 0x7e:
@@ -746,22 +750,40 @@ DumpByteString(struct iod *iodp, char tag, byte * bs,
     return 0;
 }
 
+#if 0
+/* not yet used anywhere */
+static int
+DumpByteStringWithLength(struct iod *iodp, char tag, byte * bs,
+	       int nbytes)
+{
+    int code = 0;
+
+    code = DumpInt32(iodp, tag, nbytes);
+    if (code)
+	return VOLSERDUMPERROR;
+    code = iod_Write(iodp, (char *)bs, nbytes);
+    if (code != nbytes)
+	return VOLSERDUMPERROR;
+    return 0;
+}
+#endif
+
 static afs_int32
-DumpStandardTag(struct iod *iodp, char tag, afs_uint32 section)
+DumpStandardTag(struct iod *iodp, char tag, afs_uint32 section) 
 {
     afs_int32 code;
     afs_uint32 off = tag >> 5;
     afs_uint32 mask = 1 << (tag & 0x1f);
 
     if (!oldtagsInited)
-        initNonStandardTags();
-
+	initNonStandardTags();
+	
     if (tag < MIN_TLV_TAG
       || tag > MAX_STANDARD_TAG
       || section >= MAX_SECTIONS
       || (oldtags[section][ off] & mask)) {
-        Log("Trying to use DumpStandardTag with tag 0x%02x for section %d, aborting\n", tag, section);
-        return VOLSERDUMPERROR;
+	Log("Trying to use DumpStandardTag with tag 0x%02x for section %d, aborting\n", tag, section);
+	return VOLSERDUMPERROR;
     }
     code = iod_Write(iodp, &tag, 1);
     if (code != 1)
@@ -771,36 +793,36 @@ DumpStandardTag(struct iod *iodp, char tag, afs_uint32 section)
 
 AFS_UNUSED
 static afs_int32
-DumpStandardTagLen(struct iod *iodp, char tag, afs_uint32 section,
-                        afs_size_t length)
+DumpStandardTagLen(struct iod *iodp, char tag, afs_uint32 section, 
+			afs_size_t length)
 {
     char buf[10];
     char *p;
     afs_int32 code, len;
 
-    if (tag < MIN_TLV_TAG || tag > MAX_TLV_TAG) {
-        Log("Trying to use DumpStandardTagLen with tag 0x%02x for section %d, aborting\n", tag, section);
-        return VOLSERDUMPERROR;
+    if (tag < MIN_TLV_TAG || tag > MAX_TLV_TAG) { 
+	Log("Trying to use DumpStandardTagLen with tag 0x%02x for section %d, aborting\n", tag, section);
+	return VOLSERDUMPERROR;
     }
     code = DumpStandardTag(iodp, tag, section);
-    if (code)
-        return code;
+    if (code) 
+	return code;
     p = &buf[9];
-    if (length < 128) { /* byte after tag contains length */
-        *p-- = length;
-        len = 1;
-    } else {            /* byte after tag contains length of length field | 0x80 */
-        for (len=0; length; length=length >> 8) {
-            *p-- = length;
-            len++;
-        }
-        *p-- = len + 128;
-        len += 1;
+    if (length < 128) {	/* byte after tag contains length */
+	*p-- = length;
+	len = 1;
+    } else { 		/* byte after tag contains length of length field | 0x80 */
+	for (len=0; length; length=length >> 8) {
+	    *p-- = length;
+	    len++;
+	}
+	*p-- = len + 128;
+	len += 1;
     }
     p++;
     code = iod_Write(iodp, p, len);
     if (code != len)
-        return VOLSERDUMPERROR;
+	return VOLSERDUMPERROR;
     return 0;
 }
 
@@ -820,7 +842,7 @@ DumpFile(struct iod *iodp, int vnode, FdHandle_t * handleP)
 #ifndef AFS_NT40_ENV
     struct afs_stat status;
 #endif
-#ifdef	AFS_AIX_ENV
+#ifdef  AFS_AIX_ENV
 #include <sys/statfs.h>
 #if defined(AFS_AIX52_ENV)
     struct statfs64 tstatfs;
@@ -828,7 +850,7 @@ DumpFile(struct iod *iodp, int vnode, FdHandle_t * handleP)
     struct statfs tstatfs;
 #endif /* !AFS_AIX52_ENV */
     int statfs_code;
-#endif
+#endif /* AFS_AIX_ENV */
 
 #ifdef AFS_NT40_ENV
     howBig = _filelength(handleP->fd_fd);
@@ -839,7 +861,7 @@ DumpFile(struct iod *iodp, int vnode, FdHandle_t * handleP)
     howBig = status.st_size;
 
 #ifdef	AFS_AIX_ENV
-    /* Unfortunately in AIX valuable fields such as st_blksize are
+    /* Unfortunately in AIX valuable fields such as st_blksize are 
      * gone from the stat structure.
      */
 #if defined(AFS_AIX52_ENV)
@@ -849,7 +871,7 @@ DumpFile(struct iod *iodp, int vnode, FdHandle_t * handleP)
 #endif /* !AFS_AIX52_ENV */
     if (statfs_code != 0) {
         Log("DumpFile: fstatfs returned error code %d on descriptor %d\n", errno, handleP->fd_fd);
-	return VOLSERDUMPERROR;
+        return VOLSERDUMPERROR;
     }
     howMany = tstatfs.f_bsize;
 #else
@@ -886,7 +908,8 @@ DumpFile(struct iod *iodp, int vnode, FdHandle_t * handleP)
 	 * amount that we had null padded.
 	 */
 	if ((n > 0) && pad) {
-	    Log("1 Volser: DumpFile: Null padding file %d bytes at offset %lld\n", pad, (long long)offset);
+	    Log("1 Volser: DumpFile: Null padding file %d bytes at offset %lld\n",
+	        pad, (long long)offset);
 	    pad = 0;
 	}
 
@@ -903,7 +926,7 @@ DumpFile(struct iod *iodp, int vnode, FdHandle_t * handleP)
 		Log("1 Volser: DumpFile: Error reading inode %s for vnode %d\n", PrintInode(stmp, handleP->fd_ih->ih_ino), vnode);
 	    }
 
-	    /* Pad the rest of the buffer with zeros. Remember offset we started
+	    /* Pad the rest of the buffer with zeros. Remember offset we started 
 	     * padding. Keep total tally of padding.
 	     */
 	    memset(p + n, 0, howMany - n);
@@ -1020,7 +1043,7 @@ DumpEnd(struct iod *iodp)
 /* Dump a whole volume */
 int
 DumpVolume(struct rx_call *call, Volume * vp,
-	   afs_int32 fromtime, int dumpAllDirs)
+	   afs_int32 fromtime, int flag)
 {
     struct iod iod;
     int code = 0;
@@ -1031,7 +1054,7 @@ DumpVolume(struct rx_call *call, Volume * vp,
 	code = DumpDumpHeader(iodp, vp, fromtime);
 
     if (!code)
-	code = DumpPartial(iodp, vp, fromtime, dumpAllDirs);
+	code = DumpPartial(iodp, vp, fromtime, flag);
 
 /* hack follows.  Errors should be handled quite differently in this version of dump than they used to be.*/
     if (rx_Error(iodp->call)) {
@@ -1048,7 +1071,7 @@ DumpVolume(struct rx_call *call, Volume * vp,
 /* Dump a volume to multiple places*/
 int
 DumpVolMulti(struct rx_call **calls, int ncalls, Volume * vp,
-	     afs_int32 fromtime, int dumpAllDirs, int *codes)
+	     afs_int32 fromtime, int flag, int *codes)
 {
     struct iod iod;
     int code = 0;
@@ -1057,7 +1080,7 @@ DumpVolMulti(struct rx_call **calls, int ncalls, Volume * vp,
     if (!code)
 	code = DumpDumpHeader(&iod, vp, fromtime);
     if (!code)
-	code = DumpPartial(&iod, vp, fromtime, dumpAllDirs);
+	code = DumpPartial(&iod, vp, fromtime, flag);
     if (!code)
 	code = DumpEnd(&iod);
     return code;
@@ -1235,7 +1258,7 @@ DumpVnode(struct iod *iodp, struct VnodeDiskObject *v, Volume *vp,
 	    if (!code)
   	        code = DumpStandardTagLen(iodp, 'O', 2, length);	    
 	    if (!code)
-                code = (iod_Write(iodp, (char*)data, length) == length ?  0 : 1);
+	        code = (iod_Write(iodp, (char *)data, length) == length ?  0 : 1);
 	    free(rock);
 	    if (!code)
 	        code = DumpInt32(iodp, 'x', v->osdFileOnline ? 1 : 0);
@@ -1413,7 +1436,7 @@ ProcessIndex(Volume * vp, VnodeClass class, afs_foff_t ** Bufp, int *sizep,
 	    Buf = malloc(nVnodes * sizeof(afs_foff_t));
 	    if (Buf == NULL) {
 		STREAM_CLOSE(afile);
-		FDH_CLOSE(fdP);
+                FDH_CLOSE(fdP);
 		return -1;
 	    }
 	    memset((char *)Buf, 0, nVnodes * sizeof(afs_foff_t));
@@ -1472,7 +1495,7 @@ RestoreVolume(struct rx_call *call, Volume * avp, int incremental,
     }
     if (ReadVolumeHeader(iodp, &vol, vp, &clearOsdPolicy) == VOLSERREAD_DUMPERROR)
 	return VOLSERREAD_DUMPERROR;
-
+    
     if (!delo)
         delo = ProcessIndex(vp, vLarge, &b1, &s1, 0, &rs);
     if (!delo)
@@ -1545,9 +1568,9 @@ RestoreVolume(struct rx_call *call, Volume * avp, int incremental,
   clean:
     ClearVolumeStats(&vol);
     if (V_needsSalvaged(vp)) {
-	/* needsSalvaged may have been set while we tried to write volume data.
-	 * prevent it from getting overwritten. */
-	vol.needsSalvaged = V_needsSalvaged(vp);
+        /* needsSalvaged may have been set while we tried to write volume data.
+         * prevent it from getting overwritten. */
+        vol.needsSalvaged = V_needsSalvaged(vp);
     }
     CopyVolumeHeader(&vol, &V_disk(vp));
     V_destroyMe(vp) = 0;
@@ -1612,7 +1635,7 @@ ReadVnodes(struct iod *iodp, Volume * vp, int incremental,
 	    break;
 
 	if (!ReadInt32(iodp, &vnode->uniquifier))
-	    return VOLSERREAD_DUMPERROR;
+            return VOLSERREAD_DUMPERROR;
 
 	while ((tag = iod_getc(iodp)) > D_MAX && tag != EOF) {
 	    if (critical)
@@ -1626,7 +1649,7 @@ ReadVnodes(struct iod *iodp, Volume * vp, int incremental,
 		{
 		    unsigned short tlc;
 		    if (!ReadShort(iodp, &tlc))
-			return VOLSERREAD_DUMPERROR;
+                        return VOLSERREAD_DUMPERROR;
 		    vnode->linkCount = (signed int)tlc;
 		}
 		break;
@@ -1651,26 +1674,26 @@ ReadVnodes(struct iod *iodp, Volume * vp, int incremental,
 		}
 	    case 'a':
 		if (!ReadInt32(iodp, &vnode->author))
-		    return VOLSERREAD_DUMPERROR;
+                    return VOLSERREAD_DUMPERROR;
 		break;
 	    case 'o':
 		if (!ReadInt32(iodp, &vnode->owner))
-		    return VOLSERREAD_DUMPERROR;
+                    return VOLSERREAD_DUMPERROR;
 		break;
 	    case 'g':
 		if (!ReadInt32(iodp, (afs_uint32 *) & vnode->group))
-		    return VOLSERREAD_DUMPERROR;
+                    return VOLSERREAD_DUMPERROR;
 		break;
 	    case 'b':{
 		    unsigned short modeBits;
 		    if (!ReadShort(iodp, &modeBits))
-			return VOLSERREAD_DUMPERROR;
+                        return VOLSERREAD_DUMPERROR;
 		    vnode->modeBits = (unsigned int)modeBits;
 		    break;
 		}
 	    case 'p':
 		if (!ReadInt32(iodp, &vnode->parent))
-		    return VOLSERREAD_DUMPERROR;
+                    return VOLSERREAD_DUMPERROR;
 		break;
 	    case 'A':
 		ReadByteString(iodp, (byte *) VVnodeDiskACL(vnode),
@@ -1794,7 +1817,7 @@ ReadVnodes(struct iod *iodp, Volume * vp, int incremental,
 			    (unsigned long)vnodeNumber);
 			volser_WriteFile(vnodeNumber, iodp, NULL, tag, &error);
 			break;
-		    }
+		    }	    
 		    saw_f = 1;
 
 		    /* write file to OSD if large enough */
@@ -1918,8 +1941,8 @@ ReadVnodes(struct iod *iodp, Volume * vp, int incremental,
 	    fdP = IH_OPEN(vp->vnodeIndex[class].handle);
 	    if (fdP == NULL) {
 		Log("1 Volser: ReadVnodes: Error opening vnode index: %s; restore aborted\n",
-		    afs_error_message(errno));
-		V_needsSalvaged(vp) = 1;
+			afs_error_message(errno));
+	        V_needsSalvaged(vp) = 1;
 		return VOLSERREAD_DUMPERROR;
 	    }
 	    if (FDH_PREAD(fdP, &oldvnode, sizeof(oldvnode), vnodeIndexOffset(vcp, vnodeNumber)) != sizeof(oldvnode)) 
@@ -2019,7 +2042,7 @@ volser_WriteFile(int vn, struct iod *iodp, FdHandle_t * handleP,
 	if (handleP) {
 	    nBytes = FDH_PWRITE(handleP, p, size, written);
 	    if (nBytes > 0)
-		written += nBytes;
+	        written += nBytes;
 	    if (nBytes != size) {
 	        Log("1 Volser: WriteFile: Error writing (%u) bytes to vnode %d: %s; restore aborted\n", (int)(nBytes & 0xffffffff), vn, afs_error_message(errno));
 	        *status = 4;
@@ -2046,7 +2069,7 @@ ReadDumpHeader(struct iod *iodp, struct DumpHeader *hp)
     while ((tag = iod_getc(iodp)) > D_MAX) {
 	unsigned short arrayLength;
 	int i;
-	if (critical)
+        if (critical)
 	    critical--;
 	switch (tag) {
 	case 'v':
@@ -2065,12 +2088,12 @@ ReadDumpHeader(struct iod *iodp, struct DumpHeader *hp)
 		    || !ReadInt32(iodp, (afs_uint32 *) & hp->dumpTimes[i].to))
 		    return 0;
 	    break;
-        case 0x7e:
-            critical = 2;
-            break;
-        default:
-            if (!HandleUnknownTag(iodp, tag, 0, critical))
-                return VOLSERREAD_DUMPERROR;
+	case 0x7e:
+	    critical = 2;
+	    break;
+	default:
+	    if (!HandleUnknownTag(iodp, tag, 0, critical))
+	        return VOLSERREAD_DUMPERROR;
 	}
     }
     if (!hp->volumeId || !hp->nDumpTimes) {
