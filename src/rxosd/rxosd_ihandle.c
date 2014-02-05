@@ -41,15 +41,28 @@
 #include "afs/afs_assert.h"
 #include <afs/afsutil.h>
 
-#ifndef AFS_NT40_ENV
-#ifdef O_LARGEFILE
-#define afs_stat	stat64
-#define afs_fstat	fstat64
-#else /* !O_LARGEFILE */
-#define	afs_stat	stat
-#define	afs_fstat	fstat
-#endif /* !O_LARGEFILE */
-#endif /* AFS_NT40_ENV */
+/*@+fcnmacros +macrofcndecl@*/
+#if defined(AFS_DARWIN_ENV) || !defined(O_LARGEFILE)
+#ifdef S_SPLINT_S
+extern off_t afs_lseek(int FD, off_t O, int F);
+#endif /*S_SPLINT_S */
+#define afs_stat                stat
+#define afs_fstat               fstat
+#define afs_open                open
+#define afs_fopen               fopen
+#define afs_lseek(FD, O, F)     lseek(FD, (off_t)(O), F)
+#else
+#ifdef S_SPLINT_S
+extern off64_t afs_lseek(int FD, off64_t O, int F);
+#endif /*S_SPLINT_S */
+
+#define afs_stat                stat64
+#define afs_fstat               fstat64
+#define afs_open                open64
+#define afs_fopen               fopen64
+#define afs_lseek(FD, O, F)     lseek64(FD, (off64_t)(O), F)
+#endif
+/*@=fcnmacros =macrofcndecl@*/
 
 #include "rxosd_ihandle.h"
 
