@@ -749,7 +749,7 @@ AllocMetadataEntry(FdHandle_t *callerfd, Volume *vol, afs_int32 *number,
     *entrylength = entry->length;
     while (!n) {
         bp = entry->data;
-        ep = entry->data + *entrylength;
+        ep = (byte *) entry + *entrylength;
         while (bp < ep) {
 	    if ((*(bit32 *) bp) != (bit32) 0xffffffff) {
 	        int o;
