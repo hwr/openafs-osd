@@ -4110,7 +4110,7 @@ read_local_file(void *rock, char *buf, afs_uint32 len, afs_uint64 offset)
  * Called from the fileserver processing "fs replaceosd ..."
  */
 afs_int32
-replace_osd(struct Vnode *vn, afs_uint32 old, afs_uint32 new, afs_uint32 *result)
+replace_osd(struct Vnode *vn, afs_uint32 old, afs_int32 new, afs_uint32 *result)
 {
     struct VnodeDiskObject *vd = &vn->disk;
     Volume *vol = vn->volumePtr;

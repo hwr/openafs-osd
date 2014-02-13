@@ -16,7 +16,7 @@ extern afs_int32 extract_objects(Volume *vol, VnodeDiskObject *vd, afs_uint32 vN
 				struct osdobjectList *list);
 extern afs_int32 fill_osd_file(Vnode *vn, struct async *a, afs_int32 flag, 
 				afs_uint32 *fileno, afs_uint32 user);
-extern afs_int32 replace_osd(struct Vnode *vn, afs_uint32 old, afs_uint32 new,
+extern afs_int32 replace_osd(struct Vnode *vn, afs_uint32 old, afs_int32 new,
 				afs_uint32 *result);
 extern void destroy_async_list(struct async *a);
 extern afs_int32 set_osd_file_ready(struct rx_call *call, Vnode *vn,
