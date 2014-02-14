@@ -2750,7 +2750,7 @@ DecodeInode(char *dpath, char *name, struct ViceInodeInfo *info,
 
 #ifdef FSSYNC_BUILD_CLIENT
 static afs_int32
-convertVolumeInfo(FD_t fdr, FD_t fdw, afs_uint32 vid)
+convertVolumeInfo(FD_t fdr, FD_t fdw, afs_uint32 vid, afs_int32 *osdPolicy)
 {
     struct VolumeDiskData vd;
     char *p;
@@ -2762,6 +2762,7 @@ convertVolumeInfo(FD_t fdr, FD_t fdw, afs_uint32 vid)
 	    errno);
 	return -1;
     }
+    *osdPolicy = vd.osdPolicy;
     vd.restoredFromId = vd.id;	/* remember the RO volume here */
     vd.cloneId = vd.id;
     vd.id = vd.parentId;
@@ -2829,12 +2830,15 @@ namei_ConvertROtoRWvolume(char *pname, afs_uint32 volumeId)
     char smallName[64];
     char largeName[64];
     char infoName[64];
+    char osdMetaName[64];
     IHandle_t t_ih;
     IHandle_t *ih;
     char infoSeen = 0;
     char smallSeen = 0;
     char largeSeen = 0;
     char linkSeen = 0;
+    char osdMetaSeen = 0;
+    afs_int32 osdPolicy = 0;
     FD_t fd, fd2;
     char *p;
     DIR *dirp;
@@ -2945,6 +2949,9 @@ namei_ConvertROtoRWvolume(char *pname, afs_uint32 volumeId)
 	} else if (info.u.param[2] == VI_LARGEINDEX) {	/* large vnodes file */
 	    strlcpy(largeName, dp->d_name, sizeof(largeName));
 	    largeSeen = 1;
+	} else if (info.u.param[2] == VI_OSDMETADATA) { /* OSD metadata file */
+	    strlcpy(osdMetaName, dp->d_name, sizeof(osdMetaName));
+	    osdMetaSeen = 1;
 	} else {
 	    closedir(dirp);
 	    Log("1 namei_ConvertROtoRWvolume: unknown type %d of special file found : %s" OS_DIRSEP "%s\n", info.u.param[2], dir_name, dp->d_name);
@@ -2987,7 +2994,11 @@ namei_ConvertROtoRWvolume(char *pname, afs_uint32 volumeId)
 	code = -1;
 	goto done;
     }
-    code = convertVolumeInfo(fd, fd2, ih->ih_vid);
+    code = convertVolumeInfo(fd, fd2, ih->ih_vid, &osdPolicy);
+    if (osdPolicy && !osdMetaSeen) {
+	 Log("1 namei_ConvertROtoRWvolume: no osdMetadata file in %s , but osdPolicy was %d\n", dir_name, osdPolicy);
+	code = -1;
+    }
     OS_CLOSE(fd);
     if (code) {
 	OS_CLOSE(fd2);
@@ -3036,6 +3047,27 @@ namei_ConvertROtoRWvolume(char *pname, afs_uint32 volumeId)
     OS_UNLINK(newpath);
 #endif
 
+#ifndef AFS_NT40_ENV
+    if (osdMetaSeen) {
+	t_ih.ih_ino = namei_MakeSpecIno(ih->ih_vid, VI_OSDMETADATA);
+	namei_HandleToName(&n, &t_ih);
+	(void)afs_snprintf(newpath, sizeof newpath, "%s" OS_DIRSEP "%s", dir_name,
+			   osdMetaName);
+	if (osdPolicy) {
+	    fd = afs_open(newpath, O_RDWR, 0);
+	    if (fd == INVALID_FD) {
+		Log("1 namei_ConvertROtoRWvolume: could not open osdMetadate file: %s\n", newpath);
+		code = -1;
+		goto done;
+	    }
+	    SetOGM(fd, ih->ih_vid, 5);
+	    OS_CLOSE(fd);
+	    link(newpath, n.n_path);
+	}
+	OS_UNLINK(newpath);
+    }
+#endif
+
     OS_UNLINK(oldpath);
 
     h.id = h.parent;
@@ -3043,6 +3075,10 @@ namei_ConvertROtoRWvolume(char *pname, afs_uint32 volumeId)
     h.smallVnodeIndex_hi = h.id;
     h.largeVnodeIndex_hi = h.id;
     h.linkTable_hi = h.id;
+    if (osdMetaSeen && osdPolicy)
+	h.OsdMetadata_hi = h.id;
+    else
+	h.OsdMetadata_lo = 0;
 
     if (VCreateVolumeDiskHeader(&h, partP)) {
         Log("1 namei_ConvertROtoRWvolume: Couldn't write header for RW-volume %lu\n",
