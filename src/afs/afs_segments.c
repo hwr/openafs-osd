@@ -289,7 +289,7 @@ afs_StoreAllSegments(struct vcache *avc, struct vrequest *areq,
 		    } else {
 			moredata = TRUE;
 			afs_PutDCache(tdc);
-			if (j == NCHUNKSATONCE)
+			if (j == nChunksAtOnce)
 			    break;
 		    }
 		} else {
