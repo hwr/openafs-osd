@@ -261,7 +261,6 @@ static afs_int32
 check_for_vicep_access(struct rxosd_Variables *v, int writing, afs_uint32 *osd_id)
 {
     afs_int32 code = ENOENT;
-#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
     if ((afs_protocols & VICEP_ACCESS) 
       && v->osd_file->segmList.osd_segmList_len == 1
       && v->osd_file->segmList.osd_segmList_val[0].objList.osd_objList_len ==1) {
@@ -312,7 +311,6 @@ check_for_vicep_access(struct rxosd_Variables *v, int writing, afs_uint32 *osd_i
 	}	
 	*osd_id = o->osd_id;
     }
-#endif
     return code;
 }
 #endif
@@ -2105,7 +2103,7 @@ struct fetchOps rxosd_fetchBypassCacheOps = {
 afs_int32
 rxosd_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
 		struct vcache *avc, afs_offs_t base,
-                afs_uint32 bytes, afs_int32 *length, void* bypassparms,
+                afs_uint32 bytes, afs_uint32 *length, void* bypassparms,
                 struct osi_file *fP, struct vrequest *areq, 
 		struct fetchOps **ops, void **rock)
 {

@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -214,6 +214,7 @@ afs_CopyError(struct vrequest *afrom, struct vrequest *ato)
     afs_FinalizeReq(ato);
     while (i < AFS_MAXHOSTS) {
 	ato->skipserver[i] = afrom->skipserver[i];
+	ato->lasterror[i] = afrom->lasterror[i];
 	i++;
     }
     if (afrom->tokenError)
@@ -240,6 +241,7 @@ afs_FinalizeReq(struct vrequest *areq)
 	return;
     while (i < AFS_MAXHOSTS) {
 	areq->skipserver[i] = 0;
+	areq->lasterror[i] = 0;
 	i++;
     }
     areq->busyCount = 0;

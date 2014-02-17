@@ -430,10 +430,6 @@ extern int init_viced_afsosd(char *afsversion, char** afsosdVersion, void *inroc
 #else
 #include <afs/volint.h>
 #endif
-struct volser_ops_v0 {
-    int (*DeleteTrans) (struct volser_trans *atrans, afs_int32 lock);
-    struct volser_trans* (*NewTrans) (afs_uint32 avol, afs_int32 apart);
-};
 
 /* 
  *  Operations (hooks) used by the general volserver provided by AFS/OSD

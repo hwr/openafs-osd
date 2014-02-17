@@ -50,6 +50,7 @@
 #define AFSOP_BUCKETPCT          39     /* bucket percentage */
 #define AFSOP_SET_RXMAXMTU       40     /* set rx_MyMaxSendSize,rx_maxReceiveSizeUser,rx_maxReceiveSize */
 #define AFSOP_BKG_HANDLER        41     /* userspace-capable Bkg daemon */
+#define AFSOP_SET_RXMAXFRAGS	 43	/* set rxi_nSendFrags, rxi_nRecvFrags */
 #define AFSOP_SERVERUUID	 45	/* add server uuid for a visible partition */
 #define AFSOP_OSDID		 46	/* add visible osd  */
 

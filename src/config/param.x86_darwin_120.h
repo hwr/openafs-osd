@@ -37,7 +37,6 @@
 #define AFS_CACHE_VNODE_PATH
 #define AFS_NEW_BKG 1
 #define NEED_IOCTL32
-#define AFS_USE_GETTIMEOFDAY 1
 
 /* File system entry (used if mount.h doesn't define MOUNT_AFS */
 #define AFS_MOUNT_AFS    "afs"

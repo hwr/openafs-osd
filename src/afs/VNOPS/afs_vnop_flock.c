@@ -550,7 +550,7 @@ DoLockWarning(afs_ucred_t * acred)
 #endif
 #else
 	afs_warnuser
-            ("afs: byte-range lock/unlock ignored; make sure no one else is running this program (pid %d (%s), user %ld).\n", pid, procname, (long)afs_cr_uid(acred));
+	    ("afs: byte-range lock/unlock ignored; make sure no one else is running this program (pid %d (%s), user %ld).\n", pid, procname, afs_cr_uid(acred));
 #endif
 	afs_osi_Free(procname, 256);
     }
@@ -600,6 +600,18 @@ int afs_lockctl(struct vcache * avc, struct AFS_FLOCK * af, int acmd,
 #else
 	) {
 #endif
+
+    if ((avc->f.states & CRO)) {
+	/* for RO volumes, don't do anything for locks; the fileserver doesn't
+	 * even track them. A write lock should not be possible, though. */
+	if (af->l_type == F_WRLCK) {
+	    code = EBADF;
+	} else {
+	    code = 0;
+	}
+	goto done;
+    }
+
     /* Java VMs ask for l_len=(long)-1 regardless of OS/CPU */
     if ((sizeof(af->l_len) == 8) && (af->l_len == 0x7fffffffffffffffLL))
 	af->l_len = 0;

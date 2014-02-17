@@ -878,14 +878,10 @@ extern afs_int32 afs_ServerDown(struct srvAddr *sa, int code);
 extern void afs_CountServers(void);
 extern void afs_CheckServers(int adown, struct cell *acellp);
 extern void afs_LoopServers(int adown, struct cell *acellp, int vlalso,
-                            void (*func1) (struct rx_connection **rxconns,
-                                           int nconns, int nservers,
-                                           struct afs_conn **conns,
-                                           struct srvAddr **addrs),
-                            void (*func2) (struct rx_connection **rxconns,
-                                           int nconns, int nservers,
-                                           struct afs_conn **conns,
-                                           struct srvAddr **addrs));
+                            void (*func1) (int nconns, struct rx_connection **rxconns,
+                                           struct afs_conn **conns),
+                            void (*func2) (int nconns, struct rx_connection **rxconns,
+                                           struct afs_conn **conns));
 extern unsigned int afs_random(void);
 extern int afs_randomMod15(void);
 extern int afs_randomMod127(void);
@@ -1110,7 +1106,7 @@ extern int afs_RemoteLookup(struct VenusFid *afid,
 			    struct AFSCallBack *CallBackp,
 			    struct server **serverp,
 			    struct AFSVolSync *tsyncp);
-extern void afs_ResetVCache(struct vcache *, afs_ucred_t *);
+extern void afs_ResetVCache(struct vcache *, afs_ucred_t *, afs_int32 skipdnlc);
 extern afs_int32 afs_NFSFindVCache(struct vcache **avcp,
 				   struct VenusFid *afid);
 extern void afs_vcacheInit(int astatSize);
@@ -1318,7 +1314,7 @@ extern int afs_UFSHandleLink(struct vcache *avc,
 			     struct vrequest *areq);
 extern int afs_symlink(OSI_VC_DECL(adp), char *aname, 
 		       struct vattr *attrs, char *atargetName, 
-		       afs_ucred_t *acred);
+		       struct vcache **tvcp, afs_ucred_t *acred);
 extern int afs_readlink(OSI_VC_DECL(avc), struct uio *auio,
 			afs_ucred_t *acred);
 
@@ -1413,7 +1409,7 @@ extern afs_int32 rxosd_storeInit(struct vcache *avc, struct afs_conn *tc,
                 void **rock);
 extern afs_int32 rxosd_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
 		struct vcache *avc,
-                afs_offs_t base, afs_uint32 bytes, afs_int32 *length,
+                afs_offs_t base, afs_uint32 bytes, afs_uint32 *length,
 		void *bypassparms,
                 struct osi_file *fP, struct vrequest *areq, 
 		struct fetchOps **ops, void **rock);
@@ -1458,6 +1454,12 @@ extern afs_int32 afs_set_visible_osd(long parm2, long parm3, long parm4,
 extern afs_int32 vpac_checkPolicy(struct vcache *avc, struct afs_conn *tc,
                 afs_uint64 length, afs_uint32 *protocol);
 extern afs_int32 afs_compare_serveruuid(afsUUID *a);
+struct dcache * vpac_checkDCacheForWriting(struct dcache **atdc,
+                                          struct vcache *avc,
+                                          afs_size_t filePos,
+                                          afs_size_t len,
+                                          struct vrequest *areq,
+                                          afs_ucred_t *acred, int noLock);
 
 /* Prototypes for generated files that aren't really in src/afs/ */
 

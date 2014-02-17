@@ -504,6 +504,10 @@ private struct vol_ops_v0 *vol = NULL;
 #endif
 
 #if defined(BUILDING_VOLSERVER) || defined BUILD_SHLIBAFSOSD
+struct volser_ops_v0 {
+    int (*DeleteTrans) (struct volser_trans *atrans, afs_int32 lock);
+    struct NewTrans *(*NewTrans) (afs_uint32 avol, afs_int32 apart);
+};
 #if !defined(BUILD_SHLIBAFSOSD)
 private struct volser_ops_v0 volser_ops_v0;
 #endif

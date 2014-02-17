@@ -1894,6 +1894,8 @@ rxi_ReceiveDebugPacket(struct rx_packet *ap, osi_socket asocket,
 				    tconn.callOther[j] |= RX_OTHER_IN;
 				if (queue_IsNotEmpty(&tcall->tq))
 				    tconn.callOther[j] |= RX_OTHER_OUT;
+				/* abuse for the moment the sparel fields */
+				tconn.sparel[j+4] = htonl(tcall->error);
 			    } else
 				tconn.callState[j] = RX_STATE_NOTINIT;
 			}
@@ -1903,6 +1905,7 @@ rxi_ReceiveDebugPacket(struct rx_packet *ap, osi_socket asocket,
 			tconn.flags = tc->flags;
 			tconn.type = tc->type;
 			tconn.securityIndex = tc->securityIndex;
+			/* abuse for the moment the sparel fields */
 			if (tc->type == RX_SERVER_CONNECTION) {
 			    tconn.sparel[0] = htonl(tc->service->serviceId);
 			    tconn.sparel[1] = htonl(tc->service->nRequestsRunning);

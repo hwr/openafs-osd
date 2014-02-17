@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -143,7 +143,7 @@ SBOZO_Exec(struct rx_call *acall, char *acmd)
 }
 
 afs_int32
-SBOZO_GetDates(struct rx_call *acall, char *aname, afs_int32 *atime, 
+SBOZO_GetDates(struct rx_call *acall, char *aname, afs_int32 *atime,
 	       afs_int32 *abakTime, afs_int32 *aoldTime)
 {
     struct stat tstat;
@@ -585,7 +585,7 @@ SBOZO_AddCellHost(struct rx_call *acall, char *aname)
 }
 
 afs_int32
-SBOZO_ListKeys(struct rx_call *acall, afs_int32 an, afs_int32 *akvno, 
+SBOZO_ListKeys(struct rx_call *acall, afs_int32 an, afs_int32 *akvno,
 	       struct bozo_key *akey, struct bozo_keyInfo *akeyinfo)
 {
     struct afsconf_keys tkeys;
@@ -615,7 +615,7 @@ SBOZO_ListKeys(struct rx_call *acall, afs_int32 an, afs_int32 *akvno,
 
     noauth = afsconf_GetNoAuthFlag(bozo_confdir);
     rxkad_GetServerInfo(acall->conn, &enc_level, 0, 0, 0, 0, 0);
-    /* 
+    /*
      * only return actual keys in noauth or if this is an encrypted connection
      */
 
@@ -765,7 +765,7 @@ SBOZO_DeleteSUser(struct rx_call *acall, char *aname)
 }
 
 afs_int32
-SBOZO_CreateBnode(struct rx_call *acall, char *atype, char *ainstance, 
+SBOZO_CreateBnode(struct rx_call *acall, char *atype, char *ainstance,
 		  char *ap1, char *ap2, char *ap3, char *ap4, char *ap5,
                   char *notifier)
 {
@@ -869,6 +869,7 @@ stproc(struct bnode *abnode, void *arock)
 	return 0;		/* don't do these guys */
 
     bnode_Hold(abnode);
+    bnode_ResetErrorCount(abnode);
     bnode_SetStat(abnode, BSTAT_NORMAL);
     bnode_Release(abnode);
     return 0;
@@ -1027,6 +1028,7 @@ SBOZO_Restart(struct rx_call *acall, char *ainstance)
     bnode_Hold(tb);
     bnode_SetStat(tb, BSTAT_SHUTDOWN);
     code = bnode_WaitStatus(tb, BSTAT_SHUTDOWN);	/* this can fail */
+    bnode_ResetErrorCount(tb);
     bnode_SetStat(tb, BSTAT_NORMAL);
     bnode_Release(tb);
 
@@ -1056,6 +1058,7 @@ SBOZO_SetTStatus(struct rx_call *acall, char *ainstance, afs_int32 astatus)
 	goto fail;
     }
     bnode_Hold(tb);
+    bnode_ResetErrorCount(tb);
     code = bnode_SetStat(tb, astatus);
     bnode_Release(tb);
 
@@ -1096,7 +1099,7 @@ SBOZO_SetStatus(struct rx_call *acall, char *ainstance, afs_int32 astatus)
 }
 
 afs_int32
-SBOZO_GetStatus(struct rx_call *acall, char *ainstance, afs_int32 *astat, 
+SBOZO_GetStatus(struct rx_call *acall, char *ainstance, afs_int32 *astat,
 		char **astatDescr)
 {
     struct bnode *tb;
@@ -1137,7 +1140,7 @@ static int
 eifunc(struct bnode *abnode, void *param)
 {
     struct eidata *arock = (struct eidata *)param;
-    
+
     if (arock->counter-- == 0) {
 	/* done */
 	strcpy(arock->iname, abnode->name);
@@ -1214,7 +1217,7 @@ SBOZO_Prune(struct rx_call *acall, afs_int32 aflags)
 }
 
 afs_int32
-SBOZO_EnumerateInstance(struct rx_call *acall, afs_int32 anum, 
+SBOZO_EnumerateInstance(struct rx_call *acall, afs_int32 anum,
 		        char **ainstance)
 {
     struct eidata tdata;
@@ -1245,7 +1248,7 @@ int bozo_nbosEntryStats =
     sizeof(bozo_bosEntryStats) / sizeof(bozo_bosEntryStats[0]);
 
 /* This function performs initialization of the bozo_bosEntrystats[]
- * array. This array contains the list of dirs that the bosserver 
+ * array. This array contains the list of dirs that the bosserver
  * is interested in along with their recommended permissions
  * NOTE: This initialization is a bit ugly. This was caused because
  * the path names require procedural as opposed to static initialization.
@@ -1321,8 +1324,8 @@ DirAccessOK(void)
 	if (!StatEachEntry(e)) {
 	    bozo_Log("unhappy with %s which is a %s that should "
 		     "have at least rights %o, at most rights %o %s\n",
-		     e->path, e->dir ? "dir" : "file", e->reqPerm, 
-		     (~e->proPerm & 0777), 
+		     e->path, e->dir ? "dir" : "file", e->reqPerm,
+		     (~e->proPerm & 0777),
 		     e->rootOwner ? ", owned by root" : "");
 	    result = 0;
 	    break;
@@ -1479,7 +1482,7 @@ SBOZO_GetLog(struct rx_call *acall, char *aname)
 }
 
 afs_int32
-SBOZO_GetInstanceStrings(struct rx_call *acall, char *abnodeName, 
+SBOZO_GetInstanceStrings(struct rx_call *acall, char *abnodeName,
 			 char **as1, char **as2, char **as3, char **as4)
 {
     struct bnode *tb;

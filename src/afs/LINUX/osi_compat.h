@@ -173,8 +173,8 @@ init_once_func(void * foo) {
 
 #ifdef LINUX_KEYRING_SUPPORT
 static inline struct key *
-afs_linux_key_alloc(struct key_type *type, const char *desc, uid_t uid,
-		    gid_t gid, key_perm_t perm, unsigned long flags)
+afs_linux_key_alloc(struct key_type *type, const char *desc, afs_kuid_t uid,
+		    afs_kgid_t gid, key_perm_t perm, unsigned long flags)
 {
 # if defined(KEY_ALLOC_NEEDS_STRUCT_TASK)
     return key_alloc(type, desc, uid, gid, current, perm, flags);
@@ -499,42 +499,6 @@ afs_dentry_open(struct dentry *dp, struct vfsmount *mnt, int flags, const struct
 #else
     return dentry_open(dget(dp), mntget(mnt), flags, creds);
 #endif
-}
-#endif
-
-#if !defined(STRUCT_FILENAME_HAS_NAME)
-typedef char *afs_name_t;
-
-static inline char *
-afs_name_to_string(afs_name_t s) {
-    return (char *)s;
-}
-
-static inline void
-afs_putname(afs_name_t name) {
-    putname((char *)name);
-}
-
-static inline void
-afs_set_name(afs_name_t name, char *string) {
-    name = string;
-}
-#else
-typedef struct filename *afs_name_t;
-
-static inline char *
-afs_name_to_string(afs_name_t s) {
-    return (char *)s->name;
-}
-
-static inline void
-afs_putname(afs_name_t name) {
-    kmem_cache_free(names_cachep, (void *)name);
-}
-
-static inline void
-afs_set_name(afs_name_t aname, char *string) {
-    aname->name = string;
 }
 #endif
 

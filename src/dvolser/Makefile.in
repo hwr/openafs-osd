@@ -219,9 +219,6 @@ afsint.ss.o: ${FSINT}/afsint.ss.c
 afsint.xdr.o: ${FSINT}/afsint.xdr.c
 	${COMPILE}
 
-vol_osd.xdr.o: ../vol/vol_osd.xdr.c
-	${COMPILE}
-
 libafsosd.o: ${RXOSD}/libafsosd.c
 	${COMPILE} -DBUILDING_VOLSERVER
 

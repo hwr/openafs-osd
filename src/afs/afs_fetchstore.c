@@ -963,7 +963,6 @@ rxfs_fetchBypassCacheRead(void *r, afs_uint32 size, afs_uint32 *bytesread)
     afs_uint32 length = size;
     struct iovec *rxiov;
     int iovno, nio, locked, curpage, bytes, iovoff, pageoff;
-    char *address;
     struct page *pp;
     struct rxfs_fetchVariables *v = (struct rxfs_fetchVariables *)r;
     struct nocache_read_request *bparms =

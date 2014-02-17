@@ -136,13 +136,9 @@ extern void PrintTime(afs_uint32 intdate);
 extern void PrintDate(afs_uint32 intdate);
 extern void sprintDate( char *string, afs_uint32 intdate);
 extern void printTable(struct Table *Table);
-
-extern struct TableCell* setTableCell(struct TableCell *aCell, char *Content, int Width,int Justification);
-extern struct TableRow* newTableRow(void);
-extern struct TableCell* newTableCell(void); 
-extern struct Table* newTable(void);
-extern void freeTable(struct Table *aTable);
-
+extern struct TableRow* newTableRow();
+extern struct TableCell* newTableCell(); 
+extern struct Table* newTable(); 
 
 
 #endif /* __CMD_INCL__ */

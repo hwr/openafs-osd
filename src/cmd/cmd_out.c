@@ -14,7 +14,7 @@
 
 void PrintDate(afs_uint32 intdate)
 {
-    time_t date;
+    time_t now, date;
     char month[4];
     char weekday[4];
     int  hour, minute, second, day, year;
@@ -39,7 +39,7 @@ void PrintDate(afs_uint32 intdate)
 
 void PrintTime(afs_uint32 intdate)
 {
-    time_t date;
+    time_t now, date;
     char month[4];
     char weekday[4];
     int  hour, minute, second, day, year;
@@ -65,7 +65,7 @@ void PrintTime(afs_uint32 intdate)
 
 void sprintDate( char *string, afs_uint32 intdate)
 {
-    time_t date;
+    time_t now, date;
     char month[4];
     char weekday[4];
     int  hour, minute, second, day, year;
@@ -181,8 +181,7 @@ void printTable(struct Table *Table) {
 /* ASCII - functions */
 
 void printTableRow_ASCII(struct Table *Table,struct TableCell *aCell) {
-        int rpad = 0;
-        int lpad = 0;
+    int rpad=0,lpad =0,i;
    
     if (!aCell)
 	return;
@@ -276,6 +275,8 @@ void printTableFooter_ASCII(struct Table *Table) {
 /* HTML - output functions */
 
 void printTableRow_HTML(struct Table *Table,struct TableCell *aCell) {
+    int rpad=0,lpad =0,i;
+
     if (!aCell)
 	return;
 
@@ -305,17 +306,17 @@ void printTableRow_HTML(struct Table *Table,struct TableCell *aCell) {
         printf("\t\t</td>\n");
         aCell=aCell->next;
     }
-    if (Table->Type == T_TYPE_HTML) {
+    if (Table->Type == T_TYPE_HTML) 
        if (aCell == Table->Header) 
 	    printf("\t\t</tr>\n");
        else 
 	    printf("\t\t</th>\n");
-    }
     printf("\n");
     return;
 }
 
 void printTableFooter_HTML(struct Table *Table) {
+    int i;
     printf("</tbody>\n");
     if (Table->Footer) {
         printf("<tfooter>\n");
@@ -420,7 +421,7 @@ void setTableLayout(struct Table *Table,int CellsperRow,int *allCellWidth, int *
 
 /* Constructors */
 
-struct TableCell* newTableCell(void) {
+struct TableCell* newTableCell() {
     struct TableCell *aCell=NULL;
     if ( (aCell=malloc(sizeof(struct TableCell))) == NULL) {
           fprintf(stderr,"Internal Error. Cannot allocate memory for new TableCell.\n");
@@ -435,7 +436,7 @@ struct TableCell* newTableCell(void) {
     return aCell;
 }
 
-struct TableRow* newTableRow(void) {
+struct TableRow* newTableRow() {
     struct TableRow *aRow=NULL;
     if ( (aRow=malloc(sizeof(struct TableRow))) == NULL) {
           fprintf(stderr,"Internal Error. Cannot allocate memory for new TableRow.\n");
@@ -448,7 +449,7 @@ struct TableRow* newTableRow(void) {
     return aRow;
 }
 
-struct Table* newTable(void) {
+struct Table* newTable() {
     struct Table *aTable=NULL;
     if ( (aTable=malloc(sizeof(struct Table))) == NULL) {
           fprintf(stderr,"Internal Error. Cannot allocate memory for new TableRow.\n");
@@ -495,6 +496,8 @@ void freeTableRow( struct TableRow *Header) {
 }
 
 void freeTable(struct Table *aTable) {
+    struct TableCell *aCell;
+    struct TableRow *aRow;
     freeTableCellList(aTable->Header);
     freeTableCellList(aTable->Footer);
     freeTableRow(aTable->Body);

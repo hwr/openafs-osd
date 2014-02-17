@@ -455,14 +455,16 @@ clonefailed:
      * no longer need to keep these references around.
      */
     code = ci_Apply(&decHead, IDecProc, (char *)&decRock);
+    if (!error)
+	error = code;
     ci_Destroy(&decHead);
 
     if (osdvol) /* do the linkcount decrements and free memory */
 	(osdvol->op_clone_clean_up) (&afsosdrock);
 
-    if (ReadWriteOriginal)
+    if (ReadWriteOriginal && filecount > 0)
        V_filecount(rwvp) = filecount;
-    if (ReadWriteOriginal)
+    if (ReadWriteOriginal && diskused > 0)
        V_diskused(rwvp) = diskused;
     return error;
 }

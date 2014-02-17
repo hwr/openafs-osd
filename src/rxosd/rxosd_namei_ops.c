@@ -192,6 +192,43 @@ extern char *volutil_PartitionName_r(int volid, char *buf, int buflen);
 
 int Testing=0;
 
+
+afs_sfsize_t
+namei_iread(IHandle_t * h, afs_foff_t offset, char *buf, afs_fsize_t size)
+{
+    afs_sfsize_t nBytes;
+    FdHandle_t *fdP;
+
+    fdP = IH_OPEN(h);
+    if (fdP == NULL)
+        return -1;
+
+    nBytes = FDH_PREAD(fdP, buf, size, offset);
+    if (nBytes < 0)
+        FDH_REALLYCLOSE(fdP);
+    else
+        FDH_CLOSE(fdP);
+    return nBytes;
+}
+
+afs_sfsize_t
+namei_iwrite(IHandle_t * h, afs_foff_t offset, char *buf, afs_fsize_t size)
+{
+    afs_sfsize_t nBytes;
+    FdHandle_t *fdP;
+
+    fdP = IH_OPEN(h);
+    if (fdP == NULL)
+        return -1;
+
+    nBytes = FDH_PWRITE(fdP, buf, size, offset);
+    if (nBytes < 0)
+        FDH_REALLYCLOSE(fdP);
+    else
+        FDH_CLOSE(fdP);
+    return nBytes;
+}
+
 /* Inode number format:
  * low 26 bits - vnode number - all 1's if volume special file.
  * next 3 bits - tag

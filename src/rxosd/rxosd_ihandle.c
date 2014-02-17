@@ -327,7 +327,91 @@ streamHandleAllocateChunk(void)
 
 /*
  * Get a file descriptor handle given an Inode handle
+ * Takes the given file descriptor, and creates a new FdHandle_t for it,
+ * attached to the given IHandle_t. fd can be INVALID_FD, indicating that the
+ * caller failed to open the relevant file because we had too many FDs open;
+ * ih_attachfd_r will then just evict/close an existing fd in the cache, and
+ * return NULL.
  */
+static FdHandle_t *
+ih_attachfd_r(IHandle_t *ihP, FD_t fd)
+{
+    FD_t closeFd;
+    FdHandle_t *fdP;
+
+    /* fdCacheSize limits the size of the descriptor cache, but
+     * we permit the number of open files to exceed fdCacheSize.
+     * We only recycle open file descriptors when the number
+     * of open files reaches the size of the cache */
+    if ((fdInUseCount > fdCacheSize || fd == INVALID_FD)  && fdLruHead != NULL) {
+        fdP = fdLruHead;
+        osi_Assert(fdP->fd_status == FD_HANDLE_OPEN);
+        DLL_DELETE(fdP, fdLruHead, fdLruTail, fd_next, fd_prev);
+        DLL_DELETE(fdP, fdP->fd_ih->ih_fdhead, fdP->fd_ih->ih_fdtail,
+                   fd_ihnext, fd_ihprev);
+        closeFd = fdP->fd_fd;
+        if (fd == INVALID_FD) {
+            fdCacheSize--;          /* reduce in order to not run into here too often */
+            DLL_INSERT_TAIL(fdP, fdAvailHead, fdAvailTail, fd_next, fd_prev);
+            fdP->fd_status = FD_HANDLE_AVAIL;
+            fdP->fd_ih = NULL;
+            fdP->fd_fd = INVALID_FD;
+            IH_UNLOCK;
+            OS_CLOSE(closeFd);
+            IH_LOCK;
+            fdInUseCount -= 1;
+            return NULL;
+        }
+    } else {
+        if (fdAvailHead == NULL) {
+            fdHandleAllocateChunk();
+        }
+        fdP = fdAvailHead;
+        osi_Assert(fdP->fd_status == FD_HANDLE_AVAIL);
+        DLL_DELETE(fdP, fdAvailHead, fdAvailTail, fd_next, fd_prev);
+        closeFd = INVALID_FD;
+    }
+
+    fdP->fd_status = FD_HANDLE_INUSE;
+    fdP->fd_fd = fd;
+    fdP->fd_ih = ihP;
+    fdP->fd_refcnt++;
+
+    ihP->ih_refcnt++;
+
+    /* Add this handle to the Inode's list of open descriptors */
+    DLL_INSERT_TAIL(fdP, ihP->ih_fdhead, ihP->ih_fdtail, fd_ihnext,
+                    fd_ihprev);
+
+    if (closeFd != INVALID_FD) {
+        IH_UNLOCK;
+        OS_CLOSE(closeFd);
+        IH_LOCK;
+        fdInUseCount -= 1;
+    }
+
+    return fdP;
+}
+
+FdHandle_t *
+ih_attachfd(IHandle_t *ihP, FD_t fd)
+{
+    FdHandle_t *fdP;
+
+    IH_LOCK;
+
+    fdInUseCount += 1;
+
+    fdP = ih_attachfd_r(ihP, fd);
+    if (!fdP) {
+        fdInUseCount -= 1;
+    }
+
+    IH_UNLOCK;
+
+    return fdP;
+}
+
 static
 FdHandle_t *
 common_open(IHandle_t * ihP, int dontOpen, int open_fd)
@@ -397,57 +481,15 @@ ih_open_retry:
 	return NULL;
     }
 
-    /* fdCacheSize limits the size of the descriptor cache, but
-     * we permit the number of open files to exceed fdCacheSize.
-     * We only recycle open file descriptors when the number
-     * of open files reaches the size of the cache */
-    if ((fdInUseCount > fdCacheSize || fd == INVALID_FD)  && fdLruHead != NULL) {
-	fdP = fdLruHead;
-	osi_Assert(fdP->fd_status == FD_HANDLE_OPEN);
-	DLL_DELETE(fdP, fdLruHead, fdLruTail, fd_next, fd_prev);
-	DLL_DELETE(fdP, fdP->fd_ih->ih_fdhead, fdP->fd_ih->ih_fdtail,
-		   fd_ihnext, fd_ihprev);
-	closeFd = fdP->fd_fd;
-        ops = fdP->fd_ih->ih_ops;
-	if (fd == INVALID_FD) {
-	    fdCacheSize--;          /* reduce in order to not run into here too often */
-	    DLL_INSERT_TAIL(fdP, fdAvailHead, fdAvailTail, fd_next, fd_prev);
-	    fdP->fd_status = FD_HANDLE_AVAIL;
-	    fdP->fd_ih = NULL;
-	    fdP->fd_fd = INVALID_FD;
-	    IH_UNLOCK;
-            (*ops->close)(closeFd);
-	    goto ih_open_retry;
-	}
-    } else {
-	if (fdAvailHead == NULL) {
-	    fdHandleAllocateChunk();
-	}
-	fdP = fdAvailHead;
-	osi_Assert(fdP->fd_status == FD_HANDLE_AVAIL);
-	DLL_DELETE(fdP, fdAvailHead, fdAvailTail, fd_next, fd_prev);
-	closeFd = INVALID_FD;
+    fdP = ih_attachfd_r(ihP, fd);
+    if (!fdP) {
+        osi_Assert(fd == INVALID_FD);
+        IH_UNLOCK;
+        goto ih_open_retry;
     }
-
-    fdP->fd_status = FD_HANDLE_INUSE;
-    fdP->fd_fd = fd;
-    fdP->fd_ih = ihP;
-    fdP->fd_refcnt++;
-
-    ihP->ih_refcnt++;
-
-    /* Add this handle to the Inode's list of open descriptors */
-    DLL_INSERT_TAIL(fdP, ihP->ih_fdhead, ihP->ih_fdtail, fd_ihnext,
-		    fd_ihprev);
-
-    if (closeFd != INVALID_FD) {
-	IH_UNLOCK;
-        (*ops->close)(closeFd);
-	IH_LOCK;
-	fdInUseCount -= 1;
-    }
-
+	    
     IH_UNLOCK;
+
     return fdP;
 }
 
@@ -575,6 +617,20 @@ fd_reallyclose(FdHandle_t * fdP)
      */
     if (!ihP->ih_fdhead) {
 	ihP->ih_flags &= ~IH_REALLY_CLOSED;
+    } else {
+        FdHandle_t *lfdP, *next;
+        int clear = 1;
+        for (lfdP = ihP->ih_fdhead; lfdP != NULL; lfdP = next) {
+            next = lfdP->fd_ihnext;
+            osi_Assert(lfdP->fd_ih == ihP);
+            if (lfdP->fd_status != FD_HANDLE_CLOSING) {
+                clear = 0;
+                break;
+            }
+        }
+        /* no *future* fd should be subjected to this */
+        if (clear)
+            ihP->ih_flags &= ~IH_REALLY_CLOSED;
     }
 
     if (fdP->fd_refcnt == 0) {

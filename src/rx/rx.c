@@ -111,7 +111,7 @@ extern afs_int32 afs_termState;
 # include "rx_trace.h"
 # include <afs/rxgen_consts.h>
 #endif /* KERNEL */
- 
+
 afs_int32 rx_enableIdleDead = 0;
 
 #ifndef KERNEL
@@ -1772,6 +1772,7 @@ rx_NewServiceHost(afs_uint32 host, u_short port, u_short serviceId,
 	    service->minProcs = 0;
 	    service->maxProcs = 1;
 	    service->idleDeadTime = 60;
+	    service->idleDeadErr = 0;
 	    service->connDeadTime = rx_connDeadTime;
 	    service->executeRequestProc = serviceProc;
 	    service->checkReach = 0;
@@ -2962,11 +2963,11 @@ printf("securityIndex %d != conn->securityIndex %d\n", securityIndex, conn->secu
 	    *unknownService = 1;
 	    MUTEX_EXIT(&rx_connHashTable_lock);
 if (!service)
-printf("rxi_FindService failed for serviceId %d\n", serviceId);
+ printf("rxi_FindService failed for serviceId %d\n", serviceId);
 else if (securityIndex >= service->nSecurityObjects)
-printf("securityIndex %d for serviceId %d\n", securityIndex, serviceId);
+ printf("securityIndex %d for serviceId %d\n", securityIndex, serviceId);
 else
-printf("No securityObject for %d with serviceId %d\n", securityIndex, serviceId);
+ printf("No securityObject for %d with serviceId %d\n", securityIndex, serviceId);
 
 	    return (struct rx_connection *)0;
 	}
@@ -2992,7 +2993,7 @@ printf("No securityObject for %d with serviceId %d\n", securityIndex, serviceId)
 	conn->specific = NULL;
 	rx_SetConnDeadTime(conn, service->connDeadTime);
 	conn->idleDeadTime = service->idleDeadTime;
-	conn->idleDeadDetection = 0;
+	conn->idleDeadDetection = service->idleDeadErr ? 1 : 0;
 	for (i = 0; i < RX_MAXCALLS; i++) {
 	    conn->twind[i] = rx_initSendWindow;
 	    conn->rwind[i] = rx_initReceiveWindow;
@@ -5862,6 +5863,9 @@ rxi_SendList(struct rx_call *call, struct xmitlist *xmit,
      * processing), and for the connection (so that we can discover
      * idle connections) */
     conn->lastSendTime = call->lastSendTime = clock_Sec();
+    /* Let a set of retransmits trigger an idle timeout */
+    if (!xmit->resending)
+	call->lastSendData = call->lastSendTime;
 }
 
 /* When sending packets we need to follow these rules:
@@ -6259,7 +6263,15 @@ rxi_Send(struct rx_call *call, struct rx_packet *p,
     if ((p->header.type != RX_PACKET_TYPE_ACK) ||
 	(((struct rx_ackPacket *)rx_DataOf(p))->reason == RX_ACK_PING) ||
 	(p->length <= (rx_AckDataSize(call->rwind) + 4 * sizeof(afs_int32))))
-    conn->lastSendTime = call->lastSendTime = clock_Sec();
+    {
+	conn->lastSendTime = call->lastSendTime = clock_Sec();
+	/* Don't count keepalive ping/acks here, so idleness can be tracked. */
+	if ((p->header.type != RX_PACKET_TYPE_ACK) ||
+	    ((((struct rx_ackPacket *)rx_DataOf(p))->reason != RX_ACK_PING) &&
+	     (((struct rx_ackPacket *)rx_DataOf(p))->reason !=
+	      RX_ACK_PING_RESPONSE)))
+	    call->lastSendData = call->lastSendTime;
+    }
 }
 
 /* Check if a call needs to be destroyed.  Called by keep-alive code to ensure
@@ -6283,6 +6295,7 @@ rxi_CheckCall(struct rx_call *call)
     afs_uint32 fudgeFactor;
     int cerror = 0;
     int newmtu = 0;
+    int idle_timeout = 0;
 
 #ifdef AFS_GLOBAL_RXLOCK_KERNEL
     if (call->flags & RX_CALL_TQ_BUSY) {
@@ -6372,17 +6385,25 @@ rxi_CheckCall(struct rx_call *call)
 	(call->flags & RX_CALL_READER_WAIT)) {
 	if (call->state == RX_STATE_ACTIVE) {
 	    printf("AFS: idleDead for call %u to %u.%u.%u.%u:%u %s\n",
-                       *call->callNumber,
-                       (ntohl(call->conn->peer->host) >> 24) & 0xff,
-                       (ntohl(call->conn->peer->host) >> 16) & 0xff,
-                       (ntohl(call->conn->peer->host) >>  8) & 0xff,
-                       ntohl(call->conn->peer->host) & 0xff,
-                       ntohs(call->conn->peer->port),
-                       rx_enableIdleDead ? "" : " ignored");
-            if (rx_enableIdleDead) {
-	        cerror = RX_CALL_TIMEOUT;
-	        goto mtuout;
+			*call->callNumber,
+			(ntohl(call->conn->peer->host) >> 24) & 0xff,
+			(ntohl(call->conn->peer->host) >> 16) & 0xff,
+			(ntohl(call->conn->peer->host) >>  8) & 0xff,
+			ntohl(call->conn->peer->host) & 0xff,
+			ntohs(call->conn->peer->port),
+			rx_enableIdleDead ? "" : " ignored");
+	    if (rx_enableIdleDead) {
+	    	cerror = RX_CALL_TIMEOUT;
+	    	goto mtuout;
 	    }
+	}
+    }
+    if (call->lastSendData && idleDeadTime
+        && ((call->lastSendData + idleDeadTime) < now)) {
+	if (call->state == RX_STATE_ACTIVE) {
+	    cerror = conn->service ? conn->service->idleDeadErr : RX_CALL_IDLE;
+            idle_timeout = 1;
+	    goto mtuout;
 	}
     }
 
@@ -6399,7 +6420,7 @@ rxi_CheckCall(struct rx_call *call)
     }
     return 0;
 mtuout:
-    if (conn->msgsizeRetryErr && cerror != RX_CALL_TIMEOUT &&
+    if (conn->msgsizeRetryErr && cerror != RX_CALL_TIMEOUT && !idle_timeout &&
         call->lastReceiveTime) {
 	int oldMTU = conn->peer->ifMTU;
 
@@ -9253,7 +9274,7 @@ int rx_DumpCalls(FILE *outputFile, char *cookie)
                 "rqc=%u,%u, tqc=%u,%u, iovqc=%u,%u, "
                 "lstatus=%u, rstatus=%u, error=%d, timeout=%u, "
                 "resendEvent=%d, timeoutEvt=%d, keepAliveEvt=%d, delayedAckEvt=%d, delayedAbortEvt=%d, abortCode=%d, abortCount=%d, "
-                "lastSendTime=%u, lastRecvTime=%u"
+                "lastSendTime=%u, lastRecvTime=%u, lastSendData=%u"
 #ifdef RX_ENABLE_LOCKS
                 ", refCount=%u"
 #endif
@@ -9267,7 +9288,7 @@ int rx_DumpCalls(FILE *outputFile, char *cookie)
                 (afs_uint32)c->rqc, (afs_uint32)rqc, (afs_uint32)c->tqc, (afs_uint32)tqc, (afs_uint32)c->iovqc, (afs_uint32)iovqc,
                 (afs_uint32)c->localStatus, (afs_uint32)c->remoteStatus, c->error, c->timeout,
                 c->resendEvent?1:0, c->timeoutEvent?1:0, c->keepAliveEvent?1:0, c->delayedAckEvent?1:0, c->delayedAbortEvent?1:0,
-                c->abortCode, c->abortCount, c->lastSendTime, c->lastReceiveTime
+                c->abortCode, c->abortCount, c->lastSendTime, c->lastReceiveTime, c->lastSendData
 #ifdef RX_ENABLE_LOCKS
                 , (afs_uint32)c->refCount
 #endif

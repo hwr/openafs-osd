@@ -543,6 +543,9 @@ MainCommand(struct cmd_syndesc *as, void *arock)
 		    printf(", has_input_packets");
 		if (tconn.callOther[j] & RX_OTHER_OUT)
 		    printf(", has_output_packets");
+		/* We abuse the spare fields for the moment */
+		if (tconn.sparel[j+4])
+		    printf(", error %d", ntohl(tconn.sparel[j+4]));
 		printf("\n");
 	    }
 	}

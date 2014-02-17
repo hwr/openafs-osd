@@ -95,7 +95,6 @@ afs_int32
 afs_TransitionToBypass(struct vcache *avc,
 		       afs_ucred_t *acred, int aflags)
 {
-
     int setDesire = 0;
     int setManual = 0;
     int bypasscache = 0;

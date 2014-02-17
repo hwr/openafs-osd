@@ -224,7 +224,9 @@ extern struct host *h_GetHost_r(struct rx_connection *tcon);
 extern struct client *h_FindClient_r(struct rx_connection *tcon);
 extern int h_ReleaseClient_r(struct client *client);
 extern void h_TossStuff_r(struct host *host);
-extern struct client *h_ID2Client(afs_int32 vid);
+extern void h_EnumerateClients(afs_int32 vid,
+                               int (*proc)(struct client *client, void *rock),
+                               void *arock);
 extern int GetClient(struct rx_connection *tcon, struct client **cp);
 extern int PutClient(struct client **cp);
 extern void h_PrintStats(void);
@@ -251,7 +253,6 @@ extern afs_int32 hpr_Initialize(struct ubik_client **);
 extern int hpr_End(struct ubik_client *);
 extern int hpr_IdToName(idlist *ids, namelist *names);
 extern int hpr_NameToId(namelist *names, idlist *ids);
-extern int evalclient(void *rock, afs_int32 user);
 
 #ifdef AFS_DEMAND_ATTACH_FS
 /*

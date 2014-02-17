@@ -327,6 +327,7 @@ int afsd_verbose = 0;		/*Are we being chatty? */
 int afsd_debug = 0;		/*Are we printing debugging info? */
 static int afsd_CloseSynch = 0;	/*Are closes synchronous or not? */
 static int rxmaxmtu = 0;       /* Are we forcing a limit on the mtu? */
+static int rxmaxfrags = 0;	/* Are we forcing a limit on frags? */
 static int vicepaccess = 0;     /* enable direct I/O to visible fs
                                  * vicep-partitions */
 static int osdaccess = 0;      /* enable direct I/O to visible OSD part. */
@@ -1729,6 +1730,7 @@ FindFileserverPartitions(void)
         }
     }
 }
+
 static void *
 afsdb_thread(void *rock)
 {
@@ -2027,6 +2029,10 @@ mainproc(struct cmd_syndesc *as, void *arock)
         enable_dynroot = 2;
     }
     if (as->parms[38].items) {
+        /* -rxmaxfrags */
+        rxmaxfrags = atoi(as->parms[38].items->data);
+    }
+    if (as->parms[39].items) {
         /* -vicepaccess */
         vicepaccess = 1;
     }
@@ -2463,6 +2469,14 @@ afsd_run(void)
         afsd_call_syscall(AFSOP_CELLINFO, fullpn_CellInfoFile);
     }
 
+    if (rxmaxfrags) {
+	if (afsd_verbose)
+            printf("%s: Setting rxmaxfrags in kernel = %d\n", rn, rxmaxfrags);
+        code = afsd_call_syscall(AFSOP_SET_RXMAXFRAGS, rxmaxfrags);
+        if (code)
+            printf("%s: Error seting rxmaxfrags\n", rn);
+    }
+
     if (rxmaxmtu) {
 	if (afsd_verbose)
             printf("%s: Setting rxmaxmtu in kernel = %d\n", rn, rxmaxmtu);
@@ -2741,6 +2755,9 @@ afsd_init(void)
     cmd_AddParm(ts, "-rxmaxmtu", CMD_SINGLE, CMD_OPTIONAL, "set rx max MTU to use");
     cmd_AddParm(ts, "-dynroot-sparse", CMD_FLAG, CMD_OPTIONAL,
 		"Enable dynroot support with minimal cell list");
+    cmd_AddParm(ts, "-rxmaxfrags", CMD_SINGLE, CMD_OPTIONAL,
+		"Set the maximum number of UDP fragments Rx should send/receive"
+		" per Rx packet");
     cmd_AddParm(ts, "-vicepaccess", CMD_FLAG, CMD_OPTIONAL,
                 "Enable direct I/O to visible fileserver-partitions");
     cmd_AddParm(ts, "-osdaccess", CMD_FLAG, CMD_OPTIONAL,

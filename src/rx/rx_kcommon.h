@@ -42,10 +42,10 @@ typedef unsigned short etap_event_t;
 #include "h/systm.h"
 #endif
 #include "h/time.h"
-#ifdef AFS_SUN5_ENV
-#include "h/vfs.h"		/* stops SUN5 socketvar.h warnings */
-#include "h/stropts.h"		/* stops SUN5 socketvar.h warnings */
-#include "h/stream.h"		/* stops SUN5 socketvar.h errors */
+#ifdef AFS_SUN56_ENV
+#include "h/vfs.h"		/* stops SUN56 socketvar.h warnings */
+#include "h/stropts.h"		/* stops SUN56 socketvar.h warnings */
+#include "h/stream.h"		/* stops SUN56 socketvar.h errors */
 #include "h/disp.h"
 #endif
 #include "h/socket.h"
@@ -141,7 +141,11 @@ typedef unsigned short etap_event_t;
 #include "h/errno.h"
 #if !(defined(AFS_SUN5_ENV) && defined(KERNEL))
 /* if sys/systm.h includes varargs.h some versions of solaris have conflicts */
-#include "stdarg.h"
+# if defined(AFS_FBSD_ENV)
+#  include "machine/stdarg.h"
+# else
+#  include "stdarg.h"
+# endif
 #endif
 #ifdef KERNEL
 #include "afs/sysincludes.h"

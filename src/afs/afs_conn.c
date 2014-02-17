@@ -82,7 +82,6 @@ afs_pickSecurityObject(struct afs_conn *conn, int *secLevel)
          * allocation. We should implement locking on unixuser
          * structures to fix this properly, but for now, this is easier. */
         ticket = afs_osi_Alloc(MAXKTCTICKETLEN);
-	osi_Assert(ticket != NULL);
         memcpy(ticket, conn->user->stp, conn->user->stLen);
         memcpy(&ct, &conn->user->ct, sizeof(ct));
 

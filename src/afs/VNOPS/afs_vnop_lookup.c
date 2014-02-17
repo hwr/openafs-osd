@@ -1250,7 +1250,7 @@ afs_DoBulkStat(struct vcache *adp, long dirCookie, struct vrequest *areqp)
 	    tvcp->f.states |= CBackup;
 	if (volStates & VForeign)
 	    tvcp->f.states |= CForeign;
-	if (volp->states & VPartVisible)
+	if ((volp->states & VPartVisible) && vType(tvcp) == VREG)
 	    tvcp->f.states |= CPartVisible;
 
 	/* merge in the callback info */

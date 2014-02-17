@@ -328,7 +328,7 @@ FSYNC_sync(void * args)
 #if defined(HAVE_POLL) && defined(AFS_PTHREAD_ENV)
         int nfds;
         GetHandler(FSYNC_readfds, MAXHANDLERS, POLLIN|POLLPRI, &nfds);
-        if (poll(FSYNC_readfds, nfds, 10000) >=1)
+        if (poll(FSYNC_readfds, nfds, -1) >=1)
 	    CallHandler(FSYNC_readfds, nfds, POLLIN|POLLPRI);
 #else
 	int maxfd;
@@ -2008,21 +2008,32 @@ FSYNC_Drop(osi_socket fd)
     struct offlineInfo *p;
     int i;
     Error error;
+#ifndef AFS_DEMAND_ATTACH_FS
     char tvolName[VMAXPATHLEN];
+#endif
 
     VOL_LOCK;
     p = OfflineVolumes[FindHandler(fd)];
     for (i = 0; i < MAXOFFLINEVOLUMES; i++) {
 	if (p[i].volumeID) {
-
 	    Volume *vp;
 
+#ifdef AFS_DEMAND_ATTACH_FS
+	    vp = VPreAttachVolumeById_r(&error, p[i].partName, p[i].volumeID);
+	    if (vp) {
+		VCreateReservation_r(vp);
+		VWaitExclusiveState_r(vp);
+		VDeregisterVolOp_r(vp);
+		VCancelReservation_r(vp);
+	    }
+#else
 	    tvolName[0] = OS_DIRSEPC;
 	    sprintf(&tvolName[1], VFORMAT, afs_printable_uint32_lu(p[i].volumeID));
 	    vp = VAttachVolumeByName_r(&error, p[i].partName, tvolName,
 				       V_VOLUPD);
 	    if (vp)
 		VPutVolume_r(vp);
+#endif /* !AFS_DEMAND_ATTACH_FS */
 	    p[i].volumeID = 0;
 	}
     }

@@ -670,7 +670,7 @@ afs_ShakeLooseVCaches(afs_int32 anumber)
 
     loop = 0;
 
-retry:
+ retry:
     i = 0;
     limit = afs_vcount;
     for (tq = VLRU.prev; tq != &VLRU && anumber > 0; tq = uq) {
@@ -680,7 +680,7 @@ retry:
 	    refpanic("CVFlushed on VLRU");
 	} else if (i++ > limit) {
 	    afs_warn("afs_ShakeLooseVCaches: i %d limit %d afs_vcount %d afs_maxvcount %d\n",
-		     (int)i, limit, (int)afs_vcount, (int)afs_maxvcount);
+	             (int)i, limit, (int)afs_vcount, (int)afs_maxvcount);
 	    refpanic("Found too many AFS vnodes on VLRU (VLRU cycle?)");
 	} else if (QNext(uq) != tq) {
 	    refpanic("VLRU inconsistent");
@@ -695,7 +695,7 @@ retry:
 	if (fv_slept) {
 	    if (loop++ > 100)
 		break;
-	    goto retry; /* start over - may have raced. */
+	    goto retry;	/* start over - may have raced. */
 	}
 	if (uq == &VLRU) {
 	    if (anumber && !defersleep) {
@@ -790,7 +790,7 @@ afs_PrePopulateVCache(struct vcache *avc, struct VenusFid *afid,
     avc->cachingStates = 0;
     avc->cachingTransitions = 0;
 #endif
-    avc->protocol = 1;		     /* 1 == RX_FILESERVER as default */
+    avc->protocol = 1;              /* 1 == RX_FILESERVER as default */
 #if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
     avc->vpacRock = NULL;
 #endif
@@ -1770,8 +1770,8 @@ afs_GetVCache(struct VenusFid *afid, struct vrequest *areq,
 	    *tvc->mvid = tvp->dotdot;
 	}
 #if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
-        if (tvp->states & VPartVisible && (afs_protocols & VICEP_ACCESS))
-            visible = 1;
+	if (tvp->states & VPartVisible)
+	    visible = 1;
 #endif
 	afs_PutVolume(tvp, READ_LOCK);
     }
@@ -2592,11 +2592,14 @@ afs_PutVCache(struct vcache *avc)
  *
  * \param avc Pointer to the cache entry to reset
  * \param acred
+ * \param skipdnlc  skip the dnlc purge for this vnode
  *
  * \note avc must be write locked on entry
+ *
+ * \note The caller should purge the dnlc when skipdnlc is set.
  */
 void
-afs_ResetVCache(struct vcache *avc, afs_ucred_t *acred)
+afs_ResetVCache(struct vcache *avc, afs_ucred_t *acred, afs_int32 skipdnlc)
 {
     ObtainWriteLock(&afs_xcbhash, 456);
     afs_DequeueCallback(avc);
@@ -2604,7 +2607,9 @@ afs_ResetVCache(struct vcache *avc, afs_ucred_t *acred)
     ReleaseWriteLock(&afs_xcbhash);
     /* now find the disk cache entries */
     afs_TryToSmush(avc, acred, 1);
-    osi_dnlc_purgedp(avc);
+    if (!skipdnlc) {
+	osi_dnlc_purgedp(avc);
+    }
     if (avc->linkData && !(avc->f.states & CCore)) {
 	afs_osi_Free(avc->linkData, strlen(avc->linkData) + 1);
 	avc->linkData = NULL;

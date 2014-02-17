@@ -42,7 +42,7 @@
 #  include <sys/param.h>
 # endif
 #else
-#include <stdio.h>
+# include <stdio.h>
 #endif
 #include "xdr.h"
 
