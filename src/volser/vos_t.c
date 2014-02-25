@@ -5667,6 +5667,33 @@ ConvertRO(struct cmd_syndesc *as, void *arock)
     }
 
     MapHostToNetwork(&checkEntry);
+    /* clear unused fields, contents can be random */
+    for (i=entry.nServers; i<NMAXNSERVERS; i++) {
+	entry.serverPartition[i] = 0;
+	entry.serverFlags[i] = 0;
+    }
+    entry.matchindex = 0;
+    entry.spares2 = 0;
+    entry.spares3 = 0;
+    entry.spares4 = 0;
+    entry.spares5 = 0;
+    entry.spares6 = 0;
+    entry.spares7 = 0;
+    entry.spares8 = 0;
+    entry.spares9 = 0;
+    for (i=checkEntry.nServers; i<NMAXNSERVERS; i++) {
+	checkEntry.serverPartition[i] = 0;
+	checkEntry.serverFlags[i] = 0;
+    }
+    checkEntry.matchindex = 0;
+    checkEntry.spares2 = 0;
+    checkEntry.spares3 = 0;
+    checkEntry.spares4 = 0;
+    checkEntry.spares5 = 0;
+    checkEntry.spares6 = 0;
+    checkEntry.spares7 = 0;
+    checkEntry.spares8 = 0;
+    checkEntry.spares9 = 0;
     entry.flags &= ~VLOP_ALLOPERS;  /* clear any stale lock operation flags */
     entry.flags |= VLOP_MOVE;        /* set to match SetLock operation above */
     if (memcmp(&entry, &checkEntry, sizeof(entry)) != 0) {
