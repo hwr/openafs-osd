@@ -2102,6 +2102,21 @@ fill_osd_file(Vnode *vn, struct async *a,
 		        osds[nosds] = po->osd_id;
 		        nosds++;
 		    }
+	    	    if (pf->archiveTime 
+		      && pf->archiveVersion > vn->disk.dataVersion
+		      && (pf->archiveVersion - vn->disk.dataVersion <= 10)) {
+		        struct osd_p_segm *ps = 
+					&pf->segmList.osd_p_segmList_val[0];
+		        struct osd_p_obj *po = &ps->objList.osd_p_objList_val[0];
+		        osds[nosds] = po->osd_id;
+		        nosds++;
+			ViceLog(0,("Warning: restoring %u.%u.%u from archive of DV %u instead of DV %d\n",
+				V_id(vn->volumePtr),
+				vn->vnodeNumber,
+				vn->disk.uniquifier,
+				pf->archiveVersion,
+				vn->disk.dataVersion));
+		    }
 	        }
 		if (nosds)
 		    ViceLog(0,("Warning: restoring %u.%u.%u from unchecked archive\n",
