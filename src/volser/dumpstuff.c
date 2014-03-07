@@ -105,7 +105,7 @@ static int SizeDumpVnodeIndex(struct iod *iodp, Volume * vp,
 			      int flag,
 			      struct volintSize *size);
 static int SizeDumpVnode(struct iod *iodp, struct VnodeDiskObject *v,
-			 int volid, int vnodeNumber, int flag,
+			 Volume * vp, int vnodeNumber, int flag,
 			 struct volintSize *size);
 static afs_int32 SkipData(struct iod *iodp, afs_size_t length);
 static int ReadInt32(struct iod *iodp, afs_uint32 * lp);
@@ -2278,12 +2278,13 @@ SizeDumpDumpHeader(struct iod *iodp, Volume * vp,
 }
 
 static int
-SizeDumpVnode(struct iod *iodp, struct VnodeDiskObject *v, int volid,
+SizeDumpVnode(struct iod *iodp, struct VnodeDiskObject *v, Volume *vp,
 	      int vnodeNumber, int flag,
 	      struct volintSize *v_size)
 {
     int code = 0;
     afs_uint64 addvar;
+    afs_uint32 volid = V_id(vp);
 
     if (!v || v->type == vNull)
 	return code;
@@ -2332,8 +2333,29 @@ SizeDumpVnode(struct iod *iodp, struct VnodeDiskObject *v, int volid,
     }
 
     if (VNDISK_GET_INO(v)) {
-	FillInt64(addvar,0, (v->length + 5));
+	addvar = (((afs_uint64)v->vn_length_hi)<<32) + v->length + 5;
+	if (v->vn_length_hi)
+	    addvar += 4;	/* 'h' instead of 'f' sends also vn_length_hi */
+	/* FillInt64(addvar, 0, (v->length + 5)); */
 	AddUInt64(v_size->dump_size, addvar, &v_size->dump_size);
+    }
+    if (osdvol && (osdvol->op_isOsdFile)(V_osdPolicy(vp), V_id(vp),
+                                         v, vnodeNumber)) {
+	void *rock;
+	byte *data;
+	afs_uint32 length;
+	code = (osdvol->op_dump_getmetadata)(vp, v, &rock, &data, &length, vnodeNumber);
+	if (code)
+	    Log("1 Volser: SizeDumpVnode: osdvol->op_dump_getmatadata for vnode %u in volume %u failed with %d\n",
+		vnodeNumber, V_id(vp), code);
+	else {
+	    /* 'L' vn_length_hi length 'O' <metalength> metadata 'x' <online> */
+	    addvar = length + 16;
+	    if (v->vn_length_hi)
+		addvar += 4;
+	    AddUInt64(v_size->dump_size, addvar, &v_size->dump_size);
+	    free(rock);
+	}
     }
     return code;
 }
@@ -2392,7 +2414,7 @@ SizeDumpVnodeIndex(struct iod *iodp, Volume * vp, VnodeClass class,
 	 * does dump the file! */
 	if (!code)
 	    code =
-		SizeDumpVnode(iodp, vnode, V_id(vp),
+		SizeDumpVnode(iodp, vnode, vp,
 			      bitNumberToVnodeNumber(vnodeIndex, class), flag,
 			      v_size);
     }
