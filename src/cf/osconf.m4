@@ -701,10 +701,10 @@ case $AFS_SYSNAME in
 		SHLIB_CFLAGS="-KPIC"
 		SHLIB_LDFLAGS="-G -Bsymbolic"
 		XCFLAGS64='${XCFLAGS} -m64'
-		XCFLAGS="-dy -Bdynamic"
+		XCFLAGS="-dy -Bdynamic -fPIC"
 		XLIBELFA="-lelf"
 		XLIBKVM="-lkvm"
-		XLIBS="${LIB_AFSDB} -lsocket -lnsl -lintl -ldl"
+		XLIBS="${LIB_AFSDB} -lsocket -lnsl -lintl -ldl -lresolv"
 		SHLIB_LINKER="${CC} -G -dy -Bsymbolic -z text"
 		;;
 
@@ -720,10 +720,10 @@ case $AFS_SYSNAME in
 		SHLIB_CFLAGS="-KPIC"
 		SHLIB_LDFLAGS="-G -Bsymbolic"
 		XCFLAGS64='${XCFLAGS} -xarch=amd64'
-		XCFLAGS="-dy -Bdynamic"
+		XCFLAGS="-dy -Bdynamic -fPIC"
 		XLIBELFA="-lelf"
 		XLIBKVM="-lkvm"
-		XLIBS="${LIB_AFSDB} -lsocket -lnsl -lintl -ldl"
+		XLIBS="${LIB_AFSDB} -lsocket -lnsl -lintl -ldl -lresolv" 
 		SHLIB_LINKER="${CC} -G -dy -Bsymbolic -z text"
 		;;
 esac
