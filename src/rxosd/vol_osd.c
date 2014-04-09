@@ -5996,7 +5996,8 @@ clone_pre_loop(Volume *rwvp, Volume *clvp, struct VnodeDiskObject *rwvnode,
  	 * First check if we have any objects whether the clone volume has
 	 * already an osdMetadata file. If not, create it.
 	 */
-	if (rwlist.osdobjectList_len && !clvp->osdMetadataHandle) {
+	if ((rwlist.osdobjectList_len || V_osdPolicy(rwvp)) 
+	  && !clvp->osdMetadataHandle) {
     	    code = add_osdMetadataFile(clvp);
 	    if (code)
 		return code;
