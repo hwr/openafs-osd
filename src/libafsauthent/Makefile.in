@@ -83,11 +83,6 @@ SYSOBJS = \
 	setpag.o \
 	pioctl.o
 
-RXOSDOBJS = \
-	volserosd.cs.o \
-	volserosd.xdr.o
-
-
 PTSERVEROBJS = \
 	ptclient.o \
 	ptint.cs.o \
@@ -119,8 +114,7 @@ LIBOBJS = \
 	${PTSERVEROBJS} \
 	${SYSOBJS} \
 	${VOLSEROBJS} \
-	${VLDBOBJS} \
-	${RXOSDOBJS}
+	${VLDBOBJS}
 
 all: ${TOP_LIBDIR}/libafsauthent.a
 
@@ -329,12 +323,6 @@ vldbint.cs.o: ../vlserver/vldbint.cs.c
 	$(CCRULE)
 
 vl_errors.o: $(VLSERVER)/vl_errors.c
-	$(CCRULE)
-
-volserosd.cs.o: ../rxosd/volserosd.cs.c
-	$(CCRULE)
-
-volserosd.xdr.o: ../rxosd/volserosd.xdr.c
 	$(CCRULE)
 
 clean:

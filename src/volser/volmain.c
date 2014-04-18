@@ -444,8 +444,10 @@ main(int argc, char **argv)
 		   "%s"
 		   "[-enable_peer_stats] [-enable_process_stats] "
 		   "[-sync <always | delayed | onclose | never>] "
-		   "[-help]\n",
-		   libafsosd ?  "[-convert] ":"");
+#ifdef AFS_PTHREAD_ENV
+		   , libafsosd ?  "[-convert] ":"",
+#endif
+		   "[-help]\n");
 #else
 	    printf("Usage: volserver [-log] [-p <number of processes>] "
 		   "[-auditlog <log path>] [-d <debug level>] "
@@ -667,5 +669,5 @@ main(int argc, char **argv)
 
     osi_audit(VS_FinishEvent, (-1), AUD_END);
     Abort("StartServer returned?");
-    return 0; /* not reached */
+    return 0;	/* not reached */
 }

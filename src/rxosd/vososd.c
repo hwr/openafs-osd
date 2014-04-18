@@ -80,9 +80,9 @@ cmd_AddParm(ts, "-config", CMD_SINGLE, CMD_OPTIONAL, "config location"); \
 
 #define rx_ServiceOf(c) (c)->service
 
-int rxInitDone = 0;
-const char *confdir;
+extern struct rx_connection *UV_BindOsd(afs_uint32 server, afs_int32 port);
 
+int localauth = 0;
 
 struct vos_data {
     struct ubik_client **cstruct;
@@ -159,10 +159,19 @@ UV_Traverse(afs_uint32 *server, afs_int32 vid, afs_uint32 nservers,
         if (tconn) {
             if ( policy_statistic )
                 code = AFSVolPolicyUsage(tconn, vid, srl, list);
-            else {
+            else 
                 code = AFSVolTraverse(tconn, vid, delay, flag, srl, list);
-            }
             rx_DestroyConnection(tconn);
+	    if (code == RXGEN_OPCODE) {	/* new openafs master volserver */
+        	tconn = UV_BindOsd(server[n], AFSCONF_VOLUMEPORT);
+        	if (tconn) {
+            	    if ( policy_statistic )
+                	code = AFSVOLOSD_PolicyUsage(tconn, vid, srl, list);
+            	    else
+                	code = AFSVOLOSD_Traverse(tconn, vid, delay, flag, srl, list);
+            	    rx_DestroyConnection(tconn);
+        	}
+	    }
         }
 #endif
         if (!code) {
@@ -226,6 +235,14 @@ UV_GetArchCandidates(afs_uint32 server, hsmcandList *list, afs_uint64 minsize,
         code = AFSVolGetArchCandidates(tconn, minsize, maxsize, copies,
                                         maxcandidates, osd, flag, delay, list);
         rx_DestroyConnection(tconn);
+    }
+    if (code == RXGEN_OPCODE) { /* new openafs master volserver */
+        tconn = UV_BindOsd(server, AFSCONF_VOLUMEPORT);
+        if (tconn) {
+            code = AFSVOLOSD_GetArchCandidates(tconn, minsize, maxsize, copies,
+                                            maxcandidates, osd, flag, delay, list);
+            rx_DestroyConnection(tconn);
+        }
     }
 #endif
     return code;
@@ -592,6 +609,14 @@ Archcand(struct cmd_syndesc *as, void *arock)
                                         maxcandidates, osd, flag, delay, &list);
         rx_DestroyConnection(tcon);
     }
+    if (code == RXGEN_OPCODE) { /* new openafs master volserver */
+        tcon = UV_BindOsd(server, AFSCONF_VOLUMEPORT);
+        if (tcon) {
+            code = AFSVOLOSD_GetArchCandidates(tcon, minsize, maxsize, copies,
+                                            maxcandidates, osd, flag, delay, &list);
+            rx_DestroyConnection(tcon);
+        }
+    }
 #endif
     if (!code) {
         afs_uint64 tb = 0;
@@ -628,7 +653,7 @@ getOsdId(char *name, char *cell, afs_int32 *code)
 static int
 ListObjects(struct cmd_syndesc *as, void *arock)
 {
-    afs_int32 code, err, bytes;
+    afs_int32 code, err, bytes, secondPass = 0;
     char *cell = 0;
     afs_uint32 osd = 0;
     afs_uint32 server = 0;
@@ -771,11 +796,13 @@ ListObjects(struct cmd_syndesc *as, void *arock)
     call = rx_NewCall(tcon);
     code = StartAFSVolListObjects(call, vid, flag, osd, delay);
 #endif
+ restart:
     if (code) {
         fprintf(stderr, "Couldn't start RPC to server %x (error code %d)\n",
                     server, code);
         return EIO;
-    }    while (1) {
+    }
+    while (1) {
         bytes = rx_Read(call, p, 1);
         if (bytes <= 0)
             break;
@@ -801,6 +828,17 @@ ListObjects(struct cmd_syndesc *as, void *arock)
     }
     code = rx_EndCall(call, 0);
     rx_DestroyConnection(tcon);
+    if (code == RXGEN_OPCODE && !secondPass) {
+	secondPass = 1;
+        tcon = UV_BindOsd(server, AFSCONF_VOLUMEPORT);
+        if (!tcon) {
+            fprintf(stderr, "Couldn't get connection to %x\n", server);
+            return EIO;
+        }
+        call = rx_NewCall(tcon);
+        code = StartAFSVOLOSD_ListObjects(call, vid, flag, osd, delay);
+	goto restart;
+    }
     if (code)
         fprintf(stderr, "RPC failed with code %d\n", code);
     return code;
@@ -810,7 +848,7 @@ static int
 SalvageOSD(struct cmd_syndesc *as, void *arock)
 {
     afs_int32 code, err;
-    int i, j, bytes;
+    int i, j, bytes, secondPass = 0;
     afs_uint32 server = 0, vid;
     afs_int32 flags = 8;        /* to say volserver we are using new syntax */
     struct rx_connection *tcon;
@@ -942,6 +980,7 @@ SalvageOSD(struct cmd_syndesc *as, void *arock)
         struct rx_call *call = rx_NewCall(tcon);
         code = StartAFSVolSalvage(call, vid, flags, instances, localinst);
 #endif
+restart:
         if (!code) {
             char line[128];
             char *p = line;
@@ -961,10 +1000,19 @@ SalvageOSD(struct cmd_syndesc *as, void *arock)
                 }
             }
             code = rx_EndCall(call, 0);
+	    if (code == RXGEN_OPCODE && !secondPass) {
+		secondPass = 1;
+        	rx_DestroyConnection(tcon);
+    		tcon = UV_BindOsd(server, AFSCONF_VOLUMEPORT);
+    		if (tcon) {
+        	    call = rx_NewCall(tcon);
+        	    code = StartAFSVOLOSD_Salvage(call, vid, flags, instances, localinst);
+		    goto restart;
+		}
+	    }
             if (code)
                 fprintf(stderr, "RPC failed with code %d\n", code);
         }
-        rx_DestroyConnection(tcon);
     } else
         fprintf(stderr, "Couldn't get connection to %s\n",
                 as->parms[0].items->data);
@@ -1183,7 +1231,7 @@ Traverse(struct cmd_syndesc *as, void *arock)
         char unknown[8] = "unknown";
         char *p;
 
-        osddb_client = init_osddb_client(cell);
+        osddb_client = init_osddb_client(cell, localauth);
         memset(&l, 0, sizeof(l));
         code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_OsdList, osddb_client, 0, &l);
         if (code) {

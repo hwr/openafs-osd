@@ -7598,6 +7598,27 @@ bad:
     return code;
 }
 
+int
+check_for_osd_support(struct destServer *destination, struct rx_connection *tconn,
+                      struct rx_securityClass *securityObject,
+                      afs_int32 securityIndex, afs_int32 *hasOsdSupport)
+{
+    afs_int32 code = RXGEN_OPCODE;
+
+    *hasOsdSupport = 0;         /* default value */
+    code = AFSVolOsdSupport(tconn, hasOsdSupport);
+    if (code == RXGEN_OPCODE) {
+        struct rx_connection *conn;
+        conn = rx_NewConnection(htonl(destination->destHost),
+			htons(destination->destPort), VOLSEROSD_SERVICE,
+			securityObject, securityIndex);
+        if (conn)
+            code = AFSVOLOSD_OsdSupport(conn, hasOsdSupport);
+    }
+
+    return code;
+}
+
 int 
 init_osdvol (char *version, char **afsosdVersion, struct osd_vol_ops_v0 **osdvol)
 {
@@ -7629,6 +7650,7 @@ init_osdvol (char *version, char **afsosdVersion, struct osd_vol_ops_v0 **osdvol
     osd_vol_ops_v0.op_restore_dec = restore_dec;
     osd_vol_ops_v0.op_split_objects = osd_split_objects;
     osd_vol_ops_v0.op_setOsdPolicy = setOsdPolicy;
+    osd_vol_ops_v0.op_check_for_osd_support = check_for_osd_support;
 
     *osdvol = &osd_vol_ops_v0;
     openafsVersion = version;
