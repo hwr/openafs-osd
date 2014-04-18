@@ -507,6 +507,7 @@ private struct vol_ops_v0 *vol = NULL;
 struct volser_ops_v0 {
     int (*DeleteTrans) (struct volser_trans *atrans, afs_int32 lock);
     struct NewTrans *(*NewTrans) (afs_uint32 avol, afs_int32 apart);
+    int (*AFSVolOsdSupport) (struct rx_connection *conn, afs_int32 *haveit);
 };
 # if !defined(BUILD_SHLIBAFSOSD)
 private struct volser_ops_v0 volser_ops_v0;
@@ -801,6 +802,7 @@ struct rx_connection * UV_BindOsd(afs_uint32 aserver, afs_int32 port);
     volser = &volser_ops_v0;
     volser->DeleteTrans = DeleteTrans;
     volser->NewTrans = NewTrans;
+    volser->AFSVolOsdSupport = AFSVolOsdSupport;
     opsptr->volser = volser;
 # endif /* BUILDING_VOLSERVER */
 }
@@ -2354,6 +2356,13 @@ NewTrans(afs_uint32 avol, afs_int32 apart)
     tt = (volser->NewTrans)(avol, apart);
     return tt;
 }
+
+int
+AFSVolOsdSupport(struct rx_connection *conn, afs_int32 *haveit)
+{
+    return (volser->AFSVolOsdSupport)(conn, haveit);
+}
+
 #  endif /* BUILDING_CLIENT_COMMAND */
 # endif /* BUILDING_OSDDBSERVER */
 #endif /* BUILD_SHLIBAFSOSD */
