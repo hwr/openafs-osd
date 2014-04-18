@@ -96,7 +96,7 @@ vos: vos.o ${VSOBJS} libvolser.a ${LIBS}
 	case ${WITH_OBJECT_STORAGE} in \
 	YES) \
 	${CC} ${LDFLAGS} -o vos vos.o $(VSOBJS) \
-		libvolser.a ${TOP_LIBDIR}/libafsosd.a ${LIBS} ${XLIBS} ${KRB5_LIBS} ;; \
+		libvolser.a ${LIBS} ${XLIBS} ${KRB5_LIBS} ;; \
 	*) \
 	${CC} ${LDFLAGS} -o vos vos.o $(VSOBJS) \
 		libvolser.a ${LIBS} ${XLIBS} ${KRB5_LIBS} ;; \

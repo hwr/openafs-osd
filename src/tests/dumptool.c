@@ -1670,10 +1670,6 @@ ChangeDirectory(int argc, char **argv, struct vnodeData *vdatacwd)
     return newvdatacwd;
 }
 
-#if 0
-/*
-  Use PrintTime() defined in 'src/cmd/cmd_out.c'!
- */
 #ifdef AFS_RXOSD_SUPPORT
 PrintTime(int intdate)
 {
@@ -1725,7 +1721,7 @@ PrintTime(int intdate)
    }
 }
 #endif
-#endif
+
 
 /*
  * Copy a file from out of the dump file

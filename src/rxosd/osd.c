@@ -121,7 +121,8 @@ int Bsize = SIZE;
 
 extern int ubik_Call (int (*aproc) (struct rx_connection*,...), struct ubik_client *aclient, afs_int32 aflags, ...);
 
-static void GetConnection(void);
+void GetConnection(void);
+void GetSpecificConnection(afs_uint32 myhost, u_short myport, u_short myservice);
 
 static u_long GetHost(char *hostname)
 {
@@ -226,6 +227,11 @@ scan_osd_or_host(void)
         if (!osddb_client)
 	    fprintf(stderr, "Could not get connection to OSDDB data base\n");
       	return;
+    } else {
+	struct hostent *he;
+	he = hostutil_GetHostByName(thost);
+	if (he)
+	    memcpy(&Host, he->h_addr, 4);
     }
     if (localauth && !cellp) {
 	tdir = afsconf_Open(AFSDIR_SERVER_ETC_DIRPATH);
@@ -1794,8 +1800,8 @@ examine(struct cmd_syndesc *as, void *rock)
     } else {
 #ifdef ALLOW_OLD
 	afs_uint64 part, oid, size;
-        afs_uint32 time;
-        afs_int32 status;
+	afs_uint32 time;
+	afs_int32 status;
 	part = ((afs_uint64)Oprm.ometa_u.f.lun << 32) | Oprm.ometa_u.f.rwvol;
 	oid = (Oprm.ometa_u.f.unique << 32) | Oprm.ometa_u.f.vN
 					 | (Oprm.ometa_u.f.tag << 26);
@@ -2161,7 +2167,7 @@ ListOsds(struct cmd_syndesc *as, void *rock)
 	    }
         }
     }
-    if (as->parms[8].items) {		/* server */
+    if (as->parms[8].items) {		/* -server */
 	struct hostent *he;
 	he = hostutil_GetHostByName(as->parms[8].items->data);
 	memcpy(&server, he->h_addr, 4);
@@ -2533,7 +2539,7 @@ SetOsd(struct cmd_syndesc *as, void *rock)
     }
     code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_GetOsd, osddb_client, 0, u.id, u.name, &u);
     if (code == RXGEN_OPCODE)
-	code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_GetOsd20, osddb_client, 0, u.id, u.name, &u);
+        code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_GetOsd20, osddb_client, 0, u.id, u.name, &u);
     if (code) {
 	fprintf(stderr, "Osd with id %s not found\n", as->parms[0].items->data);
 	return ENOENT;
@@ -2743,7 +2749,7 @@ SetOsd(struct cmd_syndesc *as, void *rock)
     u.unavail &= ~OSDDB_OSD_OBSOLETE;
     code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_SetOsd, osddb_client, 0, &u);
     if (code == RXGEN_OPCODE)
-	code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_SetOsd30, osddb_client, 0, &u);
+    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_SetOsd30, osddb_client, 0, &u);
     if (code) 
 	fprintf(stderr, "OSDDB_SetOsd failed with %d\n", code);
     return code;
@@ -2776,7 +2782,7 @@ DeleteOsd(struct cmd_syndesc *as, void *rock)
     }
     code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_GetOsd, osddb_client, 0, u.id, u.name, &u);
     if (code == RXGEN_OPCODE)
-	code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_GetOsd20, osddb_client, 0, u.id, u.name, &u);
+        code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_GetOsd20, osddb_client, 0, u.id, u.name, &u);
     if (code) {
 	fprintf(stderr, "Osd with id %s not found\n",
 		    as->parms[0].items->data);
@@ -2785,7 +2791,7 @@ DeleteOsd(struct cmd_syndesc *as, void *rock)
     u.unavail |= OSDDB_OSD_OBSOLETE;
     code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_SetOsd, osddb_client, 0, &u);
     if (code == RXGEN_OPCODE)
-	code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_SetOsd30, osddb_client, 0, &u);
+        code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_SetOsd30, osddb_client, 0, &u);
     if (code) 
 	fprintf(stderr, "OSDDB_UpdateOsd failed with %d\n", code);
     else
@@ -2975,7 +2981,7 @@ AddServer(struct cmd_syndesc *as, void *rock)
     }
     code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_AddServer, osddb_client, 0, e);
     if (code == RXGEN_OPCODE)
-	code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_AddServer60, osddb_client, 0, e);
+        code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_AddServer60, osddb_client, 0, e);
     if (code) {
 	fprintf(stderr, "OSDDB_AddServer failed with %d.\n", code);
 	return EINVAL;
@@ -3015,7 +3021,7 @@ DeleteServer(struct cmd_syndesc *as, void *rock)
     }
     code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_DeleteServer, osddb_client, 0, e);
     if (code == RXGEN_OPCODE)
-	code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_DeleteServer64, osddb_client, 0, e);
+        code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_DeleteServer64, osddb_client, 0, e);
     if (code) {
 	fprintf(stderr, "OSDDB_DeleteServer failed with %d.\n", code);
 	return EINVAL;
@@ -3060,7 +3066,7 @@ ShowServer(struct cmd_syndesc *as, void *rock)
     }
     code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_ServerList, osddb_client, 0, &l);
     if (code == RXGEN_OPCODE)
-	code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_ServerList63, osddb_client, 0, &l);
+        code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_ServerList63, osddb_client, 0, &l);
     if (code) {
 	fprintf(stderr, "Couldn't get list of servers\n");
 	return EIO;
@@ -3690,8 +3696,11 @@ OsddbStatistic(struct cmd_syndesc *as, void *rock)
     struct timeval now;
     afs_uint32 days, hours, minutes, seconds, tsec;
 
-    if (as->parms[0].items)					/* -server */ 
-        thost = as->parms[0].items->data;
+    if (as->parms[0].items) {					/* -server */ 
+	struct hostent *he;
+	he = hostutil_GetHostByName(as->parms[0].items->data);
+	memcpy(&server, he->h_addr, 4);
+    }
     if (as->parms[1].items) 					/* -reset */
 	reset = 1;
     if (as->parms[2].items) 					/* -localauth */
@@ -3701,7 +3710,12 @@ OsddbStatistic(struct cmd_syndesc *as, void *rock)
     scan_osd_or_host();
     l.osddb_statList_len = 0;
     l.osddb_statList_val = 0;
-    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_Statistic, osddb_client, Host, reset, &since, &l);
+    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_Statistic,
+		     osddb_client, 0, reset, &since, &l);
+#if 0
+    GetSpecificConnection(server, OSDDB_SERVER_PORT, OSDDB_SERVICE_ID);
+    code = OSDDB_Statistic(Conn, reset, &since, &l);
+#endif
     if (code) {
 	fprintf(stderr, "OSDDB_Statistic returns %d\n", code);
         return code;
@@ -3735,41 +3749,42 @@ consider_policy_properties(afs_uint32 id, int num_rule, pol_rule r, int output)
     char *report = "policy %d: invalid %s %d in rule %d (properties 0x%06x)\n";
     afs_int32 result = 0;
     if ( POLPROP_LOCATION(r.properties) > 3 )  {
-	result = EINVAL;
-	printf(report, id, "location",
-		    POLPROP_LOCATION(r.properties), num_rule, r.properties);
+        result = EINVAL;
+        printf(report, id, "location",
+                    POLPROP_LOCATION(r.properties), num_rule, r.properties);
     }
     if ( POLPROP_NSTRIPES(r.properties)
-	    && POLPROP_NSTRIPES(r.properties) != 1
-	    && POLPROP_NSTRIPES(r.properties) != 2
-	    && POLPROP_NSTRIPES(r.properties) != 4
-	    && POLPROP_NSTRIPES(r.properties) != 8 ) {
-	result = EINVAL;
-	printf(report, id, "number of stripes",
-		    POLPROP_NSTRIPES(r.properties), num_rule, r.properties);
+            && POLPROP_NSTRIPES(r.properties) != 1
+            && POLPROP_NSTRIPES(r.properties) != 2
+            && POLPROP_NSTRIPES(r.properties) != 4
+            && POLPROP_NSTRIPES(r.properties) != 8 ) {
+        result = EINVAL;
+        printf(report, id, "number of stripes",
+                    POLPROP_NSTRIPES(r.properties), num_rule, r.properties);
     }
     if ( POLPROP_SSTRIPES(r.properties) &&
-	    ( POLPROP_SSTRIPES(r.properties) < 12
-	      || POLPROP_SSTRIPES(r.properties) > 19 ) ) {
-	result = EINVAL;
-	printf(report, id, "stripe-size",
-		    POLPROP_SSTRIPES(r.properties), num_rule, r.properties);
+            ( POLPROP_SSTRIPES(r.properties) < 12
+              || POLPROP_SSTRIPES(r.properties) > 19 ) ) {
+        result = EINVAL;
+        printf(report, id, "stripe-size",
+                    POLPROP_SSTRIPES(r.properties), num_rule, r.properties);
     }
     if ( POLPROP_NCOPIES(r.properties) > 8 ) {
-	result = EINVAL;
-	printf(report, id, "number of copies",
-		    POLPROP_NCOPIES(r.properties), num_rule, r.properties);
+        result = EINVAL;
+        printf(report, id, "number of copies",
+                    POLPROP_NCOPIES(r.properties), num_rule, r.properties);
     }
     if (POLPROP_NSTRIPES(r.properties) * POLPROP_NCOPIES(r.properties) > 8){
-	result = EINVAL;
-	printf(report, id, "total number of objects",
-		    POLPROP_NCOPIES(r.properties)
-		    * POLPROP_NSTRIPES(r.properties), num_rule, r.properties);
+        result = EINVAL;
+        printf(report, id, "total number of objects",
+                    POLPROP_NCOPIES(r.properties)
+                    * POLPROP_NSTRIPES(r.properties), num_rule, r.properties);
     }
     return result;
 }
 
 int yyparse (void);
+
 afs_int32
 AddPolicy(struct cmd_syndesc *as, void *rock)
 {
@@ -3818,8 +3833,8 @@ AddPolicy(struct cmd_syndesc *as, void *rock)
     }
 
     for ( i = 0 ; i < pp_output->pol_ruleList_len ; i++ )
-        if (( consider_policy_properties(
-                      id, i, pp_output->pol_ruleList_val[i], 1) )) {
+	if (( consider_policy_properties(
+	    		id, i, pp_output->pol_ruleList_val[i], 1) )) {
 	    fprintf(stderr, "invalid policy, bailing out.\n");
 	    code = EINVAL;
 	    goto badAddPolicy;
@@ -3847,7 +3862,8 @@ AddPolicy(struct cmd_syndesc *as, void *rock)
     }
     code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_AddPolicy, osddb_client, 0, id, name, pp_output);
     if (code == RXGEN_OPCODE)
-	code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_AddPolicy65, osddb_client, 0, id, name, pp_output);
+        code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_AddPolicy65,
+			 osddb_client, 0, id, name, pp_output);
     switch ( code ) {
 	case 0: break;
 	case EINVAL:
@@ -3891,7 +3907,7 @@ ShowPolicy(struct cmd_syndesc *as, void *rock)
 	    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_GetPolicyID, osddb_client, 0,
 				as->parms[0].items->data, &id);
 	    if (code == RXGEN_OPCODE)
-		code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_GetPolicyID69, osddb_client, 0,
+	        code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_GetPolicyID69, osddb_client, 0,
 				as->parms[0].items->data, &id);
 	    if (code) {
 		fprintf(stderr, "failed to lookup policy '%s': %d\n",
@@ -3900,7 +3916,7 @@ ShowPolicy(struct cmd_syndesc *as, void *rock)
 	    }
 	} 
 	else
-            if (( code = util_GetUInt32(as->parms[0].items->data, &id) )) {
+	    if (( code = util_GetUInt32(as->parms[0].items->data, &id) )) {
 	    fprintf(stderr, "invalid id: %s\n", as->parms[0].items->data);
 	    return code;
 	}
@@ -3929,7 +3945,7 @@ ShowPolicy(struct cmd_syndesc *as, void *rock)
 
     code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_PolicyList, osddb_client, 0, &l);
     if (code == RXGEN_OPCODE)
-	code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_PolicyList66, osddb_client, 0, &l);
+        code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_PolicyList66, osddb_client, 0, &l);
     if (code) {
 	fprintf(stderr, "Couldn't get list of policies: %d\n", code);
 	return EIO;
@@ -3965,7 +3981,7 @@ DeletePolicy(struct cmd_syndesc *as, void *rock)
 	code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_GetPolicyID, osddb_client, 0,
 				as->parms[0].items->data, &id);
 	if (code == RXGEN_OPCODE)
-	    code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_GetPolicyID69, osddb_client, 0,
+	        code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_GetPolicyID69, osddb_client, 0,
 				as->parms[0].items->data, &id);
 	if (code) {
 	    fprintf(stderr, "failed to lookup policy '%s': %d\n",
@@ -3980,7 +3996,7 @@ DeletePolicy(struct cmd_syndesc *as, void *rock)
 
     code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_DeletePolicy, osddb_client, 0, id);
     if (code == RXGEN_OPCODE)
-	code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_DeletePolicy67, osddb_client, 0, id);
+        code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_DeletePolicy67, osddb_client, 0, id);
     if (code) {
 	fprintf(stderr, "OSDDB_DeletePolicy failed with %d.\n", code);
 	return EINVAL;
@@ -4344,8 +4360,8 @@ remove_fetch(struct cmd_syndesc *as, void *rock)
     return code;
 }
 
-static
-void GetConnection(void)
+void
+GetSpecificConnection(afs_uint32 myhost, u_short myport, u_short myservice)
 {
     struct ktc_principal sname;
     struct ktc_token ttoken;
@@ -4369,7 +4385,6 @@ void GetConnection(void)
         ttoken.kvno = kvno;
         if (code) {
             fprintf(stderr,"afsconf_GetLatestKey returned %d\n", code);
-            return;
         }
 	code = afsconf_ClientAuthSecure(tdir, &sc[2], &scIndex);
 	if (code) 
@@ -4431,12 +4446,17 @@ void GetConnection(void)
     }
     if (scIndex == 0)
         sc[0] = (struct rx_securityClass *) rxnull_NewClientSecurityObject();
-    if (!Host)
-        Host = GetHost(thost);
-    Conn = rx_NewConnection(Host, port, service, sc[scIndex],
+    Conn = rx_NewConnection(myhost, myport, myservice, sc[scIndex],
 				scIndex);
 }
-   
+
+void
+GetConnection(void)
+{
+    if (!Host)
+	Host = GetHost(thost);
+    GetSpecificConnection(Host, port, service);
+}
 
 int main (int argc, char **argv)
 {

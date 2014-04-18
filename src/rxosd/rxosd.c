@@ -738,7 +738,7 @@ extern int SystemId;
 static struct rx_connection *GetConnection(afs_uint32 ip, afs_uint32 limit,
 					   short port, afs_int32 service);
 
-int LogLevel = 0;
+extern int LogLevel;
 int supported = 1;
 int Console = 0;
 afs_int32 BlocksSpare = 1024;	/* allow 1 MB overruns */

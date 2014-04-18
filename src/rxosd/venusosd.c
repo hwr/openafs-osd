@@ -912,7 +912,7 @@ GetPoliciesCmd(struct cmd_syndesc *as, void *unused)
             printf("Directory policy %d has no effect.\n", dir_policy);
     }
     else {
-        osddb_client = init_osddb_client(cell);
+        osddb_client = init_osddb_client(cell, 0);
 	if (!osddb_client) {
 	    fprintf(stderr, "Could not get connection to OSDDB data base\n");
 	    return -1;
@@ -2577,7 +2577,7 @@ WhereIsCmd(struct cmd_syndesc *as, void *unused)
             afs_uint32 *p = &Outputs->int32s[0];
             if (*p) {
                 if (!osddb_client)
-                    osddb_client = init_osddb_client(cell);
+                    osddb_client = init_osddb_client(cell, 0);
 		if (!osddb_client) {
 	    	    fprintf(stderr, "Could not get connection to OSDDB data base\n");
 	    	    return -1;

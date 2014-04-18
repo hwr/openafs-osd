@@ -46,8 +46,7 @@ LIBS=${TOP_LIBDIR}/libbudb.a \
 	${TOP_LIBDIR}/libafscom_err.a \
 	${TOP_LIBDIR}/libusd.a \
 	${TOP_LIBDIR}/util.a \
-	${TOP_LIBDIR}/libprocmgmt.a \
-	${TOP_LIBDIR}/libafsosd.a
+	${TOP_LIBDIR}/libprocmgmt.a
 
 TESTOBJS=test.o
 

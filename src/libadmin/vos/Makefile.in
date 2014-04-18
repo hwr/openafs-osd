@@ -18,7 +18,6 @@ CCRULE = ${CC} ${CFLAGS} -c $?
 
 VLSERVER = ../../vlserver
 VOLSER = ../../volser
-RXOSD = ../../rxosd
 FSINT = ../../fsint
 
 ADMINOBJS =\
@@ -33,9 +32,7 @@ VLSERVEROBJS =\
 
 VOLSEROBJS =\
 	volint.cs.o \
-	volint.xdr.o \
-	volserosd.cs.o \
-	volserosd.xdr.o
+	volint.xdr.o
 
 FSINTOBJS =\
 	afsint.xdr.o \
@@ -82,12 +79,6 @@ volint.xdr.o: ${VOLSER}/volint.xdr.c
 	${CCRULE}
 
 volint.cs.o: ${VOLSER}/volint.cs.c
-	${CCRULE}
-
-volserosd.xdr.o: ${RXOSD}/volserosd.xdr.c
-	${CCRULE}
-
-volserosd.cs.o: ${RXOSD}/volserosd.cs.c
 	${CCRULE}
 
 afscbint.xdr.o: ${FSINT}/afscbint.xdr.c

@@ -18,7 +18,6 @@
 #define RXOSD_STRIPESIZEMASK    0x7
 #define RXOSD_STRIPEINFOSHIFT   56
 
-
 #if !defined (BUILD_SALVAGER)
 static afs_int32
 convert_ometa_2_1(struct oparmFree *in, struct oparmT10 *out)
@@ -75,5 +74,4 @@ convert_ometa_2_1(struct oparmFree *in, struct oparmT10 *out)
     return 0;
 }
 #endif
-
 #endif

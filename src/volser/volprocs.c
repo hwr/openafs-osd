@@ -1280,7 +1280,6 @@ VolForward(struct rx_call *acid, afs_int32 fromTrans, afs_int32 fromDate,
     afs_int32 securityIndex;
     char caller[MAXKTCNAMELEN];
     int flag = 0;
-    afs_int32 targetHasOsdSupport = 0;
 
     if (!afsconf_SuperUser(tdir, acid, caller))
 	return VOLSERBAD_ACCESS;	/*not a super user */
@@ -1317,11 +1316,13 @@ VolForward(struct rx_call *acid, afs_int32 fromTrans, afs_int32 fromDate,
 	TRELE(tt);
 	return ENOTCONN;
     }
-    /* Ccheck wether target server supports osd files */
-    if (osdvol) {
-        code = AFSVolOsdSupport(tcon, &targetHasOsdSupport);
-        if (targetHasOsdSupport)
-            flag |= TARGETHASOSDSUPPORT;
+
+    if (osdvol && V_osdPolicy(vp)) {
+	afs_int32 has_it = 0;
+	code = (osdvol->op_check_for_osd_support)(destination, tcon, securityObject,
+						  securityIndex, &has_it);
+	if (!code && has_it)
+	    flag = TARGETHASOSDSUPPORT;
     }
 
     tcall = rx_NewCall(tcon);
@@ -1417,6 +1418,8 @@ SAFSVolForwardMultiple(struct rx_call *acid, afs_int32 fromTrans, afs_int32
 	return ENOENT;
     }
     vp = tt->volume;
+    if (osdvol && V_osdPolicy(vp))
+	flag |= TARGETHASOSDSUPPORT;
     TSetRxCall(tt, NULL, "ForwardMulti");
 
     /* (fromDate == 0) ==> full dump */
@@ -1443,34 +1446,13 @@ SecondLoop:
     /* make connections to all the other servers */
     for (i = 0; i < destinations->manyDests_len; i++) {
 	struct replica *dest = &(destinations->manyDests_val[i]);
-        if (!osdvol || !secondloop)
-	    tcons[i] =
-	        rx_NewConnection(htonl(dest->server.destHost),
-			     htons(dest->server.destPort), VOLSERVICE_ID,
-			     securityObject, securityIndex);
+	tcons[i] =
+	    rx_NewConnection(htonl(dest->server.destHost),
+			 htons(dest->server.destPort), VOLSERVICE_ID,
+			 securityObject, securityIndex);
 	if (!tcons[i]) {
 	    codes[i] = ENOTCONN;
 	} else {
-	    if (osdvol) {
-                if (secondloop) {
-                    if (codes[i] != SECONDLOOP) {
-                        if (!codes[i])
-                            codes[i] = GOODCODE; /* to prevent second forward */
-                        continue;
-                    }
-                    codes[i] = 0;
-                } else {
-                    /* Ccheck wether target server supports osd files */
-                    osdsupport[i] = 0;
-                    code = AFSVolOsdSupport(tcons[i], &osdsupport[i]);
-                    if (flag == INITIAL)
-                        flag = osdsupport[i];
-                    else if (flag != osdsupport[i]) {
-                        codes[i] = SECONDLOOP;
-                        continue;
-                    }
-                }
-	    }
 	    if (!(tcalls[i] = rx_NewCall(tcons[i])))
 		codes[i] = ENOTCONN;
 	    else {
@@ -1489,23 +1471,6 @@ SecondLoop:
 
     /* these next calls implictly call rx_Write when writing out data */
     code = DumpVolMulti(tcalls, i, vp, fromDate, flag, codes);
-    if (osdvol) {
-        if (secondloop) {
-            for (j = 0; j<i; j++)
-                if (codes[i] == GOODCODE)
-                    codes[i] = 0;
-        } else if (!code) {
-            for (j = 0; j<i; j++)
-                if (codes[j] == SECONDLOOP) {
-                    if (flag == TARGETHASOSDSUPPORT)
-                        flag = 0;
-                    else
-                        flag = TARGETHASOSDSUPPORT;
-                    secondloop = 1;
-                    goto SecondLoop;
-                }
-        }
-    }
 
   fail:
     for (i--; i >= 0; i--) {
