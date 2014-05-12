@@ -1962,7 +1962,7 @@ free_osd_segm_descList(struct osd_segm_descList *l)
 
 afs_int32
 fill_osd_file(Vnode *vn, struct async *a,
-	afs_int32 flag, afs_uint32 *fileno, afs_uint32 user)
+	afs_int32 flag, afs_int32 *fileno, afs_uint32 user)
 {
     struct osd_p_fileList list;
     struct osd_segm_descList rlist;
@@ -4692,7 +4692,7 @@ get_osd_location1(Volume *vol, Vnode *vn, afs_uint32 flag, afs_uint32 user,
     afs_int32 code = 0;
     afs_int32 code2, i, j;
     int metadataChanged = 0;
-    afs_uint32 fileno;
+    afs_int32 fileno;
     struct osd_file1 *file = 0;
    
     if (a->type != 1)
@@ -4784,7 +4784,7 @@ get_osd_location2(Volume *vol, Vnode *vn, afs_uint32 flag, afs_uint32 user,
     afs_int32 code = 0;
     afs_int32 code2, i, j;
     int metadataChanged = 0;
-    afs_uint32 fileno;
+    afs_int32 fileno;
     struct osd_file2 *file = 0;
    
     if (a->type !=2)
@@ -5356,7 +5356,7 @@ xchange_data_with_osd(struct rx_call *acall, Vnode **vnP, afs_uint64 offset,
 	 * the sleep to allow the rxosd to do the RXAFS_SetOsdFileReady. 
 	 */
 	struct osd_file2 file;
-	afs_uint32 fileno;
+	afs_int32 fileno;
         Error code2;
 	file.segmList.osd_segm2List_len = 0;
 	file.segmList.osd_segm2List_val = 0;
