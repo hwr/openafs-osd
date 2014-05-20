@@ -871,6 +871,7 @@ GetPoliciesCmd(struct cmd_syndesc *as, void *unused)
     afs_uint32 vol_policy, dir_policy;
     int format = POL_OUTPUT_CRYPTIC;
 
+    InitializeCBService();
     InitPioctlParams(Inputs, Outputs, CMD_GET_POLICIES);
 
     if ( as->parms[4].items )                                   /* -cell */
