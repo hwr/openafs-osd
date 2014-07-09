@@ -8,11 +8,13 @@
 #ifndef _AFSOSD_H_
 #define _AFSOSD_H_ 1
 
+#ifndef BUILDING_OSDDBSERVER
 struct volser_trans;
 struct host;
 struct client;
 
-#include "afs/vnode.h"
+#endif
+
 /* 
  * This version number should be incremented whenever changes to the structs
  * or parameters of the operations occur. The number is compiled into the
@@ -24,7 +26,7 @@ struct client;
  *	change configure must be executed!
  */
  
-#define LIBAFSOSD_VERSION 24
+#define LIBAFSOSD_VERSION 26
 
 /*
  * In git master the major version number is 1 
@@ -34,10 +36,77 @@ struct client;
 #define LIBAFSOSD_MAJOR_VERSION 0
 
 /*
+ *   afsosd.h is included in the following source files:
+ *
+ *   in src/dviced src/dvolser src/tsalvaged src/viced src/tvolser
+ *   src/vol/clone.c
+ *   src/vol/purge.c
+ *   src/vol/vnode.c
+ *   src/volume.c
+ *
+ *   in src/tsalvaged src/vol to build dasalvager
+ *   src/rxosd/libafsosd.c      -DBUILD_SALVAGER
+ *   src/vol/vol-salvage.c      -DBUILD_SALVAGER
+ *
+ *   in src/viced src/dviced to build dafileserver or fileserver
+ *   src/rxosd/libafsosd.c      -DBUILDING_FILESERVER
+ *   src/viced/afsfileprocs.c   -DBUILDING_FILESERVER
+ *   src/viced/viced.c          -DBUILDING_FILESERVER
+ *
+ *   in src/tvolser src/dvolser to build davolserver or volserver
+ *   src/rxosd/libafsosd.c      -DBUILDING_VOLSERVER
+ *   src/volser/dumpstuff.c
+ *   src/volser/volmain.c
+ *   src/volser/volprocs.c
+ *   src/volser/vol_split.c
+ *
+ *   in src/rxosd to build osddbserver
+ *   src/rxosd/libafsosd.c      -DBUILDING_OSDDBSERVER
+ *
+ *   in src/rxosd to build libafsosd.so.1.xx and libdafsosd.so.1.xx
+ *   src/xsosd/libafsosd.c      -DBUILD_SHLIBAFSOSD
+ *   src/rxosd/vol_osd.c       -DBUILD_SHLIBAFSOSD
+ *   src/rxosd/osddbpolicy.c
+ *   src/rxosd/osddbprocs.c    -DBUILD_SHLIBAFSOSD -DBUILDING_OSDDBSERVER
+ *   src/rxosd/osddbserver.c   -DBUILDING_OSDDBSERVER
+ *   src/rxosd/osddbuser.c
+ *
+ *   in src/rxosd to build libcafsosd.so.1.xx for commands fs and vos
+ *   src/rxosd/libafsosd.c      -DBUILDING_CLIENT_COMMAND
+ *   src/rxosd/venusosd.c      -DBUILDING_CLIENT_COMMAND
+ *   src/rxosd/vicedosd.c      -DBUILDING_CLIENT_COMMAND
+ *   src/rxosd/vososd.c        -DBUILD_SHLIBAFSOSD -DBUILD_CLIENT_COMMAND
+ */
+#if defined(BUILDING_FILESERVER) || defined(BUILDING_VOLSERVER) || defined(BUILD_SHLIBAFSOSD)
+# include <afs/vnode.h>
+#elif !defined(BUILDING_CLIENT_COMMAND) && !defined(BUILDING_OSDDBSERVER)
+# ifdef AFS_PTHREAD_ENV
+#  include <afs/vnode.h>
+# else
+#  include "vnode.h"
+# endif
+#endif
+#if defined(BUILD_SHLIBAFSOSD) || defined(BUILDING_VOLSERVER) || defined(BUILDING_CLIENT_COMMAND)
+# ifdef AFS_PTHREAD_ENV
+#  include <afs/volint.h>
+# else
+#  include "volint.h"
+# endif
+#endif
+#ifndef VOLSEROSD_SERVICE
+# define VOLSEROSD_SERVICE     7
+#endif
+#if defined(BUILDING_CLIENT_COMMAND)
+extern struct ubik_client *init_osddb_client(char *cell, int localauth);
+#else
+extern struct ubik_client *init_osddb_client(char *unused);
+#endif
+
+/*
  *	Unspecific operations used in general servers provided by AFS/OSD
  */
 
-#if !defined(BUILDING_VLSERVER) && !defined(BUILDING_CLIENT_COMMAND)
+#if !defined(BUILDING_CLIENT_COMMAND) && !defined(BUILDING_OSDDBSERVER)
 struct osd_vol_ops_v0 {
     int (*op_salv_OsdMetadata) (FdHandle_t *fd, struct VnodeDiskObject *vd,
 				afs_uint32 vn, afs_uint32 entrylength, void *rock,
@@ -97,10 +166,15 @@ struct osd_vol_ops_v0 {
     int (*op_split_objects) (struct Volume *vol, struct Volume *newvol,
 			     struct VnodeDiskObject *vd, afs_uint32 vN);
     int (*op_setOsdPolicy) (struct Volume *vp, afs_int32 osdPolicy);
+    int (*op_check_for_osd_support) (struct destServer *destination,
+				     struct rx_connection *tconn,
+				     struct rx_securityClass *securityObject,
+				     afs_int32 securityIndex,
+				     afs_int32 *hasOsdSupport);
 };
 
 extern struct osd_vol_ops_v0 *osdvol;
-#endif /* !defined(BUILDING_VLSERVER) && !defined(BUILDING_CLIENT_COMMAND) */
+#endif /* !BUILDING_CLIENT_COMMAND && !BUILDING_OSDDBSERVER */
 /*
  *	Unspecific data pointers used in AFS/OSD provided by general servers
  */
@@ -134,25 +208,26 @@ struct rxosd_conn {
     char checked;
 };
 
-#if defined(_AFS_VICED_HOST_H) || (defined(BUILD_SHLIBAFSOSD) && !defined(BUILDING_VLSERVER))
+# if defined(_AFS_VICED_HOST_H) || (defined(BUILD_SHLIBAFSOSD) && !defined(BUILDING_OSDDBSERVER))
 /* 
  *	Special stuff for the fileserver
  */
-#define CALLED_FROM_START_ASYNC 0x40000000
-#define CALLED_FROM_STOREDATA   0x20000000
-#define CALLED_FROM_FETCHDATA   0x10000000
+#  define CALLED_FROM_START_ASYNC 0x40000000
+#  define CALLED_FROM_STOREDATA   0x20000000
+#  define CALLED_FROM_FETCHDATA   0x10000000
 
 /* 
  *	Operations used in AFS/OSD provided by the general fileserver
  */
 
-#if defined(BUILD_SHLIBAFSOSD)
-#include <afs/ptint.h>
-#include <afs/host.h>
+#  if defined(BUILD_SHLIBAFSOSD)
+#   include <afs/ptint.h>
+#   include <afs/host.h>
+#   ifndef BUILDING_OSDDBSERVER
 /* Prototypes for routines which come from afsfileprocs.c */
 extern int CallPostamble(struct rx_connection *aconn, afs_int32 ret,
 			 struct host *ahost);
-extern int CallPreamble(struct rx_call *acall, int activecall,
+extern int CallPreamble(struct rx_call *acall, int activecall, AFSFid *Fid,
                         struct rx_connection **tconn, struct host **ahostp);
 extern int Check_PermissionRights(struct Vnode * targetptr, struct client *client,
                                   afs_int32 rights, int CallingRoutine,
@@ -185,15 +260,15 @@ extern int createAsyncTransaction(struct rx_call *call, AFSFid *Fid,
 extern struct Volume * getAsyncVolptr(struct rx_call *call, AFSFid *Fid,
 				      afs_uint64 transid, afs_uint64 *offset,
 				      afs_uint64 *length);
-extern afs_int32  extendAsyncTransaction(
-        struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
-        afs_uint32 *expires);
-
+extern afs_int32  extendAsyncTransaction(struct rx_call *acall,
+					 AFSFid *Fid, afs_uint64 transid,
+					 afs_uint32 *expires);
 extern int setActive(struct rx_call *call, afs_uint32 num, AFSFid * fid,
 		     afs_int32 source);
 extern void setInActive(afs_int32 i);
 extern int setLegacyFetch(afs_int32 i);
-#endif /* BUILD_SHLIBAFSOSD */
+#   endif /* BUILDING_OSDDBSERVER */
+#  endif /* BUILD_SHLIBAFSOSD */
 
 struct viced_ops_v0 {
     int (*AddCallBack1) (struct host *host, AFSFid *fid, afs_uint32 *thead,
@@ -201,7 +276,7 @@ struct viced_ops_v0 {
     int (*BreakCallBack) (struct host *xhost, AFSFid * fid, int flag);
     int (*CallPostamble) (struct rx_connection *aconn, afs_int32 ret,
                           struct host *ahost);
-    int (*CallPreamble) (struct rx_call *acall, int activecall,
+    int (*CallPreamble) (struct rx_call *acall, int activecall, AFSFid *Fid,
                          struct rx_connection **tconn, struct host **ahostp);
     int (*Check_PermissionRights) (struct Vnode * targetptr, struct client *client,
                                    afs_int32 rights, int CallingRoutine,
@@ -285,7 +360,7 @@ struct osd_viced_ops_v0 {
 			    AFSFetchStatus *status);
     int (*op_FsCmd) (struct rx_call * acall, struct AFSFid * Fid,
 		     struct FsCmdInputs * Inputs, struct FsCmdOutputs * Outputs);
-#ifndef NO_BACKWARD_COMPATIBILITY
+#  ifndef NO_BACKWARD_COMPATIBILITY
     int  (*op_SRXAFS_ServerPath0) (struct rx_call * acall, AFSFid *Fid, afs_int32 writing,
             		    afs_uint64 *ino, afs_uint32 *lun,  afs_uint32 *RWvol,
             		    afs_int32 *algorithm, afs_uint64 *maxSize,
@@ -394,7 +469,7 @@ struct osd_viced_ops_v0 {
 				     struct asyncError *ae,
 				     struct AFSStoreStatus *InStatus,
 				     struct AFSFetchStatus *OutStatus);
-#endif
+#  endif /* !NO_BACKWARD_COMPATIBILITY */
     int (*op_RXAFSOSD_ExecuteRequest) (struct rx_call *acall);
 };
 extern struct osd_viced_ops_v0 *osdviced;
@@ -422,20 +497,15 @@ struct init_viced_outputs {
 
 extern int init_viced_afsosd(char *afsversion, char** afsosdVersion, void *inrock,
 			      void *outrock, void *libafsosdrock, afs_int32 version);
-#endif
+# endif /* _AFS_VICED_HOST_H || (BUILD_SHLIBAFSOSD && !BUILDING_OSDDBSERVER) */
+#endif /* !COMPILING_OSDDBUSER */
 
 #if defined(_RXGEN_VOLINT_) || defined(BUILD_SHLIBAFSOSD)
-#ifdef BUILD_SHLIBAFSOSD
-#include "volint.h"
-#else
-#include <afs/volint.h>
-#endif
-
 /* 
  *  Operations (hooks) used by the general volserver provided by AFS/OSD
  */
 
-#ifndef BUILDING_VOLSERVER
+# if !defined(BUILDING_VOLSERVER) && !defined(BUILDING_OSDDBSERVER)
 struct osd_volser_ops_v0 {
     int (*op_SAFSVOLOSD_ListObjects) (struct rx_call *acall, afs_uint32 vid,
 				      afs_int32 flag, afs_int32 osd,
@@ -463,7 +533,7 @@ extern struct osd_volser_ops_v0 *osdvolser;
 struct volser_data_v0 {
     afs_int32 *aConvertToOsd;
 };
-#endif /* ! BUILDING_VOLSERVER */
+# endif /* ! BUILDING_VOLSERVER && ! BUILDING_OSDDBSERVER */
 
 struct init_volser_inputs {
     struct vol_data_v0 *voldata;
@@ -482,11 +552,7 @@ extern int init_volser_afsosd(char *afsversion, char** afsosdVersion, void *inro
 struct init_salv_inputs {
     struct vol_data_v0 *voldata;
 };
-#ifdef BUILD_SALVAGER
-/*
-private struct vol_data_v0 *voldata;
-*/
-#else
+#ifndef BUILD_SALVAGER
 extern struct vol_data_v0 *voldata;
 #endif
 
@@ -497,7 +563,7 @@ struct init_salv_outputs {
 extern int init_salv(char *version, char **afsosdVersion, void *inputs,
 		     void *Outputs, void *libafsosdrock);
 
-#ifdef BUILDING_VLSERVER
+#if defined(BUILDING_OSDDBSERVER)
 struct osddb_ops_v0 {
     afs_int32 (*op_OSDDB_ExecuteRequest) (struct rx_call *acall);
 };
@@ -516,20 +582,19 @@ struct init_osddb_outputs {
 extern int init_osdvol(char *version, char **afsosdVersion,
 		       struct osd_vol_ops_v0 **osdvol);
 extern int load_libafsosd( char *initroutine, void *Inputs, void *Outputs);
-#endif /* COMPILING_OSDDBUSER */
 #ifdef BUILD_SHLIBAFSOSD
-#ifdef BUILD_LIBAFSOSD_A
-#undef ViceLog
-#define ViceLog(level, str) do { (FSLog str); } while(0)
-#else /* BUILD_LIBAFSOSD_A */
+# ifdef BUILD_LIBAFSOSD_A
+#  undef ViceLog
+#  define ViceLog(level, str) do { (FSLog str); } while(0)
+# else /* BUILD_LIBAFSOSD_A */
 extern afs_int32 libafsosd_init(void *rock, afs_int32 version);
-#undef ViceLog
-#ifdef BUILD_SALVAGER
-#define ViceLog(level, str) (Log str);
-#else /* BUILD_SALVAGER */
-#define ViceLog(level, str)  do { if ((level) <= *(voldata->aLogLevel)) (FSLog str); } while (0)
-#endif /* BUILD_SALVAGER */
-#endif /* BUILD_LIBAFSOSD_A */
+#  undef ViceLog
+#  ifdef BUILD_SALVAGER
+#   define ViceLog(level, str) (Log str);
+#  else /* BUILD_SALVAGER */
+#   define ViceLog(level, str)  do { if ((level) <= *(voldata->aLogLevel)) (FSLog str); } while (0)
+#  endif /* BUILD_SALVAGER */
+# endif /* BUILD_LIBAFSOSD_A */
 #endif /* BUILD_SHLIBAFSOSD */
 
 /* more prototypes ... */
@@ -539,10 +604,9 @@ extern int IsPartValid(afs_int32 partId, afs_uint32 server, afs_int32 *code);
 int VolNameOK(char *name);
 struct nvldbentry;
 void GetServerAndPart(struct nvldbentry *entry, int voltype, afs_uint32 *server,
-                     afs_int32 *part, int *previdx);
+                      afs_int32 *part, int *previdx);
 
 struct ubik_client;
 extern int ubik_Call (int (*aproc) (struct rx_connection*,...), struct ubik_client *aclient, afs_int32 aflags, ...);
 
-#endif
-
+#endif /* ! _AFSOSD_H_ */

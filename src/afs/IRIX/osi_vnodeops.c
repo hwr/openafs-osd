@@ -957,7 +957,7 @@ OSI_VC_DECL(avc);
 	if (afs_BBusy()) {
 	    /* do it yourself if daemons are all busy */
 	    ObtainWriteLock(&avc->lock, 239);
-	    code = afs_StoreOnLastReference(avc, &treq, acred);
+	    code = afs_StoreOnLastReference(avc, &treq);
 	    ReleaseWriteLock(&avc->lock);
 	    /* BStore does CheckCode so we should also */
 	    /* VNOVNODE is "acceptable" error code from close, since
@@ -983,7 +983,6 @@ OSI_VC_DECL(avc);
 		tb->flags |= BUWAIT;
 		afs_osi_Sleep(tb);
 	    }
-	    code = tb->code;
 	    afs_BRelease(tb);
 	}
     } else {
@@ -1142,7 +1141,7 @@ OSI_VC_DECL(avc);
 	    avc->execsOrWriters -= mapcnt - 1;
 	    avc->opens -= mapcnt - 1;
 	    avc->mapcnt -= mapcnt;
-	    code = afs_StoreOnLastReference(avc, &treq, acred);
+	    code = afs_StoreOnLastReference(avc, &treq);
 	    /* The following behavior mimics the behavior in afs_close. */
 	    if (code == VNOVNODE || code == ENOENT)
 		code = 0;

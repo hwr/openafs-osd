@@ -91,7 +91,7 @@
 #endif
 
 afs_int32 defaultLinkCount = 16;
-extern int log_open_close;
+int log_open_close = 0;
 
 afs_int32 hsmDev = -1;
 extern afs_int32 maxDontUnlinkDev;

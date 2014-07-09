@@ -74,6 +74,7 @@ extern char **osdExportedVariablesPtr;
 
 struct volser_data_v0 *volserdata = NULL;
 extern struct vol_data_v0 *voldata;
+extern struct volser_trans *NewTrans(afs_uint32 avol, afs_int32 apart);
 
 /*@+fcnmacros +macrofcndecl@*/
 #ifdef O_LARGEFILE

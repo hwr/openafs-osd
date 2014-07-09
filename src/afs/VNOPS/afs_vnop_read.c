@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -12,7 +12,7 @@
  * afs_MemRead
  * afs_PrefetchChunk
  * afs_UFSRead
- * 
+ *
  */
 
 #include <afsconfig.h>
@@ -50,7 +50,8 @@ afs_MemRead(struct vcache *avc, struct uio *auio,
     afs_size_t totalLength;
     afs_size_t transferLength;
     afs_size_t filePos;
-    afs_size_t offset, len, tlen;
+    afs_size_t offset, tlen;
+    afs_size_t len = 0;
     afs_int32 trimlen;
     struct dcache *tdc = 0;
     afs_int32 error, trybusy = 1;
@@ -111,6 +112,16 @@ afs_MemRead(struct vcache *avc, struct uio *auio,
      * Locks held:
      * avc->lock(R)
      */
+
+    /* This bit is bogus. We're checking to see if the read goes past the
+     * end of the file. If so, we should be zeroing out all of the buffers
+     * that the client has passed into us (there is a danger that we may leak
+     * kernel memory if we do not). However, this behaviour is disabled by
+     * not setting len before this segment runs, and by setting len to 0
+     * immediately we enter it. In addition, we also need to check for a read
+     * which partially goes off the end of the file in the while loop below.
+     */
+
     if (filePos >= avc->f.m.Length) {
 	if (len > AFS_ZEROS)
 	    len = sizeof(afs_zeros);	/* and in 0 buffer */
@@ -147,7 +158,7 @@ afs_MemRead(struct vcache *avc, struct uio *auio,
 	     * mean that we're fetching the latest version of the file?  No.
 	     * The server could update the file as soon as the fetch responsible
 	     * for the setting of the DFFetching flag completes.
-	     * 
+	     *
 	     * However, the presence of the DFFetching flag (visible under
 	     * a dcache read lock since it is set and cleared only under a
 	     * dcache write lock) means that we're fetching as good a version
@@ -158,17 +169,17 @@ afs_MemRead(struct vcache *avc, struct uio *auio,
 	     * the fetch starts), to the time it goes off (after the fetch
 	     * completes), afs_GetDCache keeps at least a read lock on the
 	     * vcache entry.
-	     * 
+	     *
 	     * This means that if the DFFetching flag is set, we can use that
 	     * data for any reads that must come from the current version of
 	     * the file (current == m.DataVersion).
-	     * 
+	     *
 	     * Another way of looking at this same point is this: if we're
 	     * fetching some data and then try do an afs_VerifyVCache, the
 	     * VerifyVCache operation will not complete until after the
 	     * DFFetching flag is turned off and the dcache entry's f.versionNo
 	     * field is updated.
-	     * 
+	     *
 	     * Note, by the way, that if DFFetching is set,
 	     * m.DataVersion > f.versionNo (the latter is not updated until
 	     * after the fetch completes).
@@ -265,16 +276,16 @@ afs_MemRead(struct vcache *avc, struct uio *auio,
 		error = code;
 		break;
 	    }
-	    /* fetching flag gone, data is here, or we never tried 
+	    /* fetching flag gone, data is here, or we never tried
 	     * (BBusy for instance) */
 	    len = tdc->validPos - filePos;
 	    versionOk = hsame(avc->f.m.DataVersion, tdc->f.versionNo) ? 1 : 0;
 	    if (tdc->dflags & DFFetching) {
-		/* still fetching, some new data is here: 
+		/* still fetching, some new data is here:
 		 * compute length and offset */
 		offset = filePos - AFS_CHUNKTOBASE(tdc->f.chunk);
 	    } else {
-		/* no longer fetching, verify data version 
+		/* no longer fetching, verify data version
 		 * (avoid new GetDCache call) */
 		if (versionOk && len > 0) {
 		    offset = filePos - AFS_CHUNKTOBASE(tdc->f.chunk);
@@ -358,7 +369,7 @@ printf("afs_read: forground %u.%u.%u\n", avc->f.fid.Fid.Volume, avc->f.fid.Fid.V
 	    trimlen = len;
 	    afsio_trim(&tuio, trimlen);
 #endif
-	    AFS_UIOMOVE(afs_zeros, trimlen, UIO_READ, tuiop, code);
+	        AFS_UIOMOVE(afs_zeros, trimlen, UIO_READ, tuiop, code);
 	    if (code) {
 		error = code;
 		break;
@@ -532,7 +543,8 @@ afs_UFSRead(struct vcache *avc, struct uio *auio,
     afs_size_t totalLength;
     afs_size_t transferLength;
     afs_size_t filePos;
-    afs_size_t offset, len, tlen;
+    afs_size_t offset, tlen;
+    afs_size_t len = 0;
     afs_int32 trimlen;
     struct dcache *tdc = 0;
     afs_int32 error;
@@ -553,7 +565,7 @@ afs_UFSRead(struct vcache *avc, struct uio *auio,
 	return EIO;
 
     AFS_DISCON_LOCK();
-    
+
     /* check that we have the latest status info in the vnode cache */
     if ((code = afs_InitReq(&treq, acred)))
 	return code;
@@ -599,6 +611,15 @@ afs_UFSRead(struct vcache *avc, struct uio *auio,
     }
 #endif
 
+    /* This bit is bogus. We're checking to see if the read goes past the
+     * end of the file. If so, we should be zeroing out all of the buffers
+     * that the client has passed into us (there is a danger that we may leak
+     * kernel memory if we do not). However, this behaviour is disabled by
+     * not setting len before this segment runs, and by setting len to 0
+     * immediately we enter it. In addition, we also need to check for a read
+     * which partially goes off the end of the file in the while loop below.
+     */
+
     if (filePos >= avc->f.m.Length) {
 	if (len > AFS_ZEROS)
 	    len = sizeof(afs_zeros);	/* and in 0 buffer */
@@ -635,7 +656,7 @@ afs_UFSRead(struct vcache *avc, struct uio *auio,
 	     * mean that we're fetching the latest version of the file?  No.
 	     * The server could update the file as soon as the fetch responsible
 	     * for the setting of the DFFetching flag completes.
-	     * 
+	     *
 	     * However, the presence of the DFFetching flag (visible under
 	     * a dcache read lock since it is set and cleared only under a
 	     * dcache write lock) means that we're fetching as good a version
@@ -646,17 +667,17 @@ afs_UFSRead(struct vcache *avc, struct uio *auio,
 	     * the fetch starts), to the time it goes off (after the fetch
 	     * completes), afs_GetDCache keeps at least a read lock on the
 	     * vcache entry.
-	     * 
+	     *
 	     * This means that if the DFFetching flag is set, we can use that
 	     * data for any reads that must come from the current version of
 	     * the file (current == m.DataVersion).
-	     * 
+	     *
 	     * Another way of looking at this same point is this: if we're
 	     * fetching some data and then try do an afs_VerifyVCache, the
 	     * VerifyVCache operation will not complete until after the
 	     * DFFetching flag is turned off and the dcache entry's f.versionNo
 	     * field is updated.
-	     * 
+	     *
 	     * Note, by the way, that if DFFetching is set,
 	     * m.DataVersion > f.versionNo (the latter is not updated until
 	     * after the fetch completes).
@@ -873,17 +894,17 @@ printf("afs_read: avoid forground %u.%u.%u\n", avc->f.fid.Fid.Volume, avc->f.fid
 	    code =
 		VNOP_RDWR(tfile->vnode, UIO_READ, FREAD, &tuio, NULL, NULL);
 	    /* Flush all JFS pages now for big performance gain in big file cases
-	     * If we do something like this, must check to be sure that AFS file 
+	     * If we do something like this, must check to be sure that AFS file
 	     * isn't mmapped... see afs_gn_map() for why.
 	     */
 /*
 	  if (tfile->vnode->v_gnode && tfile->vnode->v_gnode->gn_seg) {
  many different ways to do similar things:
    so far, the best performing one is #2, but #1 might match it if we
-   straighten out the confusion regarding which pages to flush.  It 
+   straighten out the confusion regarding which pages to flush.  It
    really does matter.
    1.	    vm_flushp(tfile->vnode->v_gnode->gn_seg, 0, len/PAGESIZE - 1);
-   2.	    vm_releasep(tfile->vnode->v_gnode->gn_seg, offset/PAGESIZE, 
+   2.	    vm_releasep(tfile->vnode->v_gnode->gn_seg, offset/PAGESIZE,
 			(len + PAGESIZE-1)/PAGESIZE);
    3.	    vms_inactive(tfile->vnode->v_gnode->gn_seg) Doesn't work correctly
    4.  	    vms_delete(tfile->vnode->v_gnode->gn_seg) probably also fails
@@ -892,9 +913,9 @@ printf("afs_read: avoid forground %u.%u.%u\n", avc->f.fid.Fid.Volume, avc->f.fid
    6.       ipgrlse
    7.       ifreeseg
           Unfortunately, this seems to cause frequent "cache corruption" episodes.
-   	    vm_releasep(tfile->vnode->v_gnode->gn_seg, offset/PAGESIZE, 
+   	    vm_releasep(tfile->vnode->v_gnode->gn_seg, offset/PAGESIZE,
 			(len + PAGESIZE-1)/PAGESIZE);
-	  }	
+	  }
 */
 #elif defined(AFS_AIX_ENV)
 	    code =
@@ -954,11 +975,11 @@ printf("afs_read: avoid forground %u.%u.%u\n", avc->f.fid.Fid.Volume, avc->f.fid
 	    VOP_UNLOCK(tfile->vnode, 0, curthread);
 	    AFS_GLOCK();
 #elif defined(AFS_NBSD_ENV)
-	    AFS_GUNLOCK();
-	    VOP_LOCK(tfile->vnode, LK_EXCLUSIVE);
-	    code = VOP_READ(tfile->vnode, &tuio, 0, afs_osi_credp);
-	    VOP_UNLOCK(tfile->vnode, 0);
-	    AFS_GLOCK();
+            AFS_GUNLOCK();
+            VOP_LOCK(tfile->vnode, LK_EXCLUSIVE);
+            code = VOP_READ(tfile->vnode, &tuio, 0, afs_osi_credp);
+            VOP_UNLOCK(tfile->vnode, 0);
+            AFS_GLOCK();
 
 #elif defined(AFS_XBSD_ENV)
 	    AFS_GUNLOCK();

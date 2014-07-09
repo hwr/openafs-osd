@@ -482,7 +482,7 @@ vsu_GetVolumeID(char *astring, struct ubik_client *acstruct, afs_int32 *errp)
 	char *end;
 	afs_uint32 result;
 	result = strtoul(astring, &end, 10);
-	if ((result != UINT_MAX && *end == '\0') || *end == '.')
+	if (result != UINT_MAX && *end == '\0' || *end == '.')
 	    return result;
     }
 

@@ -774,3 +774,19 @@ SRXAFSCB_GetCellByNum(struct rx_call *a_call, afs_int32 a_index,
 {
     return RXGEN_OPCODE;
 }				/* SRXAFSCB_GetCellByNum */
+
+int
+SRXAFSCB_GetDCacheEntry(struct rx_call *a_call, afs_int32 a_index,
+			struct AFSDCacheEntry *a_result)
+{
+    return RXGEN_OPCODE;
+}
+
+int
+SRXAFSCB_GetDCacheEntryL(struct rx_call *a_call, afs_int32 a_index,
+			struct AFSDCacheEntryL *a_result)
+{
+    return RXGEN_OPCODE;
+}
+
+

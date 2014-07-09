@@ -34,7 +34,6 @@ LIBS=${TOP_LIBDIR}/libvolser.a \
 	${TOP_LIBDIR}/libcmd.a \
 	${TOP_LIBDIR}/libafscom_err.a \
 	${TOP_LIBDIR}/util.a \
-	${TOP_LIBDIR}/libafsosd.a \
 	${XLIBS}
 
 OBJS =  uss_procs.o \

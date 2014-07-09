@@ -41,8 +41,8 @@
 #include <afs/auth.h>
 #include "vicedosd.h"
 #include "osddb.h"
-#include "osddbuser.h"
 #include "rxosd.h"
+#include "osddbuser.h"
 #include <afs/cellconfig.h>
 #include <ubik.h>
 #include <rx/rxkad.h>
@@ -98,6 +98,7 @@ char cellFname[256];
 
 #define VICEP_ACCESS            4               /* as in src/afs/afs.h */
 #define RX_OSD                  2               /* as in src/afs/afs.h */
+#define DEBUG_RXOSD             0x10000		/* as in src/afs/afs.h */
 #define NO_HSM_RECALL           0x20000         /* as in src/afs/afs.h */
 #define VICEP_NOSYNC            0x40000         /* as in src/afs/afs.h */
 #define RX_ENABLE_IDLEDEAD      0x80000         /* as in src/afs/afs.h */
@@ -138,43 +139,10 @@ SetDotDefault(struct cmd_item **aitemp)
     *aitemp = ti;
 }
 
-#if 0
-
-/*
-  PrintTime() already defined in 'src/cmd/cmd_out.c'. We shouldn't duplicate
-  code here.
- */
-
-void PrintTime(afs_uint32 intdate)
-{
-    time_t now, date;
-    char month[4];
-    char weekday[4];
-    int  hour, minute, second, day, year;
-    char *timestring;
-    char *months[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug",
-                         "Sep", "Oct", "Nov", "Dec"};
-    int i;
-
-    if (!intdate) printf(" never       "); else {
-        date = intdate;
-        timestring = ctime(&date);
-        sscanf(timestring, "%s %s %d %d:%d:%d %d",
-                (char *)&weekday,
-                (char *)&month, &day, &hour, &minute, &second, &year);
-        for (i=0; i<12; i++) {
-           if (!strcmp(month, months[i]))
-                break;
-        }
-        printf(" %04d-%02d-%02d %02d:%02d:%02d", year, i+1, day, hour, minute, second);
-    }
-    return;
-}
-#endif 
-
 void
 InitializeCBService_LWP(void)
 {
+    afs_int32 code;
     struct rx_securityClass *CBsecobj;
     struct rx_service *CBService;
     /* :FIXME: declaration should be moved to usable header file.
@@ -511,8 +479,8 @@ n",AFSDIR_CLIENT_ETC_DIRPATH);
     }
     code = VLDBInit(1, &info);
     if (code == 0) {
-        code = ubik_Call((int(*)(struct rx_connection*, ...))VL_GetEntryByID, uclient, 0, Fid->Volume,
-                                        -1, &vldbEntry);
+        code = ubik_Call((int(*)(struct rx_connection*, ...))VL_GetEntryByID,
+			 uclient, 0, Fid->Volume, -1, &vldbEntry);
         if (code == VL_NOENT)
             fprintf(stderr,"fs: volume %u does not exist in this cell.\n",
                       Fid->Volume);
@@ -695,6 +663,7 @@ int SRXAFSCB_GetDCacheEntryL(struct rx_call *a_call, afs_int32 index, struct AFS
 {
     return RXGEN_OPCODE;
 }
+
 
 #if 0
 /* UNUSED */
@@ -913,7 +882,7 @@ GetPoliciesCmd(struct cmd_syndesc *as, void *unused)
             printf("Directory policy %d has no effect.\n", dir_policy);
     }
     else {
-        osddb_client = init_osddb_client(cell);
+        osddb_client = init_osddb_client(cell, 0);
 	if (!osddb_client) {
 	    fprintf(stderr, "Could not get connection to OSDDB data base\n");
 	    return -1;
@@ -1186,7 +1155,7 @@ osdCmd(struct cmd_syndesc *as, void *unused)
     afs_int32 length;
     u_char fid = 0;
     int bytes;
-    
+
     if (as->name[0] == 'f')
         fid = 1;
     fname = as->parms[0].items->data;
@@ -1404,6 +1373,11 @@ ProtocolCmd(struct cmd_syndesc *as, void *unused)
     }
     streams = protocol >> 24;
     for (ti = as->parms[0].items; ti; ti = ti->next) {
+        if (strncmp(ti->data,"IDLEDEAD",strlen(ti->data)) == 0
+        || strncmp(ti->data,"idledead",strlen(ti->data)) == 0) {
+            protocol |= RX_ENABLE_IDLEDEAD;
+            blob.in_size = sizeof(afs_uint32);
+        } else
         if (strncmp(ti->data,"RXOSD",strlen(ti->data)) == 0
         || strncmp(ti->data,"rxosd",strlen(ti->data)) == 0) {
             protocol |= RX_OSD;
@@ -1426,9 +1400,21 @@ ProtocolCmd(struct cmd_syndesc *as, void *unused)
             protocol |= VICEP_ACCESS;
             blob.in_size = sizeof(afs_uint32);
         } else
+        if (strncmp(ti->data,"FASTREAD",strlen(ti->data)) == 0
+        || strncmp(ti->data,"fastread",strlen(ti->data)) == 0
+        || strncmp(ti->data,"FAST-READ",strlen(ti->data)) == 0
+        || strncmp(ti->data,"fast_read",strlen(ti->data)) == 0) {
+            protocol |= VPA_FAST_READ;
+            blob.in_size = sizeof(afs_uint32);
+        } else
         if (strncmp(ti->data,"NOSYNC",strlen(ti->data)) == 0
         || strncmp(ti->data,"nosync",strlen(ti->data)) == 0) {
             protocol |= VICEP_NOSYNC;
+            blob.in_size = sizeof(afs_uint32);
+        } else
+        if (strncmp(ti->data,"DEBUG",strlen(ti->data)) == 0
+        || strncmp(ti->data,"debug",strlen(ti->data)) == 0) {
+            protocol |= DEBUG_RXOSD;
             blob.in_size = sizeof(afs_uint32);
         } else
         {
@@ -1437,6 +1423,11 @@ ProtocolCmd(struct cmd_syndesc *as, void *unused)
         }
     }
     for (ti = as->parms[1].items; ti; ti = ti->next) {
+        if (strncmp(ti->data,"IDLEDEAD",strlen(ti->data)) == 0
+        || strncmp(ti->data,"idledead",strlen(ti->data)) == 0) {
+            protocol &= ~RX_ENABLE_IDLEDEAD;
+            blob.in_size = sizeof(afs_uint32);
+        } else
         if (strncmp(ti->data,"RXOSD",strlen(ti->data)) == 0
         || strncmp(ti->data,"rxosd",strlen(ti->data)) == 0) {
             protocol &= ~RX_OSD;
@@ -1459,9 +1450,21 @@ ProtocolCmd(struct cmd_syndesc *as, void *unused)
             protocol &= ~VICEP_ACCESS;
             blob.in_size = sizeof(afs_uint32);
         } else
+        if (strncmp(ti->data,"FASTREAD",strlen(ti->data)) == 0
+        || strncmp(ti->data,"fastread",strlen(ti->data)) == 0
+        || strncmp(ti->data,"FAST-READ",strlen(ti->data)) == 0
+        || strncmp(ti->data,"fast_read",strlen(ti->data)) == 0) {
+            protocol &= ~VPA_FAST_READ;
+            blob.in_size = sizeof(afs_uint32);
+        } else
         if (strncmp(ti->data,"NOSYNC",strlen(ti->data)) == 0
         || strncmp(ti->data,"nosync",strlen(ti->data)) == 0) {
             protocol &= ~VICEP_NOSYNC;
+            blob.in_size = sizeof(afs_uint32);
+        } else
+        if (strncmp(ti->data,"DEBUG",strlen(ti->data)) == 0
+        || strncmp(ti->data,"debug",strlen(ti->data)) == 0) {
+            protocol &= ~DEBUG_RXOSD;
             blob.in_size = sizeof(afs_uint32);
         } else
         {
@@ -1481,6 +1484,8 @@ ProtocolCmd(struct cmd_syndesc *as, void *unused)
         printf("Enabled protocols are ");
         if (protocol & VICEP_ACCESS) {
             printf(" VICEP-ACCESS");
+	    if ( protocol & VPA_FAST_READ )
+                printf(" (with fast read)");
             if ( protocol & VICEP_NOSYNC )
                 printf(" (with nosync)");
         }
@@ -1488,6 +1493,8 @@ ProtocolCmd(struct cmd_syndesc *as, void *unused)
             printf(" RXOSD");
         if (protocol & NO_HSM_RECALL)
             printf(" (no HSM recalls)");
+        if (protocol & DEBUG_RXOSD)
+            printf(" (debug)");
     } else
         printf("No protocols enabled");
     printf(".\n");
@@ -2513,7 +2520,6 @@ WhereIsCmd(struct cmd_syndesc *as, void *unused)
     char *cell = 0;
     AFSFid Fid;
     struct AFSFetchStatus OutStatus;
-#ifdef AFS_RXOSD_SUPPORT
     struct OsdList l;
     struct ubik_client *osddb_client = 0;
     struct ViceIoctl status;
@@ -2522,7 +2528,6 @@ WhereIsCmd(struct cmd_syndesc *as, void *unused)
 
     l.OsdList_val = 0;
     l.OsdList_len = 0;
-#endif /* AFS_RXOSD_SUPPORT */
     if (as->name[0] == 'f')
         fid = 1;
     if (as->parms[1].items)
@@ -2532,14 +2537,14 @@ WhereIsCmd(struct cmd_syndesc *as, void *unused)
     for (ti = as->parms[0].items; ti; ti = ti->next) {
         fname = ti->data;
         if (fid) {
-                code = get_vnode_hosts(fname, &cell, (afs_int32*)space, &Fid, 1);
+            code = get_vnode_hosts(fname, &cell, (afs_int32*)space, &Fid, 1);
             if (code) {
                 Die(errno, ti->data);
                 error = 1;
                 continue;
             }
         } else {
-                code = get_file_cell(fname, &cell, (afs_int32*)space, &Fid, &OutStatus);
+            code = get_file_cell(fname, &cell, (afs_int32*)space, &Fid, &OutStatus);
             if (code) {
                 /* old fileserver */
                 blob.out_size = AFS_PIOCTL_MAXSIZE;
@@ -2578,14 +2583,14 @@ WhereIsCmd(struct cmd_syndesc *as, void *unused)
             afs_uint32 *p = &Outputs->int32s[0];
             if (*p) {
                 if (!osddb_client)
-                    osddb_client = init_osddb_client(cell);
+                    osddb_client = init_osddb_client(cell, 0);
 		if (!osddb_client) {
 	    	    fprintf(stderr, "Could not get connection to OSDDB data base\n");
 	    	    return -1;
 		}
                 if (osddb_client && !l.OsdList_len)
                     code = ubik_Call((int(*)(struct rx_connection*,...))OSDDB_OsdList,
-                                     osddb_client, 0, &l);
+				     osddb_client, 0, &l);
                 printf(" Osds: ");
                 while (*p) {
                     for (i=0; i<l.OsdList_len; i++) {

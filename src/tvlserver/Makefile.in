@@ -132,7 +132,7 @@ vlserver: vlserver.o vlutils.o vlprocs.o vldbint.ss.o vldbint.xdr.o libafsosd.o 
 		vldbint.xdr.o libafsosd.o -ldl $(LIBS) ${MT_LIBS} ${XLIBS} ${TOP_LIBDIR}/libaudit.a ${KRB5_LIBS}
 
 vlserver.o: ${VLSERVER}/vlserver.c ${INCLS} AFS_component_version_number.o
-	${CCRULE} -DBUILDING_VLSERVER ${srcdir}/${VLSERVER}/vlserver.c
+	${CCRULE} -DBUILDING_OSDDBSERVER ${srcdir}/${VLSERVER}/vlserver.c
 
 vlutils.o: ${VLSERVER}/vlutils.c ${INCLS}
 	${CCRULE} ${srcdir}/${VLSERVER}/vlutils.c
@@ -172,7 +172,7 @@ Kvldbint.xdr.c: ${VLSERVER}/vldbint.xg
 	${RXGEN} -A -x -k -c -o $@ ${srcdir}/${VLSERVER}/vldbint.xg
 
 libafsosd.o: ${srcdir}/${RXOSD}/libafsosd.c
-	${CCRULE} -DBUILDING_VLSERVER ${srcdir}/${RXOSD}/libafsosd.c
+	${CCRULE} -DBUILDING_OSDDBSERVER ${srcdir}/${RXOSD}/libafsosd.c
 
 vlclient: vlclient.o $(OBJS) $(LIBS) ${INCLS}
 	$(CC) ${LDFLAGS} -o vlclient vlclient.o $(OBJS) $(LIBS) ${MT_LIBS} ${XLIBS} ${TOP_LIBDIR}/libcmd.a ${KRB5_LIBS}

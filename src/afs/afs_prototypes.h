@@ -362,6 +362,8 @@ extern int afs_UFSCacheStoreProc(struct rx_call *, struct osi_file *,
                                  afs_size_t *);
 extern int rxosd_bringOnline(struct vcache *avc, struct vrequest *areq,
 			     afs_int32 dontWait);
+extern void rxosd_checkProtocol(struct vcache *avc, struct vrequest *areq,
+				afs_size_t length);
 extern void fillVcacheProtocol(struct vcache *avc, struct AFSFetchStatus *astat);
 
 /* afs_icl.c */
@@ -1189,8 +1191,6 @@ int afs_fid(OSI_VC_DECL(avc), struct fid **fidpp);
 #endif
 
 /* VNOPS/afs_vnop_flock.c */
-extern afs_int32 lastWarnTime;
-
 extern void lockIdSet(struct AFS_FLOCK *flock, struct SimpleLocks *slp,
 		      int clid);
 extern int HandleFlock(struct vcache *avc, int acom,

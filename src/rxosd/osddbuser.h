@@ -40,7 +40,6 @@ extern afs_int32 FindOsdBySizeAvoid(afs_uint64 size, afs_uint32 *osd, afs_uint32
 extern afs_int32 get_restore_cand(afs_uint32 nosds, afs_uint32 *osd);
 extern afs_int32 OsdHasAccessToHSM(afs_uint32 osd_id);
 extern afs_int32 policy_uses_file_name(afs_int32 policyIndex);
-extern struct ubik_client * init_osddb_client(char *cell);
 extern afs_uint64 get_max_move_osd_size(void);
 extern afs_int32 eval_policy(unsigned int policyIndex, afs_uint64 size, char *fileName,
                              afs_int32 (*evalclient) (void *rock, afs_int32 user),

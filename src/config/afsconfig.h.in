@@ -401,6 +401,9 @@
 /* Define if your kernel has the set_nlink function */
 #undef HAVE_LINUX_SET_NLINK
 
+/* Define if your kernel has the sock_create_kern function */
+#undef HAVE_LINUX_SOCK_CREATE_KERN
+
 /* Define if your kernel has the splice_direct_to_actor function */
 #undef HAVE_LINUX_SPLICE_DIRECT_TO_ACTOR
 

@@ -83,11 +83,6 @@ SYSOBJS = \
 	setpag.o \
 	pioctl.o
 
-RXOSDOBJS = \
-	volserosd.cs.o \
-	volserosd.xdr.o
-
-
 PTSERVEROBJS = \
 	ptclient.o \
 	ptint.cs.o \
@@ -119,8 +114,7 @@ LIBOBJS = \
 	${PTSERVEROBJS} \
 	${SYSOBJS} \
 	${VOLSEROBJS} \
-	${VLDBOBJS} \
-	${RXOSDOBJS}
+	${VLDBOBJS}
 
 all: ${TOP_LIBDIR}/libafsauthent.a
 
@@ -160,7 +154,7 @@ akimpersonate.o: ${AUTH}/akimpersonate.c
 	${CCRULE} -I../auth @KRB5_CPPFLAGS@
 
 akimpersonate_v5gen.o: ${AUTH}/akimpersonate_v5gen.c
-	${CCRULE} -I../auth @KRB5_CPPFLAGS@ -I../rxkad
+	${CCRULE} -I../auth @KRB5_CPPFLAGS@ -I${srcdir}/../rxkad -I../rxkad
 
 ktc_errors.o: ${AUTH}/ktc_errors.c
 	${CCRULE}
@@ -329,12 +323,6 @@ vldbint.cs.o: ../vlserver/vldbint.cs.c
 	$(CCRULE)
 
 vl_errors.o: $(VLSERVER)/vl_errors.c
-	$(CCRULE)
-
-volserosd.cs.o: ../rxosd/volserosd.cs.c
-	$(CCRULE)
-
-volserosd.xdr.o: ../rxosd/volserosd.xdr.c
 	$(CCRULE)
 
 clean:

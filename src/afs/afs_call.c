@@ -122,7 +122,7 @@ afs_InitSetup(int preallocs)
 
     memset(afs_zeros, 0, AFS_ZEROS);
 
-    rx_SetBusyChannelError(0);  /* turn off busy call error reporting */
+    rx_SetBusyChannelError(1);  /* turn on busy call error reporting */
 
     /* start RX */
     if(!afscall_set_rxpck_received)
@@ -1393,7 +1393,13 @@ afs_shutdown(void)
     if (afs_shuttingdown)
 	return;
 
+    /* Give up all of our callbacks if we can. This must be done before setting
+     * afs_shuttingdown, since it calls afs_InitReq, which will fail if
+     * afs_shuttingdown is set. */
+    afs_FlushVCBs(2);
+
     afs_shuttingdown = 1;
+
     if (afs_cold_shutdown)
 	afs_warn("afs: COLD ");
     else
