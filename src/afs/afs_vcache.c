@@ -415,6 +415,7 @@ afs_FlushVCBs(afs_int32 lockit)
     if (AFS_IS_DISCONNECTED)
 	return ENETDOWN;
 
+
     if ((code = afs_CreateReq(&treq, afs_osi_credp)))
 	return code;
     treq->flags |= O_NONBLOCK;

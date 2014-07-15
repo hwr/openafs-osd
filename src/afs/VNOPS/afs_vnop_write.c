@@ -40,7 +40,7 @@ int
 afs_StoreOnLastReference(struct vcache *avc,
 			 struct vrequest *treq)
 {
-    int code = 0;
+    int code, code_checkcode = 0;
 
     AFS_STATCNT(afs_StoreOnLastReference);
     /* if CCore flag is set, we clear it and do the extra decrement

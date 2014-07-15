@@ -195,7 +195,7 @@ dest: restorevol voldump volser.h volint.h vos libvolser.a
 
 #
 # Misc targets
-# 
+#
 clean:
 	$(RM) -f *.o *.a core volserver volint.ss.c volint.cs.c volint.h \
 	volint.xdr.c vos volser.h volerr.c AFS_component_version_number.c restorevol voldump
