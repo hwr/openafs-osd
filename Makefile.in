@@ -338,7 +338,7 @@ dvolser: project tviced usd libafsrpc libafsauthent volser
 		echo Not building DAFS volser for ${SYS_NAME} ;;          \
 	esac
 
-rxosd: project usd libafsrpc libafsauthent vol viced tubik
+rxosd: project usd libafsrpc libafsauthent vol viced volser tubik
 	case ${WITH_OBJECT_STORAGE} in \
 	YES) ${COMPILE_PART1} rxosd ${COMPILE_PART2} ;; \
 	*)      echo not building rxosd ;; \

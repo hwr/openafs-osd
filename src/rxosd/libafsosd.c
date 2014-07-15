@@ -2008,10 +2008,10 @@ CallPostamble(struct rx_connection *aconn, afs_int32 ret, struct host *ahost)
 }
 
 int
-CallPreamble(struct rx_call *acall, int activecall,
+CallPreamble(struct rx_call *acall, int activecall, struct AFSFid *Fid,
              struct rx_connection **tconn, struct host **ahostp)
 {
-    return (viced->CallPreamble)(acall, activecall, tconn, ahostp);
+    return (viced->CallPreamble)(acall, activecall, Fid, tconn, ahostp);
 }
 
 int

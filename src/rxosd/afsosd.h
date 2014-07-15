@@ -26,7 +26,7 @@ struct client;
  *	change configure must be executed!
  */
  
-#define LIBAFSOSD_VERSION 25
+#define LIBAFSOSD_VERSION 26
 
 /*
  * In git master the major version number is 1 
@@ -227,7 +227,7 @@ struct rxosd_conn {
 /* Prototypes for routines which come from afsfileprocs.c */
 extern int CallPostamble(struct rx_connection *aconn, afs_int32 ret,
 			 struct host *ahost);
-extern int CallPreamble(struct rx_call *acall, int activecall,
+extern int CallPreamble(struct rx_call *acall, int activecall, AFSFid *Fid,
                         struct rx_connection **tconn, struct host **ahostp);
 extern int Check_PermissionRights(struct Vnode * targetptr, struct client *client,
                                   afs_int32 rights, int CallingRoutine,
@@ -276,7 +276,7 @@ struct viced_ops_v0 {
     int (*BreakCallBack) (struct host *xhost, AFSFid * fid, int flag);
     int (*CallPostamble) (struct rx_connection *aconn, afs_int32 ret,
                           struct host *ahost);
-    int (*CallPreamble) (struct rx_call *acall, int activecall,
+    int (*CallPreamble) (struct rx_call *acall, int activecall, AFSFid *Fid,
                          struct rx_connection **tconn, struct host **ahostp);
     int (*Check_PermissionRights) (struct Vnode * targetptr, struct client *client,
                                    afs_int32 rights, int CallingRoutine,

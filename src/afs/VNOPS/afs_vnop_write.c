@@ -40,7 +40,7 @@ int
 afs_StoreOnLastReference(struct vcache *avc,
 			 struct vrequest *treq)
 {
-    int code = 0;
+    int code, code_checkcode = 0;
 
     AFS_STATCNT(afs_StoreOnLastReference);
     /* if CCore flag is set, we clear it and do the extra decrement
@@ -681,7 +681,7 @@ afs_DoPartialWrite(struct vcache *avc, struct vrequest *areq)
             tb->flags |= BUWAIT;
             afs_osi_Sleep(tb);
         }
-        code = tb->code;
+        code = tb->code_raw;
         afs_BRelease(tb);
     }
     else
@@ -710,6 +710,7 @@ afs_close(OSI_VC_DECL(avc), afs_int32 aflags, afs_ucred_t *acred)
 #endif
 {
     afs_int32 code;
+    afs_int32 code_checkcode = 0;
     struct brequest *tb;
     struct vrequest treq;
 #ifdef AFS_SGI65_ENV
@@ -800,7 +801,8 @@ afs_close(OSI_VC_DECL(avc), afs_int32 aflags, afs_ucred_t *acred)
 		tb->flags |= BUWAIT;
 		afs_osi_Sleep(tb);
 	    }
-	    code = tb->code;
+	    code = tb->code_raw;
+	    code_checkcode = tb->code_checkcode;
 	    afs_BRelease(tb);
 	}
 
@@ -819,8 +821,13 @@ afs_close(OSI_VC_DECL(avc), afs_int32 aflags, afs_ucred_t *acred)
 #ifdef AFS_AIX32_ENV
 	    osi_ReleaseVM(avc, acred);
 #endif
-	    /* printf("avc->vc_error=%d\n", avc->vc_error); */
-	    code = avc->vc_error;
+	    /* We don't know what the original raw error code was, so set
+	     * 'code' to 0. But we have the afs_CheckCode-translated error
+	     * code, so put that in code_checkcode. We cannot just set code
+	     * to avc->vc_error, since vc_error is a checkcode-translated
+	     * error code, and 'code' is supposed to be a raw error code. */
+	    code = 0;
+	    code_checkcode = avc->vc_error;
 	    avc->vc_error = 0;
 	}
 	ReleaseWriteLock(&avc->lock);
@@ -831,24 +838,24 @@ afs_close(OSI_VC_DECL(avc), afs_int32 aflags, afs_ucred_t *acred)
 		avc->f.fid.Fid.Volume, avc->f.fid.Fid.Vnode, avc->f.fid.Fid.Unique);
 	}
 #ifdef	AFS_SUN5_ENV
-	else if (code == ENOSPC) {
+	else if (code == ENOSPC || code_checkcode == ENOSPC) {
 	    afs_warnuser
 		("afs: failed to store file %u.%u.%u (over quota or partition full)\n",
 		avc->f.fid.Fid.Volume, avc->f.fid.Fid.Vnode, avc->f.fid.Fid.Unique);
 	}
 #else
-	else if (code == ENOSPC) {
+	else if (code == ENOSPC || code_checkcode == ENOSPC) {
 	    afs_warnuser("afs: failed to store file %u.%u.%u (partition full)\n",
 			avc->f.fid.Fid.Volume, avc->f.fid.Fid.Vnode, avc->f.fid.Fid.Unique);
-	} else if (code == EDQUOT) {
+	} else if (code == EDQUOT || code_checkcode == EDQUOT) {
 	    afs_warnuser("afs: failed to store file %u.%u.%u (over quota)\n",
 			avc->f.fid.Fid.Volume, avc->f.fid.Fid.Vnode, avc->f.fid.Fid.Unique);
 	}
 #endif
-	else if (code != 0)
-	    afs_warnuser("afs: failed to store file %u.%u.%u (%d)\n", 
+	else if (code || code_checkcode)
+	    afs_warnuser("afs: failed to store file %u.%u.%u (%d/%d)\n",
 			avc->f.fid.Fid.Volume, avc->f.fid.Fid.Vnode, 
-			avc->f.fid.Fid.Unique, code);
+			avc->f.fid.Fid.Unique, code, code_checkcode);
 
 	/* finally, we flush any text pages lying around here */
 	hzero(avc->flushDV);
@@ -864,7 +871,8 @@ afs_close(OSI_VC_DECL(avc), afs_int32 aflags, afs_ucred_t *acred)
 #ifdef AFS_AIX32_ENV
 	    osi_ReleaseVM(avc, acred);
 #endif
-	    code = avc->vc_error;
+	    code = 0;
+	    code_checkcode = avc->vc_error;
 	    avc->vc_error = 0;
 	}
 #if defined(AFS_FBSD80_ENV)
@@ -891,7 +899,12 @@ afs_close(OSI_VC_DECL(avc), afs_int32 aflags, afs_ucred_t *acred)
     afs_close_vicep_file(avc, &treq, 0);
 #endif 
     afs_PutFakeStat(&fakestat);
-    code = afs_CheckCode(code, &treq, 5);
+
+    if (code_checkcode) {
+	code = code_checkcode;
+    } else {
+	code = afs_CheckCode(code, &treq, 5);
+    }
     return code;
 }
 

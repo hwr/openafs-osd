@@ -299,6 +299,7 @@ install: kdump-build livesys up fstrace cmdebug
 	${INSTALL} -d ${DESTDIR}${bindir}
 	${INSTALL} -d ${DESTDIR}${afssrvbindir}
 	${INSTALL} -d ${DESTDIR}${sbindir}
+	${INSTALL_PROGRAM} fs ${DESTDIR}${bindir}/fs
 	${INSTALL_PROGRAM} livesys ${DESTDIR}${bindir}/livesys
 	${INSTALL_PROGRAM} up ${DESTDIR}${bindir}/up
 	${INSTALL_PROGRAM} fstrace ${DESTDIR}${sbindir}/fstrace
@@ -333,10 +334,11 @@ install: kdump-build livesys up fstrace cmdebug
 		${INSTALL_PROGRAM} kdump64 ${DESTDIR}${sbindir}/kdump; \
 	fi
 
-dest: kdump-build livesys up fstrace cmdebug
+dest: kdump-build fs livesys up fstrace cmdebug
 	${INSTALL} -d ${DEST}/bin
 	${INSTALL} -d ${DEST}/etc
 	${INSTALL} -d ${DEST}/root.server/usr/afs/bin
+	${INSTALL_PROGRAM} fs ${DEST}/bin/fs
 	${INSTALL_PROGRAM} livesys ${DEST}/bin/livesys
 	${INSTALL_PROGRAM} up ${DEST}/bin/up
 	${INSTALL_PROGRAM} fstrace ${DEST}/etc/fstrace

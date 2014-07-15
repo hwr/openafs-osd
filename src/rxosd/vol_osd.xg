@@ -24,7 +24,6 @@
 %struct OsdList;
 %afs_int32 print_osd_metadata_verb(struct osdMetadataHandle *mh, afs_int32 verbose, struct OsdList *ol);
 
-
 %#define OSD_P_OBJ_MAGIC 0x03032004
 struct osd_p_obj {
     afs_uint64 obj_id;

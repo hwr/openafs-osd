@@ -8,39 +8,39 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
+#include <errno.h>
+#include <stdio.h>
+#ifdef HAVE_STRING_H
+# include <string.h>
+#else
+# ifdef HAVE_STRINGS_H
+#  include <strings.h>
+# endif
+#endif
+#include <stdarg.h>
+
 #include <afs/stds.h>
 #include <sys/types.h>
+#include <unistd.h>
 #include <signal.h>
 #include <sys/stat.h>
-#include <errno.h>
 #ifdef HAVE_FCNTL_H
-#include <fcntl.h>
-#endif
-#ifdef AFS_NT40_ENV
-#include <winsock2.h>
-#include <WINNT/afsevent.h>
+# include <fcntl.h>
 #endif
 #ifdef HAVE_SYS_FILE_H
-#include <sys/file.h>
+# include <sys/file.h>
 #endif
 #include <time.h>
 #ifdef HAVE_NETDB_H
-#include <netdb.h>
+# include <netdb.h>
 #endif
 #ifdef HAVE_NETINET_IN_H
-#include <netinet/in.h>
+# include <netinet/in.h>
 #endif
-#include <stdio.h>
 
-#ifdef HAVE_STRING_H
-#include <string.h>
-#else
-#ifdef HAVE_STRINGS_H
-#include <strings.h>
-#endif
-#endif
 
 #include <rx/xdr.h>
+#include "rx/rx_queue.h"
 #include <rx/rx.h>
 #include <rx/rxstat.h>
 #include <rx/rx_globals.h>

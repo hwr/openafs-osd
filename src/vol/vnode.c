@@ -612,6 +612,7 @@ VAllocVnode_r(Error * ec, Volume * vp, VnodeType type)
 #ifdef AFS_DEMAND_ATTACH_FS
     VolState vol_state_save;
 #endif
+    int rollover = 0;
 
     *ec = 0;
 
@@ -654,10 +655,13 @@ VAllocVnode_r(Error * ec, Volume * vp, VnodeType type)
         }
     }
     unique = vp->nextVnodeUnique++;
-    if (!unique)
+    if (unique == 0) {
+	rollover = 1;	/* nextVnodeUnique rolled over */
+	vp->nextVnodeUnique = 2;	/* 1 is reserved for the root vnode */
 	unique = vp->nextVnodeUnique++;
+    }
 
-    if (vp->nextVnodeUnique > V_uniquifier(vp)) {
+    if (vp->nextVnodeUnique > V_uniquifier(vp) || rollover) {
 	VUpdateVolume_r(ec, vp, 0);
 	if (*ec)
 	    return NULL;
@@ -2010,9 +2014,9 @@ int ListLockedVnodes(afs_uint32 *count, afs_uint32 maxcount, afs_uint32 **ptr)
     return 0;
 }
 
-afs_int32
+afs_int32 
 ListDiskVnode(struct Volume *vp,  afs_uint32 vnodeNumber, afs_uint32 **ptr,
-              afs_uint32 length, char *aclbuf)
+                afs_uint32 length, char *aclbuf)
 {
     struct Vnode *vnp;
     Error code, code2;

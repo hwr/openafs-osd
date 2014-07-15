@@ -751,9 +751,13 @@ afs_CacheStoreVCache(struct dcache **dcList, struct vcache *avc,
               && (avc->protocol & RX_FILESERVER)
               && (avc->f.states & CPartVisible)
               && !avc->vpacRock)  {
-		UpgradeSToWLock(&avc->lock, 1212);
-                afs_open_vicep_localFile(avc, areq);
-		ConvertWToSLock(&avc->lock);
+		if (current_fsuid() == 0) {
+		    UpgradeSToWLock(&avc->lock, 1212);
+                    afs_open_vicep_localFile(avc, areq);
+		    ConvertWToSLock(&avc->lock);
+		} else
+		    afs_warn("afs_CacheStoreVCache: fs_uid %d, avoiding open vicep file\n",
+				current_fsuid());
             }
 #endif
 
@@ -771,10 +775,14 @@ afs_CacheStoreVCache(struct dcache **dcList, struct vcache *avc,
 #if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
                 case VICEP_ACCESS:
                     if (afs_protocols & VICEP_ACCESS) {
-                        code = vpac_storeInit(avc, tc, rxconn, base, bytes, length,
+			if (current_fsuid() == 0) {
+                            code = vpac_storeInit(avc, tc, rxconn, base, bytes, length,
                                         sync, areq, &ops, &rock);
-                        if (!code)
-                            break;
+                            if (!code)
+                                break;
+			} else
+			    afs_warn("afs_CacheStoreProc: fs_uid %d, avoiding vicep access\n",
+					current_fsuid());
                     }
 #endif
                 case RX_FILESERVER:
@@ -1204,7 +1212,7 @@ rxfs_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
 #ifdef AFS_64BIT_CLIENT
     afs_uint32 length_hi = 0;
 #endif
-    afs_uint32 length, bytes;
+    afs_uint32 length = 0, bytes;
 #if defined(AFS_CACHE_BYPASS) && defined(AFS_LINUX24_ENV)
     struct nocache_read_request *bparms;
 
@@ -1286,7 +1294,8 @@ rxfs_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
 		   ICL_TYPE_POINTER, avc, ICL_TYPE_INT32, code,
 		   ICL_TYPE_OFFSET,
 		   ICL_HANDLE_OFFSET(length64));
-	*alength = length;
+	if (!code)
+	    *alength = length;
 #else /* AFS_64BIT_CLIENT */
 	RX_AFS_GUNLOCK();
 	code = StartRXAFS_FetchData(v->call, (struct AFSFid *)&avc->f.fid.Fid,
@@ -1441,17 +1450,21 @@ afs_FetchProc(struct afs_conn *tc, struct rx_connection *rxconn,
 #if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
     if (!(avc->f.fid.Fid.Vnode & 1)  /* not a directory */
       && (avc->f.states & CPartVisible) && !avc->vpacRock) {
-	int excl_locked = avc->lock.excl_locked;
-	if (!excl_locked) {
-	    ReleaseWriteLock(&adc->lock);
-	    ReleaseReadLock(&avc->lock);
-	    ObtainWriteLock(&avc->lock, 1213);
-	}
-        afs_open_vicep_localFile(avc, areq);
-	if (!excl_locked) {
-	    ConvertWToRLock(&avc->lock);
-	    ObtainWriteLock(&adc->lock, 1214);
-	}
+	if (current_fsuid() == 0) {
+	    int excl_locked = avc->lock.excl_locked;
+	    if (!excl_locked) {
+	        ReleaseWriteLock(&adc->lock);
+	        ReleaseReadLock(&avc->lock);
+	        ObtainWriteLock(&avc->lock, 1213);
+	    }
+            afs_open_vicep_localFile(avc, areq);
+	    if (!excl_locked) {
+	        ConvertWToRLock(&avc->lock);
+	        ObtainWriteLock(&adc->lock, 1214);
+	    }
+	} else
+	    afs_warn("afs_FetchProc: fs_uid %d, avoiding open vicep file\n",
+			current_fsuid());
     }
 #endif
 
@@ -1465,11 +1478,15 @@ restart:
 #if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
         case VICEP_ACCESS:
             if (afs_protocols & VICEP_ACCESS) {
-                code = vpac_fetchInit(
+		if (current_fsuid() == 0) {
+                    code = vpac_fetchInit(
 			    tc, rxconn, avc, base, size, &length, bypassparms,
 			    fP, areq, &ops, &rock);
-                if (!code)
-                    break;
+                    if (!code)
+                        break;
+		} else
+		    afs_warn("afs_FetchProc: fs_uid %d, avoiding vicep access\n",
+				current_fsuid());
             }
 #endif
         case RX_FILESERVER:

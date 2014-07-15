@@ -1390,6 +1390,7 @@ FiveMinuteCheckLWP(void* unused)
 #define MAXPARALLELFETCHES 8
 #define MAXFETCHREQUESTSPERUSER 200
 afs_uint32 maxParallelFetches = 4;
+afs_uint32 maxParallelXfers = 4;
 afs_uint32 maxFetchRequestsPerUser = MAXFETCHREQUESTSPERUSER;
 
 struct fetch_process FetchProc[MAXPARALLELFETCHES];
@@ -1404,6 +1405,7 @@ StartFetch(void)
     namei_t name;
     afs_int32 i, Maxfd;
     int do_release = 0;
+    int num_xfers=0;
 
     QUEUE_LOCK;
     for (i=0; i<maxParallelFetches; i++) {
@@ -1413,6 +1415,16 @@ StartFetch(void)
     if (i == maxParallelFetches) {
 	QUEUE_UNLOCK;
 	return;
+    }
+    for (f=rxosd_fetchq; f; f=f->next) {
+       if (f->state == XFERING ) {
+           num_xfers += 1;
+       }
+    }
+    if (num_xfers >= maxParallelXfers) {
+        ViceLog(0,("StartFetch: already %d xfers in progress. not starting anything new\n", num_xfers));
+        QUEUE_UNLOCK;
+        return;
     }
     for (f=rxosd_fetchq; f; f=f->next) {		
 	if (f->index<0) {
@@ -6706,6 +6718,9 @@ Variable(struct rx_call *call, afs_int32 cmd, char *name,
         } else if (!strcmp(name, "maxParallelFetches")) {
 	    *result = maxParallelFetches;
 	    code = 0;
+        } else if (!strcmp(name, "maxParallelXfers")) {
+	    *result = maxParallelXfers;
+	    code = 0;
         } else if (!strcmp(name, "MBperSecSleep")) {
 	    *result = MBperSecSleep;
 	    code = 0;
@@ -6772,7 +6787,7 @@ Variable(struct rx_call *call, afs_int32 cmd, char *name,
 	    }
             maxFetchRequestsPerUser = value;
 	    *result = maxFetchRequestsPerUser;
-            ViceLog(0,("SetVariable: maxParallelFetches set to %u\n",
+            ViceLog(0,("SetVariable: maxFetchRequestsPerUser set to %u\n",
                 			maxFetchRequestsPerUser));
 	    code = 0;
         } else if (!strcmp(name, "maxParallelFetches")) {
@@ -6785,6 +6800,16 @@ Variable(struct rx_call *call, afs_int32 cmd, char *name,
             ViceLog(0,("SetVariable: maxParallelFetches set to %u \n",
                 			maxParallelFetches));
 	    code = 0;
+        } else if (!strcmp(name, "maxParallelXfers")) {
+            if ( value < 0) {
+                code = EINVAL;
+                goto finis;
+	    }
+            maxParallelXfers = value;
+	    *result = maxParallelXfers;
+            ViceLog(0,("SetVariable: maxParallelXfers set to %u \n",
+                			maxParallelXfers));
+            code = 0;
         } else if (!strcmp(name, "MBperSecSleep")) {
             if (value < 0) {
                 code = EINVAL;
@@ -6837,6 +6862,8 @@ char ExportedVariables[] =
     "maxFetchRequestsPerUser"
     EXP_VAR_SEPARATOR
     "maxParallelFetches"
+    EXP_VAR_SEPARATOR
+    "maxParallelXfers"
     EXP_VAR_SEPARATOR
     "total_bytes_rcvd_vpac"
     EXP_VAR_SEPARATOR

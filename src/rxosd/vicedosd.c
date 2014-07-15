@@ -340,7 +340,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 	        break;
 	    }
 
-    	    if ((code = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
+    	    if ((code = CallPreamble(acall, ACTIVECALL, Fid, &tcon, &thost)))
 		goto Bad_OSD_Archive;
 
     	    if ((code =
@@ -393,7 +393,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 	        break;
 	    }
 
-    	    if ((code = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
+    	    if ((code = CallPreamble(acall, ACTIVECALL, Fid, &tcon, &thost)))
 		goto Bad_OSD_Wipe;
 
     	    if ((code =
@@ -439,7 +439,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 	    struct client *client = 0;
 	    struct AFSStoreStatus InStatus;
 
-    	    if ((code = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
+    	    if ((code = CallPreamble(acall, ACTIVECALL, Fid, &tcon, &thost)))
 		goto Bad_StripedOsdFile;
 
     	    if ((code =
@@ -486,7 +486,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 	        break;
 	    }
 
-    	    if ((code = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
+    	    if ((code = CallPreamble(acall, ACTIVECALL, Fid, &tcon, &thost)))
 		goto Bad_ReplaceOSD;
 
     	    if ((code =
@@ -531,7 +531,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 	    afs_int32 rights, anyrights;
 	    struct client *client = 0;
 
-    	    if ((code = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
+    	    if ((code = CallPreamble(acall, ACTIVECALL, Fid, &tcon, &thost)))
 		goto Bad_Get_Arch_Osds;
 
     	    if ((code =
@@ -565,7 +565,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 	    struct client *client = 0;
 	    struct AFSStoreStatus InStatus;
 
-    	    if ((code = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
+    	    if ((code = CallPreamble(acall, ACTIVECALL, Fid, &tcon, &thost)))
 		goto Bad_List_Osds;
 
     	    if ((code =
@@ -604,7 +604,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
 	    struct client *client = 0;
 	    afs_uint32 policy = Inputs->int32s[0];
 
-    	    if ((code = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
+    	    if ((code = CallPreamble(acall, ACTIVECALL, Fid, &tcon, &thost)))
 		goto Bad_SetPolicy;
 
 	    if (!(Fid->Vnode & 1)) {	/* Must be a directory */
@@ -649,7 +649,7 @@ FsCmd(struct rx_call * acall, struct AFSFid * Fid,
             afs_int32 rights, anyrights;
             struct client *client = 0;
  
-    	    if ((code = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
+    	    if ((code = CallPreamble(acall, ACTIVECALL, Fid, &tcon, &thost)))
                 goto Bad_Get_Policies;
  
             if ((code =
@@ -1237,7 +1237,7 @@ GetOSDlocation(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
         file->segmList.osd_segm2List_val = 0; 
     } else
 	return EINVAL;
-    if ((errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
+    if ((errorCode = CallPreamble(acall, ACTIVECALL, Fid, &tcon, &thost)))
         goto Bad_GetOSDloc;
     /* Get ptr to client data for user Id for logging */
     t_client = (struct client *) rx_GetSpecific(tcon, rxcon_client_key);
@@ -1387,7 +1387,7 @@ ApplyOsdPolicy(struct rx_call *acall, AFSFid *Fid, afs_uint64 length,
 			Fid->Volume, Fid->Vnode, Fid->Unique, length));
     *protocol = 1; /* default: store in local partition */
 
-    if ((errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
+    if ((errorCode = CallPreamble(acall, ACTIVECALL, Fid, &tcon, &thost)))
         goto Bad_ApplyOsdPolicy;
 
     thost->hostFlags |= CLIENT_CALLED_OSDPOLICY;
@@ -1545,7 +1545,7 @@ GetOsdMetadata(struct rx_call *acall, AFSFid *Fid)
     char *rock = 0;
     char *data = 0;
 
-    if ((errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
+    if ((errorCode = CallPreamble(acall, ACTIVECALL, Fid, &tcon, &thost)))
         goto Bad_GetOsdMetadata;
 
     /* Get ptr to client data for user Id for logging */
@@ -1800,7 +1800,7 @@ common_GetPath(struct rx_call *acall, AFSFid *Fid, struct async *a)
 	goto Bad_GetPath;
     }
 
-    if ((errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
+    if ((errorCode = CallPreamble(acall, ACTIVECALL, Fid, &tcon, &thost)))
         goto Bad_GetPath;
 
     tuuid = &thost->interface->uuid;
@@ -1877,7 +1877,7 @@ SRXAFSOSD_BringOnline(struct rx_call *acall, AFSFid *Fid,
     struct host *thost;
 
     SETTHREADACTIVE(acall, 7, Fid);
-    if ((errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
+    if ((errorCode = CallPreamble(acall, ACTIVECALL, Fid, &tcon, &thost)))
         goto Bad_BringOnline;
 
     if ((errorCode =
@@ -2316,7 +2316,7 @@ ServerPath(struct rx_call * acall, AFSFid *Fid, afs_int32 writing,
     }
     if (a->type == 4)
         a->async_u.p4.algorithm = 1; /* Only known type NAMEI */
-    if ((errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
+    if ((errorCode = CallPreamble(acall, ACTIVECALL, Fid, &tcon, &thost)))
         goto Bad_ServerPath;
 
     if ((errorCode =
@@ -2639,7 +2639,7 @@ SRXAFSOSD_ExtendAsyncFetch(struct rx_call *acall, AFSFid *Fid, afs_uint64 transi
      * right to read this file. Therefore we do here the whole volume and vnode
      * stuff.
      */
-    if ((errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
+    if ((errorCode = CallPreamble(acall, ACTIVECALL, Fid, &tcon, &thost)))
         goto Bad_ExtendAsyncFetch;
     if ((errorCode =
          GetVolumePackage(acall, Fid, &volptr, &targetptr, DONTCHECK,
@@ -2819,7 +2819,7 @@ EndAsyncStore1(struct rx_call *acall, AFSFid *Fid, afs_uint64 transid,
     struct host *thost;
     afs_uint64 oldlength, offset, length;
 
-    if ((errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
+    if ((errorCode = CallPreamble(acall, ACTIVECALL, Fid, &tcon, &thost)))
         goto Bad_EndAsyncStore;
 
     /* Get ptr to client data for user Id for logging */
@@ -3181,7 +3181,7 @@ SRXAFS_GetPath0(struct rx_call *acall, AFSFid *Fid, afs_uint64 *ino, afs_uint32 
         Fid->Volume, Fid->Vnode, Fid->Unique));
 
     *algorithm = 1; /* Only known algorithm for now */
-    if ((errorCode = CallPreamble(acall, ACTIVECALL, &tcon, &thost)))
+    if ((errorCode = CallPreamble(acall, ACTIVECALL, Fid, &tcon, &thost)))
         goto Bad_GetPath0;
 
     if ((errorCode =

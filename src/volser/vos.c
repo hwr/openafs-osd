@@ -6250,6 +6250,7 @@ main(int argc, char **argv)
 		"machine readable format");
     COMMONPARMS;
     cmd_CreateAlias(ts, "volinfo");
+    cmd_CreateAlias(ts, "e");
 
     if (!libafsosd_loaded) {
         ts = cmd_CreateSyntax("setfields", SetFields, NULL,
