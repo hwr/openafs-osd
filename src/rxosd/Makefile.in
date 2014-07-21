@@ -721,7 +721,7 @@ fs: fs.o venus_libafsosd.o ${LIBS}
 		${TOP_LIBDIR}/libprot.a ${LIBS} ${MT_LIBS} -ldl ${XLIBS} ${KRB5_LIBS}
 
 afsio.o: afsio.c afsint.h rxosd.h
-	${CRULEVENUS}
+	${CCRULEVENUS}
 
 afsio: afsio.o ${FSINTOBJS} rxosd.cs.o rxosd.xdr.o vicedosd.cs.o vicedosd.xdr.o
 	${CC} ${LDFLAGS} -o afsio afsio.o ${FSINTOBJS} \
