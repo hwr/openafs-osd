@@ -90,7 +90,7 @@ FdHandle_t *fdLruTail;
 int ih_Inited = 0;
 int ih_PkgDefaultsSet = 0;
 
-int log_open_close = 0;
+extern int log_open_close;
 extern afs_int32 dcache;
 
 /* Most of the servers use fopen/fdopen. Since the FILE structure
