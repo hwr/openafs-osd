@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -25,13 +25,15 @@
 
 #include "AFS_component_version_number.c"
 
-int 
+int
 main(int argc, char **argv)
 {
     afs_int32 code;
     int i, counter;
     afs_int32 parms[6];
     int numberFlag;
+
+    memset(&parms, 0, sizeof(parms));
 
     if (argc < 2) {
 	printf("use: vsys <call number> <parms>\n");

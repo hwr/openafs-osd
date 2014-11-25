@@ -604,7 +604,7 @@ CkSrv_MarkUpDown(struct afs_conn **conns, int nconns, afs_int32 *results)
 
 void
 CkSrv_SetTime(int nconns, struct rx_connection **rxconns,
-	      struct afs_conn **conns)
+              struct afs_conn **conns)
 {
     struct afs_conn *tc;
     afs_int32 start, end = 0, delta;
@@ -736,7 +736,7 @@ CkSrv_SetTime(int nconns, struct rx_connection **rxconns,
 
 void
 CkSrv_GetCaps(int nconns, struct rx_connection **rxconns,
-	      struct afs_conn **conns)
+              struct afs_conn **conns)
 {
     Capabilities *caps;
     afs_int32 *results;
@@ -802,7 +802,7 @@ afs_LoopServers(int adown, struct cell *acellp, int vlalso,
                 void (*func2) (int nservers, struct rx_connection **rxconns,
                                struct afs_conn **conns))
 {
-    struct vrequest treq;
+    struct vrequest *treq = NULL;
     struct server *ts;
     struct srvAddr *sa;
     struct afs_conn *tc = NULL;
@@ -830,7 +830,7 @@ afs_LoopServers(int adown, struct cell *acellp, int vlalso,
     conntimer = 0;
     nconns = 0;
 
-    if ((code = afs_InitReq(&treq, afs_osi_credp)))
+    if ((code = afs_CreateReq(&treq, afs_osi_credp)))
 	return;
     ObtainReadLock(&afs_xserver);	/* Necessary? */
     ObtainReadLock(&afs_xsrvAddr);
@@ -884,13 +884,13 @@ afs_LoopServers(int adown, struct cell *acellp, int vlalso,
 	/* check vlserver with special code */
 	if (sa->sa_portal == AFS_VLPORT) {
 	    if (vlalso)
-		CheckVLServer(sa, &treq);
+		CheckVLServer(sa, treq);
 	    continue;
 	}
 
 	/* check rxosd with special code */
 	if (sa->sa_portal != AFS_VLPORT && sa->sa_portal != AFS_FSPORT) {
-	    CheckRxosdServer(sa, &treq);
+	    CheckRxosdServer(sa, treq);
 	    continue;
 	}
 
@@ -898,7 +898,7 @@ afs_LoopServers(int adown, struct cell *acellp, int vlalso,
 	    continue;		/* have just been added by setsprefs */
 
 	/* get a connection, even if host is down; bumps conn ref count */
-	tu = afs_GetUser(treq.uid, ts->cell->cellNum, SHARED_LOCK);
+	tu = afs_GetUser(treq->uid, ts->cell->cellNum, SHARED_LOCK);
 	tc = afs_ConnBySA(sa, ts->cell->fsport, ts->cell->cellNum, tu,
 			  1 /*force */ , 1 /*create */ , SHARED_LOCK, 0,
 			  &rxconn);
@@ -939,6 +939,7 @@ afs_LoopServers(int adown, struct cell *acellp, int vlalso,
     afs_osi_Free(conns, j * sizeof(struct afs_conn *));
     afs_osi_Free(rxconns, j * sizeof(struct rx_connection *));
     afs_osi_Free(conntimer, j * sizeof(afs_int32));
+    afs_DestroyReq(treq);
 
 } /*afs_CheckServers*/
 
@@ -1828,7 +1829,7 @@ void
 afs_GetCapabilities(struct server *ts)
 {
     Capabilities caps = {0, NULL};
-    struct vrequest treq;
+    struct vrequest *treq = NULL;
     struct afs_conn *tc;
     struct unixuser *tu;
     struct rx_connection *rxconn;
@@ -1839,16 +1840,20 @@ afs_GetCapabilities(struct server *ts)
     if ( !afs_osi_credp )
 	return;
 
-    if ((code = afs_InitReq(&treq, afs_osi_credp)))
+    if ((code = afs_CreateReq(&treq, afs_osi_credp)))
 	return;
-    tu = afs_GetUser(treq.uid, ts->cell->cellNum, SHARED_LOCK);
-    if ( !tu )
+    tu = afs_GetUser(treq->uid, ts->cell->cellNum, SHARED_LOCK);
+    if ( !tu ) {
+	afs_DestroyReq(treq);
 	return;
+    }
     tc = afs_ConnBySA(ts->addr, ts->cell->fsport, ts->cell->cellNum, tu, 0, 1,
 		      SHARED_LOCK, 0, &rxconn);
     afs_PutUser(tu, SHARED_LOCK);
-    if ( !tc )
+    if ( !tc ) {
+	afs_DestroyReq(treq);
 	return;
+    }
     /* InitCallBackStateN, triggered by our RPC, may need this */
     ReleaseWriteLock(&afs_xserver);
     code = RXAFS_GetCapabilities(rxconn, &caps);
@@ -1862,6 +1867,7 @@ afs_GetCapabilities(struct server *ts)
     if ( code && code != RXGEN_OPCODE ) {
 	afs_warn("RXAFS_GetCapabilities failed with code %d\n", code);
 	/* better not be anything to free. we failed! */
+	afs_DestroyReq(treq);
 	return;
     }
 
@@ -1874,6 +1880,7 @@ afs_GetCapabilities(struct server *ts)
 	caps.Capabilities_val = NULL;
     }
 
+    afs_DestroyReq(treq);
 }
 
 static struct server *

@@ -63,28 +63,31 @@ afs_MemRead(struct vcache *avc, struct uio *auio,
     struct iovec *tvec;
 #endif
     afs_int32 code;
-    struct vrequest treq;
+    struct vrequest *treq = NULL;
 
     AFS_STATCNT(afs_MemRead);
     if (avc->vc_error)
 	return EIO;
 
     /* check that we have the latest status info in the vnode cache */
-    if ((code = afs_InitReq(&treq, acred)))
+    if ((code = afs_CreateReq(&treq, acred)))
 	return code;
     if (!noLock) {
-	code = afs_VerifyVCache(avc, &treq);
+	code = afs_VerifyVCache(avc, treq);
 	if (code) {
-	    code = afs_CheckCode(code, &treq, 8);	/* failed to get it */
+	    code = afs_CheckCode(code, treq, 8);	/* failed to get it */
+	    afs_DestroyReq(treq);
 	    return code;
 	}
     }
 #ifndef	AFS_VM_RDWR_ENV
     if (AFS_NFSXLATORREQ(acred)) {
 	if (!afs_AccessOK
-	    (avc, PRSFS_READ, &treq,
+	    (avc, PRSFS_READ, treq,
 	     CHECK_MODE_BITS | CMB_ALLOW_EXEC_AS_READ)) {
-	    return afs_CheckCode(EACCES, &treq, 9);
+	    code = afs_CheckCode(EACCES, treq, 9);
+	    afs_DestroyReq(treq);
+	    return code;
 	}
     }
 #endif
@@ -191,7 +194,7 @@ afs_MemRead(struct vcache *avc, struct uio *auio,
 #ifdef STRUCT_TASK_STRUCT_HAS_CRED
     try_background:
 #endif
-	    tdc = afs_GetDCache(avc, filePos, &treq, &offset, &len, 2);
+	    tdc = afs_GetDCache(avc, filePos, treq, &offset, &len, 2);
 	    ObtainReadLock(&tdc->lock);
 	    /* now, first try to start transfer, if we'll need the data.  If
 	     * data already coming, we don't need to do this, obviously.  Type
@@ -327,7 +330,7 @@ printf("afs_read: forground %u.%u.%u\n", avc->f.fid.Fid.Volume, avc->f.fid.Fid.V
 		 * does the FetchData rpc synchronously.
 		 */
 		ReleaseReadLock(&avc->lock);
-		tdc = afs_GetDCache(avc, filePos, &treq, &offset, &len, 1);
+		tdc = afs_GetDCache(avc, filePos, treq, &offset, &len, 1);
 		ObtainReadLock(&avc->lock);
 		if (tdc)
 		    ObtainReadLock(&tdc->lock);
@@ -439,7 +442,7 @@ printf("afs_read: forground %u.%u.%u\n", avc->f.fid.Fid.Volume, avc->f.fid.Fid.V
 	    1
 #endif
 	    ) {
-	    afs_PrefetchChunk(avc, tdc, acred, &treq);
+	    afs_PrefetchChunk(avc, tdc, acred, treq);
 	}
 	afs_PutDCache(tdc);
     }
@@ -451,7 +454,8 @@ printf("afs_read: forground %u.%u.%u\n", avc->f.fid.Fid.Volume, avc->f.fid.Fid.V
 #else
     osi_FreeSmallSpace(tvec);
 #endif
-    error = afs_CheckCode(error, &treq, 10);
+    error = afs_CheckCode(error, treq, 10);
+    afs_DestroyReq(treq);
     return error;
 }
 
@@ -558,7 +562,7 @@ afs_UFSRead(struct vcache *avc, struct uio *auio,
     struct osi_file *tfile;
     afs_int32 code;
     int trybusy = 1;
-    struct vrequest treq;
+    struct vrequest *treq = NULL;
 
     AFS_STATCNT(afs_UFSRead);
     if (avc && avc->vc_error)
@@ -567,15 +571,16 @@ afs_UFSRead(struct vcache *avc, struct uio *auio,
     AFS_DISCON_LOCK();
 
     /* check that we have the latest status info in the vnode cache */
-    if ((code = afs_InitReq(&treq, acred)))
+    if ((code = afs_CreateReq(&treq, acred)))
 	return code;
     if (!noLock) {
 	if (!avc)
 	    osi_Panic("null avc in afs_UFSRead");
 	else {
-	    code = afs_VerifyVCache(avc, &treq);
+	    code = afs_VerifyVCache(avc, treq);
 	    if (code) {
-		code = afs_CheckCode(code, &treq, 11);	/* failed to get it */
+		code = afs_CheckCode(code, treq, 11);	/* failed to get it */
+		afs_DestroyReq(treq);
 		AFS_DISCON_UNLOCK();
 		return code;
 	    }
@@ -584,10 +589,12 @@ afs_UFSRead(struct vcache *avc, struct uio *auio,
 #ifndef	AFS_VM_RDWR_ENV
     if (AFS_NFSXLATORREQ(acred)) {
 	if (!afs_AccessOK
-	    (avc, PRSFS_READ, &treq,
+	    (avc, PRSFS_READ, treq,
 	     CHECK_MODE_BITS | CMB_ALLOW_EXEC_AS_READ)) {
 	    AFS_DISCON_UNLOCK();
-	    return afs_CheckCode(EACCES, &treq, 12);
+	    code = afs_CheckCode(EACCES, treq, 12);
+	    afs_DestroyReq(treq);
+	    return code;
 	}
     }
 #endif
@@ -689,7 +696,7 @@ afs_UFSRead(struct vcache *avc, struct uio *auio,
 #ifdef STRUCT_TASK_STRUCT_HAS_CRED
     try_background:
 #endif
-	    tdc = afs_GetDCache(avc, filePos, &treq, &offset, &len, 2);
+	    tdc = afs_GetDCache(avc, filePos, treq, &offset, &len, 2);
 	    if (!tdc) {
 	        error = ENETDOWN;
 	        break;
@@ -824,7 +831,7 @@ printf("afs_read: avoid forground %u.%u.%u\n", avc->f.fid.Fid.Volume, avc->f.fid
 		 * does the FetchData rpc synchronously.
 		 */
 		ReleaseReadLock(&avc->lock);
-		tdc = afs_GetDCache(avc, filePos, &treq, &offset, &len, 1);
+		tdc = afs_GetDCache(avc, filePos, treq, &offset, &len, 1);
 		ObtainReadLock(&avc->lock);
 		if (tdc)
 		    ObtainReadLock(&tdc->lock);
@@ -1029,7 +1036,7 @@ printf("afs_read: avoid forground %u.%u.%u\n", avc->f.fid.Fid.Volume, avc->f.fid
 	 */
 	if (!noLock && !(hiszero(avc->f.m.DataVersion))) {
 	    if (!(tdc->mflags & DFNextStarted))
-		afs_PrefetchChunk(avc, tdc, acred, &treq);
+		afs_PrefetchChunk(avc, tdc, acred, treq);
 	}
 #endif
 	afs_PutDCache(tdc);
@@ -1044,6 +1051,7 @@ printf("afs_read: avoid forground %u.%u.%u\n", avc->f.fid.Fid.Volume, avc->f.fid
     osi_FreeSmallSpace(tvec);
 #endif
     AFS_DISCON_UNLOCK();
-    error = afs_CheckCode(error, &treq, 13);
+    error = afs_CheckCode(error, treq, 13);
+    afs_DestroyReq(treq);
     return error;
 }

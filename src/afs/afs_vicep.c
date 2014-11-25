@@ -1522,9 +1522,10 @@ afs_close_vicep_file(struct vcache *avc, struct vrequest *areq,
   	    if (areq) 
 	        tc = afs_Conn(&avc->f.fid, areq, SHARED_LOCK, &rxconn);
 	    else {
-	        struct vrequest treq;
-		afs_InitReq(&treq, afs_osi_credp);
+	        struct vrequest *treq = NULL;
+		afs_CreateReq(&treq, afs_osi_credp);
 	        tc = afs_Conn(&avc->f.fid, &treq, SHARED_LOCK, &rxconn);
+		afs_DestroyReq(treq);
 	    }
 	    if (tc) {
 retry_after_busy8:

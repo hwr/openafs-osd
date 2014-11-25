@@ -38,7 +38,7 @@ CCRULESALV = ${CC} ${SHLIBCFLAGS} -DBUILD_SALVAGER -o $@ -c $<
 CRULERXOSD = ${CC} ${CFLAGS} -I. -I${srcdir}/ -I${TOP_INCDIR} -I../config -DBUILDING_RXOSD -DAFS_PTHREAD_ENV -o $@ -c $?
 CRULEOSDDB = ${CC} ${CFLAGS} -I. -I${srcdir}/ -I${TOP_INCDIR} -I../config -DBUILDING_OSDDBSERVER -DAFS_PTHREAD_ENV -o $@ -c $<
 CCRULERXOSD = ${CC} ${CFLAGS} -I. -I${srcdir}/ -I${TOP_INCDIR} -I../config -DBUILDING_RXOSD -DAFS_PTHREAD_ENV -o $@ -c $<
-CRULEVENUS = ${CC} ${CFLAGS} -I. -I${srcdir}/ -I${TOP_INCDIR} -I../config -DBUILDING_CLIENT_COMMAND -DAFS_PTHREAD_ENV -o $@ -c $?
+CRULEVENUS = ${CC} ${CFLAGS} -I. -I${srcdir}/ -I${TOP_INCDIR} -I../config -DBUILDING_CLIENT_COMMAND -DAFS_PTHREAD_ENV -o $@ -c $<
 CCRULEVENUS = ${CC} ${CFLAGS} -I. -I${srcdir}/ -I${TOP_INCDIR} -I../config -DBUILDING_CLIENT_COMMAND -DAFS_PTHREAD_ENV -o $@ -c $<
 
 SHLIBHSMCFLAGS=${COMMON_CFLAGS} -DBUILD_SHLIBAFSHSM -I.. -I${UTIL}/ ${MT_CFLAGS} ${SHLIB_CFLAGS}
@@ -444,7 +444,7 @@ osddbpolicy.o: ${srcdir}/osddbpolicy.c
 	${CCRULE}
 
 c_osddbpolicy.o: ${srcdir}/osddbpolicy.c
-	${CRULE} -DBUILDING_CLIENT_COMMAND
+	${CCRULE} -DBUILDING_CLIENT_COMMAND
 
 a_osddbuser.c: ${srcdir}/osddbuser.c
 	ln -fs $? $@
@@ -721,7 +721,7 @@ fs: fs.o venus_libafsosd.o ${LIBS}
 		${TOP_LIBDIR}/libprot.a ${LIBS} ${MT_LIBS} -ldl ${XLIBS} ${KRB5_LIBS}
 
 afsio.o: afsio.c afsint.h rxosd.h
-	${CCRULEVENUS}
+	${CRULEVENUS}
 
 afsio: afsio.o ${FSINTOBJS} rxosd.cs.o rxosd.xdr.o vicedosd.cs.o vicedosd.xdr.o
 	${CC} ${LDFLAGS} -o afsio afsio.o ${FSINTOBJS} \

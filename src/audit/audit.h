@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -235,6 +235,14 @@
 #define VLSetLockEvent		"AFS_VL_SetLck"
 #define VLReleaseLockEvent	"AFS_VL_RelLck"
 #define VLChangeAddrEvent	"AFS_VL_ChgAdd"
+#define VLListEntryEvent        "AFS_VL_ListEnt"
+#define VLListEntryEventN       "AFS_VL_ListEntN"
+#define VLListAttributesEvent   "AFS_VL_ListAttr"
+#define VLListAttributesNEvent  "AFS_VL_ListAttrN"
+#define VLListAttributesN2Event "AFS_VL_ListAttrN2"
+#define VLLinkedListEvent       "AFS_VL_LinkList"
+#define VLLinkedListNEvent      "AFS_VL_LinkListN"
+#define VLGetStatsEvent         "AFS_VL_GetStats"
 
 /* Next 2 block of lines on behalf of MR-AFS */
 #define RSStartEvent            "AFS_RS_StartEnt"

@@ -350,6 +350,9 @@
 /* Define if your kernel has the inode_setattr function */
 #undef HAVE_LINUX_INODE_SETATTR
 
+/* Define if your kernel has the iter_file_splice_write function */
+#undef HAVE_LINUX_ITER_FILE_SPLICE_WRITE
+
 /* Define if your kernel has the i_size_read function */
 #undef HAVE_LINUX_I_SIZE_READ
 
@@ -838,6 +841,10 @@
 /* Define if kernel typedef'd struct file_operations has the iterate element
    */
 #undef STRUCT_FILE_OPERATIONS_HAS_ITERATE
+
+/* Define if kernel typedef'd struct file_operations has the read_iter element
+   */
+#undef STRUCT_FILE_OPERATIONS_HAS_READ_ITER
 
 /* Define if kernel typedef'd struct file_operations has the sendfile element
    */

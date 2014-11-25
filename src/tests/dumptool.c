@@ -1275,7 +1275,8 @@ InteractiveRestore(FILE * f, VolumeDiskData * vol)
     printf("%s> ", cwd);
     while (fgets(cmdbuf, CMDBUFSIZE, stdin)) {
 
-	cmdbuf[strlen(cmdbuf) - 1] = '\0';
+	if (strlen(cmdbuf) > 0 && cmdbuf[strlen(cmdbuf) - 1] == '\n')
+	    cmdbuf[strlen(cmdbuf) - 1] = '\0';
 
 	if (strlen(cmdbuf) == 0) {
 	    printf("> ");

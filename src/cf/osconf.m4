@@ -33,6 +33,7 @@ AC_CHECK_PROGS(LD, ld, [${am_missing_run}ld])
 AC_CHECK_PROGS(CP, cp, [${am_missing_run}cp])
 AC_CHECK_PROGS(STRIP, strip, [${am_missing_run}strip])
 AC_CHECK_PROGS(LORDER, lorder, [${am_missing_run}lorder])
+AC_CHECK_PROGS(GENCAT, gencat, [${am_missing_run}gencat])
 
 dnl TODO - need to disable STRIP if we are doing debugging in any user space code
 
@@ -701,10 +702,10 @@ case $AFS_SYSNAME in
 		SHLIB_CFLAGS="-KPIC"
 		SHLIB_LDFLAGS="-G -Bsymbolic"
 		XCFLAGS64='${XCFLAGS} -m64'
-		XCFLAGS="-dy -Bdynamic -fPIC"
+		XCFLAGS="-dy -Bdynamic"
 		XLIBELFA="-lelf"
 		XLIBKVM="-lkvm"
-		XLIBS="${LIB_AFSDB} -lsocket -lnsl -lintl -ldl -lresolv"
+		XLIBS="${LIB_AFSDB} -lsocket -lnsl -lintl -ldl"
 		SHLIB_LINKER="${CC} -G -dy -Bsymbolic -z text"
 		;;
 
@@ -720,10 +721,10 @@ case $AFS_SYSNAME in
 		SHLIB_CFLAGS="-KPIC"
 		SHLIB_LDFLAGS="-G -Bsymbolic"
 		XCFLAGS64='${XCFLAGS} -xarch=amd64'
-		XCFLAGS="-dy -Bdynamic -fPIC"
+		XCFLAGS="-dy -Bdynamic"
 		XLIBELFA="-lelf"
 		XLIBKVM="-lkvm"
-		XLIBS="${LIB_AFSDB} -lsocket -lnsl -lintl -ldl -lresolv" 
+		XLIBS="${LIB_AFSDB} -lsocket -lnsl -lintl -ldl"
 		SHLIB_LINKER="${CC} -G -dy -Bsymbolic -z text"
 		;;
 esac

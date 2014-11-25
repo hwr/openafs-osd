@@ -12,7 +12,7 @@ INSTALL_DATA = @INSTALL_DATA@
 INSTALL_PROGRAM = @INSTALL_PROGRAM@
 INSTALL_SCRIPT = @INSTALL_SCRIPT@
 
-LIBOBJS=cmd_errors.o cmd.o cmd_out.o
+LIBOBJS=cmd_errors.o cmd.o  cmd_out.o
 LIB64OBJS=cmd_errors64.o cmd64.o 
 
 all: ${TOP_LIBDIR}/libcmd.a ${TOP_INCDIR}/afs/cmd.h
@@ -30,11 +30,15 @@ ${TOP_LIBDIR}/libcmd64.a: libcmd64.a
 ${TOP_INCDIR}/afs/cmd.h: cmd.h
 	${INSTALL_DATA} $? $@
 
-cmd.h: cmd_errors.et cmd.p.h
-	$(RM) -f cmd.h cmd_errors.c
-	${COMPILE_ET} -p ${srcdir} cmd_errors -h cmd
+cmd_errors.c: cmd_errors.et
+	${COMPILE_ET_C} -p ${srcdir} cmd_errors
 
-cmd_errors.c: cmd.h 
+cmd.h: cmd_errors.et cmd.p.h
+	${COMPILE_ET_H} -p ${srcdir} cmd_errors -h cmd
+
+cmd.o: cmd.h
+
+cmd_out.o: cmd.h
 
 cmd_errors.o: cmd_errors.c
 
@@ -50,14 +54,7 @@ cmd64.o: cmd.c cmd.h
 
 libcmd64.a: ${LIB64OBJS} AFS_component_version_number64.o
 	-$(RM) -f $@
-	case ${SYS_NAME} in \
-	rs_aix5* ) \
-		$(AR) -X64 crv $@ ${LIB64OBJS} AFS_component_version_number64.o ;; \
-	rs_aix6* ) \
-		$(AR) -X64 crv $@ ${LIB64OBJS} AFS_component_version_number64.o ;; \
-	* ) \
-		$(AR) crv $@ ${LIB64OBJS} AFS_component_version_number64.o ;; \
-	esac
+	$(AR) crv $@ ${LIB64OBJS} AFS_component_version_number64.o
 	$(RANLIB) $@
 
 libcmd.a: ${LIBOBJS} AFS_component_version_number.o

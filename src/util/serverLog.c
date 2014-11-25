@@ -350,7 +350,7 @@ OpenLog(const char *fileName)
         }
 	if (!isfifo)
 	    renamefile(fileName, FileName);	/* don't check error code */
-	tempfd = open(fileName, O_WRONLY | O_TRUNC | O_CREAT | (isfifo?O_NONBLOCK:0), 0666);
+	tempfd = open(fileName, O_WRONLY | O_TRUNC | O_CREAT | O_APPEND | (isfifo?O_NONBLOCK:0), 0666);
     } else {
 	strcpy(oldName, fileName);
 	strcat(oldName, ".old");

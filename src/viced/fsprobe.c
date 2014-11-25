@@ -63,7 +63,6 @@ main(int argc, char **argv)
     struct sockaddr_in host;
     afs_int32 code;
     struct hostent *hp;
-    char hnamebuf[200];
     struct timeval tv;
     int noAuth = 1;		/* Default is authenticated connections */
 
@@ -78,9 +77,7 @@ main(int argc, char **argv)
 #ifdef STRUCT_SOCKADDR_HAS_SA_LEN
     host.sin_len = sizeof(struct sockaddr_in);
 #endif
-    if (host.sin_addr.s_addr != -1) {
-	strcpy(hnamebuf, av[0]);
-    } else {
+    if (host.sin_addr.s_addr == -1) {
 	hp = gethostbyname(av[0]);
 	if (hp) {
 	    host.sin_family = hp->h_addrtype;
@@ -97,8 +94,8 @@ main(int argc, char **argv)
 
     code = RXAFS_GetTime(cstruct->conns[0], (afs_uint32 *)&tv.tv_sec, (afs_uint32 *)&tv.tv_usec);
     if (!code)
-	printf("AFS_GetTime on %s sec=%ld, usec=%ld\n", av[0], tv.tv_sec,
-	       (long int)tv.tv_usec);
+	printf("AFS_GetTime on %s sec=%ld, usec=%ld\n", av[0], (long)tv.tv_sec,
+	       (long)tv.tv_usec);
     else
 	printf("return code is %d\n", code);
 
