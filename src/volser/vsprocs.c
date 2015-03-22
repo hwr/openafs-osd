@@ -4401,10 +4401,7 @@ UV_DumpVolume(afs_uint32 afromvol, afs_uint32 afromserver, afs_int32 afrompart,
     fromcall = rx_NewCall(fromconn);
 
     VEPRINT1("Starting volume dump on volume %u...", afromvol);
-    if (flags & VOLDUMPV2_OMITDIRS)
-	code = StartAFSVolDumpV2(fromcall, fromtid, fromdate, flags);
-    else
-	code = StartAFSVolDump(fromcall, fromtid, fromdate);
+    code = StartAFSVolDumpV2(fromcall, fromtid, fromdate, flags);
     EGOTO(error_exit, code, "Could not start the dump process \n");
     VEDONE;
 
