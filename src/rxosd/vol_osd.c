@@ -1832,9 +1832,8 @@ check_and_flush_metadata(struct Volume *vp, struct VnodeDiskObject *vnode,
 				(afs_uint32)((newobjid >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK),
 				code));
 			    code = 0;
+			    newobjid = o->obj_id;
 			} else{
-			    changed = 1;
-			    *lcOk = 1;
 			    ViceLog(1, ("restore to new volume: hard link in osd %u from %u.%u.%u.%u to %u.%u.%u.%u\n",
 				    o->osd_id,
 				    (afs_uint32)(o->part_id & RXOSD_VOLIDMASK),
@@ -1845,9 +1844,11 @@ check_and_flush_metadata(struct Volume *vp, struct VnodeDiskObject *vnode,
 				    (afs_uint32)(newobjid & RXOSD_VNODEMASK),
 				    (afs_uint32)((newobjid >> RXOSD_UNIQUESHIFT) & RXOSD_UNIQUEMASK),
 				    (afs_uint32)((newobjid >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK)));
-			    o->part_id = newpartid;
-			    o->obj_id = newobjid;
 		        }
+			changed = 1;
+			*lcOk = 1;
+			o->part_id = newpartid;
+			o->obj_id = newobjid;
 		    }
 		}
 	    }
