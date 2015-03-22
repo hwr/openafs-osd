@@ -3086,7 +3086,6 @@ GetTrans(struct nvldbentry *vldbEntryPtr, afs_int32 index,
 	    goto fail;
 	}
 
-<<<<<<< HEAD
 	strlcpy(volname, vldbEntryPtr->name, sizeof(volname));
 
 	if (strlcat(volname,
@@ -3096,13 +3095,6 @@ GetTrans(struct nvldbentry *vldbEntryPtr, afs_int32 index,
 	    PrintError("Volume name is too long\n", code);
 	    goto fail;
 	}
-=======
-	strcpy(volname, vldbEntryPtr->name);
-	if (tmpVolId)
-	    strcat(volname, ".roclone");
-	else
-	    strcat(volname, ".readonly");
->>>>>>> 85f97d4e2eecab796c86619cd4d1022856ab8d85
 
 	if (verbose) {
 	    fprintf(STDOUT,
@@ -4173,7 +4165,6 @@ UV_ReleaseVolume(afs_uint32 afromvol, afs_uint32 afromserver,
 		    } else
 			VDONE;
 		}
-<<<<<<< HEAD
 
 		VPRINT("Marking temporary clone for deletion...\n");
 		code = AFSVolSetFlags(toconns[s],
@@ -4185,19 +4176,6 @@ UV_ReleaseVolume(afs_uint32 afromvol, afs_uint32 afromserver,
 		else
 		  VDONE;
 
-=======
-
-		VPRINT("Marking temporary clone for deletion...\n");
-		code = AFSVolSetFlags(toconns[s],
-				      replicas[s].trans,
-				      VTDeleteOnSalvage |
-				      VTOutOfService);
-		if (code)
-		  EPRINT(code, "Failed: ");
-		else
-		  VDONE;
-
->>>>>>> 85f97d4e2eecab796c86619cd4d1022856ab8d85
 		VPRINT("Ending transaction on temporary clone...\n");
 		code = AFSVolEndTrans(toconns[s], replicas[s].trans, &rcode);
 		if (!code)
@@ -4423,10 +4401,7 @@ UV_DumpVolume(afs_uint32 afromvol, afs_uint32 afromserver, afs_int32 afrompart,
     fromcall = rx_NewCall(fromconn);
 
     VEPRINT1("Starting volume dump on volume %u...", afromvol);
-    if (flags & VOLDUMPV2_OMITDIRS)
-	code = StartAFSVolDumpV2(fromcall, fromtid, fromdate, flags);
-    else
-	code = StartAFSVolDump(fromcall, fromtid, fromdate);
+    code = StartAFSVolDumpV2(fromcall, fromtid, fromdate, flags);
     EGOTO(error_exit, code, "Could not start the dump process \n");
     VEDONE;
 
