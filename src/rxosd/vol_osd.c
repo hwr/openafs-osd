@@ -5601,6 +5601,7 @@ setOsdPolicy(struct Volume *vol, afs_int32 osdPolicy)
 		}
 		offset += step;
 	    }
+	    FDH_CLOSE(fdP);
 	}
     } else if (V_osdPolicy(vol) && !osdPolicy) { /* OSD volume to normal volume */
 	/* First loop to find out whether there are still OSD files */
@@ -5623,6 +5624,7 @@ setOsdPolicy(struct Volume *vol, afs_int32 osdPolicy)
 		}
 		offset += step;
 	    }
+	    FDH_CLOSE(fdP);
 	}
 	/* Second loop to set vnodeMagic to normal value */
         for (i=0; i<nVNODECLASSES; i++) {
@@ -6749,7 +6751,8 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 		vN = (offset >> (voldata->aVnodeClassInfo[i].logSize - 1)) - 1 + i;
 	        VNDISK_GET_LEN(size, vd);
 	        ino = VNDISK_GET_INO(vd);
-		if (vd->type == vFile && ino && vd->osdMetadataIndex) {
+		if (vd->type == vFile && ino 
+		  && vol->osdMetadataHandle && vd->osdMetadataIndex) {
 	    	    sprintf(line, "Object %u.%u.%u seems to exist on local disk and object storage\n", 
 				V_id(vol), vN, vd->uniquifier);
 	    	    rx_Write(call, line, strlen(line));
@@ -6816,7 +6819,7 @@ salvage(struct rx_call *call, Volume *vol,  afs_int32 flag,
 		    	IH_RELEASE(ih);
 		    }
 		}
-	        if (vd->type == vFile && vd->osdMetadataIndex) {
+	        if (vd->type == vFile && vol->osdMetadataHandle && vd->osdMetadataIndex) {
 		    struct  osd_p_fileList fl;
 		    objs++;
 		    obj_data += size;
