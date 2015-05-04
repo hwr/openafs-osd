@@ -307,6 +307,10 @@ dest: ${LIBAFSOSD} ${LIBDAFSOSD} ${LIBCAFSOSD} rxosd readabyte osd osdmetadata o
 		-l libdafsosd -M ${LIBAFSOSDMAJOR} -m ${LIBAFSOSDMINOR}
 	../config/shlib-install -d ${DEST}/lib \
 		-l libcafsosd -M ${LIBAFSOSDMAJOR} -m ${LIBAFSOSDMINOR}
+	../config/shlib-install -d ${DEST}/root.server/usr/afs/bin \
+		-l libafsosd -M ${LIBAFSOSDMAJOR} -m ${LIBAFSOSDMINOR}
+	../config/shlib-install -d ${DEST}/root.server/usr/afs/bin \
+		-l libdafsosd -M ${LIBAFSOSDMAJOR} -m ${LIBAFSOSDMINOR}
 	${INSTALL} -d ${DEST}/root.server/usr/afs/bin
 	${INSTALL} rxosd ${DEST}/root.server/usr/afs/bin/rxosd
 	${INSTALL} readabyte ${DEST}/root.server/usr/afs/bin/readabyte
