@@ -295,13 +295,12 @@ kdump-alpha_linux-@LINUX_VERSION@: kdump-alpha_linux-@LINUX_VERSION@.o
 #
 # Install targets
 #
-install: kdump-build fs livesys up fstrace cmdebug
+install: kdump-build livesys up fstrace cmdebug
 	${INSTALL} -d ${DESTDIR}${bindir}
 	${INSTALL} -d ${DESTDIR}${afssrvbindir}
 	${INSTALL} -d ${DESTDIR}${sbindir}
 	${INSTALL_PROGRAM} fs ${DESTDIR}${bindir}/fs
 	${INSTALL_PROGRAM} livesys ${DESTDIR}${bindir}/livesys
-	${INSTALL_PROGRAM} fs ${DESTDIR}${afssrvbindir}/fs
 	${INSTALL_PROGRAM} up ${DESTDIR}${bindir}/up
 	${INSTALL_PROGRAM} fstrace ${DESTDIR}${sbindir}/fstrace
 	${INSTALL_PROGRAM} cmdebug ${DESTDIR}${bindir}/cmdebug
@@ -341,7 +340,6 @@ dest: kdump-build fs livesys up fstrace cmdebug
 	${INSTALL} -d ${DEST}/root.server/usr/afs/bin
 	${INSTALL_PROGRAM} fs ${DEST}/bin/fs
 	${INSTALL_PROGRAM} livesys ${DEST}/bin/livesys
-	${INSTALL_PROGRAM} fs ${DEST}/root.server/usr/afs/bin/fs
 	${INSTALL_PROGRAM} up ${DEST}/bin/up
 	${INSTALL_PROGRAM} fstrace ${DEST}/etc/fstrace
 	${INSTALL_PROGRAM} cmdebug ${DEST}/bin/cmdebug
