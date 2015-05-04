@@ -27,7 +27,7 @@ A  Configuring
    source in, you will only have an src/ directory.
 
    1. Pick a system to build for, and note its default AFS sys_name.
-      A directory will be automatically created for binaries to be written 
+      A directory will be automatically created for binaries to be written
       into with this name when you build.
 
       alpha_dux40, alpha_dux50, alpha_dux51 (client does not work)
@@ -145,18 +145,18 @@ A  Configuring
 
 B  Building
 
-   1. Now, you can build OpenAFS. 
+   1. Now, you can build OpenAFS.
 
       % make
 
-   2. Install your build using either "make install" to install 
+   2. Install your build using either "make install" to install
       into the current system (you will need to be root, and files
       will be placed as appropriate for Transarc or standard paths),
-      "make install DESTDIR=/some/path" to install into an alternate 
+      "make install DESTDIR=/some/path" to install into an alternate
       directory tree, or if you configured with --enable-transarc-paths
-      make dest to create a complete binary tree in the dest directory      
+      make dest to create a complete binary tree in the dest directory
       under the directory named for the sys_name you built for,
-      e.g. sun4x_57/dest or i386_linux22/dest 
+      e.g. sun4x_57/dest or i386_linux22/dest
 
    3. As appropriate you can clean up or, if you're using Linux, build for
       another kernel version.
@@ -168,7 +168,7 @@ B  Building
 C  Problems
 
    If you have a problem building this source, you may want to visit
-   http://www.openafs.org/ to see if any problems have been reported 
+   http://www.openafs.org/ to see if any problems have been reported
    or to find out how to get more help.
 
    Mailing lists have been set up to help; More details can be found
@@ -200,7 +200,7 @@ D  Linux Notes
 
       % ./configure --with-afs-sysname=<sysname> \
           --with-linux-kernel-headers=/usr/src/linux-2.2.19-i686
-      % make 
+      % make
 
    Your build tree will now include an additional kernel module for your
    additional kernel headers. Be aware that if the kernel version string
@@ -246,9 +246,9 @@ G  FreeBSD Notes
 
    You also need access to your kernel build directory for the opt_global.h
    include file.  Use the --with-bsd-kernel-build= configure option if your
-   kernel build is not GENERIC in the standard place. If 
-   /usr/src/sys/${CPUARCH}/compile/GENERIC does not point to 
-   /usr/obj/usr/src/sys/GENERIC you may need to resolve that and retry the 
+   kernel build is not GENERIC in the standard place. If
+   /usr/src/sys/${CPUARCH}/compile/GENERIC does not point to
+   /usr/obj/usr/src/sys/GENERIC you may need to resolve that and retry the
    build.
 
    There is no server package, but I am told that "make install" will put
@@ -302,6 +302,20 @@ I  Other configure options
        Compile the userspace code (for --enable-debug) or the code named
        by the option with debugging information.  If --enable-debug is
        given, also do not strip binaries when installing them.
+
+   --enable-linux-d_splice_alias-extra-iput
+       Work around a kernel memory leak present in a few Linux kernels.
+       The only affected mainline kernels are 3.17 to 3.17.2, but this
+       switch will also be required should a distribution backport commit
+       908790fa3b779d37365e6b28e3aa0f6e833020c3 or commit
+       95ad5c291313b66a98a44dc92b57e0b37c1dd589 but not the fix in commit
+       51486b900ee92856b977eacfc5bfbe6565028070 from the linux-stable repo
+       (git.kernel.org/cgit/linux/kernel/git/stable/linux-stable.git) or
+       the corresponding changes on other branches. This is impossible to
+       detect automatically. Without this switch, the openafs module will
+       build and work even with affected kernels. But it will leak kernel
+       memory, leading to performance degradation and eventually system
+       failure due to memory exhaustion.
 
    --enable-linux-syscall-probing
        OpenAFS now uses keyrings to manage PAGs by default on Linux, which

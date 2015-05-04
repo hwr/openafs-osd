@@ -58,11 +58,11 @@ SERVER_OBJS = ${COMMON_OBJS} budb.ss.o budb.xdr.o dbs_dump.o db_lock.o db_text.o
 
 all: ${TOP_LIBDIR}/libbudb.a ${TOP_INCDIR}/afs/budb.h ${TOP_INCDIR}/afs/budb_errs.h ${TOP_INCDIR}/afs/budb_client.h budb_server ${INCLS}
 
-budb_errs.c: ${BUDB}/budb_errs.et
-	${COMPILE_ET_C} -p ${srcdir}/../budb budb_errs
+budb_errs.c: ${srcdir}/${BUDB}/budb_errs.et
+	${COMPILE_ET_C} -p ${srcdir}/${BUDB} budb_errs
 
-budb_errs.h: ${BUDB}/budb_errs.et
-	${COMPILE_ET_H} -p ${srcdir}/../budb budb_errs
+budb_errs.h: ${srcdir}/${BUDB}/budb_errs.et
+	${COMPILE_ET_H} -p ${srcdir}/${BUDB} budb_errs
 
 database.o: budb_errs.h
 db_alloc.o: budb_errs.h
@@ -165,16 +165,16 @@ server.o: ${BUDB}/server.c budb_errs.h ${INCLS}
 budb_server: $(SERVER_OBJS) ${LIBS}
 	${CC} ${LDFLAGS} -o budb_server $(SERVER_OBJS) ${LIBS} ${MT_LIBS} ${XLIBS} ${KRB5_LIBS}
 
-budb.cs.c: ${BUDB}/budb.rg
+budb.cs.c: ${srcdir}/${BUDB}/budb.rg
 	${RXGEN} -u -C -o $@ ${srcdir}/${BUDB}/budb.rg
 
-budb.ss.c: ${BUDB}/budb.rg
+budb.ss.c: ${srcdir}/${BUDB}/budb.rg
 	${RXGEN} -S -o $@ ${srcdir}/${BUDB}/budb.rg
 
-budb.xdr.c: ${BUDB}/budb.rg
+budb.xdr.c: ${srcdir}/${BUDB}/budb.rg
 	${RXGEN} -c -o $@ ${srcdir}/${BUDB}/budb.rg
 
-budb.h: ${BUDB}/budb.rg
+budb.h: ${srcdir}/${BUDB}/budb.rg
 	${RXGEN} -u -h -o $@ ${srcdir}/${BUDB}/budb.rg
 
 budb.cs.c: budb.h

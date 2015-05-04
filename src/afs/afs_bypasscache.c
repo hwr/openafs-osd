@@ -361,6 +361,7 @@ afs_PrefetchNoCache(struct vcache *avc,
 						 SHARED_LOCK,0));
     if (code) {
         unlock_and_release_pages(auio);
+	afs_PutConn(tc, rxconn, SHARED_LOCK);
     } else
 	afs_ProcessFS(avc, &tcallspec->OutStatus, areq);
 
