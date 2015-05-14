@@ -418,7 +418,6 @@ struct util_ops_v0 {
     char *(*int64_to_flipbase64) (lb64_string_t s, afs_uint64 a);
     int (*afs_vsnprintf) (char *str, size_t sz, const char *format, va_list args);
     const char *(*getDirPath) (afsdir_id_t string_id);
-    size_t (*strlcpy) (char *dst, const char *src, size_t siz);
     afs_int32 (*util_GetInt32) (char *as, afs_int32 * aval);
     afs_int32 (*util_GetHumanInt32) (char *as, afs_int32 * aval);
     afs_uint32 (*util_GetUInt32) (char *as, afs_uint32 * aval);
@@ -733,7 +732,6 @@ struct rx_connection * UV_BindOsd(afs_uint32 aserver, afs_int32 port);
     util->int64_to_flipbase64 = int64_to_flipbase64;
     util->afs_vsnprintf = afs_vsnprintf;
     util->getDirPath = getDirPath;
-    util->strlcpy = strlcpy;
     util->util_GetInt32 = util_GetInt32;
     util->util_GetHumanInt32 = util_GetHumanInt32;
     util->util_GetUInt32 = util_GetUInt32;
@@ -1948,12 +1946,6 @@ afs_snprintf(char *p, size_t avail, const char *fmt, ...)
     return result;
 }
 
-size_t
-strlcpy(char *dst, const char *src, size_t siz)
-{
-    return (util->strlcpy)(dst, src, siz);
-}
-
 afs_int32
 util_GetInt32(char *as, afs_int32 * aval)
 {
@@ -2001,7 +1993,7 @@ BreakCallBack(struct host *xhost, AFSFid * fid, int flag)
     return (viced->BreakCallBack)(xhost, fid, flag);
 }
 
-int
+afs_int32
 CallPostamble(struct rx_connection *aconn, afs_int32 ret, struct host *ahost)
 {
     return (viced->CallPostamble)(aconn, ret, ahost);
@@ -2035,7 +2027,7 @@ GetStatus(Vnode * targetptr, AFSFetchStatus * status, afs_int32 rights,
     (viced->GetStatus)(targetptr, status, rights, anyrights, parentptr);
 }
 
-int
+afs_int32
 GetVolumePackage(struct rx_call *acall, AFSFid * Fid, struct Volume ** volptr,
 		 Vnode ** targetptr, int chkforDir, Vnode ** parent,
                  struct client **client, int locktype, afs_int32 * rights,
