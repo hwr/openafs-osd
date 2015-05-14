@@ -307,10 +307,11 @@ void printTableRow_HTML(struct Table *Table,struct TableCell *aCell) {
         aCell=aCell->next;
     }
     if (Table->Type == T_TYPE_HTML) 
-       if (aCell == Table->Header) 
+       if (aCell == Table->Header) {
 	    printf("\t\t</tr>\n");
-       else 
+       } else { 
 	    printf("\t\t</th>\n");
+       }
     printf("\n");
     return;
 }
