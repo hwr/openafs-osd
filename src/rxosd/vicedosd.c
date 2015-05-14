@@ -1192,7 +1192,7 @@ GetOSDlocation(struct rx_call *acall, AFSFid *Fid, afs_uint64 offset,
 #if defined(AFS_NAMEI_ENV)
     Vnode * targetptr = 0;              /* pointer to input fid */
     Vnode * parentwhentargetnotdir = 0; /* parent of Fid to get ACL */
-    Error   errorCode = 0;              /* return code for caller */
+    afs_int32 errorCode = 0;              /* return code for caller */
     Volume * volptr = 0;                /* pointer to the volume header */
     struct client * client = 0;         /* pointer to client structure */
     struct rx_connection *tcon;
