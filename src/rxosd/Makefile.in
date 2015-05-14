@@ -722,7 +722,7 @@ venus_libafsosd.o: ${srcdir}/libafsosd.c
 
 fs: fs.o venus_libafsosd.o ${LIBS}
 	${CC} ${LDFLAGS} -o fs fs.o venus_libafsosd.o \
-		${TOP_LIBDIR}/libprot.a ${LIBS} ${MT_LIBS} -ldl ${XLIBS} ${KRB5_LIBS}
+		${LIBS} ${MT_LIBS} -ldl ${XLIBS} ${KRB5_LIBS}
 
 afsio.o: afsio.c afsint.h rxosd.h
 	${CRULEVENUS}
