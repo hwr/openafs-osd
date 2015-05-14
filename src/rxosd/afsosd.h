@@ -225,7 +225,7 @@ struct rxosd_conn {
 #   include <afs/host.h>
 #   ifndef BUILDING_OSDDBSERVER
 /* Prototypes for routines which come from afsfileprocs.c */
-extern int CallPostamble(struct rx_connection *aconn, afs_int32 ret,
+extern afs_int32 CallPostamble(struct rx_connection *aconn, afs_int32 ret,
 			 struct host *ahost);
 extern int CallPreamble(struct rx_call *acall, int activecall, AFSFid *Fid,
                         struct rx_connection **tconn, struct host **ahostp);
@@ -235,7 +235,7 @@ extern int Check_PermissionRights(struct Vnode * targetptr, struct client *clien
 extern int EndAsyncTransaction(struct rx_call *call, AFSFid *Fid, afs_uint64 transid);
 extern void GetStatus(struct Vnode * targetptr, struct AFSFetchStatus * status,
                      afs_int32 rights, afs_int32 anyrights, struct Vnode * parentptr);
-extern int GetVolumePackage(struct rx_call *acall, AFSFid * Fid,
+extern afs_int32 GetVolumePackage(struct rx_call *acall, AFSFid * Fid,
 			    struct Volume ** volptr, struct Vnode ** targetptr,
                             int chkforDir, struct Vnode ** parent,
                             struct client **client, int locktype,
@@ -274,7 +274,7 @@ struct viced_ops_v0 {
     int (*AddCallBack1) (struct host *host, AFSFid *fid, afs_uint32 *thead,
                          int type, int locked);
     int (*BreakCallBack) (struct host *xhost, AFSFid * fid, int flag);
-    int (*CallPostamble) (struct rx_connection *aconn, afs_int32 ret,
+    afs_int32 (*CallPostamble) (struct rx_connection *aconn, afs_int32 ret,
                           struct host *ahost);
     int (*CallPreamble) (struct rx_call *acall, int activecall, AFSFid *Fid,
                          struct rx_connection **tconn, struct host **ahostp);
@@ -285,7 +285,7 @@ struct viced_ops_v0 {
                                 afs_uint64 transid);
     void (*GetStatus) (struct Vnode * targetptr, struct AFSFetchStatus * status,
 		       afs_int32 rights, afs_int32 anyrights, struct Vnode * parentptr);
-    int (*GetVolumePackage) (struct rx_call *acall, AFSFid * Fid,
+    afs_int32 (*GetVolumePackage) (struct rx_call *acall, AFSFid * Fid,
                              struct Volume ** volptr, struct Vnode ** targetptr,
                              int chkforDir, struct Vnode ** parent,
                              struct client **client, int locktype,
