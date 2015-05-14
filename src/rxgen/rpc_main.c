@@ -824,7 +824,7 @@ t_output(char *infile, int extend, char *outfile, int append)
 
     tell = ftell(fout);
     fflush(fout);
-    while (def = get_definition()) {
+    while ((def = get_definition())) {
         if ( def->def_kind != DEF_PROC )
             continue;
         fflush(fout);
