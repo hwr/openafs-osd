@@ -24,46 +24,7 @@
 #include "afs/afs_stats.h"	/* statistics */
 #include "afs_prototypes.h"
 
-#if defined(AFS_CACHE_BYPASS) && defined(AFS_LINUX24_ENV)
-#include "afs_bypasscache.h"
-#if defined(AFS_LINUX26_ENV)
-#define LockPage(pp) lock_page(pp)
-#define UnlockPage(pp) unlock_page(pp)
-#endif
-#endif
-
-/* conditional GLOCK macros */
-#define COND_GLOCK(var) \
-	do { \
-		var = ISAFS_GLOCK(); \
-		if(!var) \
-			RX_AFS_GLOCK(); \
-	} while(0)
-
-#define COND_RE_GUNLOCK(var) \
-	do { \
-		if(var) \
-			RX_AFS_GUNLOCK(); \
-	} while(0)
-
-/* conditional GUNLOCK macros */
-
-#define COND_GUNLOCK(var) \
-	do { \
-		var = ISAFS_GLOCK(); \
-		if(var) \
-			RX_AFS_GUNLOCK(); \
-	} while(0)
-	
-#define COND_RE_GLOCK(var) \
-	do { \
-		if(var) \
-			RX_AFS_GLOCK(); \
-	} while(0)
-	
 extern int cacheDiskType;
-afs_uint32 afs_protocols = RX_FILESERVER | RX_OSD;
-extern afs_int32 afs_soft_mounted;
 
 #ifndef AFS_NOSTATS
 void
@@ -117,6 +78,15 @@ FillStoreStats(int code, int idx, osi_timeval_t *xferStartTime,
 
 /* rock and operations for RX_FILESERVER */
 
+
+
+afs_int32
+rxfs_storeUfsPrepare(void *r, afs_uint32 size, afs_uint32 *tlen)
+{
+    *tlen = (size > AFS_LRALLOCSIZ ?  AFS_LRALLOCSIZ : size);
+    return 0;
+}
+
 struct rxfs_storeVariables {
     void *ops;
     struct rx_call *call;
@@ -132,51 +102,44 @@ struct rxfs_storeVariables {
 afs_int32
 rxfs_storeMemPrepare(void *r, afs_uint32 size, afs_uint32 *tlen)
 {
-    afs_int32 code = 0;
+    afs_int32 code;
     struct rxfs_storeVariables *v = (struct rxfs_storeVariables *) r;
 
     RX_AFS_GUNLOCK();
     code = rx_WritevAlloc(v->call, v->tiov, &v->tnio, RX_MAXIOVECS, size);
     RX_AFS_GLOCK();
     if (code <= 0) {
-        code = rx_Error(v->call);
-        if (!code)
-            code = -33;
+	code = rx_Error(v->call);
+	if (!code)
+	    code = -33;
     }
     else {
-        *tlen = code;
-        code = 0;
+	*tlen = code;
+	code = 0;
     }
     return code;
-}
-
-afs_int32
-rxfs_storeUfsPrepare(void *r, afs_uint32 size, afs_uint32 *tlen)
-{
-    *tlen = (size > AFS_LRALLOCSIZ ?  AFS_LRALLOCSIZ : size);
-    return 0;
 }
 
 afs_int32
 rxfs_storeUfsRead(void *r, struct osi_file *tfile, afs_uint32 offset,
 		  afs_uint32 tlen, afs_uint32 *bytesread, char **abuf)
 {
-    afs_int32 nBytes;
+    afs_int32 code;
     struct rxfs_storeVariables *v = (struct rxfs_storeVariables *)r;
 
     *bytesread = 0;
     *abuf = v->tbuffer;
-    nBytes = afs_osi_Read(tfile, -1, v->tbuffer, tlen);
-    if (nBytes < 0)
+    code = afs_osi_Read(tfile, -1, v->tbuffer, tlen);
+    if (code < 0)
 	return EIO;
-    *bytesread = nBytes;
-    if (nBytes == tlen)
+    *bytesread = code;
+    if (code == tlen)
         return 0;
 #if defined(KERNEL_HAVE_UERROR)
     if (getuerror())
 	return EIO;
 #endif
-    if (nBytes == 0)
+    if (code == 0)
 	return EIO;
     return 0;
 }
@@ -185,49 +148,52 @@ afs_int32
 rxfs_storeMemRead(void *r, struct osi_file *tfile, afs_uint32 offset,
 		  afs_uint32 tlen, afs_uint32 *bytesread, char **abuf)
 {
-    afs_int32 nBytes = 0;
+    afs_int32 code;
     struct rxfs_storeVariables *v = (struct rxfs_storeVariables *)r;
     struct memCacheEntry *mceP = (struct memCacheEntry *)tfile;
 
     *bytesread = 0;
-    nBytes = afs_MemReadvBlk(mceP, offset, v->tiov, v->tnio, tlen);
-    if (nBytes != tlen)
-        return -33;
-    *bytesread = nBytes;
-    return 0;
-}
-
-afs_int32 
-rxfs_storeMemWrite(void *r, char *abuf, afs_uint32 len, 
-				afs_uint32 *byteswritten)
-{
-    afs_int32 nBytes, code;
-    struct rxfs_storeVariables *v = (struct rxfs_storeVariables *)r;
-    RX_AFS_GUNLOCK();
-    nBytes = rx_Writev(v->call, v->tiov, v->tnio, len);
-    RX_AFS_GLOCK();
-    if (nBytes != len) {
-	code = rx_Error(v->call);
-        return (code ? code : -33);
-    }
-    *byteswritten = nBytes;
+    code = afs_MemReadvBlk(mceP, offset, v->tiov, v->tnio, tlen);
+    if (code != tlen)
+	return -33;
+    *bytesread = code;
     return 0;
 }
 
 afs_int32
-rxfs_storeUfsWrite(void *r, char *abuf, afs_uint32 len, afs_uint32 *byteswritten)
+rxfs_storeMemWrite(void *r, char *abuf, afs_uint32 l, afs_uint32 *byteswritten)
 {
-    afs_int32 nBytes, code;
+    afs_int32 code;
     struct rxfs_storeVariables *v = (struct rxfs_storeVariables *)r;
 
     RX_AFS_GUNLOCK();
-    nBytes = rx_Write(v->call, abuf, len);
+    code = rx_Writev(v->call, v->tiov, v->tnio, l);
     RX_AFS_GLOCK();
-    if (nBytes != len) {
+    if (code != l) {
 	code = rx_Error(v->call);
         return (code ? code : -33);
     }
-    *byteswritten = nBytes;
+    *byteswritten = code;
+    return 0;
+}
+
+afs_int32
+rxfs_storeUfsWrite(void *r, char *abuf, afs_uint32 l, afs_uint32 *byteswritten)
+{
+    afs_int32 code;
+    struct rxfs_storeVariables *v = (struct rxfs_storeVariables *)r;
+
+    RX_AFS_GUNLOCK();
+    code = rx_Write(v->call, abuf, l);
+ 	/* writing 0 bytes will
+	 * push a short packet.  Is that really what we want, just because the
+	 * data didn't come back from the disk yet?  Let's try it and see. */
+    RX_AFS_GLOCK();
+    if (code != l) {
+	code = rx_Error(v->call);
+        return (code ? code : -33);
+    }
+    *byteswritten = code;
     return 0;
 }
 
@@ -235,23 +201,22 @@ afs_int32
 rxfs_storeUfsWriteUnlocked(void *r, char *abuf, afs_uint32 len,
 			   afs_uint32 *byteswritten)
 {
-    afs_int32 nBytes, code;
+    afs_int32 code;
     struct rxfs_storeVariables *v = (struct rxfs_storeVariables *)r;
 
-    nBytes = rx_Write(v->call, abuf, len);
-    if (nBytes != len) {
+    code = rx_Write(v->call, abuf, len);
+    if (code != len) {
 	code = rx_Error(v->call);
         return (code ? code : -33);
     }
-    *byteswritten = nBytes;
+    *byteswritten = code;
     return 0;
 }
-
 
 afs_int32
 rxfs_storePadd(void *rock, afs_uint32 size)
 {
-    afs_int32 nBytes;
+    afs_int32 code = 0;
     afs_uint32 tlen;
     struct rxfs_storeVariables *v = (struct rxfs_storeVariables *)rock;
 
@@ -262,14 +227,14 @@ rxfs_storePadd(void *rock, afs_uint32 size)
     memset(v->tbuffer, 0, AFS_LRALLOCSIZ);
 
     while (size) {
-        tlen = (size > AFS_LRALLOCSIZ ?  AFS_LRALLOCSIZ : size);
+	tlen = (size > AFS_LRALLOCSIZ ? AFS_LRALLOCSIZ : size);
 	RX_AFS_GUNLOCK();
-	nBytes = rx_Write(v->call, v->tbuffer, tlen);
+	code = rx_Write(v->call, v->tbuffer, tlen);
 	RX_AFS_GLOCK();
 
-	if (nBytes != tlen)
-	    return -33; /* XXX */
-        size -= tlen;
+	if (code != tlen)
+	    return -33;	/* XXX */
+	size -= tlen;
     }
     return 0;
 }
@@ -287,7 +252,8 @@ rxfs_storeStatus(void *rock)
 afs_int32
 rxfs_storeClose(void *r, struct AFSFetchStatus *OutStatus, int *doProcessFS)
 {
-    afs_int32 code, code2;
+    afs_int32 code;
+    afs_int32 code2;
     struct AFSVolSync tsync;
     struct rxfs_storeVariables *v = (struct rxfs_storeVariables *)r;
 
@@ -328,7 +294,7 @@ rxfs_storeDestroy(void **r, afs_int32 error)
     if (v->tbuffer)
 	osi_FreeLargeSpace(v->tbuffer);
     if (v->tiov)
-        osi_FreeSmallSpace(v->tiov);
+	osi_FreeSmallSpace(v->tiov);
     osi_FreeSmallSpace(v);
     return code;
 }
@@ -438,9 +404,9 @@ struct storeOps rxfs_storeMemOps = {
 
 afs_int32
 rxfs_storeInit(struct vcache *avc, struct afs_conn *tc,
-		struct rx_connection *rxconn,  afs_size_t base,
-		afs_size_t bytes, afs_size_t length,
-		int sync, struct storeOps **ops, void **rock)
+	       struct rx_connection *rxconn, afs_size_t base,
+	       afs_size_t bytes, afs_size_t length,
+	       int sync, struct storeOps **ops, void **rock)
 {
     afs_int32 code;
     struct rxfs_storeVariables *v;
@@ -456,12 +422,10 @@ rxfs_storeInit(struct vcache *avc, struct afs_conn *tc,
     v->InStatus.ClientModTime = avc->f.m.Date;
     v->InStatus.Mask = AFS_SETMODTIME;
     v->vcache = avc;
-    if (base + bytes > length)
-	length = base + bytes;
     if (sync & AFS_SYNC)
         v->InStatus.Mask |= AFS_FSYNC;
     RX_AFS_GUNLOCK();
-    v->call = rx_NewCall(rxconn);
+    v->call = rx_NewCall(tc->id);
     if (v->call) {
 #ifdef AFS_64BIT_CLIENT
 	if (!afs_serverHasNo64Bit(tc))
@@ -489,15 +453,15 @@ rxfs_storeInit(struct vcache *avc, struct afs_conn *tc,
         return code;
     }
     if (cacheDiskType == AFS_FCACHE_TYPE_UFS) {
-        v->tbuffer = osi_AllocLargeSpace(AFS_LRALLOCSIZ);
-        if (!v->tbuffer)
+	v->tbuffer = osi_AllocLargeSpace(AFS_LRALLOCSIZ);
+	if (!v->tbuffer)
 	    osi_Panic
-            ("rxfs_storeInit: osi_AllocLargeSpace for tbuffer returned NULL\n");
+            ("rxfs_storeInit: osi_AllocLargeSpace for iovecs returned NULL\n");
 	*ops = (struct storeOps *) &rxfs_storeUfsOps;
     } else {
-        v->tiov = osi_AllocSmallSpace(sizeof(struct iovec) * RX_MAXIOVECS);
-        if (!v->tiov)
-            osi_Panic
+	v->tiov = osi_AllocSmallSpace(sizeof(struct iovec) * RX_MAXIOVECS);
+	if (!v->tiov)
+	    osi_Panic
             ("rxfs_storeInit: osi_AllocSmallSpace for iovecs returned NULL\n");
 	*ops = (struct storeOps *) &rxfs_storeMemOps;
 #ifdef notdef
@@ -634,6 +598,32 @@ afs_CacheStoreDCaches(struct vcache *avc, struct dcache **dclist,
     return code;
 }
 
+#if defined(AFS_CACHE_BYPASS) && defined(AFS_LINUX24_ENV)
+#include "afs_bypasscache.h"
+#if defined(AFS_LINUX26_ENV)
+#define LockPage(pp) lock_page(pp)
+#define UnlockPage(pp) unlock_page(pp)
+#endif
+#endif
+
+/* conditional GUNLOCK macros */
+
+#define COND_GUNLOCK(var) \
+	do { \
+		var = ISAFS_GLOCK(); \
+		if(var) \
+			RX_AFS_GUNLOCK(); \
+	} while(0)
+	
+#define COND_RE_GLOCK(var) \
+	do { \
+		if(var) \
+			RX_AFS_GLOCK(); \
+	} while(0)
+afs_uint32 afs_protocols = RX_FILESERVER | RX_OSD;
+extern afs_int32 afs_soft_mounted;
+
+
 #define lmin(a,b) (((a) < (b)) ? (a) : (b))
 /*!
  *	Called upon store.
@@ -762,7 +752,7 @@ afs_CacheStoreVCache(struct dcache **dcList, struct vcache *avc,
 #endif
 
 	    do {
-	 	tc = afs_Conn(&avc->f.fid, areq, 0, &rxconn);
+		tc = afs_Conn(&avc->f.fid, areq, 0, &rxconn);
 
 #ifdef AFS_64BIT_CLIENT
 	      restart:
@@ -920,7 +910,7 @@ rxfs_fetchUfsRead(void *r, afs_uint32 size, afs_uint32 *bytesread)
 afs_int32
 rxfs_fetchMemRead(void *r, afs_uint32 tlen, afs_uint32 *bytesread)
 {
-    afs_int32 code = 0;
+    afs_int32 code;
     struct rxfs_fetchVariables *v = (struct rxfs_fetchVariables *)r;
     *bytesread = 0;
     RX_AFS_GUNLOCK();
@@ -1046,7 +1036,7 @@ done:
 
 afs_int32
 rxfs_fetchMemWrite(void *r, struct osi_file *fP, afs_uint32 offset,
-                   afs_uint32 tlen, afs_uint32 *byteswritten)
+		   afs_uint32 tlen, afs_uint32 *byteswritten)
 {
     afs_int32 code;
     struct rxfs_fetchVariables *v = (struct rxfs_fetchVariables *)r;
@@ -1130,11 +1120,10 @@ rxfs_fetchDestroy(void **r, afs_int32 error)
 	if (error)
 	    code = error;
     }
-    if (v->tbuffer) {
-        osi_FreeLargeSpace(v->tbuffer);
-    }
+    if (v->tbuffer)
+	osi_FreeLargeSpace(v->tbuffer);
     if (v->iov)
-        osi_FreeSmallSpace(v->iov);
+	osi_FreeSmallSpace(v->iov);
     osi_FreeSmallSpace(v);
     return code;
 }
@@ -1508,12 +1497,12 @@ restart:
 	while (length > 0) {
 #ifdef RX_KERNEL_TRACE
 	    afs_Trace1(afs_iclSetp, CM_TRACE_TIMESTAMP, ICL_TYPE_STRING,
-		       "before (*ops->read)");
+		       "before rx_Read");
 #endif
 	    code = (*ops->read)(rock, length, &bytesread);
 #ifdef RX_KERNEL_TRACE
 	    afs_Trace1(afs_iclSetp, CM_TRACE_TIMESTAMP, ICL_TYPE_STRING,
-		       "after (*ops->read)");
+		       "after rx_Read");
 #endif
 #ifndef AFS_NOSTATS
 	    bytesXferred += bytesread;
