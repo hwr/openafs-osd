@@ -2103,7 +2103,7 @@ struct fetchOps rxosd_fetchBypassCacheOps = {
 afs_int32
 rxosd_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
 		struct vcache *avc, afs_offs_t base,
-                afs_uint32 bytes, afs_uint32 *length, void* bypassparms,
+                afs_uint32 bytes, afs_int32 *length, void* bypassparms,
                 struct osi_file *fP, struct vrequest *areq, 
 		struct fetchOps **ops, void **rock)
 {

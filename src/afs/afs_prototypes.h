@@ -1416,7 +1416,7 @@ extern afs_int32 rxosd_storeInit(struct vcache *avc, struct afs_conn *tc,
                 void **rock);
 extern afs_int32 rxosd_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
 		struct vcache *avc,
-                afs_offs_t base, afs_uint32 bytes, afs_uint32 *length,
+                afs_offs_t base, afs_uint32 bytes, afs_int32 *length,
 		void *bypassparms,
                 struct osi_file *fP, struct vrequest *areq, 
 		struct fetchOps **ops, void **rock);
@@ -1435,13 +1435,13 @@ extern afs_int32 fake_vpac_storeInit(struct vcache *avc, struct afs_conn *tc,
                 afs_uint32 osd);
 extern afs_int32 vpac_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
 		struct vcache *avc,
-                afs_offs_t base, afs_uint32 bytes, afs_uint32 *length,
+                afs_offs_t base, afs_uint32 bytes, afs_int32 *length,
 		void *bypassparms,
                 struct osi_file *fP, struct vrequest *areq,
 		struct fetchOps **ops, void **rock);
 extern afs_int32 fake_vpac_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
 		struct vcache *avc,
-                afs_offs_t base, afs_uint32 bytes, afs_uint32 *length,
+                afs_offs_t base, afs_uint32 bytes, afs_int32 *length,
 		void *bypassparms, struct osi_file *fP,
                 struct vrequest *areq, struct fetchOps **ops, void **rock,
                 afs_uint64 transid, afs_uint32 expires, afs_uint32 osd);
