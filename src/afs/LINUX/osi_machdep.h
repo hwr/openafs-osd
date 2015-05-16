@@ -264,10 +264,10 @@ afs_set_cr_group_info(cred_t *cred, struct group_info *group_info) {
 #endif /* defined(STRUCT_TASK_STRUCT_HAS_CRED) */
 
 #if !defined(current_cred)
-# define current_gid() (current->gid)
-# define current_uid() (current->uid)
-# define current_fsgid() (current->fsgid)
-# define current_fsuid() (current->fsuid)
+# define current_gid() (afs_from_kgid(current->gid))
+# define current_uid() (afs_from_kuid(current->uid))
+# define current_fsgid() (afs_from_kgid(current->fsgid))
+# define current_fsuid() (afs_from_kuid(current->fsuid))
 #endif
 
 /* UIO manipulation */
