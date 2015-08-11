@@ -169,10 +169,10 @@ typedef struct afs_cred afs_ucred_t;
 typedef struct task_struct afs_proc_t;
 
 #if !defined(current_cred)
-#define current_gid() (afs_from_kgid(current->gid))
-#define current_uid() (afs_from_kuid(current->uid))
-#define current_fsgid() (afs_from_kgid(current->fsgid))
-#define current_fsuid() (afs_from_kuid(current->fsuid))
+#define current_gid() (current->gid)
+#define current_uid() (current->uid)
+#define current_fsgid() (current->fsgid)
+#define current_fsuid() (current->fsuid)
 #endif
 #if defined(STRUCT_TASK_STRUCT_HAS_CRED)
 #define current_group_info() (current->cred->group_info)

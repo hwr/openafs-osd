@@ -428,6 +428,9 @@
 /* Define if your kernel has the zero_user_segments function */
 #undef HAVE_LINUX_ZERO_USER_SEGMENTS
 
+/* Define if your kernel has the __vfs_read function */
+#undef HAVE_LINUX___VFS_READ
+
 /* Define to 1 if you have the <memory.h> header file. */
 #undef HAVE_MEMORY_H
 

@@ -73,6 +73,10 @@ SDISK_Begin(struct rx_call *rxcall, struct ubik_tid *atid, afs_int32 index)
 	return ENOENT;
     }
     DBHOLD(ubik_dbase[index]);
+    if (urecovery_AllBetter(ubik_dbase[index], 0) == 0) {
+	code = UNOQUORUM;
+	goto out;
+    }
     urecovery_CheckTid(atid, index);
     if (ubik_currentTrans[index]) {
 	/* If the thread is not waiting for lock - ok to end it */
@@ -91,6 +95,7 @@ SDISK_Begin(struct rx_call *rxcall, struct ubik_tid *atid, afs_int32 index)
 	ubik_currentTrans[index]->tid.epoch = atid->epoch;
 	ubik_currentTrans[index]->tid.counter = atid->counter;
     }
+out:
     DBRELE(ubik_dbase[index]);
     return code;
 }
@@ -873,6 +878,16 @@ SDISK_UpdateInterfaceAddr(struct rx_call *rxcall,
     for (i = 0; i < UBIK_MAX_INTERFACE_ADDR && ts->addr[i]; i++)
 	ubik_print("... %s\n", afs_inet_ntoa_r(ts->addr[i], hoststr));
 
+    /*
+     * The most likely cause of a DISK_UpdateInterfaceAddr RPC
+     * is because the server was restarted.  Reset its state
+     * so that no DISK_Begin RPCs will be issued until the
+     * known database version is current.
+     */
+    ts->beaconSinceDown = 0;
+    for (i=0; i<MAX_UBIK_DBASES; i++)
+        ts->currentDB[i] = 0;
+    urecovery_LostServer();
     return 0;
 }
 
