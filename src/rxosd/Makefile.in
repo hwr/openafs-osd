@@ -36,9 +36,10 @@ CCRULE=${CC} ${SHLIBCFLAGS} -o $@ -c $<
 CRULESALV = ${CC} ${SHLIBCFLAGS} -DBUILD_SALVAGER -o $@ -c $?
 CCRULESALV = ${CC} ${SHLIBCFLAGS} -DBUILD_SALVAGER -o $@ -c $<
 CRULERXOSD = ${CC} ${CFLAGS} -I. -I${srcdir}/ -I${TOP_INCDIR} -I../config -DBUILDING_RXOSD -DAFS_PTHREAD_ENV -o $@ -c $?
-CRULEOSDDB = ${CC} ${CFLAGS} -I. -I${srcdir}/ -I${TOP_INCDIR} -I../config -DBUILDING_OSDDBSERVER -DAFS_PTHREAD_ENV -o $@ -c $<
 CCRULERXOSD = ${CC} ${CFLAGS} -I. -I${srcdir}/ -I${TOP_INCDIR} -I../config -DBUILDING_RXOSD -DAFS_PTHREAD_ENV -o $@ -c $<
-CRULEVENUS = ${CC} ${CFLAGS} -I. -I${srcdir}/ -I${TOP_INCDIR} -I../config -DBUILDING_CLIENT_COMMAND -DAFS_PTHREAD_ENV -o $@ -c $<
+CRULEOSDDB = ${CC} ${CFLAGS} -I. -I${srcdir}/ -I${TOP_INCDIR} -I../config -DBUILDING_OSDDBSERVER -DAFS_PTHREAD_ENV -o $@ -c $?
+CCRULEOSDDB = ${CC} ${CFLAGS} -I. -I${srcdir}/ -I${TOP_INCDIR} -I../config -DBUILDING_OSDDBSERVER -DAFS_PTHREAD_ENV -o $@ -c $<
+CRULEVENUS = ${CC} ${CFLAGS} -I. -I${srcdir}/ -I${TOP_INCDIR} -I../config -DBUILDING_CLIENT_COMMAND -DAFS_PTHREAD_ENV -o $@ -c $?
 CCRULEVENUS = ${CC} ${CFLAGS} -I. -I${srcdir}/ -I${TOP_INCDIR} -I../config -DBUILDING_CLIENT_COMMAND -DAFS_PTHREAD_ENV -o $@ -c $<
 
 SHLIBHSMCFLAGS=${COMMON_CFLAGS} -DBUILD_SHLIBAFSHSM -I.. -I${UTIL}/ ${MT_CFLAGS} ${SHLIB_CFLAGS}
@@ -393,23 +394,13 @@ d_vol_osd.o: d_vol_osd.c vol_osd.h
 libafsosd.o: ${srcdir}/libafsosd.c
 	${CCRULE}
 
-d_libafsosd.c: ${srcdir}/libafsosd.c
-	ln -fs $? $@
+d_libafsosd.o: ${srcdir}/libafsosd.c
+	${CRULE} -DAFS_DEMAND_ATTACH_FS
 
-d_libafsosd.o: d_libafsosd.c
-	${CCRULE} -DAFS_DEMAND_ATTACH_FS
+c_libafsosd.o: ${srcdir}/libafsosd.c
+	${CRULE} -DBUILDING_CLIENT_COMMAND
 
-#create a hard linked second name for the same source to match dependency rule for another target
-c_libafsosd.c: ${srcdir}/libafsosd.c
-	ln -fs $? $@
-
-c_libafsosd.o: c_libafsosd.c
-	${CCRULE} -DBUILDING_CLIENT_COMMAND
-
-o_libafsosd.c: ${srcdir}/libafsosd.c
-	ln -fs $? $@
-
-o_libafsosd.o: c_libafsosd.c
+o_libafsosd.o: ${srcdir}/libafsosd.c
 	${CRULEOSDDB} 
 
 rxosd_namei_ops.o: ${srcdir}/rxosd_namei_ops.c
@@ -421,8 +412,8 @@ devname.o: ${VOL}/devname.c
 common.o: ${VOL}/common.c
 	${CRULERXOSD}
 
-rxosd_ihandle.o: ${srcdir}/../vol/ihandle.c
-	${CCRULERXOSD}
+rxosd_ihandle.o: ${VOL}/ihandle.c
+	${CRULERXOSD}
 
 # osddb routines
 
@@ -448,7 +439,7 @@ osddbpolicy.o: ${srcdir}/osddbpolicy.c
 	${CCRULE}
 
 c_osddbpolicy.o: ${srcdir}/osddbpolicy.c
-	${CCRULE} -DBUILDING_CLIENT_COMMAND
+	${CRULE} -DBUILDING_CLIENT_COMMAND
 
 a_osddbuser.c: ${srcdir}/osddbuser.c
 	ln -fs $? $@
@@ -456,12 +447,8 @@ a_osddbuser.c: ${srcdir}/osddbuser.c
 a_osddbuser.o: a_osddbuser.c vicedosd.h volserosd.h fs_rxosd_common.h osddb.h volint.h
 	${CCRULE} -DBUILD_LIBAFSOSD_A
 
-#create a hard linked second name for the same source to match dependency rule for another target
-r_osddbuser.c: ${srcdir}/osddbuser.c
-	ln -fs $? $@
-
-r_osddbuser.o: r_osddbuser.c
-	${CCRULERXOSD}
+r_osddbuser.o: ${srcdir}/osddbuser.c
+	${CRULERXOSD}
 
 osddb.xdr.o: osddb.xdr.c
 	${CCRULE}
@@ -526,7 +513,7 @@ osd.o: ${srcdir}/osd.c
 policies.tab.c: policies.y
 	${YACC} -b policies ${srcdir}/policies.y
 
-#use CRULE... here because dependiency and target have different names
+#use CRULE... here because dependency and target have different names
 policy_parser.o: policies.tab.c
 	${CRULERXOSD}
 
@@ -535,15 +522,12 @@ libafshsm.o: ${srcdir}/libafshsm.c ${srcdir}/rxosd_hsm.h
 
 # salvager stuff
 
-#use CRULE... here because dependiency and target have different names
+#use CRULE... here because dependency and target have different names
 vol_osd_salv.o: ${srcdir}/vol_osd.c
 	${CRULESALV}
 
-d_vol_osd_salv.c: ${srcdir}/vol_osd.c
-	ln -sf $? $@
-
-d_vol_osd_salv.o: d_vol_osd_salv.c
-	${CCRULESALV} -DAFS_DEMAND_ATTACH_FS
+d_vol_osd_salv.o: ${srcdir}/vol_osd.c
+	${CRULESALV} -DAFS_DEMAND_ATTACH_FS
 
 # fsint stuff
 
@@ -612,7 +596,7 @@ vicedosd.cs.o: vicedosd.cs.c vicedosd.h afsint.h fs_rxosd_common.h
 vicedosd.o: ${srcdir}/vicedosd.c
 	${CCRULE}
 
-#use CRULE... here because dependiency and target have different names
+#use CRULE... here because dependency and target have different names
 d_vicedosd.o: ${srcdir}/vicedosd.c
 	${CRULE} -DAFS_DEMAND_ATTACH_FS
 
@@ -725,7 +709,7 @@ fs: fs.o venus_libafsosd.o ${LIBS}
 		${LIBS} ${MT_LIBS} -ldl ${XLIBS} ${KRB5_LIBS}
 
 afsio.o: afsio.c afsint.h rxosd.h
-	${CRULEVENUS}
+	${CCRULEVENUS}
 
 afsio: afsio.o ${FSINTOBJS} rxosd.cs.o rxosd.xdr.o vicedosd.cs.o vicedosd.xdr.o
 	${CC} ${LDFLAGS} -o afsio afsio.o ${FSINTOBJS} \
@@ -768,7 +752,7 @@ osdmetadata: osdmetadata.o vol_osdutil.o vol_osd.xdr.o
 		../../lib/libcmd.a ../../lib/librx.a ../../lib/util.a
 
 osddbserver.o: ${srcdir}/osddbserver.c osddb.h
-	${CRULEOSDDB}
+	${CCRULEOSDDB}
 
 osddbserver: osddbserver.o o_libafsosd.o ${SERVERLIBS} Makefile
 	${CC} ${CFLAGS} ${MT_CFLAGS} -o osddbserver osddbserver.o o_libafsosd.o \
