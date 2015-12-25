@@ -5438,6 +5438,7 @@ rxi_ResetCall(struct rx_call *call, int newcall)
     call->rprev = 0;
     call->lastAcked = 0;
     call->localStatus = call->remoteStatus = 0;
+    call->lastSendData = 0;
 
     if (flags & RX_CALL_READER_WAIT) {
 #ifdef	RX_ENABLE_LOCKS
@@ -5514,6 +5515,9 @@ rxi_ResetCall(struct rx_call *call, int newcall)
     int	pflags;			 Flags field from packet header
     int	reason;			 Reason an acknowledge was prompted
 */
+
+#define RX_ZEROS 1024
+static char rx_zeros[RX_ZEROS];
 
 struct rx_packet *
 rxi_SendAck(struct rx_call *call,
@@ -5670,6 +5674,11 @@ rxi_SendAck(struct rx_call *call,
     ap->nAcks = offset;
     p->length = rx_AckDataSize(offset) + 4 * sizeof(afs_int32);
 
+    /* Must zero the 3 octets that rx_AckDataSize skips at the end of the
+     * ACK list.
+     */
+    rx_packetwrite(p, rx_AckDataSize(offset) - 3, 3, rx_zeros);
+
     /* these are new for AFS 3.3 */
     templ = rxi_AdjustMaxMTU(call->conn->peer->ifMTU, rx_maxReceiveSize);
     templ = htonl(templ);
@@ -5688,6 +5697,8 @@ rxi_SendAck(struct rx_call *call,
     rx_packetwrite(p, rx_AckDataSize(offset) + 3 * sizeof(afs_int32),
 		   sizeof(afs_int32), &templ);
 
+    p->length = rx_AckDataSize(offset) + 4 * sizeof(afs_int32);
+
     p->header.serviceId = call->conn->serviceId;
     p->header.cid = (call->conn->cid | call->channel);
     p->header.callNumber = *call->callNumber;
@@ -5701,19 +5712,20 @@ rxi_SendAck(struct rx_call *call,
 #ifdef ADAPT_WINDOW
 	clock_GetTime(&call->pingRequestTime);
 #endif
-	if (padbytes) {
-	    p->length = padbytes +
-		rx_AckDataSize(call->rwind) + 4 * sizeof(afs_int32);
+    }
 
-	    while (padbytes--)
-		/* not fast but we can potentially use this if truncated
-		 * fragments are delivered to figure out the mtu.
-		 */
-		rx_packetwrite(p, rx_AckDataSize(offset) + 4 *
-			       sizeof(afs_int32), sizeof(afs_int32),
-			       &padbytes);
+    while (padbytes > 0) {
+	if (padbytes > RX_ZEROS) {
+	    rx_packetwrite(p, p->length, RX_ZEROS, rx_zeros);
+	    p->length += RX_ZEROS;
+	    padbytes -= RX_ZEROS;
+	} else {
+	    rx_packetwrite(p, p->length, padbytes, rx_zeros);
+	    p->length += padbytes;
+	    padbytes = 0;
 	}
     }
+
     if (call->conn->type == RX_CLIENT_CONNECTION)
 	p->header.flags |= RX_CLIENT_INITIATED;
 
@@ -6399,17 +6411,17 @@ rxi_CheckCall(struct rx_call *call)
 	&& ((call->startWait + idleDeadTime) < now) &&
 	(call->flags & RX_CALL_READER_WAIT)) {
 	if (call->state == RX_STATE_ACTIVE) {
-	    printf("AFS: idleDead for call %u to %u.%u.%u.%u:%u %s\n",
-			*call->callNumber,
-			(ntohl(call->conn->peer->host) >> 24) & 0xff,
-			(ntohl(call->conn->peer->host) >> 16) & 0xff,
-			(ntohl(call->conn->peer->host) >>  8) & 0xff,
-			ntohl(call->conn->peer->host) & 0xff,
-			ntohs(call->conn->peer->port),
-			rx_enableIdleDead ? "" : " ignored");
-	    if (rx_enableIdleDead) {
-	    	cerror = RX_CALL_TIMEOUT;
-	    	goto mtuout;
+            printf("AFS: idleDead for call %u to %u.%u.%u.%u:%u %s\n",
+                        *call->callNumber,
+                        (ntohl(call->conn->peer->host) >> 24) & 0xff,
+                        (ntohl(call->conn->peer->host) >> 16) & 0xff,
+                        (ntohl(call->conn->peer->host) >>  8) & 0xff,
+                        ntohl(call->conn->peer->host) & 0xff,
+                        ntohs(call->conn->peer->port),
+                        rx_enableIdleDead ? "" : " ignored");
+            if (rx_enableIdleDead) {
+	        cerror = RX_CALL_TIMEOUT;
+	        goto mtuout;
 	    }
 	}
     }

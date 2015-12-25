@@ -533,10 +533,10 @@ DisplayFormat(volintInfo *pntr, afs_uint32 server, afs_int32 part,
 		fprintf(STDOUT, "**needs salvage**");
 	    fprintf(STDOUT, "\n");
 	    MapPartIdIntoName(part, pname);
-            sprintf((char *)&serverAndPartition, "%s %s",
-                        hostutil_GetNameByINet(server), pname);
-            fprintf(STDOUT,"    %-45s %7d files\n",
-                        serverAndPartition, pntr->filecount);
+	    sprintf((char *)&serverAndPartition, "%s %s",
+			hostutil_GetNameByINet(server), pname);
+	    fprintf(STDOUT,"    %-45s %7d files\n",
+			serverAndPartition, pntr->filecount);
 	    fprintf(STDOUT, "    RWrite %10lu ROnly %10lu Backup %10lu \n",
 		    (unsigned long)pntr->parentID,
 		    (unsigned long)pntr->cloneID,
@@ -544,13 +544,13 @@ DisplayFormat(volintInfo *pntr, afs_uint32 server, afs_int32 part,
 	    fprintf(STDOUT, "    MaxQuota %10d K", pntr->maxquota);
 
 	    /* when running whith libafsosd these fields could be filled */
-            if (pntr->osdPolicy)
-                fprintf(STDOUT,", osd policy %4d", pntr->osdPolicy);
-            else
-                fprintf(STDOUT,"                 ");
-            if (pntr->filequota>0)
-                fprintf(STDOUT," %d files", pntr->filequota);
-            fprintf(STDOUT, "\n");
+	    if (pntr->osdPolicy)
+		fprintf(STDOUT,", osd policy %4d", pntr->osdPolicy);
+	    else
+		fprintf(STDOUT,"                 ");
+	    if (pntr->filequota>0)
+		fprintf(STDOUT," %d files", pntr->filequota);
+	    fprintf(STDOUT, "\n");
 
 	    t = pntr->creationDate;
 	    fprintf(STDOUT, "    Creation    %s",
@@ -706,6 +706,7 @@ XDisplayFormat(volintXInfo *a_xInfoP, afs_uint32 a_servID, afs_int32 a_partID,
 		    (unsigned long)a_xInfoP->backupID);
 	    fprintf(STDOUT, "    MaxQuota %10d K \n", a_xInfoP->maxquota);
 
+	    t = a_xInfoP->creationDate;
 	    fprintf(STDOUT, "    Creation    %s",
 		    ctime(&t));
 
@@ -2978,14 +2979,14 @@ DumpVolumeCmd(struct cmd_syndesc *as, void *arock)
 
     flags = as->parms[6].items ? VOLDUMPV2_OMITDIRS : 0;
     if (as->parms[7].items) {
-        if (as->parms[8].items) {
-            fprintf(stderr,"Invalid options: you cannot specify -osddata and -metadataonly together\n");
-            return EINVAL;
-        }
+	if (as->parms[8].items) {
+	    fprintf(stderr,"Invalid options: you cannot specify -osddata and -metadataonly together\n");
+	    return EINVAL;
+	}
     } else {
-        flags |= VOLDUMPV2_OSDMETADATA;
-        if (as->parms[8].items)
-            flags |= VOLDUMPV2_METADATADUMP;
+	flags |= VOLDUMPV2_OSDMETADATA;
+	if (as->parms[8].items)
+	    flags |= VOLDUMPV2_METADATADUMP;
     }
 retry_dump:
     if (as->parms[5].items) {
@@ -5231,6 +5232,7 @@ ChangeAddr(struct cmd_syndesc *as, void *arock)
 {
     afs_int32 ip1, ip2, vcode;
     int remove = 0;
+    int force = 0;
 
     if (noresolve)
 	ip1 = GetServerNoresolve(as->parms[0].items->data);
@@ -5246,6 +5248,10 @@ ChangeAddr(struct cmd_syndesc *as, void *arock)
 	fprintf(STDERR,
 		"vos: Must specify either '-newaddr <addr>' or '-remove' flag\n");
 	return (EINVAL);
+    }
+
+    if (as->parms[3].items) {
+	force = 1;
     }
 
     if (as->parms[1].items) {
@@ -5265,6 +5271,42 @@ ChangeAddr(struct cmd_syndesc *as, void *arock)
 	remove = 1;
 	ip2 = ip1;
 	ip1 = 0xffffffff;
+    }
+
+    if (!remove && !force) {
+	afs_int32 m_nentries;
+	bulkaddrs m_addrs;
+	afs_int32 m_uniq = 0;
+	afsUUID m_uuid;
+	ListAddrByAttributes m_attrs;
+	char buffer[128];
+
+	memset(&m_attrs, 0, sizeof(m_attrs));
+	memset(&m_uuid, 0, sizeof(m_uuid));
+	memset(&m_addrs, 0, sizeof(m_addrs));
+	memset(buffer, 0, sizeof(buffer));
+
+	m_attrs.Mask = VLADDR_IPADDR;
+	m_attrs.ipaddr = ntohl(ip1);	/* -oldaddr */
+
+	vcode =
+	    ubik_VL_GetAddrsU(cstruct, UBIK_CALL_NEW, &m_attrs, &m_uuid,
+			      &m_uniq, &m_nentries, &m_addrs);
+	xdr_free((xdrproc_t) xdr_bulkaddrs, &m_addrs);
+	switch (vcode) {
+	case 0:		/* mh entry detected */
+	    afsUUID_to_string(&m_uuid, buffer, sizeof(buffer) - 1);
+	    fprintf(STDERR, "vos: Refusing to change address in multi-homed server entry.\n");
+	    fprintf(STDERR, "     -oldaddr address is registered to file server UUID %s\n", buffer);
+	    fprintf(STDERR, "     Please restart the file server or use vos setaddrs.\n");
+	    return EINVAL;
+	case VL_NOENT:
+	    break;
+	default:
+	    fprintf(STDERR, "vos: could not list the server addresses\n");
+	    PrintError("", vcode);
+	    return vcode;
+	}
     }
 
     vcode = ubik_VL_ChangeAddr(cstruct, UBIK_CALL_NEW, ntohl(ip1), ntohl(ip2));
@@ -5303,7 +5345,7 @@ print_addrs(const bulkaddrs * addrs, afsUUID * m_uuid, int nentries,
 	    int print)
 {
     int i;
-    afs_uint32 *addrp;
+    afs_uint32 addr;
     char buf[1024];
 
     if (print) {
@@ -5312,14 +5354,13 @@ print_addrs(const bulkaddrs * addrs, afsUUID * m_uuid, int nentries,
     }
 
     /* print out the list of all the server */
-    addrp = (afs_uint32 *) addrs->bulkaddrs_val;
-    for (i = 0; i < nentries; i++, addrp++) {
-	*addrp = htonl(*addrp);
+    for (i = 0; i < addrs->bulkaddrs_len; i++) {
+	addr = htonl(addrs->bulkaddrs_val[i]);
 	if (noresolve) {
 	    char hoststr[16];
-	    printf("%s\n", afs_inet_ntoa_r(*addrp, hoststr));
+	    printf("%s\n", afs_inet_ntoa_r(addr, hoststr));
 	} else {
-	    printf("%s\n", hostutil_GetNameByINet(*addrp));
+	    printf("%s\n", hostutil_GetNameByINet(addr));
 	}
     }
 
@@ -5500,6 +5541,68 @@ SetAddrs(struct cmd_syndesc *as, void *arock)
 }
 
 static int
+RemoveAddrs(struct cmd_syndesc *as, void *arock)
+{
+    afs_int32 code;
+    ListAddrByAttributes attrs;
+    afsUUID uuid;
+    afs_int32 uniq = 0;
+    afs_int32 nentries = 0;
+    bulkaddrs addrs;
+    afs_uint32 ip1;
+    afs_uint32 ip2;
+
+    memset(&attrs, 0, sizeof(ListAddrByAttributes));
+    memset(&addrs, 0, sizeof(bulkaddrs));
+    memset(&uuid, 0, sizeof(afsUUID));
+    attrs.Mask = VLADDR_UUID;
+
+    if (as->parms[0].items) {	/* -uuid */
+	if (afsUUID_from_string(as->parms[0].items->data, &attrs.uuid) < 0) {
+	    fprintf(STDERR, "vos: invalid UUID '%s'\n",
+		    as->parms[0].items->data);
+	    return EINVAL;
+	}
+    }
+
+    code =
+	ubik_VL_GetAddrsU(cstruct, UBIK_CALL_NEW, &attrs, &uuid, &uniq,
+			  &nentries, &addrs);
+    if (code == VL_NOENT) {
+	fprintf(STDERR, "vos: UUID not found\n");
+	goto out;
+    }
+    if (code != 0) {
+	fprintf(STDERR, "vos: could not list the server addresses\n");
+	PrintError("", code);
+	goto out;
+    }
+    if (addrs.bulkaddrs_len == 0) {
+	fprintf(STDERR, "vos: no addresses found for UUID\n");
+	goto out;
+    }
+
+    ip2 = addrs.bulkaddrs_val[0]; /* network byte order */
+    ip1 = 0xffffffff;             /* indicates removal mode */
+
+    if (verbose) {
+	printf("vos: Removing UUID with hosts:\n");
+	print_addrs(&addrs, &uuid, nentries, 1);
+    }
+
+    code = ubik_VL_ChangeAddr(cstruct, UBIK_CALL_NEW, ip1, ip2);
+    if (code) {
+	fprintf(STDERR, "Could not remove server entry from the VLDB.\n");
+	PrintError("", code);
+    }
+
+  out:
+    xdr_free((xdrproc_t) xdr_bulkaddrs, &addrs);
+    return code;
+}
+
+
+static int
 LockEntry(struct cmd_syndesc *as, void *arock)
 {
     afs_uint32 avolid;
@@ -5544,6 +5647,8 @@ ConvertRO(struct cmd_syndesc *as, void *arock)
     int force = 0;
     struct rx_connection *aconn;
     int c, dc;
+
+    memset(&storeEntry, 0, sizeof(struct nvldbentry));
 
     server = GetServer(as->parms[0].items->data);
     if (!server) {
@@ -5900,13 +6005,20 @@ EndTrans(struct cmd_syndesc *as, void *arock)
 int
 PrintDiagnostics(char *astring, afs_int32 acode)
 {
-    if (acode == EACCES) {
+    switch (acode) {
+    case EACCES:
 	fprintf(STDERR,
 		"You are not authorized to perform the 'vos %s' command (%d)\n",
 		astring, acode);
-    } else {
+	break;
+    case EXDEV:
+	fprintf(STDERR, "Error in vos %s command.\n", astring);
+	fprintf(STDERR, "Clone volume is not in the same partition as the read-write volume.\n");
+	break;
+    default:
 	fprintf(STDERR, "Error in vos %s command.\n", astring);
 	PrintError("", acode);
+	break;
     }
     return 0;
 }
@@ -6030,20 +6142,20 @@ main(int argc, char **argv)
         vos_data.noresolve = &noresolve;
         vos_data.rx_connDeadTime = &rx_connDeadTime;
         code = load_libcafsosd("init_voscmd_afsosd", &vos_data, 
-				(void *)&libafsosd_loaded);
+                               (void *)&libafsosd_loaded);
     }
 #endif
 
     if (!libafsosd_loaded) {
-        ts = cmd_CreateSyntax("create", CreateVolume, NULL, "create a new volume");
-        cmd_AddParm(ts, "-server", CMD_SINGLE, 0, "machine name");
-        cmd_AddParm(ts, "-partition", CMD_SINGLE, 0, "partition name");
-        cmd_AddParm(ts, "-name", CMD_SINGLE, 0, "volume name");
-        cmd_AddParm(ts, "-maxquota", CMD_SINGLE, CMD_OPTIONAL,
-		    "initial quota (KB)");
-        cmd_AddParm(ts, "-id", CMD_SINGLE, CMD_OPTIONAL, "volume ID");
-        cmd_AddParm(ts, "-roid", CMD_SINGLE, CMD_OPTIONAL, "readonly volume ID");
-        COMMONPARMS;
+    ts = cmd_CreateSyntax("create", CreateVolume, NULL, "create a new volume");
+    cmd_AddParm(ts, "-server", CMD_SINGLE, 0, "machine name");
+    cmd_AddParm(ts, "-partition", CMD_SINGLE, 0, "partition name");
+    cmd_AddParm(ts, "-name", CMD_SINGLE, 0, "volume name");
+    cmd_AddParm(ts, "-maxquota", CMD_SINGLE, CMD_OPTIONAL,
+		"initial quota (KB)");
+    cmd_AddParm(ts, "-id", CMD_SINGLE, CMD_OPTIONAL, "volume ID");
+    cmd_AddParm(ts, "-roid", CMD_SINGLE, CMD_OPTIONAL, "readonly volume ID");
+    COMMONPARMS;
     }
 
     ts = cmd_CreateSyntax("remove", DeleteVolume, NULL, "delete a volume");
@@ -6253,13 +6365,13 @@ main(int argc, char **argv)
     cmd_CreateAlias(ts, "e");
 
     if (!libafsosd_loaded) {
-        ts = cmd_CreateSyntax("setfields", SetFields, NULL,
-			      "change volume info fields");
-        cmd_AddParm(ts, "-id", CMD_SINGLE, 0, "volume name or ID");
-        cmd_AddParm(ts, "-maxquota", CMD_SINGLE, CMD_OPTIONAL, "quota (KB)");
-        cmd_AddParm(ts, "-clearuse", CMD_FLAG, CMD_OPTIONAL, "clear dayUse");
-        cmd_AddParm(ts, "-clearVolUpCounter", CMD_FLAG, CMD_OPTIONAL, "clear volUpdateCounter");
-        COMMONPARMS;
+    ts = cmd_CreateSyntax("setfields", SetFields, NULL,
+			  "change volume info fields");
+    cmd_AddParm(ts, "-id", CMD_SINGLE, 0, "volume name or ID");
+    cmd_AddParm(ts, "-maxquota", CMD_SINGLE, CMD_OPTIONAL, "quota (KB)");
+    cmd_AddParm(ts, "-clearuse", CMD_FLAG, CMD_OPTIONAL, "clear dayUse");
+    cmd_AddParm(ts, "-clearVolUpCounter", CMD_FLAG, CMD_OPTIONAL, "clear volUpdateCounter");
+    COMMONPARMS;
     }
 
     ts = cmd_CreateSyntax("offline", volOffline, NULL, "force the volume status to offline");
@@ -6357,6 +6469,8 @@ main(int argc, char **argv)
     cmd_AddParm(ts, "-newaddr", CMD_SINGLE, CMD_OPTIONAL, "new IP address");
     cmd_AddParm(ts, "-remove", CMD_FLAG, CMD_OPTIONAL,
 		"remove the IP address from the VLDB");
+    cmd_AddParm(ts, "-force", CMD_FLAG, CMD_OPTIONAL,
+		"allow multi-homed server entry change (not recommended)");
     COMMONPARMS;
 
     ts = cmd_CreateSyntax("listaddrs", ListAddrs, NULL,
@@ -6393,11 +6507,16 @@ main(int argc, char **argv)
     COMMONPARMS;
 
     ts = cmd_CreateSyntax("setaddrs", SetAddrs, NULL,
-			  "set the list of IP address for a given UUID in the VLDB");
+			  "set the list of IP addresses for a given UUID in the VLDB");
     cmd_AddParm(ts, "-uuid", CMD_SINGLE, 0, "uuid of server");
     cmd_AddParm(ts, "-host", CMD_LIST, 0, "address of host");
-
     COMMONPARMS;
+
+    ts = cmd_CreateSyntax("remaddrs", RemoveAddrs, NULL,
+			  "remove the list of IP addresses for a given UUID in the VLDB");
+    cmd_AddParm(ts, "-uuid", CMD_SINGLE, 0, "uuid of server");
+    COMMONPARMS;
+
     code = cmd_Dispatch(argc, argv);
     if (rxInitDone) {
 	/* Shut down the ubik_client and rx connections */

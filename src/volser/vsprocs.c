@@ -1447,8 +1447,10 @@ UV_MoveVolume2(afs_uint32 afromvol, afs_uint32 afromserver, afs_int32 afrompart,
 	fprintf(STDOUT, "First test point - operation not started.\n");
 	fprintf(STDOUT, "...test here (y, n)? ");
 	fflush(STDOUT);
-	fscanf(stdin, "%c", &in);
-	fscanf(stdin, "%c", &lf);	/* toss away */
+	if (fscanf(stdin, "%c", &in) < 1)
+	    in = 0;
+	if (fscanf(stdin, "%c", &lf) < 0)	/* toss away */
+	    ; /* don't care */
 	if (in == 'y') {
 	    fprintf(STDOUT, "type control-c\n");
 	    while (1) {
@@ -1803,8 +1805,10 @@ UV_MoveVolume2(afs_uint32 afromvol, afs_uint32 afromserver, afs_int32 afrompart,
 		"Second test point - operation in progress but not complete.\n");
 	fprintf(STDOUT, "...test here (y, n)? ");
 	fflush(STDOUT);
-	fscanf(stdin, "%c", &in);
-	fscanf(stdin, "%c", &lf);	/* toss away */
+	if (fscanf(stdin, "%c", &in) < 1)
+	    in = 0;
+	if (fscanf(stdin, "%c", &lf) < 0)	/* toss away */
+	    ; /* don't care */
 	if (in == 'y') {
 	    fprintf(STDOUT, "type control-c\n");
 	    while (1) {
@@ -1836,8 +1840,10 @@ UV_MoveVolume2(afs_uint32 afromvol, afs_uint32 afromserver, afs_int32 afrompart,
 		"Third test point - operation complete but no cleanup.\n");
 	fprintf(STDOUT, "...test here (y, n)? ");
 	fflush(STDOUT);
-	fscanf(stdin, "%c", &in);
-	fscanf(stdin, "%c", &lf);	/* toss away */
+	if (fscanf(stdin, "%c", &in) < 1)
+	    in = 0;
+	if (fscanf(stdin, "%c", &lf) < 0)	/* toss away */
+	    ; /* don't care */
 	if (in == 'y') {
 	    fprintf(STDOUT, "type control-c\n");
 	    while (1) {
@@ -1919,8 +1925,10 @@ UV_MoveVolume2(afs_uint32 afromvol, afs_uint32 afromserver, afs_int32 afrompart,
 	fprintf(STDOUT, "Fourth test point - operation complete.\n");
 	fprintf(STDOUT, "...test here (y, n)? ");
 	fflush(STDOUT);
-	fscanf(stdin, "%c", &in);
-	fscanf(stdin, "%c", &lf);	/* toss away */
+	if (fscanf(stdin, "%c", &in) < 1)
+	    in = 0;
+	if (fscanf(stdin, "%c", &lf) < 0)	/* toss away */
+	    ; /* don't care */
 	if (in == 'y') {
 	    fprintf(STDOUT, "type control-c\n");
 	    while (1) {
@@ -2922,7 +2930,7 @@ UV_CloneVolume(afs_uint32 aserver, afs_int32 apart, afs_uint32 avolid,
 	type = backupVolume;
 
     code = DoVolClone(aconn, avolid, apart, type, acloneid, "clone",
-		      NULL, ".clone", NULL, NULL, NULL);
+		      NULL, aname, NULL, NULL, NULL);
     if (code) {
 	error = code;
 	goto bfail;
@@ -4630,6 +4638,8 @@ UV_RestoreVolume2(afs_uint32 toserver, afs_int32 topart, afs_uint32 tovolid,
     int reuseID;
     afs_int32 volflag, voltype, volsertype;
     afs_int32 oldCreateDate, oldUpdateDate, newCreateDate, newUpdateDate;
+    VolumeId oldCloneId = 0;
+    VolumeId oldBackupId = 0;
     int index, same, errcode;
     char apartName[10];
     char hoststr[16];
@@ -4741,6 +4751,8 @@ UV_RestoreVolume2(afs_uint32 toserver, afs_int32 topart, afs_uint32 tovolid,
 	}
 	oldCreateDate = tstatus.creationDate;
 	oldUpdateDate = tstatus.updateDate;
+	oldCloneId = tstatus.cloneID;
+	oldBackupId = tstatus.backupID;
     } else {
 	oldCreateDate = 0;
 	oldUpdateDate = 0;
@@ -4779,9 +4791,10 @@ UV_RestoreVolume2(afs_uint32 toserver, afs_int32 topart, afs_uint32 tovolid,
 	error = code;
 	goto refail;
     }
-    code = AFSVolSetIdsTypes(toconn, totid, tovolreal, voltype, pparentid, 0, 0);
+    code = AFSVolSetIdsTypes(toconn, totid, tovolreal, voltype, pparentid,
+		                oldCloneId, oldBackupId);
     if (code) {
-	fprintf(STDERR, "Could not set the right type and ID on %lu\n",
+	fprintf(STDERR, "Could not set the right type and IDs on %lu\n",
 		(unsigned long)pvolid);
 	error = code;
 	goto refail;

@@ -855,6 +855,15 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 		 dnl Setup the kernel build environment
 		 LINUX_KBUILD_USES_EXTRA_CFLAGS
 		 LINUX_KERNEL_COMPILE_WORKS
+                 dnl Operation signature checks
+                 AC_CHECK_LINUX_OPERATION([inode_operations], [follow_link], [no_nameidata],
+                                          [#include <linux/fs.h>],
+                                          [const char *],
+                                          [struct dentry *dentry, void **link_data])
+                 AC_CHECK_LINUX_OPERATION([inode_operations], [put_link], [no_nameidata],
+                                          [#include <linux/fs.h>],
+                                          [void],
+                                          [struct inode *inode, void *link_data])
 
 		 dnl Check for header files
 		 AC_CHECK_LINUX_HEADER([config.h])
@@ -913,6 +922,7 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 		 AC_CHECK_LINUX_STRUCT([task_struct], [sigmask_lock], [sched.h])
 		 AC_CHECK_LINUX_STRUCT([task_struct], [tgid], [sched.h])
 		 AC_CHECK_LINUX_STRUCT([task_struct], [thread_info], [sched.h])
+                 AC_CHECK_LINUX_STRUCT([task_struct], [total_link_count], [sched.h])
 		 LINUX_SCHED_STRUCT_TASK_STRUCT_HAS_SIGNAL_RLIM
 
 		 dnl Check for typed structure elements
@@ -1008,6 +1018,9 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 		 AC_CHECK_LINUX_FUNC([sock_create_kern],
 				     [#include <linux/net.h>],
 				     [sock_create_kern(0, 0, 0, NULL);])
+                 AC_CHECK_LINUX_FUNC([sock_create_kern_ns],
+                                     [#include <linux/net.h>],
+                                     [sock_create_kern(NULL, 0, 0, 0, NULL);])
 		 AC_CHECK_LINUX_FUNC([splice_direct_to_actor],
 				     [#include <linux/splice.h>],
 				     [splice_direct_to_actor(NULL,NULL,NULL);])
@@ -1480,17 +1493,6 @@ AC_CHECK_TYPES([fsblkcnt_t],,,[
 dnl see what struct stat has for timestamps
 AC_CHECK_MEMBERS([struct stat.st_ctimespec, struct stat.st_ctimensec])
 
-dnl check for curses-lib
-save_LIBS=$LIBS
-AC_CHECK_LIB( [ncurses], [setupterm],
-[LIB_curses=-lncurses],
-    [AC_CHECK_LIB([Hcurses], [setupterm], [LIB_curses=-lHcurses],
-        [AC_CHECK_LIB([curses], [setupterm], [LIB_curses=-lcurses])
-    ])
-])
-LIBS=$save_LIBS
-AC_SUBST(LIB_curses)
-
 OPENAFS_TEST_PACKAGE(libintl,[#include <libintl.h>],[-lintl],,,INTL)
 
 dnl Don't build PAM on IRIX; the interface doesn't work for us.
@@ -1550,6 +1552,8 @@ AC_CHECK_FUNCS([ \
 	vsnprintf \
 	vsyslog \
 ])
+
+OPENAFS_CURSES()
 
 case $AFS_SYSNAME in
 *hp_ux* | *hpux*)

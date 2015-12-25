@@ -36,6 +36,7 @@ extern afs_uint32 logFakeStripes;
 extern afs_int32 vicep_fastread;
 extern afs_int32 lustre_hack;
 extern afs_int32 rx_enableIdleDead;
+extern afs_int32 debug_rxosd;
 extern afs_int32 vicep_nosync;
 extern afs_int32 afs_dontRecallFromHSM;
 extern afs_int32 afs_asyncRecallFromHSM;
@@ -65,8 +66,9 @@ struct afs_pdata {
 static_inline int
 afs_pd_alloc(struct afs_pdata *apd, size_t size)
 {
-
-    if (size > AFS_LRALLOCSIZ)
+    /* Ensure that we give caller at least one trailing guard byte
+     * for the NUL terminator. */
+    if (size >= AFS_LRALLOCSIZ)
 	apd->ptr = osi_Alloc(size + 1);
     else
 	apd->ptr = osi_AllocLargeSpace(AFS_LRALLOCSIZ);
@@ -74,11 +76,13 @@ afs_pd_alloc(struct afs_pdata *apd, size_t size)
     if (apd->ptr == NULL)
 	return ENOMEM;
 
-    if (size > AFS_LRALLOCSIZ)
+    /* Clear it all now, including the guard byte. */
+    if (size >= AFS_LRALLOCSIZ)
 	memset(apd->ptr, 0, size + 1);
     else
 	memset(apd->ptr, 0, AFS_LRALLOCSIZ);
 
+    /* Don't tell the caller about the guard byte. */
     apd->remaining = size;
 
     return 0;
@@ -90,7 +94,7 @@ afs_pd_free(struct afs_pdata *apd)
     if (apd->ptr == NULL)
 	return;
 
-    if (apd->remaining > AFS_LRALLOCSIZ)
+    if (apd->remaining >= AFS_LRALLOCSIZ)
 	osi_Free(apd->ptr, apd->remaining + 1);
     else
 	osi_FreeLargeSpace(apd->ptr);
@@ -3532,14 +3536,16 @@ FlushVolumeData(struct VenusFid *afid, afs_ucred_t * acred)
     ReleaseWriteLock(&afs_xdcache);
 
     ObtainReadLock(&afs_xvolume);
-    for (i = 0; i < NVOLS; i++) {
+    for (i = all ? 0 : VHash(volume); i < NVOLS; i++) {
 	for (tv = afs_volumes[i]; tv; tv = tv->next) {
 	    if (all || tv->volume == volume) {
 		afs_ResetVolumeInfo(tv);
-		break;
+		if (!all)
+		    goto last;
 	    }
 	}
     }
+ last:
     ReleaseReadLock(&afs_xvolume);
 
     /* probably, a user is doing this, probably, because things are screwed up.

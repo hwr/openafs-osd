@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -56,9 +56,13 @@ struct rx_trace {
 void
 rxi_flushtrace(void)
 {
-    if (rxi_logfd >= 0)
-	write(rxi_logfd, rxi_tracebuf, rxi_tracepos);
+    afs_uint32 len = rxi_tracepos;
+
     rxi_tracepos = 0;
+    if (rxi_logfd < 0)
+	return;
+    if (write(rxi_logfd, rxi_tracebuf, len) < 0)
+	; /* don't care */
 }
 
 void

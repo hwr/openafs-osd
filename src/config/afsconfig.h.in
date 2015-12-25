@@ -182,6 +182,15 @@
 /* Define to 1 if you have the `getcwd' function. */
 #undef HAVE_GETCWD
 
+/* Define to 1 if you have the `getmaxx' function. */
+#undef HAVE_GETMAXX
+
+/* Define to 1 if you have the `getmaxy' function. */
+#undef HAVE_GETMAXY
+
+/* define if your curses has the getmaxyx() macro */
+#undef HAVE_GETMAXYX
+
 /* Define to 1 if you have the `getprogname' function. */
 #undef HAVE_GETPROGNAME
 
@@ -356,6 +365,14 @@
 /* Define if your kernel has the ihold function */
 #undef HAVE_LINUX_IHOLD
 
+/* Define if inode_operations has follow_link operation of form struct dentry
+   *dentry, void **link_data */
+#undef HAVE_LINUX_INODE_OPERATIONS_FOLLOW_LINK_NO_NAMEIDATA
+
+/* Define if inode_operations has put_link operation of form struct inode
+   *inode, void *link_data */
+#undef HAVE_LINUX_INODE_OPERATIONS_PUT_LINK_NO_NAMEIDATA
+
 /* Define if your kernel has the inode_setattr function */
 #undef HAVE_LINUX_INODE_SETATTR
 
@@ -415,6 +432,9 @@
 
 /* Define if your kernel has the sock_create_kern function */
 #undef HAVE_LINUX_SOCK_CREATE_KERN
+
+/* Define if your kernel has the sock_create_kern_ns function */
+#undef HAVE_LINUX_SOCK_CREATE_KERN_NS
 
 /* Define if your kernel has the splice_direct_to_actor function */
 #undef HAVE_LINUX_SPLICE_DIRECT_TO_ACTOR
@@ -678,6 +698,9 @@
 
 /* Define to 1 if you have the <windows.h> header file. */
 #undef HAVE_WINDOWS_H
+
+/* Define to 1 if `_maxx WINDOW._maxy' is a member of `WINDOW'. */
+#undef HAVE_WINDOW__MAXX_WINDOW__MAXY
 
 /* define if hlist iterators don't need a node parameter */
 #undef HLIST_ITERATOR_NO_NODE
@@ -972,6 +995,10 @@
 /* Define if kernel typedef'd struct task_struct has the thread_info element
    */
 #undef STRUCT_TASK_STRUCT_HAS_THREAD_INFO
+
+/* Define if kernel typedef'd struct task_struct has the total_link_count
+   element */
+#undef STRUCT_TASK_STRUCT_HAS_TOTAL_LINK_COUNT
 
 /* define if you want to have support for nested pts groups */
 #undef SUPERGROUPS
