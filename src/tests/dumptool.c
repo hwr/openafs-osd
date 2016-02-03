@@ -875,6 +875,7 @@ ScanVnodes(FILE * f, VolumeDiskData * vol, int sizescan)
 	length = 0;
 	vnode->type = -1;
 	vnode->length = -1;
+	vnode->vn_length_hi = 0;
 #ifdef AFS_RXOSD_SUPPORT
 	vnode->osdMetadataIndex = 0;
 	vnode->osdFileOnline = 0;
@@ -1028,7 +1029,7 @@ ScanVnodes(FILE * f, VolumeDiskData * vol, int sizescan)
 		  break;
 		 }
 		}
-	    case 'y':
+	    case 'y':	/* old, should not be used anymore */
 		{
 		 afs_uint32 hi, lo;
 		 afs_uint64 filesize;
@@ -1326,6 +1327,7 @@ InteractiveRestore(FILE * f, VolumeDiskData * vol)
 		    "Unknown command, \"%s\", enter "
 		    "\"help\" for a list of commands.\n", argv[0]);
 
+        memset((void *)cmdbuf, 0, sizeof(cmdbuf));
 	printf("%s> ", cwd);
     }
 
@@ -2035,6 +2037,7 @@ MakeArgv(char *string, int *argc, char ***argv)
     char *s = string;
     static char argbuf[CMDBUFSIZE];
     char *ap = argbuf;
+    memset((void *)largv, 0, sizeof(largv));
 
     *argc = 0;
     *argv = largv;
