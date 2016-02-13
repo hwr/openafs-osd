@@ -424,6 +424,7 @@ struct util_ops_v0 {
     char *(*volutil_PartitionName_r) (int part, char *tbuffer, int buflen);
     afs_int32 (*volutil_GetPartitionID) (char *aname);
     void (*vFSLog) (const char *format, va_list args);
+    size_t (*strlcpy) (char *dst, const char *src, size_t siz);
 };
 #if !defined(BUILD_SHLIBAFSOSD)
 private struct util_ops_v0 util_ops_v0;
@@ -738,6 +739,7 @@ struct rx_connection * UV_BindOsd(afs_uint32 aserver, afs_int32 port);
     util->volutil_PartitionName_r = volutil_PartitionName_r;
     util->volutil_GetPartitionID = volutil_GetPartitionID;
     util->vFSLog = vFSLog;
+    util->strlcpy = strlcpy;
     opsptr->util = util;
  
 # ifdef BUILDING_FILESERVER
@@ -1896,6 +1898,12 @@ FSLog(const char *format, ...)
     va_start(args, format);
     (util->vFSLog)(format, args);
     va_end(args);
+}
+
+size_t
+strlcpy(char *dst, const char *src, size_t siz)
+{
+   return (util->strlcpy)(dst, src, siz);
 }
 
 const char *
