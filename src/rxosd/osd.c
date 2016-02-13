@@ -1482,7 +1482,7 @@ int objects(struct cmd_syndesc *as, void *rock)
     thost = as->parms[0].items->data;
     code = util_GetUInt32(as->parms[1].items->data, &vid);
     if (code) {
-        fprintf(stderr, "Invalid lun: %s\n", 
+        fprintf(stderr, "Invalid numeric volume-id: %s\n", 
 		    as->parms[1].items->data);
 	return EINVAL;     
     }
@@ -4553,7 +4553,7 @@ int main (int argc, char **argv)
     ts = cmd_CreateSyntax("objects", objects, NULL, "list objetcs of a volume");
     cmd_AddParm(ts, "-osd", CMD_SINGLE, CMD_REQUIRED,
 	        "osd or name or IP-address of server");
-    cmd_AddParm(ts, "-volume", CMD_SINGLE, CMD_REQUIRED, "volume-id");
+    cmd_AddParm(ts, "-volume", CMD_SINGLE, CMD_REQUIRED, "numeric volume-id");
     cmd_AddParm(ts, "-lun", CMD_SINGLE, CMD_OPTIONAL,
 	        "0 for /vicepa, 1 for /vicepb ...");
     cmd_AddParm(ts, "-unlinked", CMD_FLAG, CMD_OPTIONAL, "get only unlinked objects");
