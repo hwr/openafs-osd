@@ -65,9 +65,11 @@
 #define OSDDB_POL_UNLOCK
 #define OSDDB_WAIT
 #define OSDDB_SIGNAL
+extern struct ubik_client *init_osddb_client(char *cell, int localauth);
 #else /* BUILDING_CLIENT_COMMAND */
 extern pthread_mutex_t osddb_glock_mutex, osddb_pol_mutex;
 extern pthread_cond_t osddb_glock_cond;
+extern struct ubik_client *init_osddb_client(char *unused);
 
 #define OSDDB_LOCK MUTEX_ENTER(&osddb_glock_mutex)
 #define OSDDB_UNLOCK MUTEX_EXIT(&osddb_glock_mutex)
