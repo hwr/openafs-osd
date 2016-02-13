@@ -7961,7 +7961,8 @@ int
 main(int argc, char *argv[]) 
 {
     afs_int32 code;
-    struct rx_securityClass *(sc[4]);
+    struct rx_securityClass **securityClasses;
+    afs_int32 numClasses;
     struct rx_service *service;
     
     int lwps = MAX_RXOSD_THREADS;
@@ -8106,15 +8107,9 @@ main(int argc, char *argv[])
     if (rx_Init(port) < 0)
 	   Quit("Cannot initialize RX");
 
-    /* Create a single security object, in this case the null security object,
-       for unauthenticated connections, which will be used to control security
-       on connections made to this server */
-    sc[0] = rxnull_NewServerSecurityObject();
-    sc[1] = 0;
-    sc[2] = rxkad_NewServerSecurityObject(0, confDir, afsconf_GetKey, NULL);
-    sc[3] = rxkad_NewServerSecurityObject(rxkad_crypt, NULL, get_key, NULL);
+    afsconf_BuildServerSecurityObjects(confDir, 0, &securityClasses, &numClasses);
 
-    service = rx_NewService(0, OSD_SERVICE_ID, "OSD", sc, 4, 
+    service = rx_NewService(0, OSD_SERVICE_ID, "OSD", securityClasses, numClasses,
 							RXOSD_ExecuteRequest);
     if (!service)
 	Quit("Failed to initialize RX");
@@ -8125,11 +8120,13 @@ main(int argc, char *argv[])
     if (port == OSD_SECOND_SERVER_PORT) {
        /* Alternative port 7006 */
        service = rx_NewServiceHost(HostAddr_NBO, OSD_SERVER_PORT,
-                       OSD_SERVICE_ID, "OSD-7006", sc, 4, RXOSD_ExecuteRequest);
+                       OSD_SERVICE_ID, "OSD-7006", securityClasses, numClasses,
+		       RXOSD_ExecuteRequest);
     } else {
         /* Alternative port 7011 */
         service = rx_NewServiceHost(HostAddr_NBO, OSD_SECOND_SERVER_PORT, 
-			OSD_SERVICE_ID, "OSD-7011", sc, 4, RXOSD_ExecuteRequest);
+			OSD_SERVICE_ID, "OSD-7011", securityClasses, numClasses,
+			RXOSD_ExecuteRequest);
     }
     if (!service)
 	ViceLog(0,("Failed to initialize RX on secondary port (7006 or 7011)\n"));
