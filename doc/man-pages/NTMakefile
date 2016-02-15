@@ -37,6 +37,7 @@ PODS = \
         pod1\dlog.pod                  \
         pod1\fs.pod                    \
         pod1\fs_apropos.pod            \
+        pod1\fs_bypassthreshold.pod    \
         pod1\fs_checkservers.pod       \
         pod1\fs_checkvolumes.pod       \
         pod1\fs_chgrp.pod              \
@@ -281,6 +282,9 @@ PODS = \
         pod8\bos_util.pod              \
         pod8\buserver.pod              \
         pod8\butc.pod                  \
+        pod8\dafileserver.pod          \
+        pod8\dasalvager.pod            \
+        pod8\davolserver.pod           \
         pod8\fileserver.pod            \
         pod8\fms.pod                   \
         pod8\fstrace.pod               \
@@ -334,13 +338,14 @@ PODS = \
         pod8\vlserver.pod              \
         pod8\voldump.pod               \
         pod8\volinfo.pod               \
+        pod8\volscan.pod               \
         pod8\volserver.pod             \
         pod8\vsys.pod                  \
         pod8\xfs_size_check.pod
 
 html\index.html: $(PODS)
         @echo Building man pages in HTML format
-        perl generate-html
+        $(PERL) generate-html
 
 
 install: html\index.html
@@ -349,6 +354,10 @@ clean::
         $(CD) html
         $(DEL) /s *.html
         $(CD) ..
+        $(DEL) pod1\fs_listquota.pod
+        $(DEL) pod1\fs_quota.pod
+        $(DEL) pod1\fs_setquota.pod
+        $(DEL) pod1\fs_setvol.pod
         $(DEL) pod1\pts_adduser.pod
         $(DEL) pod1\pts_chown.pod
         $(DEL) pod1\pts_creategroup.pod
@@ -367,6 +376,16 @@ clean::
         $(DEL) pod1\pts_setmax.pod
         $(DEL) pod1\pts_sleep.pod
         $(DEL) pod1\pts_source.pod
+        $(DEL) pod1\vos.pod
+        $(DEL) pod1\vos_addsite.pod
+        $(DEL) pod1\vos_clone.pod
+        $(DEL) pod1\vos_copy.pod
+        $(DEL) pod1\vos_create.pod
+        $(DEL) pod1\vos_examine.pod
+        $(DEL) pod1\vos_move.pod
+        $(DEL) pod1\vos_partinfo.pod
+        $(DEL) pod1\vos_shadow.pod
+        $(DEL) pod1\vos_zap.pod
         $(DEL) pod8\dafileserver.pod
         $(DEL) pod8\dasalvager.pod
         $(DEL) pod8\davolserver.pod
@@ -377,10 +396,10 @@ clean::
 .SUFFIXES: .pod.in
 
 {pod1}.pod.in{pod1}.pod::
-        perl merge-pod $<
+        $(PERL) merge-pod $<
 
 {pod5}.pod.in{pod5}.pod::
-        perl merge-pod $<
+        $(PERL) merge-pod $<
 
 {pod8}.pod.in{pod8}.pod::
-        perl merge-pod $<
+        $(PERL) merge-pod $<

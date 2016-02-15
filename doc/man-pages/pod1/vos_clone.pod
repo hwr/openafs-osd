@@ -30,13 +30,13 @@ B<vos cl> S<<< [B<-i>] <I<volume name or ID>> >>>
 =head1 DESCRIPTION
 
 The B<vos clone> command creates a copy-on-write copy of a volume on the
-same partition and server ass the parent volume.
+same partition and server as the parent volume.
 
-A clone is a copy of a volume that does only stores the changes from the
+A clone is a copy of a volume that only stores the changes from the
 parent volume. Cloning is a primitive operation that is used by the B<vos
 move>, B<vos backup>, and B<vos release> commands. A clone functions using
 the same mechanism as a backup volume, but it is persistent. Clone volumes
-can be used as point-in-time copies of the parent vollume, but they must be
+can be used as point-in-time copies of the parent volume, but they must be
 used with care.
 
 =head1 CAUTIONS
@@ -58,7 +58,11 @@ B<vos move>, B<vos dump>, or other B<vos> commands.
 Some commands do not work properly on clone volumes. B<vos move> is one
 such command.
 
-Currently, the maximum size of a volume is 2 terabytes (2^31 bytes).
+Currently, the maximum quota for a volume is 2 terabytes (2^41 bytes). Note
+that this only affects the volume's quota; a volume may grow much larger if
+the volume quota is disabled. However, volumes over 2 terabytes in size may
+be impractical to move, and may have their size incorrectly reported by some
+tools, such as L<fs_listquota(1)>.
 
 =head1 OPTIONS
 

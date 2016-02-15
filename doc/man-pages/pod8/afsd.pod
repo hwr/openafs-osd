@@ -32,7 +32,7 @@ B<afsd> [B<-afsdb>] [B<-backuptree>]
      S<<< [B<-stat> <I<number of stat entries>>] >>> [B<-verbose>]
      [B<-disable-dynamic-vcaches>] 
      S<<< [B<-volumes> <I<number of volume entries>>] >>>
-     [B<-waitclose>]
+     [B<-waitclose>] [B<-rxmaxfrags> <I<max # of fragments>>]
 
 =for html
 </div>
@@ -42,7 +42,7 @@ B<afsd> [B<-afsdb>] [B<-backuptree>]
 The B<afsd> command initializes the Cache Manager on an AFS client machine
 by transferring AFS-related configuration information into kernel memory
 and starting several daemons. B<afsd.fuse> is an experimental variant that
-inititalizes a FUSE-based Cache Manager instead of one based on a kernel
+initializes a FUSE-based Cache Manager instead of one based on a kernel
 module.
 
 The B<afsd> command performs the following actions:
@@ -71,7 +71,7 @@ machines, prevents the Cache Manager from accessing files in it.
 By default, the list of database server machines is transferred into the
 kernel from the F</usr/vice/etc/CellServDB> file. Alternatively, when the
 B<-afsdb> option is used, the list of database server machines is taken
-from the AFSDB DNS records for each cell. After initialization, use the
+from the DNS SRV or AFSDB records for each cell. After initialization, use the
 B<fs newcell> command to change the kernel-resident list without having to
 reboot.
 
@@ -411,14 +411,14 @@ It should be considered experimental.
 
 =item B<-afsdb>
 
-Enable afsdb support. This will use DNS to lookup the AFSDB record and
+Enable afsdb support. This will use DNS to lookup the SRV or AFSDB records and
 use that for the database servers for each cell instead of the values
 in the F<CellServDB> file. This has the advantage of only needing to
-update one DNS record to reconfigure the AFS clients for a new
+update one set of DNS records to reconfigure the AFS clients for a new
 database server as opposed to touching all of the clients, and also
 allows one to access a cell without preconfiguring its database
-servers in F<CellServDB>. The format of AFSDB records is defined in
-RFC 1183.
+servers in F<CellServDB>. The format of SRV records is defined in
+RFC 5864, and the AFSDB record format is in RFC 1183.
 
 =item B<-backuptree>
 
@@ -535,6 +535,16 @@ installing a stripped-down F<CellServDB> file, and if dynroot is in effect,
 the F<CellAlias> file can be used to provide shortname for common AFS cells
 which provides equivalent functionality to the most commonly used symbolic
 links.
+
+When the dynamic root (B<-dynroot>, B<-dynroot-sparse>) and the fake stat
+(B<-fakestat>, B<-fakestat-all>) modes are in effect, the cache manager
+provides a special directory named F</afs/.:mount> which allows access to
+volumes by volume name or ID.  The F</afs/.:mount> directory appears to be
+empty, but any name in the form of I<cell>:I<volume> will be resolved as a
+read-write mount point to the specified volume.  This dynamic mount feature is
+recommended only for temporary access to a volume.  Linux-based cache managers
+provide this dynamic mount feature even when dynamic root (B<-dynroot>,
+B<-dynroot-sparse>) is not in effect.
 
 =item B<-dynroot-sparse>
 
@@ -660,6 +670,20 @@ B<-dynroot> is given.
 
 Bind the Rx socket (one interface only).
 
+=item B<-rxmaxfrags> <I<max # of fragments>>
+
+Set a limit for the maximum number of UDP fragments Rx will send per Rx
+packet, and the maximum number of fragments Rx thinks it can receive when
+advertising its receive size to peers. Practically speaking, setting this
+option means that you will not see Rx data packets that are broken into more
+than N fragments, where N is the value specified for this option. Setting this
+option to 1 effectively prevents fragmentation, and can be useful when dealing
+with networking equipment that does not properly handle UDP fragments.
+
+Note that this option just specifies a maximum. The actual number of fragments
+seen on the wire may be less than what is specified, depending on the
+configuration of the peer.
+
 =item B<-rxmaxmtu> <I<value for maximum MTU>>
 
 Set a limit for the largest maximum transfer unit (network packet size) that
@@ -755,7 +779,8 @@ L<afs_cache(5)>,
 L<CellServDB(5)>,
 L<cacheinfo(5)>
 
-RFC 1183 L<http://www.faqs.org/rfcs/rfc1183.html>
+RFC 5864 L<http://www.ietf.org/rfc/rfc5864.txt>
+RFC 1183 L<http://www.ietf.org/rfc/rfc1183.txt>
 
 =head1 COPYRIGHT
 

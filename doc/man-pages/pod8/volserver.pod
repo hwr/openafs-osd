@@ -14,7 +14,8 @@ B<volserver>
     S<<< [B<-d> <I<debug level>>] >>>
     [B<-nojumbo>] [B<-jumbo>] 
     [B<-enable_peer_stats>] [B<-enable_process_stats>] 
-    [B<-allow-dotted-principals>] [B<-help>]
+    [B<-allow-dotted-principals>] [B<-preserve-vol-stats>] [B<-help>]
+    [B<-sync> <I<sync behavior>>]
 
 =for html
 </div>
@@ -122,6 +123,17 @@ the confusion where principals user/admin and user.admin are both mapped to the
 user.admin PTS entry. Sites whose Kerberos realms don't have these collisions 
 between principal names may disable this check by starting the server
 with this option.
+
+=item B<-preserve-vol-stats>
+
+Preserve volume access statistics over volume restore and reclone operations.
+By default, volume access statistics are reset during volume restore and reclone
+operations.
+
+=item B<-sync> <I<sync behavior>>
+
+This is the same as the B<-sync> option in L<fileserver(8)>. See
+L<fileserver(8)>.
 
 =item B<-help>
 

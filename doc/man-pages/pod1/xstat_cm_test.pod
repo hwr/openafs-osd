@@ -12,12 +12,12 @@ B<xstat_cm_test> [I<initcmd>]
     S<<< B<-collID> <I<collection(s) to fetch>>+ >>> [B<-onceonly>]
     S<<< [B<-frequency> <I<poll frequency, in seconds>>] >>>
     S<<< [B<-period> <I<data collection time, in minutes>>] >>> [B<-debug>]
-    [B<-help>]
+    [B<-version>] [B<-help>]
 
 B<xstat_cm_test> [I<i>] S<<< B<-cm> <I<cache manager name(s) to monitor>>+ >>>
     S<<< B<-co> <I<collection(s) to fetch>>+ >>> [B<-o>]
     S<<< [B<-f> <I<poll frequency, in seconds>>] >>>
-    S<<< [B<-p> <I<data collection time, in minutes>>] >>> [B<-d>] [B<-h>]
+    S<<< [B<-p> <I<data collection time, in minutes>>] >>> [B<-d>] [B<-version>] [B<-h>]
 
 =for html
 </div>
@@ -54,19 +54,19 @@ There are three acceptable values:
 
 =over 4
 
-=item 0
+=item C<0>
 
 Provides profiling information about the numbers of times different
 internal Cache Manager routines were called since the Cache Manager
 started.
 
-=item 1
+=item C<1>
 
 Reports various internal performance statistics related to the Cache
 Manager (for example, statistics about how effectively the cache is being
 used and the quantity of intracell and intercell data access).
 
-=item 2
+=item C<2>
 
 Reports all of the internal performance statistics provided by the C<1>
 setting, plus some additional, detailed performance figures (for example,
@@ -101,6 +101,11 @@ Displays a trace on the standard output stream as the command runs.
 
 Prints the online help for this command. All other valid options are
 ignored.
+
+=item B<-version>
+
+Prints the program version and then exits. All other valid options
+are ignored.
 
 =back
 

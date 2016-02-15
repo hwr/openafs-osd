@@ -34,7 +34,7 @@ names to be created under client control.
 
 =head1 CAUTIONS
 
-Aliases created with B<fs newcell> are only temporary and will be lost
+Aliases created with B<fs newalias> are only temporary and will be lost
 when the AFS Cache Manager is restarted or the client machine is
 rebooted. In order to make the alias permanent, it must be put into the
 F<CellAlias> file.
@@ -73,7 +73,7 @@ There are two ways to call B<fs newalias>:
    % fs newalias -alias openafs -name openafs.org
 
 Both of the above examples create an alias C<openafs> for the cell
-C<openafs.org>. Two links wil be created in F</afs>:
+C<openafs.org>. Two links will be created in F</afs>:
 
    /afs/openafs   ->  /afs/openafs.org
    /afs/.openafs  ->  /afs/.openafs.org

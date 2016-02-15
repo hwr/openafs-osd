@@ -36,12 +36,14 @@ specified with B<-k>.  B<-k> cannot be used in B<-path> mode (see below).
 When a Kerberos 5 cross-realm trust is used, B<aklog> looks up the AFS ID
 corresponding to the name (Kerberos principal) of the person invoking the
 command, and if the user doesn't exist and the
-system:authuser@FOREIGN.REALM PTS group exists, then it attempts automatic
+C<system:authuser@FOREIGN.REALM> PTS group exists, then it attempts automatic
 registration of the user with the foreign cell.  The user is then added to
-the system:authuser@FOREIGN.REALM PTS group if registration is successful.
+the C<system:authuser@FOREIGN.REALM> PTS group if registration is successful.
 Automatic registration in the foreign cell will fail if the group quota
-for the system:authuser@FOREIGN.REALM group is less than one.  Each
+for the C<system:authuser@FOREIGN.REALM> group is less than one.  Each
 automatic registration decrements the group quota by one.
+
+=head1 CAUTIONS
 
 When using B<aklog>, be aware that AFS uses the Kerberos v4 principal
 naming format, not the Kerberos v5 format, when referring to principals in
@@ -53,6 +55,15 @@ principal part of C<host> to C<rcmd>.  In other words, to create a PTS
 entry for the Kerberos v5 principal C<user/admin>, refer to it as
 C<user.admin>, and for the principal C<host/shell.example.com>, refer to
 it as C<rcmd.shell>.
+
+The B<aklog> mapping of Kerberos v5 principal to Kerberos v4 principal and
+the determination that a Kerberos realm is foreign is performed in the
+absence of the actual AFS server configuration.  If the B<aklog> mapping
+of Kerberos v5 principal to Kerberos v4 principal or the foreign realm
+determination is wrong, the PTS name-to-id lookup will produce the wrong
+AFS ID for the user.  The AFS ID is only used for display purposes and
+should not be trusted.  Use the B<-noprdb> switch to disable the PTS
+name-to-id lookup.
 
 =head1 OPTIONS
 
@@ -152,6 +163,20 @@ where <instance> is the instance of a class C<filsrv> Zephyr subscription.
 
 =back
 
+=head1 ENVIRONMENT
+
+=over 4
+
+=item KRB5CCNAME
+
+As with most programs that use an existing Kerberos ticket cache, B<aklog>
+can be told to use a cache other than the default by setting the
+environment variable KRB5CCNAME.  On UNIX and Linux systems, this variable
+is normally set to a file name, but may point to other types of caches.
+See the documentation of your Kerberos implementation for more details.
+
+=back
+
 =head1 FILES
 
 =over 4
@@ -172,39 +197,39 @@ The exit status of B<aklog> will be one of the following:
 
 =over 3
 
-=item 0
+=item C<0>
 
 Success -- No error occurred.
 
-=item 1
+=item C<1>
 
 Usage -- Bad command syntax; accompanied by a usage message.
 
-=item 2
+=item C<2>
 
 Something failed -- More than one cell or pathname was given on the
 command line and at least one failure occurred.  A more specific error
 status is returned when only one directive is given.
 
-=item 3
+=item C<3>
 
 AFS -- Unable to get AFS configuration or unable to get information about
 a specific cell.
 
-=item 4
+=item C<4>
 
 Kerberos -- Unable to get tickets for authentication.
 
-=item 5
+=item C<5>
 
 Token -- Unable to get tokens.
 
-=item 6
+=item C<6>
 
 Bad pathname -- The path given was not a directory or lstat(2) failed on
 some component of the pathname.
 
-=item 7
+=item C<7>
 
 Miscellaneous -- An internal failure occurred.  For example, B<aklog>
 returns this if it runs out of memory.

@@ -9,8 +9,8 @@ volinfo - Produces detailed statistics about AFS volume headers
 
 B<volinfo> [B<-online>] [B<-vnode>] [B<-date>] [B<-inode>] [B<-itime>]
     S<<< [B<-part> <I<AFS partition name (default current partition)>>+] >>>
-    S<<< [B<-volumeid> <I<volume id>>+] >>> [B<-header>] [B<-sizeOnly>]
-    [B<-fixheader>] [B<-saveinodes>] [B<-orphaned>] [B<-help>]
+    S<<< [B<-volumeid> <I<volume id>>+] >>> [B<-header>] [B<-sizeonly>]
+    [B<-fixheader>] [B<-saveinodes>] [B<-orphaned>] [B<-filenames>] [B<-help>]
 
 =for html
 </div>
@@ -54,12 +54,12 @@ associated inode number.
 When combined with the B<-vnode> flag, displays a change, modification,
 and access timestamp for each of the large vnode and small vnode tables.
 
-=item B<-part> <I<partition name>>+
+=item B<-part> <I<partition name or id>>+
 
 Specifies the partition that houses each volume for which to produce
-output. Use the format F</vicepI<xx>>, where I<xx> is one or two lowercase
+output. Use the format F</vicepI<xx>> or I<xx>, where I<xx> is one or two lowercase
 letters. This argument can be omitted if the current working directory is
-the mount location for an AFS server partition; it is not the mount
+the mount location for an AFS server partition. If it is not the mount
 location for an AFS server partition, the command produces output for
 every volume on all local AFS server partitions.
 
@@ -75,7 +75,7 @@ houses the volume.
 Displays statistics about the volume header of each volume, in addition to
 the default output.
 
-=item B<-sizeOnly>
+=item B<-sizeonly>
 
 Displays a single line of output for each volume, reporting the size of
 various structures associated with it. The default output is suppressed
@@ -100,6 +100,13 @@ Displays a large vnode and small vnode table for each volume, which lists
 only orphaned vnodes (vnodes that have no parent). If there are none, the
 tables are empty (only the headers appear).
 
+=item B<-filenames>
+
+When combined with the B<-vnode> flag, adds the full path and file name of the
+C<namei> file which stores the vnode data to each vnode entry in the large vnode
+and small vnode tables. This option is only available on fileservers which use
+the C<namei> storage format for storing data.
+
 =item B<-help>
 
 Prints the online help for this command. All other valid options are
@@ -121,6 +128,7 @@ The issuer must be logged in as the local superuser C<root>.
 
 =head1 SEE ALSO
 
+L<volscan(8)>,
 L<vldb.DB0(5)>,
 L<volserver(8)>
 

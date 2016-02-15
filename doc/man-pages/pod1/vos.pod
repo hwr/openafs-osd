@@ -61,7 +61,8 @@ and L<B<vos zap>|vos_zap(1)>.
 Commands to edit or display VLDB server entries:
 L<B<vos changeaddr>|vos_changeaddr(1)>,
 L<B<vos listaddrs>|vos_listaddrs(1)>
-and L<B<vos setaddrs>|vos_setaddrs(1)>.
+L<B<vos setaddrs>|vos_setaddrs(1)>,
+and L<B<vos remaddrs>|vos_remaddrs(1)>.
 
 =item *
 
@@ -128,7 +129,11 @@ and L<B<vos help>|vos_help(1)>.
 
 =head1 CAUTIONS
 
-Currently, the maximum size of a volume is 2 terabytes (2^31 bytes).
+Currently, the maximum quota for a volume is 2 terabytes (2^41 bytes). Note
+that this only affects the volume's quota; a volume may grow much larger if
+the volume quota is disabled. However, volumes over 2 terabytes in size may
+be impractical to move, and may have their size incorrectly reported by some
+tools, such as L<fs_listquota(1)>.
 
 =head1 OPTIONS
 
