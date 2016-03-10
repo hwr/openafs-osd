@@ -1,0 +1,213 @@
+=head1 NAME
+
+vos_create - Creates a read/write volume and associated VLDB entry
+
+=head1 SYNOPSIS
+
+=for html
+<div class="synopsis">
+
+B<vos create> S<<< B<-server> <I<machine name>> >>>
+    S<<< B<-partition> <I<partition name>> >>>
+    S<<< B<-name> <I<volume name>> >>>
+    S<<< [B<-maxquota> <I<initial quota (KB)>>] >>>
+    S<<< [B<-cell> <I<cell name>>] >>>
+    [B<-noauth>] [B<-localauth>] [B<-verbose>]
+    [B<-encrypt>] [B<-noresolve>] [B<-help>]
+
+B<vos cr> S<<< B<-s> <I<machine name>> >>> S<<< B<-p> <I<partition name>> >>>
+    S<<< B<-na> <I<volume name>> >>> S<<< [B<-m> <I<initial quota>>] >>>
+    S<<< [B<-c> <I<cell name>>] >>> [B<-noa>] [B<-l>] [B<-v>]
+    [B<-e>] [B<-nor>] [B<-h>]
+
+=for html
+</div>
+
+=head1 DESCRIPTION
+
+The B<vos create> command creates a read/write volume with the name
+specified by the B<-name> argument at the site specified by the B<-server>
+and B<-partition> arguments. In addition, the command allocates or sets
+the following:
+
+=over 4
+
+=item *
+
+Volume ID numbers for the read/write volume and its associated read-only
+and backup volumes (this command does not actually create the latter two
+types of volume). A volume ID number is an identification number
+guaranteed to be unique within a cell.
+
+=item *
+
+An access control list (ACL) associated with the volume's root directory,
+which takes the same name as volume's mount point when the volume is
+mounted with the B<fs mkmount> command. An entry that grants all seven
+permissions to the members of the system:administrators group is
+automatically placed on the ACL. (In addition, the File Server by default
+always implicitly grants the C<l> (lookup) and C<a> (administer)
+permissions on every ACL to members of the system:administrators group,
+even when the group does not appear on an ACL; use the B<-implicit>
+argument to the B<fileserver> initialization command to alter the set of
+rights on a server-by-server basis if desired.)
+
+=item *
+
+The volume's space quota, set to 5000 kilobyte blocks by default. Use the
+B<-maxquota> argument to specify a different quota, or use the B<fs
+setquota> command to change the volume's quota after mounting the volume
+with the B<fs mkmount> command.
+
+=back
+
+The volume is empty when created. To access it via the Cache Manager,
+mount it in the file space by using the B<fs mkmount> command.
+
+=head1 CAUTIONS
+
+=include fragments/volsize-caution.pod
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<-server> <I<server name>>
+
+Identifies the file server machine on which to create the read/write
+volume. Provide the machine's IP address or its host name (either fully
+qualified or using an unambiguous abbreviation). For details, see
+L<vos(1)>.
+
+=item B<-partition> <I<partition name>>
+
+Identifies the partition on which to create the read/write volume, on the
+file server machine specified by the B<-server> argument.  Provide the
+partition's complete name with preceding slash (for example, C</vicepa>)
+or use one of the three acceptable abbreviated forms. For details, see
+L<vos(1)>.
+
+=item B<-name> <I<volume name>>
+
+Specifies a name for the read/write volume. The maximum length is 22
+characters, which can include any alphanumeric or punctuation
+character. By convention, periods separate the fields in a name.  Do not
+apply the C<.backup> or C<.readonly> extension to a read/write volume
+name; they are reserved for the Volume Server to add to the read/write
+name when creating those backup and read-only volumes respectively.
+
+=item B<-maxquota> <I<initial quota>>
+
+Specifies the maximum amount of disk space the volume can use.  The size
+should be a positive integer followed by an optional suffix: C<K> for
+kibibytes (1024 bytes, the default), C<M> for mebibytes (1024 kibibytes),
+C<G> for gibibytes (1024 mebibytes), and C<T> for tebibytes (1024
+gibibytes).  The value C<0> (zero) grants an unlimited quota, but the size
+of the disk partition that houses the volume places an absolute limit on
+its size.  If this argument is omitted, the default value is C<5000K>.
+
+=item B<-id> <I<volume ID>>
+
+Specifies the volume ID for the read/write volume. If this options is not
+specified, or the given volume ID is 0, a volume ID will be allocated for
+the volume automatically. The volume IDs allocated should be fine for
+almost all cases, so you should almost never need to specify this option.
+
+=item B<-roid> <I<readonly volume ID>>
+
+Specifies the volume ID for the readonly volume corresponding to the
+read/write volume that is being created. The readonly volume will not be
+created; this merely specifies what volume ID the readonly volume will use
+when it is created. If a volume ID of 0 is specified here, no readonly
+volume ID will be assigned to the created volume immediately. A readonly
+volume ID can still be assigned later when B<vos addsite> is run; if a
+volume does not have a readonly volume ID associated with it by the time
+B<vos release> is run, a volume ID will be allocated for it.
+
+If this option is not specified, the default readonly volume ID is one
+number higher than the read-write volume ID, whether or not that ID was
+manually specified.
+
+As with the B<-id> option, the default allocated volume IDs should be
+sufficient for almost all cases, so you should almost never need to
+specify them explicitly. This option is available in OpenAFS
+versions 1.5.61 or later.
+
+=item B<-cell> <I<cell name>>
+
+Names the cell in which to run the command. Do not combine this argument
+with the B<-localauth> flag. For more details, see L<vos(1)>.
+
+=item B<-noauth>
+
+Assigns the unprivileged identity C<anonymous> to the issuer. Do not
+combine this flag with the B<-localauth> flag. For more details, see
+L<vos(1)>.
+
+=item B<-localauth>
+
+Constructs a server ticket using a key from the local
+F</usr/afs/etc/KeyFile> file. The B<vos> command interpreter presents it
+to the Volume Server and Volume Location Server during mutual
+authentication. Do not combine this flag with the B<-cell> argument or
+B<-noauth> flag. For more details, see L<vos(1)>.
+
+=item B<-verbose>
+
+Produces on the standard output stream a detailed trace of the command's
+execution. If this argument is omitted, only warnings and error messages
+appear.
+
+=item B<-encrypt>
+
+Encrypts the command so that the operation's results are not transmitted
+across the network in clear text. This option is available in OpenAFS
+versions 1.4.11 or later and 1.5.60 or later.
+
+=item B<-noresolve>
+
+Shows all servers as IP addresses instead of the DNS name. This is very
+useful when the server address is registered as 127.0.0.1 or when dealing
+with multi-homed servers. This option is available in OpenAFS
+versions 1.4.8 or later and 1.5.35 or later.
+
+=item B<-help>
+
+Prints the online help for this command. All other valid options are
+ignored.
+
+=back
+
+=head1 OUTPUT
+
+The Volume Server produces the following message to confirm that it
+created the volume:
+
+   Volume <volume_ID> created on partition <partition_name> of <machine_name>
+
+=head1 EXAMPLES
+
+The following command creates the read/write volume C<user.pat> on the
+F</vicepf> partition of the file server machine C<fs4.abc.com>.
+
+   % vos create -server fs4.abc.com -partition /vicepf -name user.pat
+   Volume user.pat created on partition /vicepf of fs4.abc.com
+
+=head1 PRIVILEGE REQUIRED
+
+The issuer must be listed in the F</usr/afs/etc/UserList> file on the
+machine specified with the B<-server> argument and on each database server
+machine. If the B<-localauth> flag is included, the issuer must instead be
+logged on to a server machine as the local superuser C<root>.
+
+=head1 SEE ALSO
+
+L<vos(1)>
+
+=head1 COPYRIGHT
+
+IBM Corporation 2000. <http://www.ibm.com/> All Rights Reserved.
+
+This documentation is covered by the IBM Public License Version 1.0.  It was
+converted from HTML to POD by software written by Chas Williams and Russ
+Allbery, based on work by Alf Wachsmann and Elizabeth Cassell.
