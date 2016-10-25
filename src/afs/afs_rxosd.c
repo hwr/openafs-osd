@@ -1124,7 +1124,7 @@ struct storeOps rxosd_storeUfsOps = {
     .padd =     rxosd_storePadd,
     .close =    rxosd_storeClose,
     .destroy =  rxosd_Destroy,
-#ifdef AFS_LINUX26_ENV
+#if 0 && defined(AFS_LINUX26_ENV)
     .storeproc = afs_linux_storeproc
 #else
     .storeproc = afs_GenericStoreProc

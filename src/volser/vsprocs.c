@@ -3966,7 +3966,7 @@ UV_ReleaseVolume(afs_uint32 afromvol, afs_uint32 afromserver,
 
 	code = CheckTrans(fromconn, &fromtid, afrompart, &orig_status);
 	if (code) {
-	    code = ENOENT;
+	    error = ENOENT;
 	    goto rfail;
 	}
 
@@ -7008,6 +7008,7 @@ UV_SyncServer(afs_uint32 aserver, afs_int32 apart, int flags, int force)
     aconn = UV_Bind(aserver, AFSCONF_VOLUMEPORT);
 
     /* Set up attributes to search VLDB  */
+    memset(&attributes, 0, sizeof(attributes));
     attributes.server = ntohl(aserver);
     attributes.Mask = VLLIST_SERVER;
     if ((flags & 1)) {

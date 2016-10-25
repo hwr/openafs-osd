@@ -1802,8 +1802,8 @@ check_and_flush_metadata(struct Volume *vp, struct VnodeDiskObject *vnode,
 		    afs_uint32 parent_id = o->part_id & 0xffffffff;
 		    if (parent_id != V_parentId(vp)) {
 			/*
-			 * Restore of into a new volume:
-			 * create hard links from the old volumes objects
+			 * Restore of the dump into a new volume:
+			 * create hard links from the old volume's objects
 			 * into the new volume's namei-tree and change
 			 * the part_id in the metadata accordingly to the
 			 * new RW_id.
@@ -1832,7 +1832,7 @@ check_and_flush_metadata(struct Volume *vp, struct VnodeDiskObject *vnode,
 				(afs_uint32)((newobjid >> RXOSD_TAGSHIFT) & RXOSD_TAGMASK),
 				code));
 			    code = 0;
-			    newobjid = o->obj_id;
+			    newobjid = o->obj_id; /* keep the old object id */
 			} else{
 			    ViceLog(1, ("restore to new volume: hard link in osd %u from %u.%u.%u.%u to %u.%u.%u.%u\n",
 				    o->osd_id,
@@ -5648,6 +5648,7 @@ setOsdPolicy(struct Volume *vol, afs_int32 osdPolicy)
 		}
 		offset += step;
 	    }
+	    FDH_CLOSE(fdP);
 	}
 	/* Remove osdMetadataFile */
 	code = VReadVolumeDiskHeader(V_id(vol), vol->partition, &diskHeader);
@@ -6212,7 +6213,7 @@ IncDecObjectList(Volume *vol, struct osdobjectList *list, afs_int32 what)
 		     * in order to restore a deleted file we may allow the object
 		     * to have disappeared in the meantime. If it existed only
 		     * on a non-archival OSD it will be lost forever, but if it
-		     * a copy on an archival OSD the object may still exist as
+		     * had a copy on an archival OSD the object may still exist as
 		     * xxxxx-unlinked-yyyymmdd in the archival OSD. Then it is
 		     * necessary to rename it by hand in order to get it back.
 		     */

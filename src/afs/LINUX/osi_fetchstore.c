@@ -38,7 +38,7 @@
 #include "afs/param.h"
 
 #include <linux/fs.h>
-#if defined(HAVE_LINUX_SPLICE_DIRECT_TO_ACTOR)
+#if 0 && defined(HAVE_LINUX_SPLICE_DIRECT_TO_ACTOR)
 # include <linux/splice.h>
 #else
 # include <linux/pipe_fs_i.h>
@@ -52,7 +52,7 @@ struct rockops {
     struct storeOps *ops;
 };
 
-#if defined(HAVE_LINUX_SPLICE_DIRECT_TO_ACTOR)
+#if 0 && defined(HAVE_LINUX_SPLICE_DIRECT_TO_ACTOR)
 static int
 afs_linux_splice_actor(struct pipe_inode_info *pipe,
 		       struct pipe_buffer *buf,
@@ -162,6 +162,7 @@ afs_linux_read_actor(read_descriptor_t *desc, struct page *page,
     return size;
 }
 
+#if 0
 afs_int32
 afs_linux_storeproc(struct vcache *avc, struct storeOps *ops, void *rock,
 		    struct dcache *tdc, int *shouldwake, afs_size_t *bytesXferred)
@@ -198,5 +199,6 @@ afs_linux_storeproc(struct vcache *avc, struct storeOps *ops, void *rock,
 
     return code;
 }
+#endif
 
 #endif

@@ -98,8 +98,10 @@ dpkg:
 
 packages: dest
 	@case ${SYS_NAME} in \
-	*_darwin_* ) \
+	*_darwin_1[2-4] | *_darwin_[6-9]0 | *_darwin_1[0-3]0 ) \
 		${COMPILE_PART1} packaging/MacOS && bash ./buildpkg.sh ${DEST} ;; \
+	*_darwin_* ) \
+		${COMPILE_PART1} packaging/MacOS && bash ./pkgbuild.sh ${DEST} ;; \
 	hp_ux110 ) \
 		${COMPILE_PART1} packaging/HP-UX && swpackage -s  psf-1.2.10-transarc-paths-11.00 ;; \
 	hp_ux11i ) \
@@ -267,7 +269,7 @@ sgiefs:
 		echo No efs stuff for ${SYS_NAME};; \
 	esac
 
-vol: cmd comerr dir afs sgiefs 
+vol: cmd comerr dir afs sgiefs
 	+${COMPILE_PART1} vol ${COMPILE_PART2}
 
 tsalvaged: vol libafsrpc libafsauthent cmd util
@@ -362,7 +364,7 @@ rxosd_hpss: rxosd
 
 venus: cmd comerr volser ptserver libafscp libafsauthent
 	+${COMPILE_PART1} venus ${COMPILE_PART2}
-venustests:
+venustests: venus
 	+${COMPILE_PART1} venus/test ${COMPILE_PART2}
 
 afsd: cmd comerr sys kauth vol @CLIENT_UAFS_DEP@
@@ -694,7 +696,7 @@ build_tools: config des comerr rxgen
 
 finale: project cmd comerr afsd butc tbutc tbudb @ENABLE_KERNEL_MODULE@ libuafs audit kauth log \
 	ptserver tptserver scout bu_utils ubik uss bozo @VFSCK@ volser tvolser tsalvaged \
-	dviced dvolser libafscp rxosd  \
+	dviced dvolser libafscp rxosd \
 	venus venustests update xstat afsmonitor rxdebug libafsrpc \
 	libafsauthent shlibafsrpc shlibafsauthent libadmin man-pages \
 	platform kopenafs authtools tvlserver
@@ -702,7 +704,7 @@ finale: project cmd comerr afsd butc tbutc tbudb @ENABLE_KERNEL_MODULE@ libuafs 
 
 finale_nolibafs: project cmd comerr afsd butc tbutc tbudb libuafs audit kauth log \
 	ptserver tptserver scout bu_utils ubik tubik uss bozo @VFSCK@ volser tvolser tsalvaged \
-	dviced dvolser libafscp rxosd  \
+	dviced dvolser libafscp rxosd \
 	venus venustests update xstat afsmonitor rxdebug libafsrpc \
 	libafsauthent shlibafsrpc shlibafsauthent libadmin man-pages \
 	platform kopenafs authtools
@@ -930,9 +932,9 @@ distclean: clean
 	src/rx/test/Makefile \
 	src/rxdebug/Makefile \
 	src/rxgen/Makefile \
-	src/rxkad/Makefile \
+	src/xkad/Makefile \
+	src/xosd/Makefile \
 	src/rxkad/test/Makefile \
-	src/rxosd/Makefile \
 	src/rxstat/Makefile \
 	src/scout/Makefile \
 	src/sgistuff/Makefile \

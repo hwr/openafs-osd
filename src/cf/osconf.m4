@@ -398,7 +398,7 @@ case $AFS_SYSNAME in
 		XLIBS="${LIB_AFSDB} ${XBSA_XLIBS} -framework CoreFoundation"
 		;;
 
-	*_darwin_100 | *_darwin_110 | *_darwin_120 | *_darwin_130 | *_darwin_140 )
+	*_darwin_100 | *_darwin_110 | *_darwin_120 | *_darwin_130 | *_darwin_140 | *_darwin_150 )
 		AFSD_LDFLAGS="-F/System/Library/PrivateFrameworks -framework DiskArbitration -framework SystemConfiguration -framework IOKit -framework CoreFoundation"
 		MT_CFLAGS='-DAFS_PTHREAD_ENV -D_REENTRANT ${XCFLAGS} ${ARCHFLAGS}'
 		MT_LIBS="${LIB_AFSDB} -framework CoreFoundation"
@@ -633,7 +633,6 @@ case $AFS_SYSNAME in
 	sun4x_510)
 		CC=$SOLARISCC
 		CCOBJ=$SOLARISCC
-		CFLAGS="$CFLAGS $XARCHFLAGS"
 		LD="/usr/ccs/bin/ld"
 		MT_CC=$SOLARISCC
 		MT_CFLAGS='-mt -DAFS_PTHREAD_ENV ${XCFLAGS}'
@@ -654,7 +653,6 @@ case $AFS_SYSNAME in
 	sun4x_511)
 		CC=$SOLARISCC
 		CCOBJ=$SOLARISCC
-		CFLAGS="$CFLAGS $XARCHFLAGS"
 		LD="/usr/ccs/bin/ld"
 		MT_CC=$SOLARISCC
 		MT_CFLAGS='-mt -DAFS_PTHREAD_ENV ${XCFLAGS}'
@@ -714,7 +712,6 @@ case $AFS_SYSNAME in
 	sunx86_511)
 		CC=$SOLARISCC
 		CCOBJ=$SOLARISCC
-		CFLAGS="$CFLAGS $XARCHFLAGS"
 		LD="/usr/ccs/bin/ld"
 		MT_CC=$SOLARISCC
 		MT_CFLAGS='-mt -DAFS_PTHREAD_ENV ${XCFLAGS}'

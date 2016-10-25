@@ -4320,7 +4320,8 @@ DeleteEntry(struct cmd_syndesc *as, void *arock)
 			    itp->data);
 		continue;
 	    }
-	    if (as->parms[4].items) {	/* -noexecute */
+	    if (as->parms[4].items || as->parms[5].items) {
+		/* -noexecute (hidden) or -dryrun */
 		fprintf(STDOUT, "Would have deleted VLDB entry for %s \n",
 			itp->data);
 		fflush(STDOUT);
@@ -4430,7 +4431,8 @@ DeleteEntry(struct cmd_syndesc *as, void *arock)
 	    }
 	}
 
-	if (as->parms[4].items) {	/* -noexecute */
+	if (as->parms[4].items || as->parms[5].items) {
+	    /* -noexecute (hidden) or -dryrun */
 	    fprintf(STDOUT, "Would have deleted VLDB entry for %s \n",
 		    vllist->name);
 	    fflush(STDOUT);
@@ -4530,7 +4532,7 @@ ListVLDB(struct cmd_syndesc *as, void *arock)
     aserver = 0;
     apart = 0;
 
-    attributes.Mask = 0;
+    memset(&attributes, 0, sizeof(attributes));
     lock = (as->parms[3].items ? 1 : 0);	/* -lock   flag */
     quiet = (as->parms[4].items ? 1 : 0);	/* -quit   flag */
     sort = (as->parms[5].items ? 0 : 1);	/* -nosort flag */
@@ -5033,7 +5035,7 @@ UnlockVLDB(struct cmd_syndesc *as, void *arock)
 
     apart = -1;
     totalE = 0;
-    attributes.Mask = 0;
+    memset(&attributes, 0, sizeof(attributes));
 
     if (as->parms[0].items) {	/* server specified */
 	aserver = GetServer(as->parms[0].items->data);
@@ -6343,14 +6345,14 @@ main(int argc, char **argv)
     cmd_AddParm(ts, "-server", CMD_SINGLE, CMD_OPTIONAL, "machine name");
     cmd_AddParm(ts, "-partition", CMD_SINGLE, CMD_OPTIONAL, "partition name");
     cmd_AddParm(ts, "-volume", CMD_SINGLE, CMD_OPTIONAL, "volume name or ID");
-    cmd_AddParm(ts, "-dryrun", CMD_FLAG, CMD_OPTIONAL, "report without updating");
+    cmd_AddParm(ts, "-dryrun", CMD_FLAG, CMD_OPTIONAL, "list what would be done, don't do it");
     COMMONPARMS;
 
     ts = cmd_CreateSyntax("syncserv", SyncServer, NULL,
 			  "synchronize server with VLDB");
     cmd_AddParm(ts, "-server", CMD_SINGLE, 0, "machine name");
     cmd_AddParm(ts, "-partition", CMD_SINGLE, CMD_OPTIONAL, "partition name");
-    cmd_AddParm(ts, "-dryrun", CMD_FLAG, CMD_OPTIONAL, "report without updating");
+    cmd_AddParm(ts, "-dryrun", CMD_FLAG, CMD_OPTIONAL, "list what would be done, don't do it");
     COMMONPARMS;
 
     ts = cmd_CreateSyntax("examine", ExamineVolume, NULL,
@@ -6430,7 +6432,7 @@ main(int argc, char **argv)
 		"exclude common prefix volumes");
     cmd_AddParm(ts, "-xprefix", CMD_LIST, CMD_OPTIONAL,
 		"negative prefix on volume(s)");
-    cmd_AddParm(ts, "-dryrun", CMD_FLAG, CMD_OPTIONAL, "no action");
+    cmd_AddParm(ts, "-dryrun", CMD_FLAG, CMD_OPTIONAL, "list what would be done, don't do it");
     COMMONPARMS;
 
     ts = cmd_CreateSyntax("delentry", DeleteEntry, NULL,
@@ -6440,8 +6442,9 @@ main(int argc, char **argv)
 		"prefix of the volume whose VLDB entry is to be deleted");
     cmd_AddParm(ts, "-server", CMD_SINGLE, CMD_OPTIONAL, "machine name");
     cmd_AddParm(ts, "-partition", CMD_SINGLE, CMD_OPTIONAL, "partition name");
-    cmd_AddParm(ts, "-noexecute", CMD_FLAG, CMD_OPTIONAL,
-		"no execute");
+    cmd_AddParm(ts, "-noexecute", CMD_FLAG, CMD_OPTIONAL|CMD_HIDDEN, "");
+    cmd_AddParm(ts, "-dryrun", CMD_FLAG, CMD_OPTIONAL,
+                "list what would be done, don't do it");
     COMMONPARMS;
 
     ts = cmd_CreateSyntax("partinfo", PartitionInfo, NULL,

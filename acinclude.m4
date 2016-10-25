@@ -634,6 +634,14 @@ else
 			AFS_SYSNAME="x86_darwin_140"
 			OSXSDK="macosx10.10"
 			;;
+		x86_64-apple-darwin15.*)
+			AFS_SYSNAME="x86_darwin_150"
+			OSXSDK="macosx10.11"
+			;;
+		i?86-apple-darwin15.*)
+			AFS_SYSNAME="x86_darwin_150"
+			OSXSDK="macosx10.11"
+			;;
 		sparc-sun-solaris2.5*)
 			AFS_SYSNAME="sun4x_55"
 			enable_login="yes"
@@ -855,15 +863,16 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 		 dnl Setup the kernel build environment
 		 LINUX_KBUILD_USES_EXTRA_CFLAGS
 		 LINUX_KERNEL_COMPILE_WORKS
-                 dnl Operation signature checks
-                 AC_CHECK_LINUX_OPERATION([inode_operations], [follow_link], [no_nameidata],
-                                          [#include <linux/fs.h>],
-                                          [const char *],
-                                          [struct dentry *dentry, void **link_data])
-                 AC_CHECK_LINUX_OPERATION([inode_operations], [put_link], [no_nameidata],
-                                          [#include <linux/fs.h>],
-                                          [void],
-                                          [struct inode *inode, void *link_data])
+
+		 dnl Operation signature checks
+		 AC_CHECK_LINUX_OPERATION([inode_operations], [follow_link], [no_nameidata],
+					  [#include <linux/fs.h>],
+					  [const char *],
+					  [struct dentry *dentry, void **link_data])
+		 AC_CHECK_LINUX_OPERATION([inode_operations], [put_link], [no_nameidata],
+					  [#include <linux/fs.h>],
+					  [void],
+					  [struct inode *inode, void *link_data])
 
 		 dnl Check for header files
 		 AC_CHECK_LINUX_HEADER([config.h])
@@ -900,6 +909,8 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 		 AC_CHECK_LINUX_STRUCT([file_operations], [sendfile], [fs.h])
 		 AC_CHECK_LINUX_STRUCT([file_system_type], [mount], [fs.h])
 		 AC_CHECK_LINUX_STRUCT([inode_operations], [truncate], [fs.h])
+		 AC_CHECK_LINUX_STRUCT([inode_operations], [get_link], [fs.h])
+		 AC_CHECK_LINUX_STRUCT([key], [payload.value], [key.h])
 		 AC_CHECK_LINUX_STRUCT([key_type], [instantiate_prep], [key-type.h])
 		 AC_CHECK_LINUX_STRUCT([key_type], [match_preparse], [key-type.h])
 		 AC_CHECK_LINUX_STRUCT([key_type], [preparse], [key-type.h])
@@ -922,7 +933,7 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 		 AC_CHECK_LINUX_STRUCT([task_struct], [sigmask_lock], [sched.h])
 		 AC_CHECK_LINUX_STRUCT([task_struct], [tgid], [sched.h])
 		 AC_CHECK_LINUX_STRUCT([task_struct], [thread_info], [sched.h])
-                 AC_CHECK_LINUX_STRUCT([task_struct], [total_link_count], [sched.h])
+		 AC_CHECK_LINUX_STRUCT([task_struct], [total_link_count], [sched.h])
 		 LINUX_SCHED_STRUCT_TASK_STRUCT_HAS_SIGNAL_RLIM
 
 		 dnl Check for typed structure elements
@@ -993,9 +1004,15 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 		 AC_CHECK_LINUX_FUNC([kernel_setsockopt],
 				     [#include <linux/net.h>],
 				     [kernel_setsockopt(NULL, 0, 0, NULL, 0);])
+		 AC_CHECK_LINUX_FUNC([locks_lock_file_wait],
+				     [#include <linux/fs.h>],
+				     [locks_lock_file_wait(NULL, NULL);])
 		 AC_CHECK_LINUX_FUNC([page_follow_link],
 				     [#include <linux/fs.h>],
 				     [page_follow_link(0,0);])
+		 AC_CHECK_LINUX_FUNC([page_get_link],
+				     [#include <linux/fs.h>],
+				     [page_get_link(0,0,0);])
 		 AC_CHECK_LINUX_FUNC([page_offset],
 				     [#include <linux/pagemap.h>],
 				     [page_offset(NULL);])
@@ -1018,12 +1035,15 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 		 AC_CHECK_LINUX_FUNC([sock_create_kern],
 				     [#include <linux/net.h>],
 				     [sock_create_kern(0, 0, 0, NULL);])
-                 AC_CHECK_LINUX_FUNC([sock_create_kern_ns],
-                                     [#include <linux/net.h>],
-                                     [sock_create_kern(NULL, 0, 0, 0, NULL);])
+		 AC_CHECK_LINUX_FUNC([sock_create_kern_ns],
+				     [#include <linux/net.h>],
+				     [sock_create_kern(NULL, 0, 0, 0, NULL);])
 		 AC_CHECK_LINUX_FUNC([splice_direct_to_actor],
 				     [#include <linux/splice.h>],
 				     [splice_direct_to_actor(NULL,NULL,NULL);])
+		 AC_CHECK_LINUX_FUNC([default_file_splice_read],
+				     [#include <linux/fs.h>],
+				     [default_file_splice_read(NULL,NULL,NULL, 0, 0);])
 		 AC_CHECK_LINUX_FUNC([svc_addr_in],
 				     [#include <linux/sunrpc/svc.h>],
 				     [svc_addr_in(NULL);])
@@ -1037,6 +1057,12 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 				     [#include <linux/kernel.h>
 				      #include <linux/kthread.h>],
 				     [kthread_run(NULL, NULL, "test");])
+		 AC_CHECK_LINUX_FUNC([inode_nohighmem],
+				     [#include <linux/fs.h>],
+				     [inode_nohighmem(NULL);])
+		 AC_CHECK_LINUX_FUNC([inode_lock],
+				     [#include <linux/fs.h>],
+				     [inode_lock(NULL);])
 
 		 dnl Consequences - things which get set as a result of the
 		 dnl                above tests
@@ -1168,10 +1194,14 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 		 if test -f "$LINUX_KERNEL_PATH/include/linux/mm_inline.h"; then
 		  AC_DEFINE(HAVE_MM_INLINE_H, 1, [define if you have mm_inline.h header file])
 	         fi
-		 if test "x$ac_cv_linux_kernel_page_follow_link" = "xyes" -o "x$ac_cv_linux_func_i_put_link_takes_cookie" = "xyes"; then
+		 if test "x$ac_cv_linux_func_page_get_link" = "xyes" -o "x$ac_cv_linux_func_i_put_link_takes_cookie" = "xyes"; then
 		  AC_DEFINE(USABLE_KERNEL_PAGE_SYMLINK_CACHE, 1, [define if your kernel has a usable symlink cache API])
 		 else
 		  AC_MSG_WARN([your kernel does not have a usable symlink cache API])
+		 fi
+		 if test "x$ac_cv_linux_func_page_get_link" != "xyes" -a "x$ac_cv_linux_struct_inode_operations_has_get_link" = "xyes"; then
+			AC_MSG_ERROR([Your kernel does not use follow_link - not supported without symlink cache API])
+			exit 1
 		 fi
                 :
 		fi

@@ -5,8 +5,8 @@ AC_CONFIG_SRCDIR([src/config/stds.h])
 AM_INIT_AUTOMAKE
 
 AC_CONFIG_HEADER(src/config/afsconfig.h)
-MACOS_VERSION=1.6.16-osd
-LINUX_PKGVER=1.6.16-osd
+MACOS_VERSION=1.6.19d3-osd
+LINUX_PKGVER=1.6.18.3-osd
 
 dnl Debian wants the release candidate version in the main upstream version,
 dnl and wants ~ before it.
@@ -51,7 +51,7 @@ AS_IF([test x"$KRB5_LIBS" != x],
     [BUILD_KRB5=yes
      MAKE_KRB5=
      AC_DEFINE([USE_RXKAD_KEYTAB], 1,
-              [Define to 1 if krb5 libraries are available and rxkad can use keytabs])
+	       [Define to 1 if krb5 libraries are available and rxkad can use keytabs])
      RRA_LIB_KRB5_SWITCH
      AC_CHECK_FUNCS([add_error_table \
         add_to_error_table \
@@ -88,19 +88,19 @@ AS_IF([test x"$KRB5_LIBS" != x],
              && test x"$ac_cv_header_krb5_com_err_h" != xyes],
        [AC_MSG_ERROR([Cannot find a usable com_err.h])])
      AC_CHECK_MEMBERS([krb5_creds.keyblock, krb5_creds.keyblock.enctype,
-                      krb5_creds.session, krb5_keytab_entry.key,
-                      krb5_keytab_entry.keyblock, krb5_keyblock.enctype,
-                      krb5_keyblock.keytype, krb5_prompt.type], , ,
-                      [#include <krb5.h>])
+		       krb5_creds.session, krb5_keytab_entry.key,
+		       krb5_keytab_entry.keyblock, krb5_keyblock.enctype,
+		       krb5_keyblock.keytype, krb5_prompt.type], , ,
+		       [#include <krb5.h>])
 dnl If we have krb5_creds.session, we are using heimdal
 dnl If we're using heimdal, aklog needs libasn1 for encode_EncTicketPart and a
 dnl few other functions. But just aklog; not any of the other stuff that uses
 dnl krb5.
      AS_IF([test x"$ac_cv_member_krb5_creds_session" = xyes],
            [AC_CHECK_LIB([asn1], [encode_EncTicketPart],
-                       [AKLOG_KRB5_LIBS="-lasn1"])])
+	                [AKLOG_KRB5_LIBS="-lasn1"])])
      AC_CHECK_DECLS([krb5_free_keytab_entry_contents, krb5_kt_free_entry,
-                   KRB5_KU_TICKET], [], [], [#include <krb5.h>])
+		    KRB5_KU_TICKET], [], [], [#include <krb5.h>])
      RRA_LIB_KRB5_RESTORE])
 AC_SUBST([BUILD_KRB5])
 AC_SUBST([MAKE_KRB5])
@@ -206,6 +206,7 @@ src/packaging/MacOS/OpenAFS.Description.plist \
 src/packaging/MacOS/OpenAFS.Info.plist \
 src/packaging/MacOS/OpenAFS.info \
 src/packaging/MacOS/buildpkg.sh \
+src/packaging/MacOS/pkgbuild.sh \
 src/pam/Makefile \
 src/platform/Makefile \
 src/platform/${MKAFS_OSTYPE}/Makefile \
@@ -223,8 +224,8 @@ src/rx/test/Makefile \
 src/rxdebug/Makefile \
 src/rxgen/Makefile \
 src/rxkad/Makefile \
-src/rxkad/test/Makefile \
 src/rxosd/Makefile \
+src/rxkad/test/Makefile \
 src/rxstat/Makefile \
 src/scout/Makefile \
 src/sgistuff/Makefile \

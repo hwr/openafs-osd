@@ -51,7 +51,7 @@ COMMON_INCLUDE = -I. -I.. -I../nfs \
 CRULE_NOOPT=	$(CC) $(COMMON_INCLUDE) $(KERN_DBG) $(CFLAGS) $(CFLAGS-$(@)) -o $@ -c $?
 #new duplicate rule just referring differently to the dependency list (Take first dependency conforming to the applicable suffix rule.)
 CCRULE_NOOPT=	$(CC) $(COMMON_INCLUDE) $(KERN_DBG) $(CFLAGS) $(CFLAGS-$(@)) -o $@ -c $<
-CRULE_OPT=	$(CC) $(COMMON_INCLUDE) $(KERN_DBG) $(KERN_OPTMZ) $(CFLAGS) $(CFLAGS-$@) -o $@ -c $?
+CRULE_OPT=     $(CC) $(COMMON_INCLUDE) $(KERN_DBG) $(KERN_OPTMZ) $(CFLAGS) $(CFLAGS-$(@)) -o $@ -c $?
 
 system:	all
 

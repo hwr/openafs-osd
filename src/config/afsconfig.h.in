@@ -329,6 +329,9 @@
 /* Define if your kernel has the current_kernel_time function */
 #undef HAVE_LINUX_CURRENT_KERNEL_TIME
 
+/* Define if your kernel has the default_file_splice_read function */
+#undef HAVE_LINUX_DEFAULT_FILE_SPLICE_READ
+
 /* Define if your kernel has the do_sync_read function */
 #undef HAVE_LINUX_DO_SYNC_READ
 
@@ -365,6 +368,12 @@
 /* Define if your kernel has the ihold function */
 #undef HAVE_LINUX_IHOLD
 
+/* Define if your kernel has the inode_lock function */
+#undef HAVE_LINUX_INODE_LOCK
+
+/* Define if your kernel has the inode_nohighmem function */
+#undef HAVE_LINUX_INODE_NOHIGHMEM
+
 /* Define if inode_operations has follow_link operation of form struct dentry
    *dentry, void **link_data */
 #undef HAVE_LINUX_INODE_OPERATIONS_FOLLOW_LINK_NO_NAMEIDATA
@@ -394,6 +403,9 @@
 /* Define if kernel defines kuid_t */
 #undef HAVE_LINUX_KUID_T
 
+/* Define if your kernel has the locks_lock_file_wait function */
+#undef HAVE_LINUX_LOCKS_LOCK_FILE_WAIT
+
 /* Define if your kernel has the noop_fsync function */
 #undef HAVE_LINUX_NOOP_FSYNC
 
@@ -408,6 +420,9 @@
 
 /* Define if your kernel has the page_follow_link function */
 #undef HAVE_LINUX_PAGE_FOLLOW_LINK
+
+/* Define if your kernel has the page_get_link function */
+#undef HAVE_LINUX_PAGE_GET_LINK
 
 /* Define if your kernel has the page_offset function */
 #undef HAVE_LINUX_PAGE_OFFSET
@@ -919,9 +934,16 @@
 /* Define if kernel typedef'd struct inode has the i_security element */
 #undef STRUCT_INODE_HAS_I_SECURITY
 
+/* Define if kernel typedef'd struct inode_operations has the get_link element
+   */
+#undef STRUCT_INODE_OPERATIONS_HAS_GET_LINK
+
 /* Define if kernel typedef'd struct inode_operations has the truncate element
    */
 #undef STRUCT_INODE_OPERATIONS_HAS_TRUNCATE
+
+/* Define if kernel typedef'd struct key has the payload.value element */
+#undef STRUCT_KEY_HAS_PAYLOAD_VALUE
 
 /* Define if kernel typedef'd struct key_type has the instantiate_prep element
    */

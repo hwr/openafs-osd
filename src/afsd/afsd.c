@@ -30,7 +30,7 @@
   *	-mountdir   The directory on which the AFS is to be mounted.
   *	-confdir    The configuration directory .
   *	-nosettime  Don't keep checking the time to avoid drift (default).
-  *     -settime    Keep checking the time to avoid drift.
+  *	-settime    Keep checking the time to avoid drift.
   *	-rxmaxmtu   Set the max mtu to help with VPN issues.
   *	-verbose     Be chatty.
   *	-disable-dynamic-vcaches     Disable the use of -stat value as the starting size of
@@ -1838,6 +1838,7 @@ mainproc(struct cmd_syndesc *as, void *arock)
     }
     if (as->parms[8].items) {
 	/* -nosettime */
+	printf("afsd: -nosettime is deprecated -- ignored\n");
 	cacheSetTime = 0;
     }
     if (as->parms[9].items) {
@@ -1970,6 +1971,7 @@ mainproc(struct cmd_syndesc *as, void *arock)
     }
     if (as->parms[32].items) {
 	/* -settime */
+	printf("afsd: -settime is deprecated\n");
 	cacheSetTime = 1;
     }
 

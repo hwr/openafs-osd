@@ -32,6 +32,8 @@ static void afs_DCMoveBucket(struct dcache *, afs_int32, afs_int32);
 static void afs_DCSizeInit(void);
 static afs_int32 afs_DCWhichBucket(afs_int32, afs_int32);
 
+extern afs_int32 afs_protocols;
+
 /*
  * --------------------- Exported definitions ---------------------
  */
@@ -542,6 +544,23 @@ afs_AdjustSize(struct dcache *adc, afs_int32 newSize)
     afs_int32 oldSize;
 
     AFS_STATCNT(afs_AdjustSize);
+
+    if (newSize > afs_OtherCSize && !(adc->f.fid.Fid.Vnode & 1)) {
+        /* No non-dir cache files should be larger than the chunk size.
+         * (Directory blobs are fetched in a single chunk file, so directories
+         * can be larger.) If someone is requesting that a chunk is larger than
+         * the chunk size, something strange is happening. Log a message about
+         * it, to give a hint to subsequent strange behavior, if any occurs. */
+        static int warned;
+        if (!warned) {
+            warned = 1;
+            afs_warn("afs: Warning: dcache %d is very large (%d > %d). This "
+                     "should not happen, but trying to continue regardless. If "
+                     "AFS starts hanging or behaving strangely, this might be "
+                     "why.\n",
+                     adc->index, newSize, afs_OtherCSize);
+        }
+    }
 
     adc->dflags |= DFEntryMod;
     oldSize = ((adc->f.chunkBytes + afs_fsfragsize) ^ afs_fsfragsize) >> 10;	/* round up */
@@ -2099,7 +2118,7 @@ afs_GetDCache(struct vcache *avc, afs_size_t abyte,
      * to regular files.
      */
     if (hiszero(avc->f.m.DataVersion) && (vType(avc) == VREG))
-	hzero(tdc->f.versionNo);        /* can only be empty */
+        hzero(tdc->f.versionNo);        /* can only be empty */
     if (!hsame(avc->f.m.DataVersion, tdc->f.versionNo) && !overWriteWholeChunk) {
 	/*
 	 * Version number mismatch.
@@ -2217,10 +2236,13 @@ afs_GetDCache(struct vcache *avc, afs_size_t abyte,
 		maxGoodLength = avc->f.truncPos;
 
 	    size = AFS_CHUNKSIZE(abyte);	/* expected max size */
-	    if (Position + size > maxGoodLength)
+            if (Position > maxGoodLength) { /* If we're beyond EOF */
+                size = 0;
+	    } else if (Position + size > maxGoodLength) {
 		size = maxGoodLength - Position;
-	    if (size < 0)
-		size = 0;	/* Handle random races */
+            }
+            osi_Assert(size >= 0);
+
 	    if (size > tdc->f.chunkBytes) {
 		/* pre-reserve estimated space for file */
 		afs_AdjustSize(tdc, size);	/* changes chunkBytes */
@@ -2244,12 +2266,12 @@ afs_GetDCache(struct vcache *avc, afs_size_t abyte,
 		 * avc->f.truncPos to reappear, instead of extending the file
 		 * with NUL bytes. */
 		size = AFS_CHUNKSIZE(abyte);
-		if (Position + size > avc->f.truncPos) {
+                if (Position > avc->f.truncPos) {
+                    size = 0;
+		} else if (Position + size > avc->f.truncPos) {
 		    size = avc->f.truncPos - Position;
 		}
-		if (size < 0) {
-		    size = 0;
-		}
+                osi_Assert(size >= 0);
 	    }
 	}
 	if (afs_mariner && !tdc->f.chunk)
@@ -2371,7 +2393,7 @@ afs_GetDCache(struct vcache *avc, afs_size_t abyte,
 		    }
 		    i = osi_Time();
 		    code = afs_FetchProc(tc, rxconn, file, areq, Position, tdc,
-					 avc, size, NULL, tsmall);
+					       avc, size, NULL, tsmall);
 		} else
 		   code = -1;
 

@@ -544,7 +544,7 @@ struct storeOps vpac_storeUfsOps = {
     .padd =     vpac_storePadd,
     .close =    vpac_storeClose,
     .destroy =  vpacDestroy,
-    .storeproc = afs_linux_storeproc
+    .storeproc = afs_GenericStoreProc
 };
 
 static

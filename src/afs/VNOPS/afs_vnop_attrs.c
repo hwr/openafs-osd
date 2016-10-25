@@ -249,7 +249,7 @@ afs_getattr(OSI_VC_DECL(avc), struct vattr *attrs, afs_ucred_t *acred)
     afs_BozonLock(&avc->pvnLock, avc);
 #endif
 
-    if (afs_shuttingdown)
+    if (afs_shuttingdown != AFS_RUNNING)
 	return EIO;
 
     if (!(avc->f.states & CStatd)) {
@@ -488,6 +488,8 @@ afs_setattr(OSI_VC_DECL(avc), struct vattr *attrs,
 #endif
     if ((code = afs_CreateReq(&treq, acred)))
 	return code;
+
+    memset(&astat, 0, sizeof(astat));
 
     AFS_DISCON_LOCK();
 

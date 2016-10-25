@@ -1,5 +1,146 @@
                        User-Visible OpenAFS Changes
 
+OpenAFS 1.6.18.3
+
+  Linux clients
+
+    * Support for mainline kernel 4.7 and distribution kernels with
+      backports from it (12348)
+
+  Solaris clients
+
+    * Fixed memory mapped I/O on files >= 4 GiB (12349 12350)
+
+      Note that there is a suspicion that this might break the client
+      on very old Solaris releases (2.6). If it does, the breakage should
+      occur at build time.
+
+  OS X
+
+    * Added tooling to build a package for OS X 10.10 "Yosemite" and
+      10.11 "El Capitan" (12335 12351)
+
+
+OpenAFS 1.6.18.2
+
+  Linux clients
+
+    * Support for mainline kernel 4.6 and distribution kernels with
+      backports from it (12332)
+
+    * Switch back to the pre-1.6.18 algorithm for freeing unused vcaches.
+      While the new algorithm is still believed to be correct, it turned
+      out that at least on some kernels, including 4.5 and 4.6, the dentry
+      for the current working directory may be erroneously invalidated.
+      This could lead to errors like "Unable to read current working directory"
+      when a directory wasn't accessed for a few minutes. (12323)
+
+    * Use a secure URL to retrieve the CellServDB in the script to create
+      the Red Hat source package (12330)
+
+  FreeBSD
+
+    * Added sysname IDs for 10.2 and 10.3 to fix the build on those platforms
+      (12322)
+
+
+OpenAFS 1.6.18.1
+
+  Linux clients
+
+    * Support for mainline kernel 4.5 and distribution kernels with
+      backports from it (12300..12302)
+
+
+OpenAFS 1.6.18
+
+  All platforms
+
+    * Documentation improvements (12224 11675 11613 12197)
+
+    * Improved diagnostics and error messages (12129 12207 12185 12211 12113
+      12215 12216)
+
+    * Check that CellServDB entries are valid IPv4 addresses, to avoid
+      occasional hangs or potentially other erratic behaviour due to invalid
+      entries (12210) (RT #131794)
+
+  All client platforms
+
+    * Gracefully handle cases where a client shutdown sequence is initiated
+      while the client is already shutting down, rather than cause a panic
+      (12179)
+
+    * Fixed several bugs that could cause erratic behaviour when the write
+      offset into a file was more than 2 GiB beyond the file's current end
+      on the server (12213 12214)
+
+  All server platforms
+
+    * Avoid a possible volserver crash during volume dump or restore due
+      to invalid ACL entries (12127)
+
+    * Allow recovering from a DAFS fileserver operation which allocates a
+      new vnode but fails to update the vnode index, rather than crashing the
+      server (12209)
+
+    * Fixed a longstanding bug which could damage the volume location database
+      when "vos changeaddr" was run with "-oldaddr" and "-newaddr" and the
+      old address was present in a multi-homed entry (12089)
+
+  FreeBSD
+
+    * Added support for releases 10.2 and 10.3 (12232)
+
+  Linux clients
+
+    * Support for mainline kernel 4.4 and distribution kernels with
+      backports from it, alas at a performance penalty (12226 12227 12228)
+      (RT #132677 #132819)
+
+    * Avoid using excessive amounts of kernel memory for dynamically
+      allocated vcaches, by improving the algorithm to free unused ones
+      (12256 12257)
+
+    * In Red Hat packaging, make the init script use "ip" if available, with
+      "ifconfig" as a fallback (12193)
+
+  OS X
+
+    * Basic support for release 10.11 "El Capitan" (12212)
+
+  IRIX clients
+
+    * Fixed kernel module builds with optimization (12198) (RT #131261)
+
+
+OpenAFS 1.6.17 (Security Release)
+
+  All server platforms
+
+    * Fix for OPENAFS-SA-2016-001: foreign users can create groups as
+      if they were an administrator (RT #132822) (CVE-2016-2860)
+
+  All client platforms
+
+    * Fix for OPENAFS-SA-2016-002: information leakage from sending
+      uninitialized memory over the network.  Multiple call sites
+      were vulnerable, with potential for leaking both kernel and
+      userland stack data (RT #132847)
+
+    * Update to the GCO CellServDB update from 01 January 2016 (12188)
+
+  Linux clients
+
+    * Fix a crash when the root volume is not found and dynroot is not
+      in use, a regression introduced in 1.6.14.1 (12166)
+
+    * Avoid introducing a dependency on the kernel-devel package corresponding
+      to the currently running system while building the srpm (12195)
+
+    * Create systemd unit files with mode 0644 instead of 0755
+      (12196) (RT #132662)
+
 OpenAFS 1.6.16
 
   All platforms
