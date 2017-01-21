@@ -1744,7 +1744,6 @@ ReadVnodes(struct iod *iodp, Volume * vp, int incremental,
 			(unsigned long)vnodeNumber);
 		    return VOLSERREAD_DUMPERROR;
 		}
-		acl_NtohACL(VVnodeDiskACL(vnode));
 		break;
 	    case 'd': 
 	    case 'P':	/* old stuff */ 
