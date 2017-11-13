@@ -72,3 +72,17 @@ rx_RecordCallStatistics(struct rx_call *call, unsigned int rxInterface,
 			     totalFunc, &queue, &exec, call->app.bytesSent,
 			     call->app.bytesRcvd, 1);
 }
+
+int
+rx_callDebugInfo(struct rx_call *call, afs_int32 *rnext, afs_int32 *tnext,
+		 afs_int32 *lastSend, afs_int32 *lastReceive)
+{
+    if (!call)
+	return EINVAL;
+    *rnext = call->rnext;
+    *tnext = call->tnext;
+    *lastSend = call->lastSendTime;
+    *lastReceive = call->lastReceiveTime;
+    return 0;
+}
+

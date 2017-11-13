@@ -32,6 +32,8 @@
 #include "ubik.h"
 #include "ubik_int.h"
 
+extern int haveAlwaysSyncSite;
+
 /* These global variables were used to set the function to use to initialise
  * the client security layer. They are retained for backwards compatiblity with
  * legacy callers - the ubik_SetClientSecurityProcs() interface should be used
@@ -93,6 +95,14 @@ static int verifyInterfaceAddress(afs_uint32 *ame, struct afsconf_cell *info,
 
 /*! \brief procedure called from debug rpc call to get this module's state for debugging */
 void
+ubeacon_Debug_new(afs_int32 *asyncSiteUntil, afs_int32 *anServers)
+{
+    /* fill in beacon's state fields in the ubik_debug_new structure */
+    *asyncSiteUntil = beacon_globals.syncSiteUntil;
+    *anServers = nServers;
+}
+
+void
 ubeacon_Debug(struct ubik_debug *aparm)
 {
     /* fill in beacon's state fields in the ubik_debug structure */
@@ -119,6 +129,7 @@ amSyncSite(void)
 	    if (beacon_globals.ubik_amSyncSite)
 		ubik_dprint("Ubik: I am no longer the sync site\n");
 	    beacon_globals.ubik_amSyncSite = 0;
+	    beacon_globals.ubik_syncSiteAdvertised = 0;
 	    rcode = 0;
 	} else {
 	    rcode = 1;		/* otherwise still have the required votes */
@@ -154,6 +165,32 @@ ubeacon_AmSyncSite(void)
 
     if (!rcode)
 	urecovery_ResetState();
+
+    return rcode;
+}
+
+/*!
+ * \brief Determine whether at least quorum are aware we have a sync-site.
+ *
+ * Called from higher-level modules.
+ *
+ * There is a gap between the time when a new sync-site is elected and the time
+ * when the remotes are aware of that. Therefore, any write transaction between
+ * this gap will fail. This will force a new re-election which might be time
+ * consuming. This procedure determines whether the remotes (quorum) are aware
+ * we have a sync-site.
+ *
+ * \return 1 if remotes are aware we have a sync-site
+ * \return 0 if remotes are not aware we have a sync-site
+ */
+int
+ubeacon_SyncSiteAdvertised(void)
+{
+    afs_int32 rcode;
+
+    UBIK_BEACON_LOCK;
+    rcode = beacon_globals.ubik_syncSiteAdvertised;
+    UBIK_BEACON_UNLOCK;
 
     return rcode;
 }
@@ -271,7 +308,7 @@ ubeacon_InitServerListCommon(afs_uint32 ame, struct afsconf_cell *info,
     struct ubik_server *ts;
     afs_int32 me = -1;
     afs_int32 servAddr;
-    afs_int32 i, code;
+    afs_int32 i, k, code;
     afs_int32 magicHost;
     struct ubik_server *magicServer;
 
@@ -371,6 +408,16 @@ ubeacon_InitServerListCommon(afs_uint32 ame, struct afsconf_cell *info,
 	if (nServers == 1 && !amIClone) {
 	    beacon_globals.ubik_amSyncSite = 1;	/* let's start as sync site */
 	    beacon_globals.syncSiteUntil = 0x7fffffff;	/* and be it quite a while */
+	    beacon_globals.ubik_syncSiteAdvertised = 1;
+	    for (k=0; k<MAX_UBIK_DBASES; k++) {
+		if (ubik_dbase[k]) {
+		    DBHOLD(ubik_dbase[k]);
+		    UBIK_VERSION_LOCK;
+		    version_globals.ubik_epochTime[k] = FT_ApproxTime();
+		    UBIK_VERSION_UNLOCK;
+		    DBRELE(ubik_dbase[k]);
+		}
+	    }
 	}
     } else {
 	if (nServers == 1)	/* special case 1 server */
@@ -378,10 +425,21 @@ ubeacon_InitServerListCommon(afs_uint32 ame, struct afsconf_cell *info,
     }
 
     if (ubik_singleServer) {
-	if (!beacon_globals.ubik_amSyncSite)
+	if (!beacon_globals.ubik_amSyncSite) {
 	    ubik_dprint("Ubik: I am the sync site - 1 server\n");
+	    for (k=0; k<MAX_UBIK_DBASES; k++) {
+		if (ubik_dbase[k]) {
+		    DBHOLD(ubik_dbase[k]);
+		    UBIK_VERSION_LOCK;
+		    version_globals.ubik_epochTime[k] = FT_ApproxTime();
+		    UBIK_VERSION_UNLOCK;
+		    DBRELE(ubik_dbase[k]);
+		}
+	    }
+	}
 	beacon_globals.ubik_amSyncSite = 1;
 	beacon_globals.syncSiteUntil = 0x7fffffff;	/* quite a while */
+	beacon_globals.ubik_syncSiteAdvertised = 1;
     }
     return 0;
 }
@@ -399,10 +457,11 @@ ubeacon_Interact(void *dummy)
     struct timeval tt;
     struct rx_connection *connections[MAXSERVERS];
     struct ubik_server *servers[MAXSERVERS];
-    afs_int32 i;
+    afs_int32 i, j, k, l;
     struct ubik_server *ts;
     afs_int32 temp, yesVotes, lastWakeupTime, oldestYesVote, syncsite;
-    struct ubik_tid ttid;
+    int becameSyncSite;
+    struct ubik_db_stateList list;
     struct ubik_version tversion;
     afs_int32 startTime;
 
@@ -411,6 +470,7 @@ ubeacon_Interact(void *dummy)
     /* loop forever getting votes */
     lastWakeupTime = 0;		/* keep track of time we last started a vote collection */
     while (1) {
+	struct ubik_db_state buffer[MAX_UBIK_DBASES];
 
 	/* don't wakeup more than every POLLTIME seconds */
 	temp = (lastWakeupTime + POLLTIME) - FT_ApproxTime();
@@ -458,19 +518,35 @@ ubeacon_Interact(void *dummy)
 	/* this next is essentially an expansion of rgen's ServBeacon routine */
 
 	UBIK_VERSION_LOCK;
-	ttid.epoch = version_globals.ubik_epochTime;
-	if (ubik_dbase->flags & DBWRITING) {
-	    /*
-	     * if a write is in progress, we have to send the writeTidCounter
-	     * which holds the tid counter of the write transaction , and not
-	     * send the tidCounter value which holds the tid counter of the
-	     * last transaction.
-	     */
-	    ttid.counter = ubik_dbase->writeTidCounter;
-	} else
-	    ttid.counter = ubik_dbase->tidCounter + 1;
-	tversion.epoch = ubik_dbase->version.epoch;
-	tversion.counter = ubik_dbase->version.counter;
+	l = 0;
+	for (k=0; k<MAX_UBIK_DBASES; k++) {
+	    if (ubik_dbase[k])
+		l++;
+	}
+	memset(&buffer, 0, sizeof(buffer));
+	list.ubik_db_stateList_val = (struct ubik_db_state *)&buffer;
+	list.ubik_db_stateList_len = l;
+	l = 0; /* offset in list */
+	for (k=0; k<MAX_UBIK_DBASES; k++) {
+	    if (!ubik_dbase[k])
+		continue;	/* skip unused entry */
+	    list.ubik_db_stateList_val[l].index = k;
+	    list.ubik_db_stateList_val[l].vers = ubik_dbase[k]->version;
+	    list.ubik_db_stateList_val[l].tid.epoch = version_globals.ubik_epochTime[k];
+	    if (ubik_dbase[k]->flags & DBWRITING) {
+		/*
+		 * if a write is in progress, we have to send the writeTidCounter
+		 * which holds the tid counter of the write transaction , and not
+		 * send the tidCounter value which holds the tid counter of the
+		 * last transaction.
+		 */
+		list.ubik_db_stateList_val[l].tid.counter =
+						ubik_dbase[k]->writeTidCounter;
+	    } else
+		list.ubik_db_stateList_val[l].tid.counter =
+						ubik_dbase[k]->tidCounter + 1;
+	    l++;
+	}
 	UBIK_VERSION_UNLOCK;
 
 	/* now analyze return codes, counting up our votes */
@@ -479,9 +555,9 @@ ubeacon_Interact(void *dummy)
 	syncsite = amSyncSite();
 	if (!syncsite) {
 	    /* Ok to use the DB lock here since we aren't sync site */
-	    DBHOLD(ubik_dbase);
+	    DBHOLD(ubik_dbase[0]);
 	    urecovery_ResetState();
-	    DBRELE(ubik_dbase);
+	    DBRELE(ubik_dbase[0]);
 	}
 	startTime = FT_ApproxTime();
 	/*
@@ -490,8 +566,7 @@ ubeacon_Interact(void *dummy)
 	if (i > 0) {
 	    char hoststr[16];
 	    multi_Rx(connections, i) {
-		multi_VOTE_Beacon(syncsite, startTime, &tversion,
-				  &ttid);
+		multi_VOTE_Beacon(syncsite, startTime, &list);
 		temp = FT_ApproxTime();	/* now, more or less */
 		ts = servers[multi_i];
 		UBIK_BEACON_LOCK;
@@ -559,12 +634,13 @@ ubeacon_Interact(void *dummy)
 		UBIK_BEACON_UNLOCK;
 	    }
 	    multi_End;
-	}
+	} else if (haveAlwaysSyncSite)
+	    yesVotes = 1; /* Let's become sync site if all other servers are switched off */
 	/* now call our own voter module to see if we'll vote for ourself.  Note that
 	 * the same restrictions apply for our voting for ourself as for our voting
 	 * for anyone else. */
 	i = SVOTE_Beacon((struct rx_call *)0, ubeacon_AmSyncSite(), startTime,
-			 &tversion, &ttid);
+			 &list);
 	if (i) {
 	    yesVotes += 2;
 	    if (amIMagic)
@@ -577,27 +653,52 @@ ubeacon_Interact(void *dummy)
 	 * Note that we can still get enough votes even if we didn't for ourself. */
 	if (yesVotes > nServers) {	/* yesVotes is bumped by 2 or 3 for each site */
 	    UBIK_BEACON_LOCK;
-	    if (!beacon_globals.ubik_amSyncSite)
+	    if (!beacon_globals.ubik_amSyncSite) {
 		ubik_dprint("Ubik: I am the sync site\n");
-	    beacon_globals.ubik_amSyncSite = 1;
-	    beacon_globals.syncSiteUntil = oldestYesVote + SMALLTIME;
-#ifndef AFS_PTHREAD_ENV
-		/* I did not find a corresponding LWP_WaitProcess(&ubik_amSyncSite) --
-		   this may be a spurious signal call -- sjenkins */
-		LWP_NoYieldSignal(&beacon_globals.ubik_amSyncSite);
-#endif
+		/* Defer actually changing any variables until we can take the
+		 * DB lock (which is before the beacon lock in the lock order). */
+		becameSyncSite = 1;
+	    } else {
+		beacon_globals.syncSiteUntil = oldestYesVote + SMALLTIME;
+		/* at this point, we have the guarantee that at least quorum
+		 * received a beacon packet informing we have a sync-site. */
+		beacon_globals.ubik_syncSiteAdvertised = 1;
+	    }
 	    UBIK_BEACON_UNLOCK;
 	} else {
 	    UBIK_BEACON_LOCK;
 	    if (beacon_globals.ubik_amSyncSite)
 		ubik_dprint("Ubik: I am no longer the sync site\n");
 	    beacon_globals.ubik_amSyncSite = 0;
+	    beacon_globals.ubik_syncSiteAdvertised = 0;
 	    UBIK_BEACON_UNLOCK;
-	    DBHOLD(ubik_dbase);
+	    DBHOLD(ubik_dbase[0]);
 	    urecovery_ResetState();	/* tell recovery we're no longer the sync site */
-	    DBRELE(ubik_dbase);
+	    DBRELE(ubik_dbase[0]);
 	}
-
+	/* We cannot take the DB lock around the entire preceding conditional,
+	 * because if we are currently the sync site and this election serves
+	 * to confirm that status, the DB lock may already be held for a long-running
+	 * write transaction.  In such a case, attempting to acquire the DB lock
+	 * would cause the beacon thread to block and disrupt election processing.
+	 * However, if we are transitioning from not-sync-site to sync-site, there
+	 * can be no outstanding transactions and acquiring the DB lock should be
+	 * safe without extended blocking. */
+	if (becameSyncSite) {
+	    for (k=0; k<MAX_UBIK_DBASES; k++) {
+		if (ubik_dbase[k]) {
+		    DBHOLD(ubik_dbase[k]);
+		    UBIK_BEACON_LOCK;
+		    UBIK_VERSION_LOCK;
+		    version_globals.ubik_epochTime[k] = FT_ApproxTime();
+		    UBIK_VERSION_UNLOCK;
+		    UBIK_BEACON_UNLOCK;
+		    DBRELE(ubik_dbase[k]);
+		}
+	    }
+	    beacon_globals.syncSiteUntil = oldestYesVote + SMALLTIME;
+	    beacon_globals.ubik_amSyncSite = 1;
+	}
     }				/* while loop */
     return NULL;
 }

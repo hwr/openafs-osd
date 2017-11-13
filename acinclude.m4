@@ -176,6 +176,10 @@ AC_ARG_ENABLE([kauth],
     [enable_kauth="no"
      enable_pam="no"])
 
+AC_ARG_WITH([hpss-path],
+    [AS_HELP_STRING([--with-hpss-path=path],
+        [where include and lib for HPSS can be found, typically /opt/hpss])])
+
 dnl Optimization and debugging flags.
 AC_ARG_ENABLE([strip-binaries],
     [AS_HELP_STRING([--disable-strip-binaries],
@@ -461,11 +465,9 @@ case $system in
         *-solaris*)
 		MKAFS_OSTYPE=SOLARIS
                 AC_MSG_RESULT(sun4)
-	        AC_PATH_PROG(SOLARISCC, [cc], ,
-		    [/opt/SUNWspro/bin:/opt/SunStudioExpress/bin:/opt/solarisstudio12.3/bin:/opt/solstudio12.2/bin:/opt/sunstudio12.1/bin])
-		if test "x$SOLARISCC" = "x" ; then
-		    AC_MSG_FAILURE(Could not find the solaris cc program.  Please define the environment variable SOLARISCC to specify the path.)
-		fi
+		SOLARIS_PATH_CC
+		SOLARIS_CC_TAKES_XVECTOR_NONE
+		AC_SUBST(SOLARIS_CC_KOPTS)
 		SOLARIS_UFSVFS_HAS_DQRWLOCK
 		SOLARIS_FS_HAS_FS_ROLLED
 		SOLARIS_SOLOOKUP_TAKES_SOCKPARAMS
@@ -933,12 +935,15 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 						unsigned int flags])
 
 		 dnl Check for header files
+		 AC_CHECK_LINUX_HEADER([cred.h])
 		 AC_CHECK_LINUX_HEADER([config.h])
 		 AC_CHECK_LINUX_HEADER([exportfs.h])
 		 AC_CHECK_LINUX_HEADER([freezer.h])
 		 AC_CHECK_LINUX_HEADER([key-type.h])
 		 AC_CHECK_LINUX_HEADER([semaphore.h])
 		 AC_CHECK_LINUX_HEADER([seq_file.h])
+		 AC_CHECK_LINUX_HEADER([sched/signal.h])
+		 AC_CHECK_LINUX_HEADER([uaccess.h])
 
 		 dnl Type existence checks
 		 AC_CHECK_LINUX_TYPE([struct vfs_path], [dcache.h])
@@ -1006,6 +1011,10 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
                  AC_CHECK_LINUX_FUNC([bdi_init],
 				     [#include <linux/backing-dev.h>],
 				     [bdi_init(NULL);])
+		 AC_CHECK_LINUX_FUNC([super_setup_bdi],
+				     [#include <linux/backing-dev.h>],
+				     [struct super_block *sb;
+				     super_setup_bdi(sb);])
                  AC_CHECK_LINUX_FUNC([PageChecked],
 				     [#include <linux/mm.h>
 #include <linux/page-flags.h>],
@@ -1035,6 +1044,9 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 		 AC_CHECK_LINUX_FUNC([do_sync_read],
 				     [#include <linux/fs.h>],
 				     [do_sync_read(NULL, NULL, 0, NULL);])
+		 AC_CHECK_LINUX_FUNC([file_dentry],
+				     [#include <linux/fs.h>],
+				     [struct file *f; file_dentry(f);])
 		 AC_CHECK_LINUX_FUNC([find_task_by_pid],
 				     [#include <linux/sched.h>],
 				     [pid_t p; find_task_by_pid(p);])
@@ -1172,6 +1184,7 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 		 LINUX_REGISTER_SYSCTL_TABLE_NOFLAG
 		 LINUX_HAVE_DCACHE_LOCK
 		 LINUX_D_COUNT_IS_INT
+		 LINUX_IOP_GETATTR_TAKES_PATH_STRUCT
 		 LINUX_IOP_MKDIR_TAKES_UMODE_T
 		 LINUX_IOP_CREATE_TAKES_UMODE_T
 		 LINUX_EXPORT_OP_ENCODE_FH_TAKES_INODES
@@ -1424,6 +1437,18 @@ if test "$enable_bitmap_later" = "yes"; then
 	AC_DEFINE(BITMAP_LATER, 1, [define if you want to salvager to check bitmasks later])
 fi
 
+LIBAFSOSDMINOR=`grep LIBAFSOSD_VERSION ${srcdir}/src/rxosd/afsosd.h | awk '{print $[]3}'`
+echo LIBAFSOSDMINOR = $LIBAFSOSDMINOR
+
+AC_SUBST(LIBAFSOSDMINOR)
+
+if test "x${with_hpss_path}" != "x"; then
+        HSM_LIB=${with_hpss_path}/lib/libhpss.so
+        HSM_INC=-I${with_hpss_path}/include
+fi
+AC_SUBST(HSM_LIB)
+AC_SUBST(HSM_INC)
+
 if test "$enable_unix_sockets" = "yes"; then
 	AC_DEFINE(USE_UNIX_SOCKETS, 1, [define if you want to use UNIX sockets for fssync.])
 	USE_UNIX_SOCKETS="yes"
@@ -1658,6 +1683,7 @@ AC_CHECK_FUNCS([ \
 	poll \
 	pread \
 	preadv \
+	writev \
 	preadv64 \
 	pwrite \
 	pwritev \

@@ -28,6 +28,9 @@
 #include "afs/afs_bypasscache.h"
 #include "rx/rx_globals.h"
 #include "token.h"
+#include "../rxosd/fs_rxosd_common.h"
+#include "../rxosd/vicedosd.h"
+
 
 extern int afs_rmtsys_enable;
 struct VenusFid afs_rootFid;
@@ -315,6 +318,7 @@ DECL_PIOCTL(PGetPAG);
 #if defined(AFS_CACHE_BYPASS) && defined(AFS_LINUX24_ENV)
 DECL_PIOCTL(PSetCachingThreshold);
 #endif
+DECL_PIOCTL(PSetProtocols);
 
 /*
  * A macro that says whether we're going to need HandleClientContext().
@@ -409,10 +413,11 @@ static pioctlFunction VpioctlSw[] = {
     PBogus,			/* 63 -- arla: print xfs status */
     PBogus,			/* 64 -- arla: force cache check */
     PBogus,			/* 65 -- arla: break callback */
-    PPrefetchFromTape,		/* 66 -- MR-AFS: prefetch file from tape */
+    PPrefetchFromTape,		/* 66 -- RXOSD: prefetch file from tape */
     PFsCmd,			/* 67 -- RXOSD: generic commnd interface */
     PBogus,			/* 68 -- arla: fetch stats */
     PGetVnodeXStatus2,		/* 69 - get caller access and some vcache status */
+    PSetProtocols,		/* 70 - allow protocols (RX_OSD, VICEP_ACCESS) */
 };
 
 static pioctlFunction CpioctlSw[] = {
@@ -2919,7 +2924,7 @@ DECL_PIOCTL(PGetCacheSize)
     afs_int32 results[MAXGCSTATS];
     afs_int32 flags;
     struct dcache * tdc;
-    int i, size;
+    int i;
 
     AFS_STATCNT(PGetCacheSize);
 
@@ -2951,9 +2956,10 @@ DECL_PIOCTL(PGetCacheSize)
 
 	    tdc = afs_indexTable[i];
 	    if (tdc){
+		afs_size_t size = tdc->validPos;
+
 	        results[9]++;
-	        size = tdc->validPos;
-	        if ( 0 < size && size < (1<<12) ) results[10]++;
+	        if ( 0 <= size && size < (1<<12) ) results[10]++;
     	        else if (size < (1<<14) ) results[11]++;
 	        else if (size < (1<<16) ) results[12]++;
 	        else if (size < (1<<18) ) results[13]++;
@@ -4601,9 +4607,14 @@ HandleClientContext(struct afs_ioctl *ablob, int *com,
     GROUP_AT(afs_cr_group_info(newcred), 1) = g1;
 # endif
 #elif defined(AFS_SUN510_ENV)
+# ifdef AFS_PAG_ONEGROUP_ENV
+    gids[0] = afs_get_pag_from_groups(g0, g1);
+    crsetgroups(newcred, 1, gids);
+#else
     gids[0] = g0;
     gids[1] = g1;
     crsetgroups(newcred, 2, gids);
+# endif /* !AFS_PAG_ONEGROUP_ENV */
 #else
     newcred->cr_groups[0] = g0;
     newcred->cr_groups[1] = g1;
@@ -4945,19 +4956,18 @@ DECL_PIOCTL(PRxStatPeer)
     return 0;
 }
 
+struct prefetchout {
+    afs_int32 length;
+    struct AFSFid fid;
+};
+
 DECL_PIOCTL(PPrefetchFromTape)
 {
     afs_int32 code;
-    afs_int32 outval;
-    struct afs_conn *tc;
-    struct rx_call *tcall;
-    struct AFSVolSync tsync;
-    struct AFSFetchStatus OutStatus;
-    struct AFSCallBack CallBack;
     struct VenusFid tfid;
     struct AFSFid *Fid;
     struct vcache *tvc;
-    struct rx_connection *rxconn;
+    struct prefetchout out;
 
     AFS_STATCNT(PPrefetchFromTape);
     if (!avc)
@@ -4974,42 +4984,26 @@ DECL_PIOCTL(PPrefetchFromTape)
 
     tvc = afs_GetVCache(&tfid, areq, NULL, NULL);
     if (!tvc) {
-	afs_Trace3(afs_iclSetp, CM_TRACE_PREFETCHCMD, ICL_TYPE_POINTER, tvc,
-		   ICL_TYPE_FID, &tfid, ICL_TYPE_FID, &avc->f.fid);
 	return ENOENT;
     }
-    afs_Trace3(afs_iclSetp, CM_TRACE_PREFETCHCMD, ICL_TYPE_POINTER, tvc,
-	       ICL_TYPE_FID, &tfid, ICL_TYPE_FID, &tvc->f.fid);
 
-    do {
-	tc = afs_Conn(&tvc->f.fid, areq, SHARED_LOCK, &rxconn);
-	if (tc) {
-
-	    RX_AFS_GUNLOCK();
-	    tcall = rx_NewCall(rxconn);
-	    code =
-		StartRXAFS_FetchData(tcall, (struct AFSFid *)&tvc->f.fid.Fid, 0,
-				     0);
-	    if (!code) {
-		rx_Read(tcall, (char *)&outval, sizeof(afs_int32));
-		code =
-		    EndRXAFS_FetchData(tcall, &OutStatus, &CallBack, &tsync);
-	    }
-	    code = rx_EndCall(tcall, code);
-	    RX_AFS_GLOCK();
-	} else
-	    code = -1;
-    } while (afs_Analyze
-	     (tc, rxconn, code, &tvc->f.fid, areq, AFS_STATS_FS_RPCIDX_RESIDENCYRPCS,
-	      SHARED_LOCK, NULL));
-    /* This call is done only to have the callback things handled correctly */
-    afs_FetchStatus(tvc, &tfid, areq, &OutStatus);
+    code = rxosd_bringOnline(tvc, areq);
     afs_PutVCache(tvc);
 
     if (code)
 	return code;
 
-    return afs_pd_putInt(aout, outval);
+    out.fid.Volume = tfid.Fid.Volume;
+    out.fid.Vnode = tfid.Fid.Vnode;
+    out.fid.Unique = tfid.Fid.Unique;
+    if (code == OSD_WAIT_FOR_TAPE)
+	out.length = -1;        /* tape fetch started */
+    else if (!code)
+	out.length = 0;         /* file already on-line */
+    else
+	out.length = ENFILE;    /* Too many fetch requests for this user */
+
+    return afs_pd_putBytes(aout, &out, sizeof(struct prefetchout));
 }
 
 DECL_PIOCTL(PFsCmd)
@@ -5025,6 +5019,9 @@ DECL_PIOCTL(PFsCmd)
 
     if (!avc)
 	return EINVAL;
+    code = afs_VerifyVCache(avc, areq);
+    if (code)
+	return code;
 
     Inputs = afs_pd_inline(ain, sizeof(*Inputs));
     if (Inputs == NULL)
@@ -5051,12 +5048,19 @@ DECL_PIOCTL(PFsCmd)
 
     if (Inputs->command) {
 	do {
+	    code = afs_VerifyVCache(tvc, areq);
+	    if (code) {
+		afs_PutVCache(tvc);
+		return code;
+	    }
 	    tc = afs_Conn(&tvc->f.fid, areq, SHARED_LOCK, &rxconn);
 	    if (tc) {
 		RX_AFS_GUNLOCK();
 		code =
 		    RXAFS_FsCmd(rxconn, Fid, Inputs, Outputs);
 		RX_AFS_GLOCK();
+		if (!code && Inputs->command == CMD_REPLACE_OSD)
+		    tvc->f.states &= ~CStatd;
 	    } else
 		code = -1;
 	} while (afs_Analyze
@@ -5079,6 +5083,31 @@ DECL_PIOCTL(PFsCmd)
     afs_PutVCache(tvc);
 
     return code;
+}
+
+DECL_PIOCTL(PSetProtocols)
+{
+#ifndef UKERNEL
+    afs_int32 code;
+    afs_uint32 mask_in = 0;
+    afs_uint32 mask_out = 0;
+/*  AFS_STATCNT(PSetProtocols); */
+
+    if (!afs_resourceinit_flag) /* afs daemons haven't started yet */
+	return EIO;             /* Inappropriate ioctl for device */
+
+    if (!osd_procs->set_afs_protocol) /* OSD procs not initialized */
+	return EIO;
+
+    if (afs_pd_getUint(ain, &mask_in) == 0) {
+	if (!afs_osi_suser(*acred))
+	    return EACCES;
+    }
+
+    code = (osd_procs->set_afs_protocol)(mask_in, &mask_out);
+
+    return afs_pd_putInt(aout, mask_out);
+#endif /* UKERNEL */-    return 0;
 }
 
 DECL_PIOCTL(PNewUuid)

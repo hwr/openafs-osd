@@ -67,6 +67,8 @@
   *	-splitcache RW/RO ratio for cache.
   *	-rxmaxfrags Max number of UDP fragments per rx packet.
   *	-inumcalc  inode number calculation method; 0=compat, 1=MD5 digest
+  *	-volume-ttl vldb cache timeout in seconds
+  *	-libafsosd initialize extensions for rxosd
   *---------------------------------------------------------------------------*/
 
 #include <afsconfig.h>
@@ -284,6 +286,8 @@ int afsd_debug = 0;		/*Are we printing debugging info? */
 static int afsd_CloseSynch = 0;	/*Are closes synchronous or not? */
 static int rxmaxmtu = 0;       /* Are we forcing a limit on the mtu? */
 static int rxmaxfrags = 0;      /* Are we forcing a limit on frags? */
+static int volume_ttl = 0;	/* enable vldb cache timeout support */
+static int libafsosd = 0;	/* enable rxosd support. */
 
 #ifdef AFS_SGI62_ENV
 #define AFSD_INO_T ino64_t
@@ -362,6 +366,8 @@ enum optionsList {
     OPT_dynrootsparse,
     OPT_rxmaxfrags,
     OPT_inumcalc,
+    OPT_volume_ttl,
+    OPT_libafsosd,
 };
 
 #ifdef MACOS_EVENT_HANDLING
@@ -1905,6 +1911,11 @@ CheckOptions(struct cmd_syndesc *as)
     if (cmd_OptionPresent(as, OPT_inumcalc)) {
 	cmd_OptionAsString(as, OPT_inumcalc, &inumcalc);
     }
+    cmd_OptionAsInt(as, OPT_volume_ttl, &volume_ttl);
+
+    if (cmd_OptionPresent(as, OPT_libafsosd)) {
+	libafsosd = 1;
+    }
 
     /* parse cacheinfo file if this is a diskcache */
     if (ParseCacheInfoFile()) {
@@ -2425,6 +2436,14 @@ afsd_run(void)
 	afsd_syscall(AFSOP_ROOTVOLUME, rootVolume);
     }
 
+    if (volume_ttl != 0) {
+	if (afsd_verbose)
+	    printf("%s: Calling AFSOP_SET_VOLUME_TTL with '%d'\n", rn, volume_ttl);
+	code = afsd_syscall(AFSOP_SET_VOLUME_TTL, volume_ttl);
+	if (code != 0)
+	    printf("%s: Error setting volume ttl to %d seconds; code=%d.\n", rn, volume_ttl, code);
+    }
+
     /*
      * Pass the kernel the name of the workstation cache file holding the
      * volume information.
@@ -2480,6 +2499,11 @@ afsd_run(void)
 	}
     }
     /*end for */
+
+    if (libafsosd) {
+	afsd_syscall(AFSOP_LIBAFSOSD);
+    }
+
     /*
      * All the necessary info has been passed into the kernel to run an AFS
      * system.  Give the kernel our go-ahead.
@@ -2624,6 +2648,11 @@ afsd_init(void)
 			"send/receive per Rx packet");
     cmd_AddParmAtOffset(ts, OPT_inumcalc, "-inumcalc", CMD_SINGLE, CMD_OPTIONAL,
 			"Set inode number calculation method");
+    cmd_AddParmAtOffset(ts, OPT_volume_ttl, "-volume-ttl", CMD_SINGLE,
+			CMD_OPTIONAL,
+			"Set the vldb cache timeout value in seconds.");
+    cmd_AddParmAtOffset(ts, OPT_libafsosd, "-libafsosd", CMD_FLAG,
+			CMD_OPTIONAL, "Initialize rxosd support");
 }
 
 /**
@@ -2690,6 +2719,7 @@ afsd_syscall_populate(struct afsd_syscall_args *args, int syscall, va_list ap)
     case AFSOP_START_AFS:
     case AFSOP_START_CS:
     case AFSOP_START_TRUNCDAEMON:
+    case AFSOP_LIBAFSOSD:
 	break;
     case AFSOP_START_BKG:
     case AFSOP_SHUTDOWN:
@@ -2704,6 +2734,9 @@ afsd_syscall_populate(struct afsd_syscall_args *args, int syscall, va_list ap)
     case AFSOP_GO:
     case AFSOP_SET_RMTSYS_FLAG:
     case AFSOP_SET_INUMCALC:
+	params[0] = CAST_SYSCALL_PARAM((va_arg(ap, int)));
+	break;
+    case AFSOP_SET_VOLUME_TTL:
 	params[0] = CAST_SYSCALL_PARAM((va_arg(ap, int)));
 	break;
     case AFSOP_SET_THISCELL:

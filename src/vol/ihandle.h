@@ -289,6 +289,9 @@ typedef struct IHandle_s {
     struct FdHandle_s *ih_fdtail;
     struct IHandle_s *ih_next;	/* Links for avail list/hash chains */
     struct IHandle_s *ih_prev;
+#ifdef BUILDING_RXOSD
+    struct ih_posix_ops *ih_ops;
+#endif
 } IHandle_t;
 
 /* Flags for the Inode handle */

@@ -12,6 +12,11 @@
 
 #include <roken.h>
 
+
+#ifdef HAVE_UNISTD_H
+#include <unistd.h>
+#endif
+
 #include <lock.h>
 #include <rx/xdr.h>
 #include <rx/rx.h>
@@ -76,8 +81,7 @@ CommandProc(struct cmd_syndesc *as, void *arock)
     struct hostent *th;
     struct rx_connection *tconn;
     struct rx_securityClass *sc;
-    struct ubik_debug udebug;
-    struct ubik_sdebug usdebug;
+    struct ubik_debug_new udebug;
     int oldServer = 0;		/* are we talking to a pre 3.5 server? */
     afs_int32 isClone = 0;
     char hoststr[16];
@@ -123,15 +127,55 @@ CommandProc(struct cmd_syndesc *as, void *arock)
     tconn = rx_NewConnection(hostAddr, port, VOTE_SERVICE_ID, sc, 0);
 
     /* now do the main call */
-    code = VOTE_XDebug(tconn, &udebug, &isClone);
-    if (code)
-	code = VOTE_Debug(tconn, &udebug);
-    if (code == RXGEN_OPCODE) {
-	oldServer = 1;		/* talking to a pre 3.5 server */
-	memset(&udebug, 0, sizeof(udebug));
-	code = VOTE_DebugOld(tconn, (ubik_debug_old *)&udebug);
+    udebug.list.ubik_db_localList_val = NULL;
+    udebug.list.ubik_db_localList_len = 0;
+    code = VOTE_MXDebug(tconn, &udebug, &isClone);
+    if (!code) {
+    } else if (code == RXGEN_OPCODE) {
+	struct ubik_debug u;
+	struct ubik_db_local loc;
+	code = VOTE_XDebug(tconn, &u, &isClone);
+        if (code)
+	    code = VOTE_Debug(tconn, &u);
+        if (code == RXGEN_OPCODE) {
+	    oldServer = 1;		/* talking to a pre 3.5 server */
+	    memset(&udebug, 0, sizeof(udebug));
+	    code = VOTE_DebugOld(tconn, (ubik_debug_old *)&u);
+        }
+	udebug.list.ubik_db_localList_len = 1;
+	udebug.list.ubik_db_localList_val = &loc;
+	strncpy(loc.name, "unknown", 8);
+	loc.index = 0;
+	memcpy(&loc.localVersion, &u.localVersion, sizeof(struct ubik_version));
+	memcpy(&loc.syncVersion, &u.syncVersion, sizeof(struct ubik_version));
+	loc.recoveryState = u.recoveryState;
+	loc.currentTrans = u.currentTrans;
+	loc.writeTrans = u.writeTrans;
+	loc.activeWrite = u.activeWrite;
+	loc.tidCounter = u.tidCounter;
+	loc.epochTime = u.epochTime;
+	memcpy(&loc.syncTid, &u.syncTid, sizeof(struct ubik_tid));
+	udebug.now = u.now;
+	udebug.lastYesTime = u.lastYesTime;
+	udebug.lastYesHost = u.lastYesHost;
+	udebug.lastYesState = u.lastYesState;
+	udebug.lastYesClaim = u.lastYesClaim;
+	udebug.lowestHost = u.lowestHost;
+	udebug.lowestTime = u.lowestTime;
+	udebug.syncHost = u.syncHost;
+	udebug.syncTime = u.syncTime;
+	udebug.amSyncSite = u.amSyncSite;
+	udebug.syncSiteUntil = u.syncSiteUntil;
+	udebug.nServers = u.nServers;
+	udebug.lockedPages = u.lockedPages;
+	udebug.writeLockedPages = u.writeLockedPages;
+	udebug.anyReadLocks = u.anyReadLocks;
+	udebug.anyWriteLocks = u.anyWriteLocks;
+	if (!oldServer) {
+	    for (i=0; i<UBIK_MAX_INTERFACE_ADDR; i++)
+	        udebug.interfaceAddr[i] = u.interfaceAddr[i];
+	}
     }
-
     if (code) {
 	printf("return code %d from VOTE_Debug\n", code);
 	exit(0);
@@ -143,14 +187,14 @@ CommandProc(struct cmd_syndesc *as, void *arock)
     times = ctime(&then);
     times[24] = 0;
     if (!oldServer) {
-	printf("Host's addresses are: ");
-	for (j = 0; (j < UBIK_MAX_INTERFACE_ADDR) && udebug.interfaceAddr[j];
-	     j++)
+   	printf("Host's addresses are: ");
+
+        for (j = 0; (j < UBIK_MAX_INTERFACE_ADDR) && udebug.interfaceAddr[j]; j++)
 	    printf("%s ", afs_inet_ntoa_r(htonl(udebug.interfaceAddr[j]), hoststr));
 	printf("\n");
     }
     printf("Host's %s time is %s\n", afs_inet_ntoa_r(hostAddr, hoststr), times);
-
+    
     times = ctime(&now);
     times[24] = 0;
     diff = now - udebug.now;
@@ -164,8 +208,12 @@ CommandProc(struct cmd_syndesc *as, void *arock)
 	udebug.lastYesTime = udebug.now;
 	udebug.lastYesState = 1;
 	udebug.lastYesClaim = udebug.now;
-	udebug.syncVersion.epoch = udebug.localVersion.epoch;
-	udebug.syncVersion.counter = udebug.localVersion.counter;
+	for (i=0; i<udebug.list.ubik_db_localList_len; i++) {
+	    udebug.list.ubik_db_localList_val[i].syncVersion.epoch = 
+			udebug.list.ubik_db_localList_val[i].localVersion.epoch;
+	    udebug.list.ubik_db_localList_val[i].syncVersion.counter = 
+			udebug.list.ubik_db_localList_val[i].localVersion.counter;
+	}
     }
 
     /* XDR converts addresses for us, so all addresses are in HBO */
@@ -186,10 +234,17 @@ CommandProc(struct cmd_syndesc *as, void *arock)
 	       afs_cast_time_t(diff), times);
     }
 
-    printf("Local db version is %d.%d\n", udebug.localVersion.epoch,
-	   udebug.localVersion.counter);
 
     if (udebug.amSyncSite) {
+	printf("Local dbases:\n");
+        for (i=0; i<udebug.list.ubik_db_localList_len; i++) {
+            printf("    [%d] %s \tversion is %d.%d \trecovery state %0x\n", 
+		    udebug.list.ubik_db_localList_val[i].index,
+		    udebug.list.ubik_db_localList_val[i].name,
+		    udebug.list.ubik_db_localList_val[i].localVersion.epoch,
+		    udebug.list.ubik_db_localList_val[i].localVersion.counter,
+		    udebug.list.ubik_db_localList_val[i].recoveryState);
+        }
 	if (udebug.syncSiteUntil == 0x7fffffff) {
 	    printf("I am sync site forever (%d server%s)\n", udebug.nServers,
 		   ((udebug.nServers > 1) ? "s" : ""));
@@ -203,8 +258,28 @@ CommandProc(struct cmd_syndesc *as, void *arock)
 		 afs_cast_time_t(diff), times, udebug.nServers,
 		 ((udebug.nServers > 1) ? "s" : ""));
 	}
-	printf("Recovery state %x\n", udebug.recoveryState);
+        for (i=0; i<udebug.list.ubik_db_localList_len; i++) {
+	    if (udebug.list.ubik_db_localList_val[i].activeWrite) {
+	        printf("I am currently managing write trans %d.%d on [%d]\n",
+		   udebug.list.ubik_db_localList_val[i].epochTime,
+		   udebug.list.ubik_db_localList_val[i].tidCounter,
+		   udebug.list.ubik_db_localList_val[i].index);
+	    } else {
+	        printf("The last trans I handled on [%d] was %d.%d\n",
+		   udebug.list.ubik_db_localList_val[i].index,
+		   udebug.list.ubik_db_localList_val[i].epochTime,
+		   udebug.list.ubik_db_localList_val[i].tidCounter);
+	    }
+	}
     } else {
+	printf("Local dbases:\n");
+        for (i=0; i<udebug.list.ubik_db_localList_len; i++) {
+            printf("    [%d] %s \tversion is %d.%d\n", 
+		    udebug.list.ubik_db_localList_val[i].index,
+		    udebug.list.ubik_db_localList_val[i].name,
+		    udebug.list.ubik_db_localList_val[i].localVersion.epoch,
+		    udebug.list.ubik_db_localList_val[i].localVersion.counter);
+        }
 	if (isClone)
 	    printf("I am a clone and never can become sync site\n");
 	else
@@ -218,18 +293,15 @@ CommandProc(struct cmd_syndesc *as, void *arock)
 	printf("Sync host %s was set %d secs ago\n",
 	       afs_inet_ntoa_r(htonl(udebug.syncHost), hoststr),
 	       afs_cast_time_t(diff));
+        for (i=0; i<udebug.list.ubik_db_localList_len; i++) {
+            printf("Sync site's dbase: [%d] %s  version is %d.%d\n", 
+		    udebug.list.ubik_db_localList_val[i].index,
+		    udebug.list.ubik_db_localList_val[i].name,
+		    udebug.list.ubik_db_localList_val[i].syncVersion.epoch,
+		    udebug.list.ubik_db_localList_val[i].syncVersion.counter);
+        }
     }
 
-    if (udebug.activeWrite) {
-	printf("I am currently managing write trans %d.%d\n",
-	       udebug.epochTime, udebug.tidCounter);
-    } else {
-	printf("The last trans I handled was %d.%d\n",
-	       udebug.epochTime, udebug.tidCounter);
-    }
-
-    printf("Sync site's db version is %d.%d\n", udebug.syncVersion.epoch,
-	   udebug.syncVersion.counter);
     printf("%d locked pages, %d of them for write\n", udebug.lockedPages,
 	   udebug.writeLockedPages);
 
@@ -238,81 +310,147 @@ CommandProc(struct cmd_syndesc *as, void *arock)
     if (udebug.anyWriteLocks)
 	printf("There are write locks held\n");
 
-    if (udebug.currentTrans) {
-	if (udebug.writeTrans)
-	    printf("There is an active write transaction\n");
-	else
-	    printf("There is at least one active read transaction\n");
-	printf("Transaction tid is %d.%d\n", udebug.syncTid.epoch,
-	       udebug.syncTid.counter);
-    }
-    if (udebug.epochTime) {
-	diff = udebug.now - udebug.epochTime;
-	newtime = now - diff;
-	times = ctime(&newtime);
-	times[24] = 0;
-	printf
-	    ("Last time a new db version was labelled was:\n\t %d secs ago (at %s)\n",
-	     afs_cast_time_t(diff), times);
+    for (i=0; i<udebug.list.ubik_db_localList_len; i++) {
+        if (udebug.list.ubik_db_localList_val[i].currentTrans) {
+	    if (udebug.list.ubik_db_localList_val[i].writeTrans)
+	        printf("There is an active write transaction on [%d]\n",
+			udebug.list.ubik_db_localList_val[i].index);
+	    else
+	        printf("There is at least one active read transaction on [%d]\n",
+			udebug.list.ubik_db_localList_val[i].index);
+	    printf("Transaction tid on [%d] is %d.%d\n", 
+		   udebug.list.ubik_db_localList_val[i].index,
+		   udebug.list.ubik_db_localList_val[i].syncTid.epoch,
+	           udebug.list.ubik_db_localList_val[i].syncTid.counter);
+	}
+        if (udebug.list.ubik_db_localList_val[i].epochTime) {
+	    diff = udebug.now - udebug.list.ubik_db_localList_val[i].epochTime;
+	    newtime = now - diff;
+	    times = ctime(&newtime);
+	    times[24] = 0;
+	    printf
+	        ("Last time a new db [%d] version was labelled was:\n\t %d secs ago (at %s)\n",
+	         i, afs_cast_time_t(diff), times);
+        }
     }
 
     if (int32p || udebug.amSyncSite) {
 	/* now do the subcalls */
 	for (i = 0;; i++) {
+    	    struct ubik_sdebug_new usdebug;
+	    usdebug.list.ubik_db_remoteList_val = NULL;
+	    usdebug.list.ubik_db_remoteList_len = 0;
+	    afs_int32 k;
 	    isClone = 0;
-	    code = VOTE_XSDebug(tconn, i, &usdebug, &isClone);
-	    if (code < 0) {
-		if (oldServer) {	/* pre 3.5 server */
-		    memset(&usdebug, 0, sizeof(usdebug));
-		    code = VOTE_SDebugOld(tconn, i, (ubik_sdebug_old *)&usdebug);
-		} else
-		    code = VOTE_SDebug(tconn, i, &usdebug);
-	    }
-	    if (code > 0)
-		break;		/* done */
-	    if (code < 0) {
-		printf("error code %d from VOTE_SDebug\n", code);
+	    code = VOTE_MXSDebug(tconn, i, &usdebug, &isClone);
+	    if (!code) {
+	        printf("\nServer (%s", afs_inet_ntoa_r(htonl(usdebug.addr), hoststr));
+	        for (j = 0;
+		     ((usdebug.altAddr[j]) && (j < UBIK_MAX_INTERFACE_ADDR - 1));
+		     j++)
+		    printf(" %s", afs_inet_ntoa_r(htonl(usdebug.altAddr[j]), hoststr));
+		printf("} up = %d", usdebug.up);
+	        if (isClone)
+		    printf("    is only a clone!");
+	        printf("\n");
+		for (k=0; k<usdebug.list.ubik_db_remoteList_len; k++) {
+		    struct ubik_db_remote *info = &usdebug.list.ubik_db_remoteList_val[k];
+	            printf("    %s[%d] %s\t dbcurrent = %d, version %d.%d\n", 
+			   info->index ? "        ":"dbases: ",
+			   info->index,
+			   &info->name,
+			   info->currentDB,
+			   info->remoteVersion.epoch,
+		           info->remoteVersion.counter);
+		}
+    
+	        if (usdebug.lastVoteTime == 0) {
+		    printf("    last vote never rcvd \n");
+	        } else {
+		    diff = udebug.now - usdebug.lastVoteTime;
+		    newtime = now - diff;
+		    times = ctime(&newtime);
+		    times[24] = 0;
+		    printf("    last vote rcvd %d secs ago (at %s),\n",
+		           afs_cast_time_t(diff),
+		           times);
+	        }
+    
+	        if (usdebug.lastBeaconSent == 0) {
+		    printf("    last beacon never sent \n");
+	        } else {
+		    diff = udebug.now - usdebug.lastBeaconSent;
+		    newtime = now - diff;
+		    times = ctime(&newtime);
+		    times[24] = 0;
+		    printf
+		        ("    last beacon sent %d secs ago (at %s), last vote was %s\n",
+		         afs_cast_time_t(diff), times, ((usdebug.lastVote) ? "yes" : "no"));
+	        }
+    
+	        printf("    beaconSince=%d\n",
+		       usdebug.beaconSinceDown);
+	    } else if (code > 0)
 		break;
+	    else  {
+    	        struct ubik_sdebug usdebug;
+	        code = VOTE_XSDebug(tconn, i, &usdebug, &isClone);
+	        if (code < 0) {
+		    if (oldServer) {	/* pre 3.5 server */
+		        memset(&usdebug, 0, sizeof(usdebug));
+		        code = VOTE_SDebugOld(tconn, i, (ubik_sdebug_old *)&usdebug);
+		    } else
+		        code = VOTE_SDebug(tconn, i, &usdebug);
+	        }
+	        if (code > 0)
+		    break;		/* done */
+	        if (code < 0) {
+		    printf("error code %d from VOTE_SDebug\n", code);
+		    break;
+	        }
+	        /* otherwise print the structure */
+	        printf("\nServer (%s", afs_inet_ntoa_r(htonl(usdebug.addr), hoststr));
+	        for (j = 0;
+		     ((j < UBIK_MAX_INTERFACE_ADDR - 1) && (usdebug.altAddr[j]));
+		     j++)
+		    printf(" %s", afs_inet_ntoa_r(htonl(usdebug.altAddr[j]), hoststr));
+	        printf("): (db %d.%d)", usdebug.remoteVersion.epoch,
+		       usdebug.remoteVersion.counter);
+	        if (isClone)
+		    printf("    is only a clone!");
+	        printf("\n");
+    
+	        if (usdebug.lastVoteTime == 0) {
+		    printf("    last vote never rcvd \n");
+	        } else {
+		    diff = udebug.now - usdebug.lastVoteTime;
+		    newtime = now - diff;
+		    times = ctime(&newtime);
+		    times[24] = 0;
+		    printf("    last vote rcvd %d secs ago (at %s),\n",
+		           afs_cast_time_t(diff),
+		           times);
+	        }
+    
+	        if (usdebug.lastBeaconSent == 0) {
+		    printf("    last beacon never sent \n");
+	        } else {
+		    diff = udebug.now - usdebug.lastBeaconSent;
+		    newtime = now - diff;
+		    times = ctime(&newtime);
+		    times[24] = 0;
+		    printf
+		        ("    last beacon sent %d secs ago (at %s), last vote was %s\n",
+		         afs_cast_time_t(diff), times, ((usdebug.lastVote) ? "yes" : "no"));
+	        }
+    
+	        printf("    dbcurrent=%d, up=%d beaconSince=%d\n",
+		       usdebug.currentDB, usdebug.up, usdebug.beaconSinceDown);
 	    }
-	    /* otherwise print the structure */
-	    printf("\nServer (%s", afs_inet_ntoa_r(htonl(usdebug.addr), hoststr));
-	    for (j = 0;
-		 ((j < UBIK_MAX_INTERFACE_ADDR - 1) && (usdebug.altAddr[j]));
-		 j++)
-		printf(" %s", afs_inet_ntoa_r(htonl(usdebug.altAddr[j]), hoststr));
-	    printf("): (db %d.%d)", usdebug.remoteVersion.epoch,
-		   usdebug.remoteVersion.counter);
-	    if (isClone)
-		printf("    is only a clone!");
-	    printf("\n");
-
-	    if (usdebug.lastVoteTime == 0) {
-		printf("    last vote never rcvd \n");
-	    } else {
-		diff = udebug.now - usdebug.lastVoteTime;
-		newtime = now - diff;
-		times = ctime(&newtime);
-		times[24] = 0;
-		printf("    last vote rcvd %d secs ago (at %s),\n",
-		       afs_cast_time_t(diff),
-		       times);
-	    }
-
-	    if (usdebug.lastBeaconSent == 0) {
-		printf("    last beacon never sent \n");
-	    } else {
-		diff = udebug.now - usdebug.lastBeaconSent;
-		newtime = now - diff;
-		times = ctime(&newtime);
-		times[24] = 0;
-		printf
-		    ("    last beacon sent %d secs ago (at %s), last vote was %s\n",
-		     afs_cast_time_t(diff), times, ((usdebug.lastVote) ? "yes" : "no"));
-	    }
-
-	    printf("    dbcurrent=%d, up=%d beaconSince=%d\n",
-		   usdebug.currentDB, usdebug.up, usdebug.beaconSinceDown);
-	}
+	    if (usdebug.list.ubik_db_remoteList_val)
+	        free(usdebug.list.ubik_db_remoteList_val);
+	    usdebug.list.ubik_db_remoteList_val = NULL;
+        }
     }
     return (0);
 }

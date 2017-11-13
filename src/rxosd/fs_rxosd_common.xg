@@ -1,0 +1,509 @@
+%#if  !defined(_RXGEN_AFSINT_) || !defined(_RXGEN_RXOSD_)
+
+struct rx_addr {
+   int addrtype;
+   opaque addr<>;	/* IP address in NBO */
+};
+
+%#define RX_ADDRTYPE_IPV4 1
+%#define RX_ADDRTYPE_IPV6 2
+
+struct rx_endp {
+    afs_int32 protocol;
+    struct rx_addr ip;
+    afs_int32 port;	/* in HBO */
+    afs_int32 service;
+};
+
+%#define RX_PROTOCOL_UDP 1
+%#define RX_PROTOCOL_TCP 2
+
+struct udpa4ps {
+    afs_uint32 ipv4;
+    afs_uint32 port;            /* 32 bit because there is no xdr for 16 bits */
+    afs_uint32 service;
+};
+
+struct tcpa4ps {
+    afs_uint32 ipv4;
+    afs_uint32 port;            /* 32 bit because there is no xdr for 16 bits */
+    afs_uint32 service;
+};
+
+union ipadd switch(afs_int32 vsn) {
+case 1:
+        struct udpa4ps udp;
+case 2:
+        struct tcpa4ps tcp;
+case 4:
+        afs_uint32 ipv4;
+case 6:
+        afs_uint32 ipv6[4];
+};
+
+struct Fid32 {
+    afs_uint32 Volume;
+    afs_uint32 Vnode;
+    afs_uint32 Unique;
+};
+
+struct Fid64 {
+    afs_uint64 Volume;
+    afs_uint64 Vnode;
+    afs_uint64 Unique;
+};
+
+union afsfid switch (afs_int32 vsn) {
+case 1:
+	struct Fid32 f32;
+case 2:
+	struct Fid64 f64;
+};
+
+struct oparmT10 {
+    afs_uint64 part_id;
+    afs_uint64 obj_id;
+    afs_uint32 osd_id;
+    afs_uint32 stripe;
+};
+
+struct oparmFree {
+    afs_uint64 rwvol;
+    afs_uint64 vN;
+    afs_uint64 unique;
+    afs_uint32 spare[5];
+    afs_uint32 tag;
+    afs_uint32 lun;
+    afs_uint32 myStripe;
+    afs_uint32 nStripes;
+    afs_uint32 stripeSize;
+    afs_uint32 osd_id;
+};
+
+union ometa switch(afs_int32 vsn) {
+case 1:
+    struct oparmT10 t;
+case 2:
+    struct oparmFree f;
+};
+
+%#define T10_CDB_SIZE 200
+%#define MAXVICEPATHLNG 256
+%#define MAXVARNAMELNG 128
+
+typedef opaque t10rock<T10_CDB_SIZE>;
+typedef opaque path_info<MAXVICEPATHLNG>;
+typedef opaque var_info<MAXVARNAMELNG>;
+%#define EXP_VAR_SEPARATOR ","
+
+%#define CAPCRYPTLEN 72
+struct t10cap {
+	afs_uint32 pid_hi;
+	afs_uint32 pid_lo;
+	afs_uint32 oid_hi;
+	afs_uint32 oid_lo;
+	afs_uint32 maxlen_hi;
+	afs_uint32 maxlen_lo;
+	afs_uint32 ip;
+	short port;
+	short reserved;
+	afsUUID uuid;
+	afs_uint32 cap;
+	afs_uint32 expires;
+	afs_uint32 user;
+	afs_uint32 spare[3];
+	afs_uint32 epoch;
+	afs_uint32 cid;
+};
+
+struct t10sec {
+        char check[20];
+        char nonce[12];
+        char datain[4];
+        char dataout[4];
+};
+
+struct t10cdb {
+        char    operation;
+        char    control;
+        char    res1[5];
+        char    lng;
+        char    action[2];
+        char    service[6];
+        char    pid[8];
+        char    oid[8];
+        char    res2[4];
+        char    length[8];
+        char    offset[8];
+        char    attrparm[28];
+        struct t10cap cap;
+        struct t10sec sec;
+};
+
+struct osd_incdec {
+	struct ometa m;
+	afs_int32  todo;
+	afs_int32  done;
+};
+typedef struct osd_incdec osd_incdecList <>;
+
+struct osd_incdec0 {
+	afs_uint64 oid;
+	afs_uint64 pid;
+	afs_int32  todo;
+	afs_int32  done;
+};
+typedef struct osd_incdec0 osd_incdec0List <>;
+
+union cksum switch (afs_int32 type) {
+case 1:
+	afs_uint32 md5[4];
+};
+
+struct osd_cksum {
+	struct ometa o;
+	afs_uint64 size;
+	struct cksum c;
+};
+
+struct osd_md5 {
+	afs_uint64 oid;
+	afs_uint64 pid;
+	afs_uint64 size;
+	afs_uint32 md5[4];
+};
+
+struct osd_obj_desc0 {
+	afs_uint64 oid;
+	afs_uint64 pid;
+	afs_uint32 id;
+	afs_uint32 ip;
+	afs_uint32 stripe;
+};
+typedef struct osd_obj_desc0 osd_obj_desc0List <>;
+
+struct osd_segm_desc0 {
+	afs_uint64 length;
+	afs_uint32 stripes;
+	afs_uint32 stripe_size;
+	osd_obj_desc0List objList;
+};
+typedef struct osd_segm_desc0 osd_segm_desc0List <>;
+
+struct osd_obj_desc {
+	struct ometa o;
+	afs_uint32 osd_id;
+	afs_uint32 stripe;
+};
+typedef struct osd_obj_desc osd_obj_descList <>;
+
+struct osd_segm_desc {
+	afs_uint64 length;
+	afs_uint32 stripes;
+	afs_uint32 stripe_size;
+	osd_obj_descList objList;
+};
+typedef struct osd_segm_desc osd_segm_descList <>;
+
+union afstm switch (afs_int32 type) {
+case 1:
+    afs_uint32 sec;
+case 2:
+    afs_uint64 nsec100;
+};
+
+struct simpleRWparm {
+    afs_uint64 offset;
+    afs_uint64 length;
+};
+
+struct fakeStripedRWparm {
+    afs_uint64 offset;
+    afs_uint64 length;
+    afs_uint32 stripe_size;
+    afs_uint32 nstripes;
+    afs_uint32 mystripe;
+};
+
+struct atimeWparm {
+    afs_uint64 offset;
+    afs_uint64 length;
+    struct afstm atime;
+    struct afstm mtime;
+};
+
+struct storeWparm {
+    afs_uint64 offset;
+    afs_uint64 length;
+    afs_uint64 filelength;
+};
+
+struct fetchRWparmFlag {
+    afs_uint64 offset;
+    afs_uint64 length;
+    afs_int32 flag;
+
+};
+struct storeWparmFlag {
+    afs_uint64 offset;
+    afs_uint64 length;
+    afs_uint64 filelength;
+    afs_int32 flag;
+};
+
+%#define SEND_PORT_SERVICE	2
+
+union RWparm switch(afs_int32 type) {
+    case 1:
+	struct simpleRWparm p1;
+    case 2:
+	struct fakeStripedRWparm p2;
+    case 3:
+	struct atimeWparm p3;
+    case 4:
+	struct storeWparm p4;
+    case 5:
+	struct fetchRWparmFlag p5;
+    case 6:
+	struct storeWparmFlag p6;
+};
+
+/* Not used on the wire, used only to save fetch queue on disk */
+
+struct rxosd_fetch_entry {
+	struct oparmT10 o;
+	afs_uint32 user;
+	afs_int32 flag;
+	afs_uint32 time;
+	afs_uint32 fileserver;
+	struct osd_segm_descList list;
+};
+typedef struct rxosd_fetch_entry rxosd_fetch_entryList<>;
+
+/* bits for flag */
+%#define NO_CHECKSUM	1
+%#define USE_RXAFSOSD   2
+%#define ONLY_ONE_FETCHENTRY 4
+
+struct FetchEntry {
+    afs_uint32 Requestor;
+    struct afstm TimeStamp;
+    struct afsfid f;
+    afs_uint32 rank;
+    afs_uint32 state;
+    afs_uint32 error;
+};
+typedef FetchEntry FetchEntryList<>;
+
+/* values for state */
+%#define TAPE_FETCH  	1
+%#define XFERING     	2
+%#define SET_FILE_READY 3
+
+
+struct FetchEntry0 {
+    afs_uint32 Requestor;
+    afs_uint32 TimeStamp;
+    afs_uint32 Volume;
+    afs_uint32 Vnode;
+    afs_uint32 Uniquifier;
+    afs_uint32 rank;
+    afs_uint32 state;
+    afs_uint32 caller;
+};
+typedef FetchEntry0 FetchEntry0List<>;
+
+struct WipeCandidate {
+    struct ometa o;
+    afs_uint64 size;
+    struct afstm atime;
+};
+typedef WipeCandidate WipeCandidateList<>;
+
+struct WipeCandidate0 {
+    afs_uint64 p_id;
+    afs_uint64 o_id;
+    afs_uint64 size;
+    afs_uint32 atime;
+};
+typedef WipeCandidate0 WipeCandidate0List<>;
+
+struct activerpc {
+        afs_uint32 num;
+        struct ipadd ip;
+        struct ometa o;
+};
+typedef activerpc activerpcList<>;
+
+struct activerpc0 {
+        afs_uint32 num;
+        afs_uint32 ip;
+        afs_uint64 part;
+        afs_uint64 obj;
+};
+typedef activerpc0 activerpc0List<>;
+
+struct varname {
+        char name[64];
+};
+
+struct rxosd_stat {
+	afs_uint32 rpc;
+	afs_uint64 cnt;
+};
+typedef rxosd_stat rxosd_statList<>;
+
+struct rxosd_kbps {
+	afs_uint32 val[96];
+};
+
+struct exam_out1 {		/* good for mask 3 as used in vos salvage */
+	afs_uint64 size;
+	afs_int32 linkcount;
+};
+
+struct exam_out2 {		/*  mask 33 used by cache manager for vicep-access */
+	afs_uint64 size;
+	path_info path;
+};
+
+struct exam_out3 {		/* good for mask 7 */
+	afs_uint64 size;
+	afs_int32 mtime;
+	afs_int32 linkcount;
+};
+
+struct exam_out4 {
+	afs_uint64 size;
+	afs_int32 mtime;
+	afs_int32 atime;
+	afs_int32 ctime;
+	afs_int32 status;
+	afs_int32 linkcount;
+};
+
+struct exam_out5 {
+	afs_uint64 size;
+	afs_int32 mtime;
+	afs_int32 atime;
+	afs_int32 ctime;
+	afs_int32 linkcount;
+	afs_int32 status;
+	path_info path;
+};
+
+struct exam_out6 {
+	afs_uint64 size;
+	afs_uint64 mtime;
+	afs_int32 linkcount;
+};
+
+struct exam_out7 {
+	afs_uint64 size;
+	afs_uint64 mtime;
+	afs_uint64 atime;
+	afs_uint64 ctime;
+	afs_int32 status;
+	afs_int32 linkcount;
+};
+
+struct exam_out8 {
+	afs_uint64 size;
+	afs_uint64 mtime;
+	afs_uint64 atime;
+	afs_uint64 ctime;
+	afs_int32 linkcount;
+	afs_int32 status;
+	path_info path;
+};
+
+%#define WANTS_SIZE		1
+%#define WANTS_LINKCOUNT	2
+%#define WANTS_MTIME   		4
+%#define WANTS_ATIME   		8
+%#define WANTS_CTIME   		16
+%#define WANTS_PATH		32
+%#define WANTS_TIME64		64
+%#define WANTS_HSM_STATUS	128
+
+union exam switch(afs_int32 type) {
+case 1:
+	struct exam_out1 e1;
+case 2:
+	struct exam_out2 e2;
+case 3:
+	struct exam_out3 e3;
+case 4:
+	struct exam_out4 e4;
+case 5:
+	struct exam_out5 e5;
+case 6:
+	struct exam_out6 e6;
+case 7:
+	struct exam_out7 e7;
+case 8:
+	struct exam_out8 e8;
+};
+
+struct inventory1 {
+    struct oparmT10 o;
+    afs_uint64 size;
+    afs_int32 lc;
+    afs_uint32 mtime;
+    afs_uint32 atime;
+    afs_uint32 unlinked;
+};
+
+struct inventory2 {
+    struct oparmFree o;
+    afs_uint64 size;
+    afs_int32 lc;
+    afs_uint32 mtime;
+    afs_uint32 atime;
+    afs_uint32 unlinked;
+};
+
+struct inventory3 {             /* used with "osd objects ... " */
+    struct oparmT10 o;
+    afs_uint64 size;
+    afs_int32 lc;
+};
+
+struct inventory4 {             /* used with "osd objects ... -unlinked " */
+    struct oparmFree o;
+    afs_uint64 size;
+    afs_int32 lc;
+};
+
+struct inventory5 {             /* used with old "osd objects" */
+    afs_uint64 obj_id;
+    afs_uint64 size;
+    afs_int32 lc;
+};
+
+struct inventory6 {             /* used with "osd volumes" */
+    afs_uint32 vid;
+};
+
+struct inventory7 {             /* used with "osd volumes " */
+    afs_uint64 vid;
+};
+
+union inventory switch(afs_int32 type) {
+case 1:
+    struct inventory1 inv1;
+case 2:
+    struct inventory2 inv2;
+case 3:
+    struct inventory3 inv3;
+case 4:
+    struct inventory4 inv4;
+case 5:
+    struct inventory5 inv5;
+case 6:
+    struct inventory6 inv6;
+case 7:
+    struct inventory7 inv7;
+};
+
+%#endif

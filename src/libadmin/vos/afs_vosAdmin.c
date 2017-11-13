@@ -4578,10 +4578,10 @@ vos_ClearVolUpdateCounter(const void *cellHandle,
     tstatus.creationDate = -1;
     tstatus.updateDate = -1;
     tstatus.flags = -1;
-    tstatus.spare0 = -1;
+    tstatus.osdPolicy = -1;
     tstatus.spare1 = -1;
     tstatus.spare2 = 0;
-    tstatus.spare3 = -1;
+    tstatus.filequota = -1;
     
     tst =
 	AFSVolTransCreate(f_server->serv, volumeId, partition, ITBusy, &ttid);

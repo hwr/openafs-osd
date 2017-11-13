@@ -190,6 +190,20 @@ Vnodes with 0 inode pointers in RW volumes are now deleted.
 #include <pthread.h>
 #endif
 
+#include "../rxosd/afsosd.h"
+
+struct vol_data_v0 vol_data_v0 = {
+    NULL,
+    &LogLevel,
+    NULL,
+    &VnodeClassInfo[0],
+    NULL,
+    NULL,
+    NULL
+};
+
+struct osd_vol_ops_v0 *osdvolsave = NULL;
+
 #define SALV_BUFFER_SIZE 1024
 
 #ifdef	AFS_OSF_ENV
@@ -2045,7 +2059,7 @@ DoSalvageVolumeGroup(struct SalvInfo *salvinfo, struct InodeSummary *isp, int nV
 		for (i = 0; i < nVols; i++) {
 		    ip = allInodes + isp[i].index;
 		    for (j = isp[i].nSpecialInodes; j < isp[i].nInodes; j++) {
-			namei_SetLinkCount(fdP, ip[j].inodeNumber, 1, 0);
+			namei_SetLinkCount(fdP, ip[j].inodeNumber, 1, 1);
 			ip[j].linkCount = 1;
 		    }
 		}
@@ -2282,6 +2296,13 @@ SalvageVolumeHeaderFile(struct SalvInfo *salvinfo, struct InodeSummary *isp,
 
     memset(goodspecial, 0, sizeof(goodspecial));
 
+    /* fill osdvol only if the volume has an osdMetadata special file */
+    if (check) {
+	if (osdvol)
+	    osdvolsave = osdvol;
+	osdvol = NULL;
+    }
+
     skip = calloc(isp->nSpecialInodes, sizeof(*skip));
     if (skip == NULL) {
 	Log("cannot allocate memory for inode skip array when salvaging "
@@ -2382,7 +2403,7 @@ SalvageVolumeHeaderFile(struct SalvInfo *salvinfo, struct InodeSummary *isp,
 	    Log("Rubbish header inode %s of type %d; deleted\n",
 	        PrintInode(stmp, ip->inodeNumber),
 	        ip->u.special.type);
-	} else if (!stuff[ip->u.special.type - 1].obsolete) {
+	} else if (stuff[ip->u.special.type - 1].obsolete != 1) {
 	    if (skip && skip[i]) {
 		if (orphans == ORPH_REMOVE) {
 		    Log("Removing orphan special inode %s of type %d\n",
@@ -2431,6 +2452,39 @@ SalvageVolumeHeaderFile(struct SalvInfo *salvinfo, struct InodeSummary *isp,
 	    }
 	    continue;
 	}
+	if (stuff[i].inodeType == VI_OSDMETADATA) {
+	    if (VALID_INO(*stuff[i].inode)) {
+		/* This seems to be an OSD volume */
+		if (!osdvol) {
+		    int code;
+		    if (osdvolsave) {
+			osdvol = osdvolsave;
+			code = 0;
+		    } else {
+			struct init_salv_inputs input = {
+			    &vol_data_v0
+			};
+			struct init_salv_outputs output = {
+			    &osdvol
+			};
+#ifdef AFS_PTHREAD_ENV
+			code = load_libafsosd("init_salv_afsosd", (void *)&input,
+						(void *)&output);
+#else
+			code = ENOENT;
+#endif
+		    }
+		    if (code) {
+			Log("Couldn't load libafsosd.so for OSD volume %" AFS_VOLID_FMT ", code was %d, aborting\n",
+					afs_printable_VolumeId_lu(isp->volumeId), code);
+			return -1;
+		    } else
+			Log("libafsosd.so loaded for OSD volume %" AFS_VOLID_FMT "\n",
+					afs_printable_VolumeId_lu(isp->volumeId));
+		}
+	    }
+	}
+
 	if (SalvageHeader(salvinfo, &stuff[i], isp, check, deleteMe) == -1 && check)
 	    return -1;
     }
@@ -2458,7 +2512,8 @@ SalvageVolumeHeaderFile(struct SalvInfo *salvinfo, struct InodeSummary *isp,
 	char headerName[64];
 	/* hack: these two fields are obsolete... */
 	isp->volSummary->header.volumeAcl = 0;
-	isp->volSummary->header.volumeMountTable = 0;
+	if (!osdvol)
+	    isp->volSummary->header.OsdMetadata = 0;
 
 	if (memcmp
 	    (&isp->volSummary->header, &tempHeader,
@@ -2511,14 +2566,17 @@ SalvageHeader(struct SalvInfo *salvinfo, struct afs_inode_info *sp,
     int recreate = 0;
     ssize_t nBytes;
     FdHandle_t *fdP;
+    static afs_int32 osdPolicy;
 
-    if (sp->obsolete)
+    if (sp->obsolete == 1)
 	return 0;
 #ifndef AFS_NAMEI_ENV
     if (sp->inodeType == VI_LINKTABLE)
 	return 0; /* header magic was already checked */
 #endif
     if (*(sp->inode) == 0) {
+	if (sp->inodeType == VI_OSDMETADATA && !osdPolicy)
+	    return 0; /* non-osd-volumes do not need it */
 	if (check) {
 	    Log("Missing inode in volume header (%s)\n", sp->description);
 	    return -1;
@@ -2581,6 +2639,7 @@ SalvageHeader(struct SalvInfo *salvinfo, struct afs_inode_info *sp,
 	&& header.volumeInfo.destroyMe == DESTROY_ME) {
 	if (deleteMe)
 	    *deleteMe = 1;
+	osdPolicy = header.volumeInfo.osdPolicy;
 	FDH_REALLYCLOSE(fdP);
 	IH_RELEASE(specH);
 	return -1;
@@ -2678,20 +2737,24 @@ SalvageVnodes(struct SalvInfo *salvinfo,
     nInodes = (rwIsp->nInodes - rwIsp->nSpecialInodes);
     ismall =
 	SalvageIndex(salvinfo, thisIsp->volSummary->header.smallVnodeIndex, vSmall, RW,
-		     &inodes[ioffset], nInodes, thisIsp->volSummary, check);
+		     &inodes[ioffset], nInodes, thisIsp->volSummary, check,
+		     thisIsp->volSummary->header.OsdMetadata);
     if (check && ismall == -1)
 	return -1;
     ilarge =
 	SalvageIndex(salvinfo, thisIsp->volSummary->header.largeVnodeIndex, vLarge, RW,
-		     &inodes[ioffset], nInodes, thisIsp->volSummary, check);
+		     &inodes[ioffset], nInodes, thisIsp->volSummary, check,
+		     thisIsp->volSummary->header.OsdMetadata);
     return (ilarge == 0 && ismall == 0 ? 0 : -1);
 }
 
 int
 SalvageIndex(struct SalvInfo *salvinfo, Inode ino, VnodeClass class, int RW,
 	     struct ViceInodeInfo *ip, int nInodes,
-             struct VolumeSummary *volSummary, int check)
+             struct VolumeSummary *volSummary, int check,
+	     Inode osdMetadataInode)
 {
+    VolumeId volumeNumber;
     char buf[SIZEOF_LARGEDISKVNODE];
     struct VnodeDiskObject *vnode = (struct VnodeDiskObject *)buf;
     int err = 0;
@@ -2704,7 +2767,43 @@ SalvageIndex(struct SalvInfo *salvinfo, Inode ino, VnodeClass class, int RW,
     afs_ino_str_t stmp1, stmp2;
     IHandle_t *handle;
     FdHandle_t *fdP;
+    IHandle_t *osdMetadataHandle = 0;
+    FdHandle_t *osdMetadataFd = 0;
+    afs_uint32 osdEntryLength = 0;
+    void *osdrock = NULL;
 
+    if (osdvol) {
+	if (osdMetadataInode) {
+	    IH_INIT(osdMetadataHandle, salvinfo->fileSysDevice,
+		    volSummary->header.parent, osdMetadataInode);
+	    osdMetadataFd = IH_OPEN(osdMetadataHandle);
+	    if (!osdMetadataFd) {
+		Log("SalvageIndex: couldn't open OSD metadata file for volume %" AFS_VOLID_FMT "\n",
+		    afs_printable_VolumeId_lu(volSummary->header.id));
+	        return EIO;
+	    } else {
+		osdEntryLength = (osdvol->op_salv_GetOsdEntryLength)
+						(osdMetadataFd, &osdrock);
+		if (!osdrock) {
+		    Log("SalvageIndex: couldn't get OSD metadata entry length for volume %" AFS_VOLID_FMT "\n",
+		    afs_printable_VolumeId_lu(volSummary->header.id));
+		    return EIO;
+		}
+	    }
+	} else {
+	    Log("SalvageIndex: volume %" AFS_VOLID_FMT " has no OSD metadata file, perhaps wrong salvageserver binary\n",
+		afs_printable_VolumeId_lu(volSummary->header.id));
+	    return EIO;
+	}
+    } else {
+	if (osdMetadataInode) {
+	    Log("SalvageIndex: volume %" AFS_VOLID_FMT " has an OSD metadata file, perhaps wrong salvageserver binary\n",
+		afs_printable_VolumeId_lu(volSummary->header.id));
+	    return EIO;
+	}
+    }
+
+    volumeNumber = volSummary->header.id;
     IH_INIT(handle, salvinfo->fileSysDevice, volSummary->header.parent, ino);
     fdP = IH_OPEN(handle);
     opr_Assert(fdP != NULL);
@@ -2726,14 +2825,25 @@ SalvageIndex(struct SalvInfo *salvinfo, Inode ino, VnodeClass class, int RW,
 	if (vnode->type != vNull) {
 	    int vnodeChanged = 0;
 	    int vnodeNumber = bitNumberToVnodeNumber(vnodeIndex, class);
-	    if (VNDISK_GET_INO(vnode) == 0) {
+	    int osdFile = 0;
+	    if (osdvol)
+		osdFile = (osdvol->op_isOsdFile)(salvinfo->VolInfo.osdPolicy,
+						volumeNumber, vnode, vnodeNumber);
+	    if (osdFile) {
+		afs_int32 code;
+		code = (osdvol->op_salv_OsdMetadata)(osdMetadataFd, vnode,
+				vnodeNumber, osdEntryLength, osdrock, Testing);
+		if (code && !Testing)
+		    vnodeChanged = 1;
+	    }
+	    if (VNDISK_GET_INO(vnode) == 0 && !osdFile) {
 		if (RW) {
 		    /* Log("### DEBUG ### Deleted Vnode with 0 inode (vnode %d)\n", vnodeNumber); */
 		    memset(vnode, 0, vcp->diskSize);
 		    vnodeChanged = 1;
 		}
 	    } else {
-		if (vcp->magic != vnode->vnodeMagic) {
+		if (!osdvol && vcp->magic != vnode->vnodeMagic) {
 		    /* bad magic #, probably partially created vnode */
 		    if (check) {
 		       Log("Partially allocated vnode %d: bad magic (is %lx should be %lx)\n",
@@ -2801,10 +2911,10 @@ SalvageIndex(struct SalvInfo *salvinfo, Inode ino, VnodeClass class, int RW,
 			/*
 			 * Because of the possibility of the uniquifier overflows (> 4M)
 			 * we compare them modulo the low 22-bits; we shouldn't worry
-			 * about mismatching since they shouldn't to many old
+			 * about mismatching since they shouldn't be too many old
 			 * uniquifiers of the same vnode...
 			 */
-			if (IUnique(vu) != IUnique(iu)) {
+			if (!osdFile && IUnique(vu) != IUnique(iu)) {
 			    if (!Showmode) {
 				Log("Vnode %u: vnode.unique, %u, does not match inode unique, %u; fixed, but status will be wrong\n", vnodeNumber, IUnique(vu), IUnique(iu));
 			    }
@@ -2857,7 +2967,7 @@ SalvageIndex(struct SalvInfo *salvinfo, Inode ino, VnodeClass class, int RW,
 			    }
 			}
 		    }
-		    if (ip->inodeNumber != VNDISK_GET_INO(vnode)) {
+		    if (!osdFile && ip->inodeNumber != VNDISK_GET_INO(vnode)) {
 			if (check) {
 			    if (!Showmode) {
 				Log("Vnode %d:  inode number incorrect (is %s should be %s). FileSize=%llu\n", vnodeNumber, PrintInode(stmp1, VNDISK_GET_INO(vnode)), PrintInode(stmp2, ip->inodeNumber), (afs_uintmax_t) ip->byteCount);
@@ -2873,7 +2983,7 @@ SalvageIndex(struct SalvInfo *salvinfo, Inode ino, VnodeClass class, int RW,
 			vnodeChanged = 1;
 		    }
 		    VNDISK_GET_LEN(vnodeLength, vnode);
-		    if (ip->byteCount != vnodeLength) {
+		    if (!osdFile && ip->byteCount != vnodeLength) {
 			if (check) {
 			    if (!Showmode)
 				Log("Vnode %d: length incorrect; (is %llu should be %llu)\n", vnodeNumber, (afs_uintmax_t) vnodeLength, (afs_uintmax_t) ip->byteCount);
@@ -2920,7 +3030,8 @@ SalvageIndex(struct SalvInfo *salvinfo, Inode ino, VnodeClass class, int RW,
 			memset(vnode, 0, vcp->diskSize);
 			vnodeChanged = 1;
 		    } else {
-			/* Should not reach here becuase we checked for
+			/* RXOSD:
+			 * Should not reach here because we checked for
 			 * (inodeNumber == 0) above. And where we zero the vnode,
 			 * we also goto vnodeDone.
 			 */
@@ -2946,6 +3057,12 @@ SalvageIndex(struct SalvInfo *salvinfo, Inode ino, VnodeClass class, int RW,
     STREAM_CLOSE(file);
     FDH_CLOSE(fdP);
     IH_RELEASE(handle);
+    if (osdEntryLength)
+	free(osdrock);
+    if (osdMetadataFd)
+	FDH_CLOSE(osdMetadataFd);
+    if (osdMetadataHandle)
+	IH_RELEASE(osdMetadataHandle);
     return err;
 }
 
@@ -3120,6 +3237,7 @@ JudgeEntry(void *arock, char *name, afs_int32 vnodeNumber,
     struct SalvInfo *salvinfo = params->salvinfo;
     struct VnodeEssence *vnodeEssence;
     afs_int32 dirOrphaned, todelete;
+    int badunique = 0;
 
     dirOrphaned = IsVnodeOrphaned(salvinfo, dir->vnodeNumber);
 
@@ -3172,7 +3290,12 @@ JudgeEntry(void *arock, char *name, afs_int32 vnodeNumber,
      * so its unique matches the vnode unique. Delete if the unique is zero
      * or if the directory is orphaned.
      */
-    if (!vnodeEssence->unique || (vnodeEssence->unique) != unique) {
+    if (osdvol) {
+	if (!vnodeEssence->unique
+	  || (!vnodeEssence->osdMetadataIndex && (vnodeEssence->unique) != unique))
+	    badunique = 1;
+    }
+    if (badunique) {
 	todelete = ((!vnodeEssence->unique || dirOrphaned) ? 1 : 0);
 
 	if (todelete
@@ -3308,7 +3431,7 @@ JudgeEntry(void *arock, char *name, afs_int32 vnodeNumber,
 			afs_printable_VolumeId_lu(dir->dirHandle.dirh_handle->ih_vid),
 			dir->vname, dir->name ? dir->name : "??", name, buf);
 	    } else {
-		Log("Volume %s cound not read mount point vnode %u size %d code %d\n",
+		Log("Volume %s could not read mount point vnode %u size %d code %d\n",
 		    dir->vname, vnodeNumber, (int)size, (int)nBytes);
 	    }
 	    FDH_REALLYCLOSE(fdP);
@@ -3408,6 +3531,7 @@ DistilVnodeEssence(struct SalvInfo *salvinfo, VolumeId rwVId,
 	 nVnodes && STREAM_READ(vnode, vcp->diskSize, 1, file) == 1;
 	 nVnodes--, vnodeIndex++) {
 	if (vnode->type != vNull) {
+	    VnodeId vnodeNumber = bitNumberToVnodeNumber(vnodeIndex, class);
 	    struct VnodeEssence *vep = &vip->vnodes[vnodeIndex];
 	    afs_fsize_t vnodeLength;
 	    vip->nAllocatedVnodes++;
@@ -3427,7 +3551,6 @@ DistilVnodeEssence(struct SalvInfo *salvinfo, VolumeId rwVId,
 	    vep->group = vnode->group;
 	    if (vnode->type == vDirectory) {
 		if (class != vLarge) {
-		    VnodeId vnodeNumber = bitNumberToVnodeNumber(vnodeIndex, class);
 		    vip->nAllocatedVnodes--;
 		    memset(vnode, 0, sizeof(*vnode));
 		    IH_IWRITE(salvinfo->vnodeInfo[vSmall].handle,
@@ -3437,6 +3560,10 @@ DistilVnodeEssence(struct SalvInfo *salvinfo, VolumeId rwVId,
 		} else
 		    vip->inodes[vnodeIndex] = VNDISK_GET_INO(vnode);
 	    }
+	    vep->osdMetadataIndex = 0;
+	    if (osdvol && (osdvol->op_isOsdFile(salvinfo->VolInfo.osdPolicy,
+						rwVId, vnode, vnodeNumber)))
+		vep->osdMetadataIndex = vnode->osdMetadataIndex;
 	}
     }
     STREAM_CLOSE(file);
@@ -3710,7 +3837,8 @@ CreateReadme(struct SalvInfo *salvinfo, VolumeDiskData *volHeader,
     rvnode->owner = 0;
     rvnode->parent = 1;
     rvnode->group = 0;
-    rvnode->vnodeMagic = VnodeClassInfo[vSmall].magic;
+    if (!osdvol)
+	rvnode->vnodeMagic = VnodeClassInfo[vSmall].magic;
 
     bytes = IH_IWRITE(salvinfo->vnodeInfo[vSmall].handle,
                       vnodeIndexOffset(&VnodeClassInfo[vSmall], afid->Vnode),
@@ -3884,7 +4012,8 @@ CreateRootDir(struct SalvInfo *salvinfo, VolumeDiskData *volHeader,
     rootvnode->owner = 0;
     rootvnode->parent = 0;
     rootvnode->group = 0;
-    rootvnode->vnodeMagic = VnodeClassInfo[vLarge].magic;
+    if (!osdvol)
+	rootvnode->vnodeMagic = VnodeClassInfo[vLarge].magic;
 
     /* write it out to disk */
     bytes = IH_IWRITE(salvinfo->vnodeInfo[vLarge].handle,
@@ -4305,7 +4434,12 @@ SalvageVolume(struct SalvInfo *salvinfo, struct InodeSummary *rwIsp, IHandle_t *
     volHeader.inUse = 0;	/* clear flag indicating inUse@last crash */
     volHeader.needsSalvaged = 0;	/* clear 'damaged' flag */
     volHeader.inService = 1;	/* allow service again */
-    volHeader.needsCallback = (salvinfo->VolumeChanged != 0);
+    if (salvinfo->VolumeChanged) {
+	volHeader.needsCallback = 1;
+	volHeader.updateDate = time(NULL);
+    } else {
+	volHeader.needsCallback = 0;
+    }
     volHeader.dontSalvage = DONT_SALVAGE;
     salvinfo->VolumeChanged = 0;
     if (!Testing) {
@@ -4883,6 +5017,12 @@ vLog(const char *format, va_list args)
 	vfprintf(stderr, format, args);
 	fflush(stderr);
     }
+}
+
+void
+LogOsd(const char *format, va_list args)
+{
+    vLog(format, args);
 }
 
 void

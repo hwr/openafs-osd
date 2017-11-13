@@ -13,6 +13,7 @@ HELPER_SPLINT=@HELPER_SPLINT@
 ENABLE_PTHREADED_UBIK=@ENABLE_PTHREADED_UBIK@
 
 VLSERVER=$(srcdir)/../vlserver
+RXOSD=$(srcdir)/../rxosd
 
 INCLS=${TOP_INCDIR}/ubik.h \
              ${TOP_INCDIR}/lwp.h \
@@ -73,13 +74,13 @@ sascnvldb: sascnvldb.o $(LIBS_client)
 sascnvldb.o: ${VLSERVER}/sascnvldb.c
 	$(AFS_CCRULE) $(VLSERVER)/sascnvldb.c
 
-vlserver: vlserver.o vlutils.o vlprocs.o vldbint.ss.o vldbint.xdr.o $(LIBS_server)
+vlserver: vlserver.o vlutils.o vlprocs.o vldbint.ss.o vldbint.xdr.o libafsosd.o $(LIBS_server)
 	$(LT_LDRULE_static) vlserver.o vlutils.o vlprocs.o vldbint.ss.o \
-		vldbint.xdr.o \
+		vldbint.xdr.o libafsosd.o -ldl \
 		$(LIBS_server) $(LIB_hcrypto) $(LIB_roken) ${MT_LIBS}
 
 vlserver.o: ${VLSERVER}/vlserver.c ${INCLS} AFS_component_version_number.o
-	$(AFS_CCRULE) $(VLSERVER)/vlserver.c
+	$(AFS_CCRULE) -DBUILDING_OSDDBSERVER $(VLSERVER)/vlserver.c
 
 vlutils.o: ${VLSERVER}/vlutils.c ${INCLS}
 	$(AFS_CCRULE) $(VLSERVER)/vlutils.c
@@ -89,6 +90,9 @@ vlprocs.o: ${VLSERVER}/vlprocs.c ${INCLS}
 
 vldbint.ss.o: vldbint.ss.c
 vldbint.xdr.o: vldbint.xdr.c
+libafsosd.o: ${RXOSD}/libafsosd.c
+	${AFS_CCRULE} -DBUILDING_OSDDBSERVER ${RXOSD}/libafsosd.c
+
 
 
 vldbint.ss.c: ${VLSERVER}/vldbint.xg

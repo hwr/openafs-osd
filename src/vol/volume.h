@@ -281,7 +281,7 @@ typedef struct VolumePackageOptions {
 #define VOLUMEINFOMAGIC		((bit32)0x78a1b2c5)
 #define	SMALLINDEXMAGIC		0x99776655
 #define LARGEINDEXMAGIC		0x88664433
-#define	MOUNTMAGIC		0x9a8b7c6d
+#define OSDMETAMAGIC		0x08011973
 #define ACLMAGIC		0x88877712
 #define LINKTABLEMAGIC		0x99877712
 
@@ -289,7 +289,7 @@ typedef struct VolumePackageOptions {
 #define VOLUMEINFOVERSION	1
 #define	SMALLINDEXVERSION	1
 #define	LARGEINDEXVERSION	1
-#define	MOUNTVERSION		1
+#define	OSDMETAVERSION		1
 #define ACLVERSION		1
 #define LINKTABLEVERSION	1
 
@@ -335,9 +335,10 @@ typedef struct VolumeHeader {
     Inode smallVnodeIndex;
     Inode largeVnodeIndex;
     Inode volumeAcl;
-    Inode volumeMountTable;
+    Inode OsdMetadata;
     Inode linkTable;
 } VolumeHeader_t;
+#define volumeMountTable OsdMetadata
 
 
 typedef struct VolumeDiskHeader {
@@ -349,12 +350,12 @@ typedef struct VolumeDiskHeader {
     afs_int32 smallVnodeIndex_lo;
     afs_int32 largeVnodeIndex_lo;
     afs_int32 volumeAcl_lo;
-    afs_int32 volumeMountTable_lo;
+    afs_int32 OsdMetadata_lo;
     afs_int32 volumeInfo_hi;
     afs_int32 smallVnodeIndex_hi;
     afs_int32 largeVnodeIndex_hi;
     afs_int32 volumeAcl_hi;
-    afs_int32 volumeMountTable_hi;
+    afs_int32 OsdMetadata_hi;
     afs_int32 linkTable_lo;
     afs_int32 linkTable_hi;
     /* If you add fields, add them before here and reduce the size of  array */
@@ -443,7 +444,9 @@ typedef struct VolumeDiskData {
     Date dayUseDate;		/* Date the dayUse statistics refer to; the week use stats
 				 * are the preceding 7 days */
     unsigned int volUpdateCounter; /*incremented at every update of volume*/
-    int reserved3[10];		/* Other stats here */
+    int reserved3[8];		/* Other stats here */
+    int osdPolicy;		/* Whether and how to use object storage */
+    int reserved5;
 
     /* Server supplied dates */
     Date creationDate;		/* Creation date for a read/write
@@ -451,7 +454,7 @@ typedef struct VolumeDiskData {
 				 * a readonly volume (replicated volumes have
 				 * the same creation date) */
     Date accessDate;		/* Last access time by a user, large granularity */
-    Date updateDate;		/* Last modification by user */
+    Date updateDate;		/* Last modification by user or salvager */
     Date expirationDate;	/* 0 if it never expires */
     Date backupDate;		/* last time a backup clone was taken */
 
@@ -705,6 +708,8 @@ typedef struct Volume {
 #endif /* AFS_DEMAND_ATTACH_FS */
     int usage_bumps_outstanding; /**< to rate limit the usage update i/o by accesses */
     int usage_bumps_next_write;  /**< to rate limit the usage update i/o by time */
+    IHandle_t *osdMetadataHandle;  /* for volume's osd metadata file */
+    struct Lock lock;		/* lock used during osd metadata updates */
 } Volume;
 
 struct volHeader {
@@ -755,6 +760,7 @@ struct volHeader {
 #define V_diskused(vp)		((vp)->header->diskstuff.diskused)
 #define V_dayUse(vp)		((vp)->header->diskstuff.dayUse)
 #define V_weekUse(vp)		((vp)->header->diskstuff.weekUse)
+#define V_osdPolicy(vp)		((vp)->header->diskstuff.osdPolicy)
 #define V_dayUseDate(vp)	((vp)->header->diskstuff.dayUseDate)
 #define V_creationDate(vp)	((vp)->header->diskstuff.creationDate)
 #define V_accessDate(vp)	((vp)->header->diskstuff.accessDate)

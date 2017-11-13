@@ -9,8 +9,8 @@ AC_CONFIG_SRCDIR([src/config/stds.h])
 AM_INIT_AUTOMAKE([foreign])
 
 AC_CONFIG_HEADER([src/config/afsconfig.h])
-MACOS_VERSION=1.8.0fc1
-LINUX_PKGREL=1.8.0pre1
+MACOS_VERSION=1.8.0fc2
+LINUX_PKGREL=1.8.0pre2
 
 AC_SUBST([MACOS_VERSION])
 
@@ -110,15 +110,6 @@ dnl Check for the characteristics of whatever GSSAPI we found, if we found one
 BUILD_GSSAPI=no
 AS_IF([test x"$GSSAPI_LIBS" != x],
     [BUILD_GSSAPI=yes
-     RRA_LIB_GSSAPI_SWITCH
-     AC_CHECK_FUNCS([gss_pseudo_random \
-	krb5_gss_register_acceptor_identity \
-	gss_krb5_ccache_name \
-     ])
-dnl We only need gssapi for rxgk (at this point).  rxgk requires pseudo_random.
-     AS_IF([test x"$ac_cv_func_gss_pseudo_random" != xyes],
-	   [BUILD_GSSAPI=no])
-     RRA_LIB_GSSAPI_RESTORE
 ])
 AC_SUBST([BUILD_GSSAPI])
 
@@ -146,6 +137,10 @@ AS_IF([test -f 'doc/xml/mobi-fixup.xsl.in'],
 AS_IF([test -f 'doc/doxygen/Doxyfile.in'],
     [DOXYFILE="doc/doxygen/Doxyfile"],
     [DOXYFILE=])
+AS_IF([test -f ${srcdir}/src/afsosd/Makefile.in],
+    [AFSOSD_MAKEFILE="src/afsosd/Makefile"; WITH_OBJECT_STORAGE="YES"],
+    [AFSOSD_MAKEFILE=; WITH_OBJECT_STORAGE="NO"])
+AC_SUBST(WITH_OBJECT_STORAGE)
 
 AC_OUTPUT([
     Makefile
@@ -251,10 +246,10 @@ AC_OUTPUT([
     src/rx/test/Makefile
     src/rxdebug/Makefile
     src/rxgen/Makefile
-    src/rxgk/Makefile
     src/rxkad/Makefile
     src/rxkad/test/Makefile
     src/rxosd/Makefile
+    ${AFSOSD_MAKEFILE}
     src/rxstat/Makefile
     src/scout/Makefile
     src/sys/Makefile

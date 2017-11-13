@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- *
+ * 
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -25,7 +25,60 @@ struct ubik_tid {
     afs_int32 counter;
 };
 
+struct ubik_db_state {
+    afs_int32 index;
+    struct ubik_version vers;
+    struct ubik_tid tid;
+};
+typedef struct ubik_db_state ubik_db_stateList<>;
+
 const UBIK_MAX_INTERFACE_ADDR =	256; /* max interfaces per server */
+
+struct ubik_db_local {
+    char name[8];
+    afs_int32 index;
+    struct ubik_version localVersion;
+    struct ubik_version syncVersion;
+    afs_int32 recoveryState;
+    afs_int32 currentTrans;
+    afs_int32 writeTrans;
+    afs_int32 activeWrite;
+    afs_int32 tidCounter;
+    afs_int32 epochTime;		/* time this server started */
+    struct ubik_tid syncTid;
+};
+typedef ubik_db_local ubik_db_localList<>;
+    
+struct ubik_debug_new {
+    /* variables from basic voting module */
+    afs_int32 now;			/* time of day now */
+    afs_int32 lastYesTime;		/* last time we sent last yes vote */
+    afs_int32 lastYesHost;		/* host to which we sent last yes vote */
+    afs_int32 lastYesState;		/* did last yes host claim to be sync site */
+    afs_int32 lastYesClaim;		/* time last vote started; claim sync site until .+SMALLTIME */
+    afs_int32 lowestHost;		/* host we'd prefer to vote for */
+    afs_int32 lowestTime;		/* time we last chose lowestHost */
+    afs_int32 syncHost;			/* sync site we've heard from last (even if we didn't vote) */
+    afs_int32 syncTime;			/* time of above */
+
+    /* variables from beacon module */
+    afs_int32 amSyncSite;		/* do I think I'm the sync site */
+    afs_int32 syncSiteUntil;		/* when does my sync site mandate expire? */
+    afs_int32 nServers;			/* number of servers participating in vote */
+
+    /* variables from disk module */
+    afs_int32 lockedPages;		/* count of read-locked pages */
+    afs_int32 writeLockedPages;		/* count of write-locked pages */
+
+    /* variables from the lock module */
+    afs_int32 anyReadLocks;		/* are any read locks held on the current trans, if any */
+    afs_int32 anyWriteLocks;		/* are any write locks held on the current trans, if any */
+
+    /* variables from the ubik module */
+    struct ubik_db_localList list;
+			/* all network interface addresses of host in host order*/
+    afs_int32 interfaceAddr[UBIK_MAX_INTERFACE_ADDR];
+};
 
 struct ubik_debug {
     /* variables from basic voting module */
@@ -40,19 +93,19 @@ struct ubik_debug {
     afs_int32 syncTime;			/* time of above */
     struct ubik_version syncVersion;	/* sync site's claimed db version */
     struct ubik_tid syncTid;		/* sync site's claimed tid */
-
+    
     /* variables from beacon module */
     afs_int32 amSyncSite;		/* do I think I'm the sync site */
     afs_int32 syncSiteUntil;		/* when does my sync site mandate expire? */
     afs_int32 nServers;			/* number of servers participating in vote */
-
+    
     /* variables from disk module */
     afs_int32 lockedPages;		/* count of read-locked pages */
     afs_int32 writeLockedPages;		/* count of write-locked pages */
     struct ubik_version localVersion;
     afs_int32 activeWrite;		/* is there an active write transaction with this as sync site */
     afs_int32 tidCounter;			/* tid counter field from dbase, or 0 if no write trans. */
-
+    
     /* variables from the lock module */
     afs_int32 anyReadLocks;		/* are any read locks held on the current trans, if any */
     afs_int32 anyWriteLocks;		/* are any write locks held on the current trans, if any */
@@ -67,10 +120,29 @@ struct ubik_debug {
     /* variables from the ubik module */
     afs_int32 epochTime;		/* time this server started */
 		/* all network interface addresses of host in host order*/
-    afs_int32 interfaceAddr[UBIK_MAX_INTERFACE_ADDR];
+    afs_int32 interfaceAddr[UBIK_MAX_INTERFACE_ADDR]; 	
 };
 
+struct ubik_db_remote {
+    char name[8];
+    afs_int32 index;
+    struct ubik_version remoteVersion;
+    afs_int32 currentDB;			/* is current DB up to date? */
+};
+typedef ubik_db_remote ubik_db_remoteList<>;
+    
 /* data from the per-server structure */
+struct ubik_sdebug_new {
+    afs_int32 addr;			/* primary address in *host* order */
+    afs_int32 lastVoteTime;		/* time last vote received */
+    afs_int32 lastBeaconSent;		/* time last beacon sent */
+    afs_int32 lastVote;			/* was last vote yes? */
+    afs_int32 beaconSinceDown;		/* beacon sent since last noticed up? */
+    afs_int32 up;			/* is site up */
+    struct ubik_db_remoteList list;	/* info about all dabses */
+    afs_int32 altAddr[255];		/*alternate addresses:host byte */
+};
+
 struct ubik_sdebug {
     afs_int32 addr;			/* primary address in *host* order */
     afs_int32 lastVoteTime;		/* time last vote received */
@@ -97,19 +169,19 @@ struct ubik_debug_old {
     afs_int32 syncTime;			/* time of above */
     struct ubik_version syncVersion;	/* sync site's claimed db version */
     struct ubik_tid syncTid;		/* sync site's claimed tid */
-
+    
     /* variables from beacon module */
     afs_int32 amSyncSite;		/* do I think I'm the sync site */
     afs_int32 syncSiteUntil;		/* when does my sync site mandate expire? */
     afs_int32 nServers;			/* number of servers participating in vote */
-
+    
     /* variables from disk module */
     afs_int32 lockedPages;		/* count of read-locked pages */
     afs_int32 writeLockedPages;		/* count of write-locked pages */
     struct ubik_version localVersion;
     afs_int32 activeWrite;		/* is there an active write transaction with this as sync site */
     afs_int32 tidCounter;			/* tid counter field from dbase, or 0 if no write trans. */
-
+    
     /* variables from the lock module */
     afs_int32 anyReadLocks;		/* are any read locks held on the current trans, if any */
     afs_int32 anyWriteLocks;		/* are any write locks held on the current trans, if any */
@@ -161,31 +233,29 @@ package VOTE_
 statindex 11
 
 /* Opcodes for the Vote package interface calls */
-#define	VOTE_BEACON		10000
-#define	VOTE_DEBUG_OLD		10001
-#define	VOTE_SDEBUG_OLD		10002
+#define VOTE_DEBUG_OLD          10001
+#define VOTE_SDEBUG_OLD         10002
 #define	VOTE_GETSYNCSITE	10003
 #define VOTE_DEBUG		10004
 #define VOTE_SDEBUG		10005
 #define VOTE_XDEBUG             10006
 #define VOTE_XSDEBUG            10007
+#define VOTE_MXSDEBUG           10008
+#define VOTE_MXDEBUG            10009
+#define	VOTE_BEACON		10010
 
 /* Vote package interface calls */
-Beacon		(IN afs_int32 state,
-		afs_int32 voteStart,
-		ubik_version *Version,
-		ubik_tid *tid) multi = VOTE_BEACON;
+	
+DebugOld        (OUT ubik_debug_old *db) = VOTE_DEBUG_OLD;
 
-DebugOld	(OUT ubik_debug_old *db) = VOTE_DEBUG_OLD;
-
-SDebugOld	(IN afs_int32 which,
-		OUT ubik_sdebug_old *db) = VOTE_SDEBUG_OLD;
+SDebugOld       (IN afs_int32 which,
+                OUT ubik_sdebug_old *db) = VOTE_SDEBUG_OLD;
 
 GetSyncSite	(IN afs_int32 *site) = VOTE_GETSYNCSITE;
 
 Debug		(OUT ubik_debug *db) = VOTE_DEBUG;
 
-SDebug		(IN afs_int32 which,
+SDebug		(IN afs_int32 which, 
 		OUT ubik_sdebug *db) = VOTE_SDEBUG;
 
 XDebug          (OUT ubik_debug *db,
@@ -195,70 +265,94 @@ XSDebug         (IN afs_int32 which,
                  OUT ubik_sdebug *db,
                  OUT afs_int32 *isClone) = VOTE_XSDEBUG;
 
+MXSDebug         (IN afs_int32 which,
+                 OUT ubik_sdebug_new *db,
+                 OUT afs_int32 *isClone) = VOTE_MXSDEBUG;
+
+MXDebug          (OUT ubik_debug_new *db,
+                 OUT afs_int32 *isClone) = VOTE_MXDEBUG;
+
+Beacon		(IN afs_int32 state,
+		afs_int32 voteStart,
+		ubik_db_stateList *list) multi = VOTE_BEACON;
+
 /* This package handles calls used to pass writes, begins and ends to other servers */
 package DISK_
 statindex 12
 
 /* Opcodes for the Disk package interface calls */
-#define	DISK_BEGIN		20000
-#define	DISK_COMMIT		20001
-#define	DISK_LOCK		20002
-#define	DISK_WRITE		20003
-#define	DISK_GETVERSION		20004
-#define	DISK_GETFILE		20005
-#define	DISK_SENDFILE		20006
-#define	DISK_ABORT		20007
-#define	DISK_RELEASELOCKS	20008
-#define	DISK_TRUNCATE		20009
 #define	DISK_PROBE		20010
-#define	DISK_WRITEV		20011
 #define DISK_INTERFACEADDR	20012
-#define	DISK_SETVERSION		20013
+#define	DISK_BEGIN 		20014
+#define	DISK_COMMIT		20015
+#define	DISK_LOCK		20016
+#define	DISK_WRITE		20017
+#define	DISK_GETVERSION		20018
+#define	DISK_GETFILE		20019
+#define	DISK_SENDFILE		20020
+#define	DISK_ABORT		20021
+#define	DISK_RELEASELOCKS	20022
+#define	DISK_TRUNCATE		20023
+#define	DISK_WRITEV		20024
+#define	DISK_SETVERSION		20025
 
 /* Disk package interface calls - the order of
  * these declarations is important.
  */
-Begin		(IN ubik_tid *tid) = DISK_BEGIN;
 
-Commit		(IN ubik_tid *tid) = DISK_COMMIT;
+Probe		() multi = DISK_PROBE;
+
+UpdateInterfaceAddr(IN  UbikInterfaceAddr* inAddr,
+		    OUT UbikInterfaceAddr* outAddr) multi = DISK_INTERFACEADDR;
+
+Begin		(IN ubik_tid *tid, 
+		afs_int32 index) = DISK_BEGIN;
+
+Commit		(IN ubik_tid *tid,
+		afs_int32 index) = DISK_COMMIT;
 
 Lock		(IN ubik_tid *tid,
+		afs_int32 index,
 		afs_int32 file,
 		afs_int32 position,
 		afs_int32 length,
 		afs_int32 type) = DISK_LOCK;
 
 Write		(IN ubik_tid *tid,
+		afs_int32 index,
 		afs_int32 file,
 		afs_int32 position,
 		bulkdata *data) = DISK_WRITE;
 
-GetVersion	(OUT ubik_version *Version) = DISK_GETVERSION;
+GetVersion	(IN afs_int32 index,
+		OUT ubik_version *Version) = DISK_GETVERSION;
 
 GetFile		(IN afs_int32 file,
+		afs_int32 index,
 		OUT ubik_version *Version) split = DISK_GETFILE;
 
 SendFile	(IN afs_int32 file,
+		afs_int32 index,
 		afs_int32 length,
-		ubik_version *Version) split = DISK_SENDFILE	;
+		ubik_version *Version) split = DISK_SENDFILE;
 
-Abort		(IN ubik_tid *tid) = DISK_ABORT;
+Abort		(IN ubik_tid *tid,
+		afs_int32 index) = DISK_ABORT;
 
-ReleaseLocks	(IN ubik_tid *tid) = DISK_RELEASELOCKS;
+ReleaseLocks	(IN ubik_tid *tid,
+		afs_int32 index) = DISK_RELEASELOCKS;
 
 Truncate	(IN ubik_tid *tid,
+		afs_int32 index,
 		afs_int32 file,
 		afs_int32 length) = DISK_TRUNCATE;
 
-Probe		() multi = DISK_PROBE;
-
 WriteV		(IN ubik_tid *tid,
+		afs_int32 index,
 		iovec_wrt *io_vector,
                 iovec_buf *io_buffer) = DISK_WRITEV;
 
-UpdateInterfaceAddr(IN  UbikInterfaceAddr* inAddr,
-		    OUT UbikInterfaceAddr* outAddr) multi = DISK_INTERFACEADDR;
-
 SetVersion      (IN ubik_tid     *tid,
+		 IN afs_int32    index,
                  IN ubik_version *OldVersion,
                  IN ubik_version *NewVersion) = DISK_SETVERSION;

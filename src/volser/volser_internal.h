@@ -43,12 +43,12 @@ extern int UV_PartitionInfo64(afs_uint32 server, char *pname,
 			    struct diskPartition64 *partition);
 extern int UV_CreateVolume2(afs_uint32 aserver, afs_int32 apart, char *aname,
 			    afs_int32 aquota, afs_int32 aspare1,
-			    afs_int32 aspare2, afs_int32 aspare3,
-			    afs_int32 aspare4, afs_uint32 * anewid);
+			    afs_int32 aspare2, afs_int32 osdpolicy,
+			    afs_int32 filequota, afs_uint32 * anewid);
 extern int UV_CreateVolume3(afs_uint32 aserver, afs_int32 apart, char *aname,
 			    afs_int32 aquota, afs_int32 aspare1,
-			    afs_int32 aspare2, afs_int32 aspare3,
-			    afs_int32 aspare4, afs_uint32 * anewid,
+			    afs_int32 aspare2, afs_int32 osdpolicy,
+			    afs_int32 filequota, afs_uint32 * anewid,
 			    afs_uint32 * aroid, afs_uint32 * abkid);
 extern int UV_AddVLDBEntry(afs_uint32 aserver, afs_int32 apart, char *aname,
 			   afs_uint32 aid);

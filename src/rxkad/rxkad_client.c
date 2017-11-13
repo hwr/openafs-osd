@@ -64,7 +64,7 @@ static struct rx_securityOps rxkad_client_ops = {
     rxkad_DestroyConnection,
     rxkad_GetStats,
     0,
-    0,
+    rxkad_EncryptDecrypt,
     0,
 };
 

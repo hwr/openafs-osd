@@ -63,7 +63,7 @@ foreach $mf (@Makefiles) {
 
 
 $KDIR = "$vars{TOP_OBJDIR}/src/libafs/$KDIR";
-@libafs_objs = (split(' ', $vars{AFSAOBJS}), split(' ', $vars{AFSNFSOBJS}));
+@libafs_objs = (split(' ', $vars{AFSAOBJS}), split(' ', $vars{AFSNFSOBJS}), split(' ', $vars{AFSRXOSDOBJS}));
 @afspag_objs = (split(' ', $vars{AFSPAGOBJS}));
 
 $MV = new IO::File("$vars{TOP_OBJDIR}/src/config/Makefile.version", O_RDONLY)

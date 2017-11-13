@@ -178,6 +178,13 @@ struct partList {		/*used by the backup system */
 #define REL_FULLDUMPS   0x000002  /* force full dumps */
 #define REL_STAYUP      0x000004  /* dump to clones to avoid offline time */
 
+/* Values for DumpVolume flag */
+#define FORCEDUMP               1
+#define TARGETHASOSDSUPPORT     2
+#define FORCEMETADATA           4
+#define METADATADUMP            8
+#define INITIAL                 0x8000
+
 struct ubik_client;
 extern afs_uint32 vsu_GetVolumeID(char *astring, struct ubik_client *acstruct, afs_int32 *errp);
 extern int vsu_ExtractName(char rname[], char name[]);

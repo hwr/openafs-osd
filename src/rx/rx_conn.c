@@ -15,6 +15,7 @@
 
 #include "rx.h"
 #include "rx_conn.h"
+#include "rx_globals.h"
 
 afs_uint32
 rx_GetConnectionEpoch(struct rx_connection *conn) {
@@ -119,4 +120,32 @@ int
 rx_ConnError(struct rx_connection *conn)
 {
     return conn->error;
+}
+
+int
+rx_decryptRxosdCAP(afs_uint32 cid, afs_uint32 epoch, void *derivationConstant,
+                  struct rx_opaque *in, struct rx_opaque *out)
+{
+    afs_int32 i;
+    struct rx_connection *tc;
+    struct rx_securityClass *so;
+    i = CONN_HASH(0, 7000, cid, epoch, RX_SERVER_CONNECTION);
+    MUTEX_ENTER(&rx_connHashTable_lock);
+    for (tc = rx_connHashTable[i]; tc; tc = tc->next) {
+	if (tc->cid == cid && tc->epoch == epoch && tc->type == RX_SERVER_CONNECTION) {
+	    MUTEX_ENTER(&tc->conn_data_lock);
+	    MUTEX_EXIT(&rx_connHashTable_lock);
+	    so = rx_SecurityObjectOf(tc);
+	    if (!(so)->ops->op_EncryptDecrypt || tc->securityIndex != 2) {
+		MUTEX_EXIT(&tc->conn_data_lock);
+		return -2;
+	    }
+	    (*(so)->ops->op_EncryptDecrypt)(tc, derivationConstant, in, out,
+						rx_securityDecrypt);
+	    MUTEX_EXIT(&tc->conn_data_lock);
+	    return 0;
+	}
+    }
+    MUTEX_EXIT(&rx_connHashTable_lock);
+    return -1;
 }

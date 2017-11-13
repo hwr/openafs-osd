@@ -93,7 +93,14 @@ struct AFSFetchStatus {
     afs_uint32 UnixModeBits;
     afs_uint32 ParentVnode;
     afs_uint32 ParentUnique;
-    afs_uint32 ResidencyMask;
+    afs_uint32 ResidencyMask;	/* obsolete, was used once by MR-AFS */
+%#define FetchStatusProtocol ResidencyMask /* 1 == rx fileserver, 2 == rxosd ... */
+%#define               RX_FILESERVER  1 /* file in fileserver's /vicep partition */
+%#define               RX_OSD         2 /* file in object storage */
+%#define               VICEP_ACCESS   4 /* file's partition visible on client */
+%#define               PROTOCOL_MASK  0xffff
+%#define               POSSIBLY_OSD   0x10000 /* file location may change to OSD */
+%#define               RX_OSD_NOT_ONLINE 0x1000000 /* file in OSD, but on tape */
     afs_uint32 ClientModTime;
     afs_uint32 ServerModTime;
     afs_uint32 Group;
@@ -409,6 +416,9 @@ struct FsCmdOutputs {
 const FLUSHMAX = 10;
 typedef afs_int32 ViceIds<FLUSHMAX>;
 typedef	afs_int32 IPAddrs<FLUSHMAX>;
+
+/* prototype for pseudo-RPC call */
+%char *RXAFS_TranslateOpCode(afs_int32 code);
 
 package RXAFS_
 prefix S

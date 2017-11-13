@@ -475,6 +475,7 @@ struct afs_MeanStats {
     AFS_CS(afs_PutUser)		/* afs_resource.c */ \
     AFS_CS(afs_SetPrimary)	/* afs_resource.c */ \
     AFS_CS(CheckVLDB)		/* afs_resource.c */ \
+    AFS_CS(CheckRxosdServer) 	/* afs_resource.c */ \
     AFS_CS(afs_GetVolume)	/* afs_resource.c */ \
     AFS_CS(afs_GetVolumeByName)	/* afs_resource.c */ \
     AFS_CS(InstallVolumeEntry)	/* afs_resource.c */ \

@@ -75,12 +75,30 @@ unthread(struct ubik_trans *atrans)
  * \brief some debugging assistance
  */
 void
+udisk_Debug_new(afs_int32 *lockedPages, afs_int32 *writeLockedPages)
+{
+    struct buffer *tb;
+    int i;
+
+    *lockedPages = 0;
+    *writeLockedPages = 0;
+    tb = Buffers;
+    for (i = 0; i < nbuffers; i++, tb++) {
+	if (tb->lockers) {
+	    *lockedPages++;
+	    if (tb->dirty)
+	    *writeLockedPages++;
+	}
+    }
+}
+
+void
 udisk_Debug(struct ubik_debug *aparm)
 {
     struct buffer *tb;
     int i;
 
-    memcpy(&aparm->localVersion, &ubik_dbase->version,
+    memcpy(&aparm->localVersion, &ubik_dbase[0]->version,
 	   sizeof(struct ubik_version));
     aparm->lockedPages = 0;
     aparm->writeLockedPages = 0;
@@ -874,10 +892,11 @@ udisk_commit(struct ubik_trans *atrans)
 	dbase = atrans->dbase;
 
 	/* On the first write to the database. We update the versions */
-	if (ubeacon_AmSyncSite() && !(urecovery_state & UBIK_RECLABELDB)) {
+	if (ubeacon_AmSyncSite() 
+	  && !(urecovery_state[dbase->dbase_number] & UBIK_RECLABELDB)) {
 	    UBIK_VERSION_LOCK;
 	    oldversion = dbase->version;
-	    newversion.epoch = FT_ApproxTime();;
+	    newversion.epoch = version_globals.ubik_epochTime[dbase->dbase_number];
 	    newversion.counter = 1;
 
 	    code = (*dbase->setlabel) (dbase, 0, &newversion);
@@ -886,11 +905,10 @@ udisk_commit(struct ubik_trans *atrans)
 		return code;
 	    }
 
-	    version_globals.ubik_epochTime = newversion.epoch;
 	    dbase->version = newversion;
 	    UBIK_VERSION_UNLOCK;
 
-	    urecovery_state |= UBIK_RECLABELDB;
+	    urecovery_state[dbase->dbase_number] |= UBIK_RECLABELDB;
 
 	    /* Ignore the error here. If the call fails, the site is
 	     * marked down and when we detect it is up again, we will

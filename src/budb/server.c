@@ -47,6 +47,8 @@ afs_uint32 myHost = 0;
 int helpOption;
 static struct logOptions logopts;
 
+int haveAlwaysSyncSite = 0;
+
 /* server's global configuration information. This is exported to other
  * files/routines
  */

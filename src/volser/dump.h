@@ -23,6 +23,7 @@
 #define D_VOLUMEHEADER  2
 #define D_VNODE		3
 #define D_DUMPEND	4
+#define D_OSDMETADATA	5
 
 #define D_MAX		20
 
@@ -102,6 +103,7 @@ struct DumpHeader {
  *     't'     0x74    V_type
  *     'u'     0x75    V_uniquifier                    *
  *     'v'     0x76    V_stamp.version                 *
+ *     'y'     0x79    V_osdPolicy		       *
  *     126     0x7e    next tag critical               *
  */
 /*
@@ -111,6 +113,8 @@ struct DumpHeader {
  *     3       0x03    D_VNODE
  *     4       0x04    D_DUMPEND
  *     'A'     0x41    VVnodeDiskACL
+ *     'L'     0x41    vn_length_hi, length            *
+ *     'O'     0x4f    osd metadata string             *
  *     'a'     0x61    author                          *
  *     'b'     0x62    modeBits
  *     'f'     0x66    small file

@@ -66,7 +66,7 @@ struct ViceInodeInfo {
 #define VI_SMALLINDEX	2	/* The index of small vnodes */
 #define VI_LARGEINDEX	3	/* The index of large vnodes */
 #define VI_ACL		4	/* The volume's access control list */
-#define	VI_MOUNTTABLE	5	/* The volume's mount table */
+#define VI_OSDMETADATA	5	/* The volume's osd metadata file */
 #define VI_LINKTABLE	6	/* The volume's link counts */
 
 #endif /* _VICEINODE_H_ */

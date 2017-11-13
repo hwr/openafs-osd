@@ -133,7 +133,12 @@ LT_objs = \
 	token.xdr.lo \
 	token.lo \
 	xdr_mem.lo \
-	xdr_len.lo
+	xdr_len.lo \
+	afs_rxosd.lo \
+	rxosd.cs.lo \
+	rxosd.xdr.lo \
+	vicedosd.cs.lo \
+	vicedosd.xdr.lo
 
 INCLUDE=  -I. -I${ISYSROOT}/usr/include -I${TOP_OBJDIR}/src/config
 PERLUAFS = PERLUAFS
@@ -150,6 +155,7 @@ TOP_OBJ_AUTH = ${TOP_OBJDIR}/src/auth
 TOP_OBJ_FSINT = ${TOP_OBJDIR}/src/fsint
 TOP_OBJ_RXSTAT = ${TOP_OBJDIR}/src/rxstat
 TOP_OBJ_VLSERVER = ${TOP_OBJDIR}/src/vlserver
+TOP_OBJ_RXOSD = ${TOP_OBJDIR}/src/rxosd
 
 TOP_SRC_AFS = ${TOP_SRCDIR}/afs
 TOP_SRC_AUTH = ${TOP_SRCDIR}/auth
@@ -474,6 +480,16 @@ xdr_mem.lo: $(TOP_SRC_RX)/xdr_mem.c
 	$(LT_CCRULE) $(TOP_SRC_RX)/xdr_mem.c
 xdr_len.lo: $(TOP_SRC_RX)/xdr_len.c
 	$(LT_CCRULE) $(TOP_SRC_RX)/xdr_len.c
+afs_rxosd.lo: $(TOP_SRC_AFS)/afs_rxosd.c
+	$(LT_CCRULE) $(TOP_SRC_AFS)/afs_rxosd.c
+rxosd.cs.lo: $(TOP_OBJ_RXOSD)/rxosd.cs.c
+	$(LT_CCRULE) $(TOP_OBJ_RXOSD)/rxosd.cs.c
+rxosd.xdr.lo: $(TOP_OBJ_RXOSD)/rxosd.xdr.c
+	$(LT_CCRULE) $(TOP_OBJ_RXOSD)/rxosd.xdr.c
+vicedosd.cs.lo: $(TOP_OBJ_RXOSD)/vicedosd.cs.c
+	$(LT_CCRULE) $(TOP_OBJ_RXOSD)/vicedosd.cs.c
+vicedosd.xdr.lo: $(TOP_OBJ_RXOSD)/vicedosd.xdr.c
+	$(LT_CCRULE) $(TOP_OBJ_RXOSD)/vicedosd.xdr.c
 
 $(PERLUAFS)/ukernel.pm: $(PERLUAFS)/ukernel_swig_perl.c
 $(PERLUAFS)/ukernel_swig_perl.c: ${srcdir}/ukernel_swig.i

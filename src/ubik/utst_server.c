@@ -22,6 +22,8 @@
 #include "utst_int.h"
 
 
+int haveAlwaysSyncSite = 0;
+
 /*! \name useful globals */
 struct ubik_dbase *dbase;
 afs_int32 sleepTime;

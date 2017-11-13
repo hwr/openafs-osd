@@ -3483,6 +3483,7 @@ InvalidOperation(afs_int32 voloper)
 {
     if (voloper != VLOP_MOVE && voloper != VLOP_RELEASE
 	&& voloper != VLOP_BACKUP && voloper != VLOP_DELETE
+	&& voloper != VLOP_SALVAGE && voloper != VLOP_SPLIT
 	&& voloper != VLOP_DUMP)
 	return 1;
     return 0;

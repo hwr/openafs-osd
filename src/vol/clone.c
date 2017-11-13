@@ -33,12 +33,14 @@
 #include "nfs.h"
 #include "lwp.h"
 #include "lock.h"
+#include <afs/afssyscalls.h>
 #include "ihandle.h"
 #include "vnode.h"
 #include "volume.h"
 #include "partition.h"
 #include "viceinode.h"
 #include "vol_prototypes.h"
+#include "../rxosd/afsosd.h"
 #include "common.h"
 
 int (*vol_PollProc) (void) = 0;	/* someone must init this */
@@ -164,6 +166,7 @@ DoCloneIndex(Volume * rwvp, Volume * clvp, VnodeClass class, int reclone)
     afs_int32 dircloned, inodeinced;
     afs_int32 filecount = 0, diskused = 0;
     afs_ino_str_t stmp;
+    void *afsosdrock = NULL;
 
     struct VnodeClassInfo *vcp = &VnodeClassInfo[class];
     /*
@@ -173,9 +176,11 @@ DoCloneIndex(Volume * rwvp, Volume * clvp, VnodeClass class, int reclone)
      */
     int ReadWriteOriginal = 1;
 
-    /* Correct number of files in volume: this assumes indexes are always
-       cloned starting with vLarge */
-    if (ReadWriteOriginal && class != vLarge) {
+    /* Correct number of files and blocks in volume:
+       this assumes indexes are always cloned starting with vSmall.
+       With OSD support we do 1st the more critical part because if OSDs 
+       are down increment of the linkcount will fail */
+    if (ReadWriteOriginal && class != vSmall) {
 	filecount = V_filecount(rwvp);
 	diskused = V_diskused(rwvp);
     }
@@ -224,6 +229,18 @@ DoCloneIndex(Volume * rwvp, Volume * clvp, VnodeClass class, int reclone)
 	STREAM_ASEEK(clfilein, vcp->diskSize);	/* Will fail if no vnodes */
     }
 
+    /* We need to increment/decrement the link counts of the objects
+     * pointed to by the OSD metadata stored in the osd metadata special file.
+     * 1st loop just to handle osd-files 
+     */
+    if (class == vSmall && osdvol) {
+	code = (osdvol->op_clone_pre_loop)(rwvp, clvp, rwvnode, clvnode,
+					   rwfile, clfilein, vcp, reclone,
+					   &afsosdrock);
+	if (code)
+	    ERROR_EXIT(code);
+    }
+
     /* Read each vnode in the old volume's index file */
     for (offset = vcp->diskSize;
 	 STREAM_READ(rwvnode, vcp->diskSize, 1, rwfile) == 1;
@@ -243,7 +260,7 @@ DoCloneIndex(Volume * rwvp, Volume * clvp, VnodeClass class, int reclone)
 	if (rwvnode->type != vNull) {
 	    afs_fsize_t ll;
 
-	    if (rwvnode->vnodeMagic != vcp->magic)
+	    if (!osdvol && rwvnode->vnodeMagic != vcp->magic)
 		ERROR_EXIT(-1);
 	    rwinode = VNDISK_GET_INO(rwvnode);
 	    filecount++;
@@ -260,7 +277,7 @@ DoCloneIndex(Volume * rwvp, Volume * clvp, VnodeClass class, int reclone)
 			V_linkHandle(rwvp), PrintInode(stmp, rwinode),
 			afs_printable_VolumeId_lu(V_parentId(rwvp)), errno);
 		    VForceOffline(rwvp);
-		    ERROR_EXIT(EIO);
+		    goto clonefailed;
 		}
 		inodeinced = 1;
 	    }
@@ -302,10 +319,28 @@ DoCloneIndex(Volume * rwvp, Volume * clvp, VnodeClass class, int reclone)
 
 	/* Overwrite the vnode entry in the clone volume */
 	rwvnode->cloned = 0;
+	/*
+	 *  After we had incremented the link counts of the objects
+	 *  in (osdvol->op_clone_pre_loop)
+	 *  we now can safely copy the osd metadata to the clone volume.
+	 */
+	if (class == vSmall && osdvol) {
+	    struct VnodeDiskObject *tclvnode = NULL;
+	    if (reclone && !STREAM_EOF(clfilein))
+		tclvnode = clvnode;
+	    code = (osdvol->op_clone_metadata)(rwvp, clvp, offset, &afsosdrock,
+						vcp, rwvnode, tclvnode);
+	    if (code)
+		ERROR_EXIT(code);
+	}
+
 	code = STREAM_WRITE(rwvnode, vcp->diskSize, 1, clfileout);
 	if (code != 1) {
 	  clonefailed:
 	    /* Couldn't clone, go back and decrement the inode's link count */
+	    if (osdvol)
+		(osdvol->op_clone_undo_increments)(&afsosdrock,
+						(offset >> vcp->logSize) + vSmall);
 	    if (inodeinced) {
 		if (IH_DEC(V_linkHandle(rwvp), rwinode, V_parentId(rwvp)) ==
 		    -1) {
@@ -329,6 +364,14 @@ DoCloneIndex(Volume * rwvp, Volume * clvp, VnodeClass class, int reclone)
 	if (clinode) {
 	    ci_AddItem(&decHead, clinode);	/* just queue it */
 	}
+	if (class == vSmall && osdvol) {
+	    afs_uint32 vnodeNumber = offset >> (vcp->logSize -1);
+	    struct VnodeDiskObject *tclvnode = NULL;
+	    if (reclone && !STREAM_EOF(clfilein)) 
+		tclvnode = clvnode;
+	    if (tclvnode)
+		(osdvol->op_clone_free_metadata)(clvp, tclvnode, vnodeNumber);
+	}
 
 	DOPOLL;
     }
@@ -337,11 +380,16 @@ DoCloneIndex(Volume * rwvp, Volume * clvp, VnodeClass class, int reclone)
 
     /* Clean out any junk at end of clone file */
     if (reclone) {
+	afs_uint32 vnodeNumber = offset >> (vcp->logSize -1);
 	STREAM_ASEEK(clfilein, offset);
 	while (STREAM_READ(clvnode, vcp->diskSize, 1, clfilein) == 1) {
 	    if (clvnode->type != vNull && VNDISK_GET_INO(clvnode) != 0) {
 		ci_AddItem(&decHead, VNDISK_GET_INO(clvnode));
 	    }
+	    if (class == vSmall && osdvol)
+		(osdvol->op_clone_free_metadata)(clvp, clvnode, vnodeNumber);
+	    vnodeNumber++;
+	    vnodeNumber++;
 	    DOPOLL;
 	}
     }
@@ -402,6 +450,9 @@ DoCloneIndex(Volume * rwvp, Volume * clvp, VnodeClass class, int reclone)
 	error = code;
     ci_Destroy(&decHead);
 
+    if (osdvol) /* do the linkcount decrements and free memory */
+	(osdvol->op_clone_clean_up) (&afsosdrock);
+
     if (ReadWriteOriginal && filecount > 0)
 	V_filecount(rwvp) = filecount;
     if (ReadWriteOriginal && diskused > 0)
@@ -419,9 +470,10 @@ CloneVolume(Error * rerror, Volume * original, Volume * new, Volume * old)
     *rerror = 0;
     reclone = ((new == old) ? 1 : 0);
 
-    code = DoCloneIndex(original, new, vLarge, reclone);
-    if (code)
-	ERROR_EXIT(code);
+    /*
+     * We do the files first because they could be on object storage and 
+     * therefore it's more likely to have problems. 
+     */
     code = DoCloneIndex(original, new, vSmall, reclone);
     if (code)
 	ERROR_EXIT(code);
@@ -429,6 +481,9 @@ CloneVolume(Error * rerror, Volume * original, Volume * new, Volume * old)
 	Log("Clone %" AFS_VOLID_FMT ": filecount %d -> %d diskused %d -> %d\n",
 	    afs_printable_VolumeId_lu(V_id(original)), filecount,
 	    V_filecount(original), diskused, V_diskused(original));
+    code = DoCloneIndex(original, new, vLarge, reclone);
+    if (code)
+	ERROR_EXIT(code);
 
     code = CopyVolumeHeader(&V_disk(original), &V_disk(new));
     if (code)

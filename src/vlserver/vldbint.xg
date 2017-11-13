@@ -181,6 +181,8 @@ const VLOP_RELEASE     = 0x20;
 const VLOP_BACKUP      = 0x40;
 const VLOP_DELETE      = 0x80;
 const VLOP_DUMP        = 0x100;
+const VLOP_SALVAGE     = 0x200;
+const VLOP_SPLIT       = 0x400;
 
 /*
  * Additional VLOP_xxxx constants cannot be added without breaking
@@ -190,7 +192,7 @@ const VLOP_DUMP        = 0x100;
 %#define VLOP_ADDSITE   VLOP_DELETE
 %#define VLOP_RESTORE   VLOP_DUMP
 
-%#define VLOP_ALLOPERS ( VLOP_MOVE | VLOP_RELEASE | VLOP_BACKUP | VLOP_DELETE | VLOP_DUMP)
+%#define VLOP_ALLOPERS ( VLOP_MOVE | VLOP_RELEASE | VLOP_BACKUP | VLOP_DELETE | VLOP_DUMP | VLOP_SALVAGE | VLOP_SPLIT)
 
 /* defines for convenience of vl users */
 %#define	VLF_RWEXISTS	    0x1000  /* flags for whole vldb entry */

@@ -155,6 +155,7 @@ int restrict_anonymous = 0;
 int rxMaxMTU = -1;
 int rxBind = 0;
 int rxkadDisableDotCheck = 0;
+int haveAlwaysSyncSite = 0;
 
 #define ADDRSPERSITE 16         /* Same global is in rx/rx_user.c */
 afs_uint32 SHostAddrs[ADDRSPERSITE];

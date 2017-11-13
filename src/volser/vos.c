@@ -107,6 +107,7 @@ cmd_AddParmAtOffset(ts, COMMONPARM_OFFSET_CONFIG, \
 int rxInitDone = 0;
 extern struct ubik_client *cstruct;
 const char *confdir;
+int libafsosd_loaded = 0;
 
 static struct tqHead busyHead, notokHead;
 
@@ -555,13 +556,30 @@ DisplayFormat(volintInfo *pntr, afs_uint32 server, afs_int32 part,
 		fprintf(STDOUT, "**needs salvage**");
 	    fprintf(STDOUT, "\n");
 	    MapPartIdIntoName(part, pname);
-	    fprintf(STDOUT, "    %s %s \n", hostutil_GetNameByINet(server),
-		    pname);
+	    if (libafsosd_loaded) {
+		char serverAndPartition[60];
+		sprintf((char *)&serverAndPartition, "%s %s",
+			hostutil_GetNameByINet(server), pname);
+		fprintf(STDOUT,"    %-45s %7d files\n",
+			serverAndPartition, pntr->filecount);
+	    } else
+	        fprintf(STDOUT, "    %s %s \n", hostutil_GetNameByINet(server),
+		        pname);
 	    fprintf(STDOUT, "    RWrite %10lu ROnly %10lu Backup %10lu \n",
 		    (unsigned long)pntr->parentID,
 		    (unsigned long)pntr->cloneID,
 		    (unsigned long)pntr->backupID);
-	    fprintf(STDOUT, "    MaxQuota %10d K \n", pntr->maxquota);
+	    fprintf(STDOUT, "    MaxQuota %10d K", pntr->maxquota);
+
+	    /* when running whith libafsosd these fields could be filled */
+	    if (pntr->osdPolicy)
+		fprintf(STDOUT,", osd policy %4d", pntr->osdPolicy);
+	    else
+		fprintf(STDOUT,"                 ");
+	    if (pntr->filequota>0)
+		fprintf(STDOUT," %14d files", pntr->filequota);
+	    fprintf(STDOUT, "\n");
+
 	    t = pntr->creationDate;
 	    fprintf(STDOUT, "    Creation    %s",
 		    ctime(&t));
@@ -1162,16 +1180,15 @@ DisplayFormat2(long server, long partition, volintInfo *pntr)
 	    afs_printable_uint32_lu(pntr->flags));
     fprintf(STDOUT, "diskused\t%u\n", pntr->size);
     fprintf(STDOUT, "maxquota\t%u\n", pntr->maxquota);
-    fprintf(STDOUT, "minquota\t%lu\t(Optional)\n",
-	    afs_printable_uint32_lu(pntr->spare0));
+    fprintf(STDOUT, "osdPolicy\t%u\n", pntr->osdPolicy);
     fprintf(STDOUT, "filecount\t%u\n", pntr->filecount);
     fprintf(STDOUT, "dayUse\t\t%u\n", pntr->dayUse);
     fprintf(STDOUT, "weekUse\t\t%lu\t(Optional)\n",
 	    afs_printable_uint32_lu(pntr->spare1));
     fprintf(STDOUT, "spare2\t\t%lu\t(Optional)\n",
 	    afs_printable_uint32_lu(pntr->spare2));
-    fprintf(STDOUT, "spare3\t\t%lu\t(Optional)\n",
-	    afs_printable_uint32_lu(pntr->spare3));
+    fprintf(STDOUT, "filequota\t\t%lu\t(Optional)\n",
+	    afs_printable_uint32_lu(pntr->filequota));
     return;
 }
 
@@ -1808,6 +1825,27 @@ SetFields(struct cmd_syndesc *as, void *arock)
 	have_field = 1;
 	info.spare2 = 0;
     }
+    if (libafsosd_loaded) {
+	if (as->parms[4].items) {
+	    /* -filequota  */
+	    code = util_GetUInt32(as->parms[4].items->data, &info.filequota);
+	    if (code) {
+		fprintf(STDERR, "invalid filequota value\n");
+		return code;
+	    }
+	    have_field = 1;
+	}
+	if (as->parms[5].items) {
+	    /* -osdpolicy */
+	    code = util_GetUInt32(as->parms[5].items->data, &info.osdPolicy);
+	    if (code) {
+		fprintf(STDERR, "invalid osdPolicy value \"%s\"\n",
+			as->parms[5].items->data);
+		return code;
+	    }
+	    have_field = 1;
+	}
+    }
     if (!have_field) {
 	fprintf(STDERR,"Nothing to set.\n");
 	return (1);
@@ -1964,6 +2002,8 @@ CreateVolume(struct cmd_syndesc *as, void *arock)
     afs_int32 vcode;
     afs_int32 quota;
     afs_uint32 tserver;
+    afs_uint32 osdpolicy = 0;
+    afs_uint32 filequota = 0;
 
     arovolid = &rovolid;
 
@@ -2053,10 +2093,38 @@ CreateVolume(struct cmd_syndesc *as, void *arock)
 	    arovolid = NULL;
 	}
     }
+    if (libafsosd_loaded) {
+	/* -filequota */
+	if (as->parms[6].items) {
+	    if (!IsNumeric(as->parms[6].items->data)) {
+		fprintf(STDERR, "vos: initial filequota %s must be numeric.\n",
+			as->parms[6].items->data);
+		return EINVAL;
+	    }
+	    code = util_GetUInt32(as->parms[6].items->data, &filequota);
+	    if (code) {
+		fprintf(STDERR, "vos: bad integer specified for quota.\n");
+		return code;
+	    }
+	}
+	/* -osdpolicy */
+	if (as->parms[7].items) {
+	    if (!IsNumeric(as->parms[7].items->data)) {
+		fprintf(STDERR, "vos: osd policy %s should be numeric.\n",
+			as->parms[7].items->data);
+		return EINVAL;
+	    }
+	    code = util_GetUInt32(as->parms[7].items->data, &osdpolicy);
+	    if (code) {
+		fprintf(STDERR, "vos: bad integer specified for osd policy.\n");
+		return code;
+	    }
+	}
+    }
 
     code =
 	UV_CreateVolume3(tserver, pnum, as->parms[2].items->data, quota, 0,
-			 0, 0, 0, &volid, arovolid, &bkvolid);
+			 0, osdpolicy, filequota, &volid, arovolid, &bkvolid);
     if (code) {
 	PrintDiagnostics("create", code);
 	return code;
@@ -6015,6 +6083,27 @@ main(int argc, char **argv)
 
     cmd_SetBeforeProc(MyBeforeProc, NULL);
 
+#ifdef AFS_PTHREAD_ENV
+    {
+	extern int load_libcafsosd(const char *, void *, void *);
+	afs_int32 LogLevel = 0;
+	struct vos_data {
+	    struct ubik_client **aCstruct;
+	    afs_int32 *aLogLevel;
+	    int *verbose;
+	    int *noresolve;
+	    int *rx_connDeadTime;
+	} vos_data;
+	vos_data.aCstruct = &cstruct;
+	vos_data.aLogLevel = &LogLevel;
+	vos_data.verbose = &verbose;
+	vos_data.noresolve = &noresolve;
+	vos_data.rx_connDeadTime = &rx_connDeadTime;
+	code = load_libcafsosd("init_voscmd_afsosd", &vos_data, NULL);
+	if (!code)
+	    libafsosd_loaded = 1;
+    }
+#endif
     ts = cmd_CreateSyntax("create", CreateVolume, NULL, 0, "create a new volume");
     cmd_AddParm(ts, "-server", CMD_SINGLE, 0, "machine name");
     cmd_AddParm(ts, "-partition", CMD_SINGLE, 0, "partition name");
@@ -6026,6 +6115,10 @@ main(int argc, char **argv)
 #ifdef notdef
     cmd_AddParm(ts, "-minquota", CMD_SINGLE, CMD_OPTIONAL, "");
 #endif
+    if (libafsosd_loaded) {
+	cmd_AddParm(ts, "-filequota", CMD_SINGLE, CMD_OPTIONAL, "file quota");
+	cmd_AddParm(ts, "-osdpolicy", CMD_SINGLE, CMD_OPTIONAL, "osd policy");
+    }
     COMMONPARMS;
 
     ts = cmd_CreateSyntax("remove", DeleteVolume, NULL, 0, "delete a volume");
@@ -6238,6 +6331,10 @@ main(int argc, char **argv)
     cmd_AddParm(ts, "-maxquota", CMD_SINGLE, CMD_OPTIONAL, "quota (KB)");
     cmd_AddParm(ts, "-clearuse", CMD_FLAG, CMD_OPTIONAL, "clear dayUse");
     cmd_AddParm(ts, "-clearVolUpCounter", CMD_FLAG, CMD_OPTIONAL, "clear volUpdateCounter");
+    if (libafsosd_loaded) {
+	cmd_AddParm(ts, "-filequota", CMD_SINGLE, CMD_OPTIONAL, "file quota");
+	cmd_AddParm(ts, "-osdpolicy", CMD_SINGLE, CMD_OPTIONAL, "osd policy");
+    }
     COMMONPARMS;
 
     ts = cmd_CreateSyntax("offline", volOffline, NULL, 0, "force the volume status to offline");

@@ -168,11 +168,11 @@ ubik_Read(struct ubik_trans *tt, void *buf, afs_int32 len)
 
 /* Global declarations from ubik.c */
 afs_int32 ubik_quorum = 0;
-struct ubik_dbase *ubik_dbase = 0;
+struct ubik_dbase *ubik_dbase[MAX_UBIK_DBASES] = {NULL, NULL, NULL, NULL};
 struct ubik_stats ubik_stats;
 afs_uint32 ubik_host[UBIK_MAX_INTERFACE_ADDR];
-afs_int32 ubik_epochTime = 0;
-afs_int32 urecovery_state = 0;
+afs_int32 ubik_epochTime[MAX_UBIK_DBASES] = {0, 0, 0, 0};
+afs_int32 urecovery_state[MAX_UBIK_DBASES] = {0, 0, 0, 0};
 
 struct rx_securityClass *ubik_sc[3];
 

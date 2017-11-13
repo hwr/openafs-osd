@@ -41,13 +41,19 @@
 
 #include "vlserver.h"
 #include "vlserver_internal.h"
+#ifdef AFS_PTHREAD_ENV
+#include "../rxosd/afsosd.h"
+struct osddb_ops_v0 *osddb = NULL;
+#define OSDDB_SERVICE_ID 13
+#define OSDDB_SERVER_OLDPORT htons(7012)
+#endif
 
 #define MAXLWP 64
 struct afsconf_dir *vldb_confdir = 0;	/* vldb configuration dir */
 int lwps = 9;
 
 struct vldstats dynamic_statistics;
-struct ubik_dbase *VL_dbase;
+struct ubik_dbase *VL_dbase, *OSD_dbase;
 afs_uint32 rd_HostAddress[MAXSERVERID + 1];
 afs_uint32 wr_HostAddress[MAXSERVERID + 1];
 
@@ -58,6 +64,10 @@ int rxJumbograms = 0;		/* default is to not send and receive jumbo grams */
 int rxMaxMTU = -1;
 afs_int32 rxBind = 0;
 int rxkadDisableDotCheck = 0;
+#ifdef AFS_PTHREAD_ENV
+int libafsosd = 0;
+#endif
+int haveAlwaysSyncSite = 0;
 
 #define ADDRSPERSITE 16         /* Same global is in rx/rx_user.c */
 afs_uint32 SHostAddrs[ADDRSPERSITE];
@@ -149,6 +159,9 @@ enum optionsList {
 #ifdef HAVE_SYSLOG
     OPT_syslog,
 #endif
+#ifdef AFS_PTHREAD_ENV
+    OPT_libafsosd,
+#endif
     OPT_peer,
     OPT_process,
     OPT_nojumbo,
@@ -158,7 +171,8 @@ enum optionsList {
     OPT_trace,
     OPT_dotted,
     OPT_restricted_query,
-    OPT_transarc_logs
+    OPT_transarc_logs,
+    OPT_haveAlwaysSyncSite
 };
 
 int
@@ -252,6 +266,12 @@ main(int argc, char **argv)
     cmd_AddParmAtOffset(opts, OPT_syslog, "-syslog", CMD_SINGLE_OR_FLAG,
 		        CMD_OPTIONAL, "log to syslog");
 #endif
+#ifdef AFS_PTHREAD_ENV
+    cmd_AddParmAtOffset(opts, OPT_libafsosd, "-libafsosd", CMD_SINGLE_OR_FLAG,
+			CMD_OPTIONAL, "host also OSD database");
+#endif
+    cmd_AddParmAtOffset(opts, OPT_haveAlwaysSyncSite, "-haveAlwaysSyncSite", CMD_SINGLE_OR_FLAG,
+			CMD_OPTIONAL, "have always a sync site even if all other servers are down");
     cmd_AddParmAtOffset(opts, OPT_transarc_logs, "-transarc-logs", CMD_FLAG,
 			CMD_OPTIONAL, "enable Transarc style logging");
 
@@ -351,6 +371,14 @@ main(int argc, char **argv)
 	    cmd_OptionAsString(opts, OPT_logfile, (char**)&logopts.lopt_filename);
 	else
 	    logopts.lopt_filename = AFSDIR_SERVER_VLOG_FILEPATH;
+    }
+#ifdef AFS_PTHREAD_ENV
+    if (cmd_OptionPresent(opts, OPT_libafsosd)) {
+	libafsosd = 1;
+    }
+#endif
+    if (cmd_OptionPresent(opts, OPT_haveAlwaysSyncSite)) {
+	haveAlwaysSyncSite = 1;
     }
 
 
@@ -485,6 +513,10 @@ main(int argc, char **argv)
     rx_SetRxDeadTime(50);
 
     ubik_nBuffers = 512;
+#ifdef AFS_PTHREAD_ENV
+    if (libafsosd)
+	ubik_nBuffers = 1024;  /* doubled because of second database service */
+#endif
     ubik_SetClientSecurityProcs(afsconf_ClientAuth, afsconf_UpToDate, tdir);
     ubik_SetServerSecurityProcs(afsconf_BuildServerSecurityObjects,
 				afsconf_CheckAuth, tdir);
@@ -497,6 +529,46 @@ main(int argc, char **argv)
 	VLog(0, ("vlserver: Ubik init failed: %s\n", afs_error_message(code)));
 	exit(2);
     }
+
+#ifdef AFS_PTHREAD_ENV
+     if (libafsosd) {
+	struct vol_data_v0 voldata = {
+	    &vldb_confdir,
+	    &LogLevel,
+	    NULL,
+	    NULL,
+	    NULL,
+	    NULL
+	};
+	struct init_osddb_inputs input = {
+	    &voldata,
+	    &OSD_dbase
+	};
+	struct init_osddb_outputs output = {
+	    &osddb
+	};
+	char *osd_dbaseName;
+	ConstructLocalPath("osddb", AFSDIR_SERVER_DB_DIRPATH, (char **)&osd_dbaseName);
+
+	code = ubik_ServerInitByInfoN(myHost, 0, 1 /* index */, &info, clones,
+				      osd_dbaseName, &OSD_dbase);
+	if (code) {
+	    VLog(0,
+		("vlserver: Ubik init failed for OSDDB: %s, continuing without OSDDB\n",
+			afs_error_message(code)));
+	    libafsosd = 0;
+	}
+	if (OSD_dbase) {
+	    code = load_libafsosd("init_osddbserver", &input, &output);
+	    if (code) {
+		VLog(0, ("Loading libafsosd.so failed with code %d, continuing without OSDDB\n",
+			code));
+		libafsosd = 0;  /* Continue as vlserver without OSDDB */
+	    }
+	}
+    }
+#endif
+		
 
     memset(rd_HostAddress, 0, sizeof(rd_HostAddress));
     memset(wr_HostAddress, 0, sizeof(wr_HostAddress));
@@ -532,6 +604,27 @@ main(int argc, char **argv)
     }
     rx_SetMinProcs(tservice, 2);
     rx_SetMaxProcs(tservice, 4);
+
+#ifdef AFS_PTHREAD_ENV
+    if (libafsosd) {
+	tservice =
+	    rx_NewServiceHost(host, 0, OSDDB_SERVICE_ID, "osddb server",
+				securityClasses, numClasses,
+				(osddb->op_OSDDB_ExecuteRequest));
+	if (!tservice)
+	    VLog(0, ("vlserver: Could not create OSDDB service, continuing without ...\n"));
+	rx_SetMinProcs(tservice, 2);
+	rx_SetMaxProcs(tservice, 4);
+	tservice =
+	    rx_NewServiceHost(host, OSDDB_SERVER_OLDPORT, OSDDB_SERVICE_ID,
+				"osddb server", securityClasses, numClasses,
+				(osddb->op_OSDDB_ExecuteRequest));
+	if (!tservice)
+	    printf("vlserver: Could not create OSDDB service on port %d, continuing without ...\n", ntohs(OSDDB_SERVER_OLDPORT));
+	rx_SetMinProcs(tservice, 2);
+	rx_SetMaxProcs(tservice, 4);
+    }
+#endif
 
     LogCommandLine(argc, argv, "vlserver", VldbVersion, "Starting AFS", FSLog);
     if (afsconf_GetLatestKey(tdir, NULL, NULL) == 0) {

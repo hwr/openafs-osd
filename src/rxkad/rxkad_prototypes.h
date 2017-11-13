@@ -131,6 +131,10 @@ extern afs_int32 rxkad_SetConfiguration(struct rx_securityClass *aobj,
                                         struct rx_connection *aconn,
                                         rx_securityConfigVariables atype,
                                         void * avalue, void **aresult);
+extern afs_int32 rxkad_EncryptDecrypt(struct rx_connection *conn,
+				      void *derivationConstant,
+				      struct rx_opaque *in, struct rx_opaque *out,
+				      rx_securityEncryptMode encrypt);
 
 /* ticket.c */
 extern int tkt_DecodeTicket(char *asecret, afs_int32 ticketLen,

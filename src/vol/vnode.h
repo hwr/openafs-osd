@@ -28,8 +28,25 @@ typedef struct ViceLock {
     int lockTime;
 } ViceLock;
 
-#define ViceLockCheckLocked(vptr) ((vptr)->lockTime == 0)
-#define ViceLockClear(vptr) ((vptr)->lockCount = (vptr)->lockTime = 0)
+/**
+ * Return non-zero if unlocked.
+ */
+static_inline int
+ViceLockCheckLocked(struct ViceLock *vptr)
+{
+    return (vptr->lockTime == 0);
+}
+
+/**
+ * Clear the lock.
+ */
+static_inline int
+ViceLockClear(struct ViceLock *vptr)
+{
+    vptr->lockCount = 0;
+    vptr->lockTime = 0;
+    return 0;
+}
 
 #define ROOTVNODE 1
 
@@ -67,15 +84,68 @@ struct VnodeClassInfo {
 
 extern struct VnodeClassInfo VnodeClassInfo[nVNODECLASSES];
 
-#define vnodeTypeToClass(type)  ((type) == vDirectory? vLarge: vSmall)
-#define vnodeIdToClass(vnodeId) ((vnodeId-1)&VNODECLASSMASK)
-#define vnodeIdToBitNumber(v) (((v)-1)>>VNODECLASSWIDTH)
-/* The following calculation allows for a header record at the beginning
-   of the index.  The header record is the same size as a vnode */
-#define vnodeIndexOffset(vcp,vnodeNumber) \
-    ((vnodeIdToBitNumber(vnodeNumber)+1)<<(vcp)->logSize)
-#define bitNumberToVnodeNumber(b,class) ((VnodeId)(((b)<<VNODECLASSWIDTH)+(class)+1))
-#define vnodeIsDirectory(vnodeNumber) (vnodeIdToClass(vnodeNumber) == vLarge)
+/**
+ * Return the vnode class (large or small) of this vnode type.
+ */
+static_inline VnodeClass
+vnodeTypeToClass(VnodeType vnodeType)
+{
+    return (vnodeType == vDirectory ? vLarge : vSmall);
+}
+
+/**
+ * Return the vnode type of this vnode number.
+ */
+static_inline VnodeClass
+vnodeIdToClass(VnodeId vnodeNumber)
+{
+    return ((vnodeNumber - 1) & VNODECLASSMASK);
+}
+
+/**
+ * Return the vnode index of this vnode number.
+ */
+static_inline afs_uint32
+vnodeIdToBitNumber(VnodeId vnodeNumber)
+{
+    return ((vnodeNumber - 1) >> VNODECLASSWIDTH);
+}
+
+/**
+ * Return the index file offset of this vnode class and number.
+ *
+ * The following calculation allows for a header record at the beginning of
+ * the index.  The header record is the same size as a vnode.
+ */
+static_inline afs_foff_t
+vnodeIndexOffset(struct VnodeClassInfo* vcp, VnodeId vnodeNumber)
+{
+    return (((afs_foff_t)(vnodeIdToBitNumber(vnodeNumber) + 1)) << vcp->logSize);
+}
+
+/**
+ * Return the vnode number of this vnode index.
+ */
+static_inline VnodeId
+bitNumberToVnodeNumber(afs_uint32 bitNumber, VnodeClass vnodeClass)
+{
+    return ((((VnodeId)bitNumber) << VNODECLASSWIDTH) + vnodeClass + 1);
+}
+
+/**
+ * Return non-zero if this vnode number is a directory.
+ */
+static_inline int
+vnodeIsDirectory(VnodeId vnodeNumber)
+{
+    return (vnodeIdToClass(vnodeNumber) == vLarge);
+}
+
+
+struct OsdMetadata {
+    unsigned int    osdOnline:1;
+    unsigned int    osdIndex:31;
+};
 
 typedef struct VnodeDiskObject {
     unsigned int type:3;	/* Vnode is file, directory, symbolic link
@@ -97,8 +167,15 @@ typedef struct VnodeDiskObject {
     UserId author;		/* Userid of the last user storing the file */
     UserId owner;		/* Userid of the user who created the file */
     VnodeId parent;		/* Parent directory vnode */
-    bit32 vnodeMagic;		/* Magic number--mainly for file server
+    union {
+	struct OsdMetadata o;
+	bit32 vnodeMagic;	/* Magic number--mainly for file server
 				 * paranoia checks */
+    } u;
+#   define	osdMetadataIndex 	u.o.osdIndex
+#   define	osdFileOnline		u.o.osdOnline
+#   define	vnodeMagic		u.vnodeMagic
+#   define      osdPolicyIndex          osdMetadataIndex
 #   define	  SMALLVNODEMAGIC	0xda8c041F
 #   define	  LARGEVNODEMAGIC	0xad8765fe
     /* Vnode magic can be removed, someday, if we run need the room.  Simply
@@ -143,6 +220,9 @@ typedef enum {
     VN_STATE_READ               = 8,    /**< a non-zero number of threads are executing
 					 *   code external to the vnode package which
 					 *   requires shared access */
+    VN_STATE_SHARED		= 9,	/**< something external to the vnode package
+					 *   has write access to this vnode while
+					 *   other threads may get read access */
     VN_STATE_ERROR              = 10,   /**< vnode hard error state */
     VN_STATE_COUNT
 } VnState;
@@ -287,5 +367,7 @@ extern void AddToVnLRU(struct VnodeClassInfo * vcp, Vnode * vnp);
 extern void DeleteFromVnLRU(struct VnodeClassInfo * vcp, Vnode * vnp);
 extern void AddToVnHash(Vnode * vnp);
 extern void DeleteFromVnHash(Vnode * vnp);
+extern afs_int32 ListDiskVnode(struct Volume *vp, afs_uint32 vnodeNumber,
+                        afs_uint32 **ptr, afs_uint32 length, char *aclbuf);
 
 #endif /* _AFS_VOL_VNODE_H */

@@ -1,7 +1,7 @@
 /*
  * Copyright 2007-2008, Sine Nomine Associates and others.
  * All Rights Reserved.
- *
+ * 
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -11,137 +11,6 @@
 #define _AFS_VOL_VNODE_INLINE_H 1
 
 #include "vnode.h"
-
-/***************************************************/
-/* demand attach vnode state machine routines      */
-/***************************************************/
-
-/**
- * get a reference to a vnode object.
- *
- * @param[in] vnp  vnode object pointer
- *
- * @internal vnode package internal use only
- *
- * @pre VOL_LOCK must be held
- *
- * @post vnode refcount incremented
- *
- * @see VnCancelReservation_r
- */
-static_inline void
-VnCreateReservation_r(Vnode * vnp)
-{
-    Vn_refcount(vnp)++;
-    if (Vn_refcount(vnp) == 1) {
-	DeleteFromVnLRU(Vn_class(vnp), vnp);
-    }
-}
-
-extern int TrustVnodeCacheEntry;
-
-/**
- * release a reference to a vnode object.
- *
- * @param[in] vnp  vnode object pointer
- *
- * @pre VOL_LOCK held
- *
- * @post refcount decremented; possibly re-added to vn lru
- *
- * @internal vnode package internal use only
- *
- * @see VnCreateReservation_r
- */
-static_inline void
-VnCancelReservation_r(Vnode * vnp)
-{
-    if (--Vn_refcount(vnp) == 0) {
-	AddToVnLRU(Vn_class(vnp), vnp);
-
-	/* If caching is turned off,
-	 * disassociate vnode cache entry from volume object */
-	if (!TrustVnodeCacheEntry) {
-	    DeleteFromVVnList(vnp);
-	}
-    }
-}
-
-#ifdef AFS_PTHREAD_ENV
-#define VN_SET_WRITER_THREAD_ID(v)  (((v)->writer) = pthread_self())
-#else
-#define VN_SET_WRITER_THREAD_ID(v)  (LWP_CurrentProcess(&((v)->writer)))
-#endif
-
-#define VOL_LOCK_NOT_HELD 0
-#define VOL_LOCK_HELD 1
-#define MIGHT_DEADLOCK 0
-#define WILL_NOT_DEADLOCK 1
-
-/**
- * acquire a lock on a vnode object.
- *
- * @param[in] vnp   vnode object pointer
- * @param[in] type  lock type
- * @param[in] held  whether or not vol glock is held
- * @param[in] safe  whether it it is safe to acquire without dropping vol glock
- *
- * @note caller must guarantee deadlock will not occur
- *
- * @post lock acquired.
- *       for write case, thread owner field set.
- *
- * @note for DAFS, this is a no-op
- *
- * @internal vnode package internal use only
- */
-static_inline void
-VnLock(Vnode * vnp, int type, int held, int safe)
-{
-#ifdef AFS_DEMAND_ATTACH_FS
-    if (type == WRITE_LOCK) {
-	VN_SET_WRITER_THREAD_ID(vnp);
-    }
-#else /* !AFS_DEMAND_ATTACH_FS */
-    if (held && !safe) {
-	VOL_UNLOCK;
-    }
-    if (type == READ_LOCK) {
-	ObtainReadLock(&vnp->lock);
-    } else {
-	ObtainWriteLock(&vnp->lock);
-	VN_SET_WRITER_THREAD_ID(vnp);
-    }
-    if (held && !safe) {
-	VOL_LOCK;
-    }
-#endif /* !AFS_DEMAND_ATTACH_FS */
-}
-
-/**
- * release a lock on a vnode object.
- *
- * @param[in] vnp   vnode object pointer
- * @param[in] type  lock type
- *
- * @note for DAFS, this is a no-op
- *
- * @internal vnode package internal use only
- */
-static_inline void
-VnUnlock(Vnode * vnp, int type)
-{
-    if (type == READ_LOCK) {
-#ifndef AFS_DEMAND_ATTACH_FS
-	ReleaseReadLock(&vnp->lock);
-#endif
-    } else {
-	vnp->writer = 0;
-#ifndef AFS_DEMAND_ATTACH_FS
-	ReleaseWriteLock(&vnp->lock);
-#endif
-    }
-}
 
 
 #ifdef AFS_DEMAND_ATTACH_FS
@@ -195,7 +64,36 @@ VnIsExclusiveState(VnState state)
     case VN_STATE_EXCLUSIVE:
     case VN_STATE_STORE:
 	return 1;
-    default:
+    default: 
+	return 0;
+    }
+}
+
+/**
+ * tells caller whether or not the current state requires
+ * exclusive access without holding glock.
+ *
+ * @param[in] state  vnode state enumeration
+ *
+ * @return whether vnode state is a mutually exclusive state
+ *   @retval 0  no, state is re-entrant
+ *   @retval 1  yes, state is mutually exclusive
+ *
+ * @note DEMAND_ATTACH_FS only
+ */
+static_inline int
+VnIsExclusiveOrSharedState(VnState state)
+{
+    switch (state) {
+    case VN_STATE_RELEASING:
+    case VN_STATE_CLOSING:
+    case VN_STATE_ALLOC:
+    case VN_STATE_LOAD:
+    case VN_STATE_EXCLUSIVE:
+    case VN_STATE_SHARED:
+    case VN_STATE_STORE:
+	return 1;
+    default: 
 	return 0;
     }
 }
@@ -236,7 +134,7 @@ VnIsErrorState(VnState state)
 static_inline int
 VnIsValidState(VnState state)
 {
-    if (((int) state >= 0) &&
+    if (((int) state >= 0) && 
 	(state < VN_STATE_COUNT)) {
 	return 1;
     }
@@ -302,12 +200,34 @@ static_inline void
 VnWaitQuiescent_r(Vnode * vnp)
 {
     opr_Assert(Vn_refcount(vnp));
-    while (VnIsExclusiveState(Vn_state(vnp)) ||
+    while (VnIsExclusiveOrSharedState(Vn_state(vnp)) ||
 	   Vn_readers(vnp)) {
 	VOL_CV_WAIT(&Vn_stateCV(vnp));
     }
     opr_Assert(!(Vn_stateFlags(vnp) & VN_ON_LRU));
 }
+
+/**
+ * wait until vnode is in non-exclusive state.
+ *
+ * @param[in] vnp  vnode object pointer
+ *
+ * @pre VOL_LOCK held; ref held on vnode
+ *
+ * @post VOL_LOCK held; vnode is in non-exclusive state and has no active readers
+ *
+ * @note DEMAND_ATTACH_FS only
+ */
+static_inline void
+VnWaitOtherWriter_r(Vnode * vnp)
+{
+    opr_Assert(Vn_refcount(vnp));
+    while (VnIsExclusiveOrSharedState(Vn_state(vnp))) {
+	VOL_CV_WAIT(&Vn_stateCV(vnp));
+    }
+    opr_Assert(!(Vn_stateFlags(vnp) & VN_ON_LRU));
+}
+
 
 /**
  * register a new reader on a vnode.
@@ -329,11 +249,12 @@ static_inline void
 VnBeginRead_r(Vnode * vnp)
 {
     if (!Vn_readers(vnp)) {
-	opr_Assert(Vn_state(vnp) == VN_STATE_ONLINE);
-	VnChangeState_r(vnp, VN_STATE_READ);
+	opr_Assert(Vn_state(vnp) == VN_STATE_ONLINE || Vn_state(vnp) == VN_STATE_SHARED);
+	if (Vn_state(vnp) == VN_STATE_ONLINE)
+	    VnChangeState_r(vnp, VN_STATE_READ);
     }
     Vn_readers(vnp)++;
-    opr_Assert(Vn_state(vnp) == VN_STATE_READ);
+    opr_Assert(Vn_state(vnp) == VN_STATE_READ || Vn_state(vnp) == VN_STATE_SHARED);
 }
 
 /**
@@ -365,5 +286,149 @@ VnEndRead_r(Vnode * vnp)
 }
 
 #endif /* AFS_DEMAND_ATTACH_FS */
+
+/***************************************************/
+/* demand attach vnode state machine routines      */
+/***************************************************/
+
+/**
+ * get a reference to a vnode object.
+ *
+ * @param[in] vnp  vnode object pointer
+ *
+ * @internal vnode package internal use only
+ *
+ * @pre VOL_LOCK must be held
+ *
+ * @post vnode refcount incremented
+ *
+ * @see VnCancelReservation_r
+ */
+static_inline void
+VnCreateReservation_r(Vnode * vnp)
+{
+    Vn_refcount(vnp)++;
+    if (Vn_refcount(vnp) == 1) {
+	DeleteFromVnLRU(Vn_class(vnp), vnp);
+    }
+}
+
+extern int TrustVnodeCacheEntry;
+
+/**
+ * release a reference to a vnode object.
+ *
+ * @param[in] vnp  vnode object pointer
+ *
+ * @pre VOL_LOCK held
+ *
+ * @post refcount decremented; possibly re-added to vn lru
+ *
+ * @internal vnode package internal use only
+ *
+ * @see VnCreateReservation_r
+ */
+static_inline void
+VnCancelReservation_r(Vnode * vnp)
+{
+    if (--Vn_refcount(vnp) == 0) {
+	AddToVnLRU(Vn_class(vnp), vnp);
+
+	/* If caching is turned off, 
+	 * disassociate vnode cache entry from volume object */
+	if (!TrustVnodeCacheEntry) {
+	    DeleteFromVVnList(vnp);
+	}
+    }
+}
+
+#ifdef AFS_PTHREAD_ENV
+#define VN_SET_WRITER_THREAD_ID(v)  (((v)->writer) = pthread_self())
+#else
+#define VN_SET_WRITER_THREAD_ID(v)  (LWP_CurrentProcess(&((v)->writer)))
+#endif
+
+#define VOL_LOCK_NOT_HELD 0
+#define VOL_LOCK_HELD 1
+#define MIGHT_DEADLOCK 0
+#define WILL_NOT_DEADLOCK 1
+
+/**
+ * acquire a lock on a vnode object.
+ *
+ * @param[in] vnp   vnode object pointer
+ * @param[in] type  lock type
+ * @param[in] held  whether or not vol glock is held
+ * @param[in] safe  whether it it is safe to acquire without dropping vol glock
+ *
+ * @note caller must guarantee deadlock will not occur
+ *
+ * @post lock acquired.
+ *       for write case, thread owner field set.
+ *
+ * @note for DAFS, this is a no-op
+ *
+ * @internal vnode package internal use only
+ */
+static_inline void
+VnLock(Vnode * vnp, int type, int held, int safe)
+{
+#ifdef AFS_DEMAND_ATTACH_FS
+    if (type == WRITE_LOCK || type == SHARED_LOCK) {
+	VN_SET_WRITER_THREAD_ID(vnp);
+    }
+#else /* !AFS_DEMAND_ATTACH_FS */
+    if (held && !safe) {
+	VOL_UNLOCK;
+    }
+    if (type == READ_LOCK) {
+	ObtainReadLock(&vnp->lock);
+    } else {
+	if (type == SHARED_LOCK)
+	    ObtainSharedLock(&vnp->lock);
+ 	else
+	    ObtainWriteLock(&vnp->lock);
+	VN_SET_WRITER_THREAD_ID(vnp);
+    }
+    if (held && !safe) {
+	VOL_LOCK;
+    }
+#endif /* !AFS_DEMAND_ATTACH_FS */
+}
+
+/**
+ * release a lock on a vnode object.
+ *
+ * @param[in] vnp   vnode object pointer
+ * @param[in] type  lock type
+ *
+ * @note for DAFS, this is a no-op
+ *
+ * @internal vnode package internal use only
+ */
+static_inline void
+VnUnlock(Vnode * vnp, int type)
+{
+    if (type == READ_LOCK) {
+#ifndef AFS_DEMAND_ATTACH_FS
+	ReleaseReadLock(&vnp->lock);
+#endif
+    } else if (type == SHARED_LOCK) {
+	vnp->writer = 0;
+#ifdef AFS_DEMAND_ATTACH_FS
+	if (Vn_readers(vnp))
+	    VnChangeState_r(vnp, VN_STATE_READ);
+#else
+	ReleaseSharedLock(&vnp->lock);
+	if (Vn_refcount(vnp) > 1)
+	    ObtainReadLock(&vnp->lock);
+#endif
+    } else /* if (type == WRITE_LOCK) */ {
+	vnp->writer = 0;
+#ifndef AFS_DEMAND_ATTACH_FS
+	ReleaseWriteLock(&vnp->lock);
+#endif
+    }
+}
 
 #endif /* _AFS_VOL_VNODE_INLINE_H */

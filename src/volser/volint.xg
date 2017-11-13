@@ -63,6 +63,8 @@ statindex 16
 
 /* Bits for flags for DumpV2 */
 %#define     VOLDUMPV2_OMITDIRS 1
+%#define     VOLDUMPV2_OSDMETADATA 2
+%#define     VOLDUMPV2_METADATADUMP 8
 
 const SIZE = 1024;
 
@@ -120,10 +122,10 @@ struct volintInfo {
     int maxquota;
     int size;
     afs_int32 flags;		/* used by the backup system */
-    afs_int32 spare0;		/* Used to hold the minquota value */
+    afs_int32 osdPolicy;	/* whether and how to use object storage */
     afs_int32 spare1;		/* Used to hold the weekuse value */
     afs_int32 spare2;		/* Used to hold volUpdateCounter */
-    afs_int32 spare3;
+    afs_int32 filequota;	/* max. number of files AFS+OSD */
 };
 
 /*

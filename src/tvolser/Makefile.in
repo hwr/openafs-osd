@@ -12,12 +12,13 @@ include @TOP_OBJDIR@/src/config/Makefile.pthread
 HELPER_SPLINT=@HELPER_SPLINT@
 ENABLE_PTHREADED_UBIK=@ENABLE_PTHREADED_UBIK@
 
-MODULE_CFLAGS=-DRXDEBUG -DFSSYNC_BUILD_CLIENT
+MODULE_CFLAGS=-DRXDEBUG -DFSSYNC_BUILD_CLIENT -DBUILDING_VOLSERVER
 
 VLSERVER=$(srcdir)/../vlserver
 DIR=$(srcdir)/../dir
 VOL=$(srcdir)/../vol
 VOLSER=$(srcdir)/../volser
+RXOSD=$(srcdir)/../rxosd
 
 VOLSEROBJS=volmain.o volprocs.o physio.o voltrans.o volerr.o volint.cs.o dumpstuff.o  volint.ss.o volint.xdr.o vscommon.o vol_split.o
 
@@ -29,9 +30,11 @@ VOLOBJS= vnode.o volume.o vutil.o partition.o fssync-client.o purge.o \
 	 clone.o devname.o common.o ihandle.o listinodes.o \
 	 namei_ops.o nuke.o salvsync-client.o daemon_com.o
 
-objects= ${VOLSEROBJS} ${DIROBJS} ${VOLOBJS}
+objects= ${VOLSEROBJS} ${DIROBJS} ${VOLOBJS} libafsosd.o
 
 vosobjects= ${VLSERVEROBJS} ${DIROBJS} ${VOLOBJS}
+
+VOSOBJS= c_libafsosd.o
 
 LIBS_common = \
 	$(top_builddir)/src/sys/liboafs_sys.la \
@@ -173,16 +176,22 @@ ihandle.o: ${VOL}/ihandle.c
 namei_ops.o: ${VOL}/namei_ops.c
 	$(AFS_CCRULE) $(VOL)/namei_ops.c
 
+libafsosd.o: ${RXOSD}/libafsosd.c
+	${AFS_CCRULE} ${RXOSD}/libafsosd.c -DBUILDING_VOLSERVER
+
+c_libafsosd.o: ${RXOSD}/libafsosd.c
+	${AFS_CCRULE} ${RXOSD}/libafsosd.c -DBUILDING_CLIENT_COMMAND -DBUILDING_VOS
+
 vos.o: ${VOLSER}/vos.c
 	$(AFS_CCRULE) -I../volser $(VOLSER)/vos.c
 
 vos: vos.o  ${VOSOBJS} ${VLSERVEROBJS} $(LIBS_client)
 	$(LT_LDRULE_static) vos.o ${VOSOBJS} ${VLSERVEROBJS} $(LIBS_client) \
-		$(LIB_hcrypto) $(LIB_roken) ${MT_LIBS}
+		$(LIB_hcrypto) $(LIB_roken) ${MT_LIBS} -ldl
 
 volserver: ${objects} $(LIBS_server)
 	$(LT_LDRULE_static) ${objects} $(LIBS_server) \
-		$(LIB_hcrypto) $(LIB_roken) ${MT_LIBS}
+		$(LIB_hcrypto) $(LIB_roken) ${MT_LIBS} -ldl
 
 install: volserver
 	${INSTALL} -d ${DESTDIR}${afssrvlibexecdir}

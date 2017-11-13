@@ -22,6 +22,11 @@ extern int namei_unlink(char *name);
 extern Inode namei_MakeSpecIno(VolumeId volid, int type);
 extern Inode namei_icreate(IHandle_t * lh, char *part, afs_uint32 p1,
 			   afs_uint32 p2, afs_uint32 p3, afs_uint32 p4);
+#ifdef BUILDING_RXOSD
+extern Inode namei_icreate_open(IHandle_t * lh, char *part, afs_uint32 p1,
+				afs_uint32 p2, afs_uint32 p3, afs_uint32 p4,
+				afs_uint64 size, int *open_fd);
+#endif
 extern IHandle_t *namei_icreate_init(IHandle_t *lh, int dev, char *part,
                                      afs_uint32 p1, afs_uint32 p2,
                                      afs_uint32 p3, afs_uint32 p4);

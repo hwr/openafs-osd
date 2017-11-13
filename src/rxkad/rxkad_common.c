@@ -40,6 +40,7 @@
 #if defined(AFS_NT40_ENV) && defined(AFS_PTHREAD_ENV)
 #define RXKAD_STATS_DECLSPEC __declspec(dllexport)
 #endif
+#include <afs/afsutil.h>
 #endif /* KERNEL */
 
 #include <rx/rx.h>
@@ -654,4 +655,33 @@ rxkad_LevelToString(rxkad_level level)
     if (level == rxkad_crypt)
 	return "crypt";
     return "unknown";
+}
+
+int
+rxkad_EncryptDecrypt(struct rx_connection * conn, void *derivationConstant,
+		     struct rx_opaque *in, struct rx_opaque *out,
+		     rx_securityEncryptMode encrypt)
+{
+    afs_uint32 ivec[2];
+
+    if (encrypt ==  rx_securityEncrypt) {              /* fileserver */
+	struct rx_securityClass *obj = rx_SecurityObjectOf(conn);
+	struct rxkad_cprivate * priv = obj->privateData;
+	if (in->len > out->len)
+	    return RXKADDATALEN;
+	memcpy(ivec, priv->ivec, sizeof(ivec));
+	fc_cbc_encrypt(in->val, out->val, in->len, priv->keysched, ivec, ENCRYPT);
+    } else{
+	struct rxkad_sconn *sconn;
+	sconn = (struct rxkad_sconn *)rx_GetSecurityData(conn);
+	if (in->len > out->len)
+	    return RXKADDATALEN;
+	if (!sconn || !sconn->authenticated
+	  || (osi_Time() > sconn->expirationTime)) {
+	    return RXKADEXPIRED;
+	}
+	memcpy(ivec, sconn->ivec, sizeof(ivec));
+	fc_cbc_encrypt(in->val, out->val, in->len, sconn->keysched, ivec, DECRYPT);
+    }
+    return 0;
 }

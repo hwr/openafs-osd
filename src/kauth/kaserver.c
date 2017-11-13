@@ -46,7 +46,7 @@ afs_uint32 myHost = 0;
 afs_int32 verbose_track = 1;
 afs_int32 krb4_cross = 0;
 afs_int32 rxBind = 0;
-
+int haveAlwaysSyncSite = 0;
 #define ADDRSPERSITE 16         /* Same global is in rx/rx_user.c */
 afs_uint32 SHostAddrs[ADDRSPERSITE];
 

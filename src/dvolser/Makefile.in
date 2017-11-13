@@ -11,11 +11,13 @@ include @TOP_OBJDIR@/src/config/Makefile.pthread
 
 HELPER_SPLINT=@HELPER_SPLINT@
 
-MODULE_CFLAGS=-DRXDEBUG -DFSSYNC_BUILD_CLIENT -DAFS_DEMAND_ATTACH_FS
+MODULE_CFLAGS=-DRXDEBUG -DFSSYNC_BUILD_CLIENT -DAFS_DEMAND_ATTACH_FS \
+	      -DBUILDING_VOLSERVER
 
 DIR=$(srcdir)/../dir
 VOL=$(srcdir)/../vol
 VOLSER=$(srcdir)/../volser
+RXOSD=$(srcdir)/../rxosd
 
 VOLSEROBJS=volmain.o volprocs.o physio.o voltrans.o volerr.o volint.cs.o dumpstuff.o  volint.ss.o volint.xdr.o vscommon.o vol_split.o
 
@@ -25,7 +27,7 @@ VOLOBJS= vnode.o volume.o vutil.o partition.o fssync-client.o purge.o \
 	 clone.o devname.o common.o ihandle.o listinodes.o \
 	 namei_ops.o nuke.o salvsync-client.o daemon_com.o
 
-objects= ${VOLSEROBJS} ${DIROBJS} ${VOLOBJS}
+objects= ${VOLSEROBJS} ${DIROBJS} ${VOLOBJS} libafsosd.o
 
 LIBS=	$(top_builddir)/src/cmd/liboafs_cmd.la		\
 	$(top_builddir)/src/libacl/liboafs_acl.la \
@@ -135,8 +137,11 @@ ihandle.o: ${VOL}/ihandle.c
 namei_ops.o: ${VOL}/namei_ops.c
 	$(AFS_CCRULE) $(VOL)/namei_ops.c
 
+libafsosd.o: ${RXOSD}/libafsosd.c
+	$(AFS_CCRULE) $(RXOSD)/libafsosd.c -DBUILDING_VOLSERVER
+
 davolserver: ${objects} ${LIBS}
-	$(LT_LDRULE_static) ${objects} ${LIBS} $(LIB_hcrypto) $(LIB_roken) \
+	$(LT_LDRULE_static) ${objects} -ldl ${LIBS} $(LIB_hcrypto) $(LIB_roken) \
 		${MT_LIBS} ${XLIBS}
 
 install: davolserver

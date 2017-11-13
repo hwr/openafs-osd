@@ -13,12 +13,14 @@ include @TOP_OBJDIR@/src/config/Makefile.pthread
 
 
 MODULE_CFLAGS=-DRXDEBUG -DFSSYNC_BUILD_SERVER \
-	      -DSALVSYNC_BUILD_CLIENT -DAFS_DEMAND_ATTACH_FS
+	      -DSALVSYNC_BUILD_CLIENT -DAFS_DEMAND_ATTACH_FS \
+	      -DBUILDING_FILESERVER
 
 VICED=$(srcdir)/../viced
 VLSERVER=$(srcdir)/../vlserver
 DIR=$(srcdir)/../dir
 VOL=$(srcdir)/../vol
+RXOSD=$(srcdir)/../rxosd
 
 VICEDOBJS=viced.o afsfileprocs.o host.o physio.o callback.o serialize_state.o \
 	  fsstats.o
@@ -26,8 +28,9 @@ VICEDOBJS=viced.o afsfileprocs.o host.o physio.o callback.o serialize_state.o \
 DIROBJS=buffer.o dir.o salvage.o
 
 VOLOBJS= vnode.o volume.o vutil.o partition.o fssync-server.o \
-	 clone.o devname.o common.o ihandle.o listinodes.o namei_ops.o \
-	 salvsync-client.o daemon_com.o vg_cache.o vg_scan.o
+	 devname.o common.o ihandle.o listinodes.o namei_ops.o \
+	 salvsync-client.o daemon_com.o vg_cache.o vg_scan.o \
+	 libafsosd.o
 
 FSINTOBJS= afsint.ss.o
 
@@ -51,10 +54,10 @@ LIBS= \
 all: dafileserver state_analyzer
 
 viced.o: ${VICED}/viced.c
-	$(AFS_CCRULE) $(VICED)/viced.c
+	$(AFS_CCRULE) -DBUILDING_FILESERVER $(VICED)/viced.c
 
 afsfileprocs.o: ${VICED}/afsfileprocs.c
-	$(AFS_CCRULE) $(VICED)/afsfileprocs.c
+	$(AFS_CCRULE) -DBUILDING_FILESERVER $(VICED)/afsfileprocs.c
 
 host.o: ${VICED}/host.c
 	$(AFS_CCRULE) $(VICED)/host.c
@@ -110,9 +113,6 @@ salvsync-client.o: ${VOL}/salvsync-client.c
 daemon_com.o: ${VOL}/daemon_com.c
 	$(AFS_CCRULE) $(VOL)/daemon_com.c
 
-clone.o: ${VOL}/clone.c
-	$(AFS_CCRULE) $(VOL)/clone.c
-
 nuke.o: ${VOL}/nuke.c
 	$(AFS_CCRULE) $(VOL)/nuke.c
 
@@ -136,10 +136,12 @@ afsint.ss.o: ../fsint/afsint.ss.c
 
 state_analyzer.o: ${VICED}/state_analyzer.c
 	$(AFS_CCRULE) $(VICED)/state_analyzer.c
+libafsosd.o: ${RXOSD}/libafsosd.c
+	$(AFS_CCRULE) $(RXOSD)/libafsosd.c -DBUILDING_FILESERVER
 
 dafileserver: ${objects} ${LIBS}
 	$(LT_LDRULE_static) ${objects} \
-		${LIBS} $(LIB_hcrypto) $(LIB_roken) ${MT_LIBS}
+		-ldl ${LIBS} $(LIB_hcrypto) $(LIB_roken) ${MT_LIBS}
 
 state_analyzer: ${SDBGOBJS}
 	$(LT_LDRULE_static) ${SDBGOBJS} $(LIB_roken) ${MT_LIBS}

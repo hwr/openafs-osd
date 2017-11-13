@@ -13,7 +13,10 @@ include @TOP_OBJDIR@/src/config/Makefile.lwp
 
 HELPER_SPLINT=@HELPER_SPLINT@
 
+RXOSD=${srcdir}/../rxosd
+
 LIBS=${TOP_LIBDIR}/libcmd.a vlib.a ${TOP_LIBDIR}/util.a \
+	${TOP_LIBDIR}/libauth.a \
 	${TOP_LIBDIR}/libdir.a ${TOP_LIBDIR}/librx.a \
 	${TOP_LIBDIR}/libafshcrypto_lwp.a \
 	${TOP_LIBDIR}/liblwp.a ${TOP_LIBDIR}/libsys.a \
@@ -174,6 +177,12 @@ dest: vlib.a salvager volinfo volscan fssync-debug
 #
 ${OBJECTS}: ${PUBLICHEADERS} ${TOP_INCDIR}/lwp.h ${TOP_INCDIR}/lock.h ${TOP_INCDIR}/afs/afsint.h vutils.h salvage.h AFS_component_version_number.c
 
+libafsosd.o: ${RXOSD}/libafsosd.c ${TOP_INCDIR}/afs/ihandle.h \
+		${TOP_INCDIR}/afs/vnode.h ${TOP_INCDIR}/afs/volume.h \
+		${TOP_INCDIR}/afs/partition.h
+	${CC} $(AFS_CPPFLAGS) $(AFS_CFLAGS) -DBUILD_SALVAGER -o libafsosd.o \
+			-c ${RXOSD}/libafsosd.c
+
 vol-salvage.o vutil.o: volinodes.h
 vol-salvage.o salvager.o: vol-salvage.h
 vol-salvage.o: salvsync.h daemon_com.h
@@ -184,8 +193,8 @@ vlib.a:	${VLIBOBJS} AFS_component_version_number.o
 	$(RANLIB) $@
 
 # new salvager:  remove references to /vice by linking with novice.o
-salvager: vol-salvage.o physio.o vlib.a salvager.o ${LIBS}
-	$(AFS_LDRULE) vol-salvage.o physio.o salvager.o \
+salvager: vol-salvage.o physio.o vlib.a salvager.o libafsosd.o ${LIBS}
+	$(AFS_LDRULE) vol-salvage.o physio.o salvager.o libafsosd.o -ldl \
 		${LIBS} $(LIB_roken) ${XLIBS}
 
 salvager.o: salvager.c AFS_component_version_number.c

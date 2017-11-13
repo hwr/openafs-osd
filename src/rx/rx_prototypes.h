@@ -520,6 +520,10 @@ extern int rx_SetMaxMTU(int mtu);
 
 /* rx_xmit_nt.c */
 
+/* rx_call.c */
+
+extern int rx_callDebugInfo(struct rx_call *call, afs_int32 *rnext, afs_int32 *tnext, 
+                 afs_int32 *lastSend, afs_int32 *lastReceive);
 
 /* MISC PROTOTYPES - MOVE TO APPROPRIATE LOCATION LATER */
 

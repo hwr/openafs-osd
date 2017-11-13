@@ -95,6 +95,11 @@ struct VnodeInfo {
 	int author;		/* File author */
 	int owner;		/* File owner */
 	int group;		/* File group */
+	union {
+	    struct OsdMetadata o;
+	    bit32 vnodemagic;	/* Magic number--mainly for file server
+				 * paranoia checks */
+	} u;
     } *vnodes;
 };
 
@@ -228,7 +233,8 @@ extern int SalvageHeader(struct SalvInfo *salvinfo, struct afs_inode_info *sp,
                         struct InodeSummary *isp, int check, int *deleteMe);
 extern int SalvageIndex(struct SalvInfo *salvinfo, Inode ino, VnodeClass class,
                         int RW, struct ViceInodeInfo *ip, int nInodes,
-                        struct VolumeSummary *volSummary, int check);
+                        struct VolumeSummary *volSummary, int check,
+			Inode osdMetadataInode);
 extern int SalvageVnodes(struct SalvInfo *salvinfo, struct InodeSummary *rwIsp,
                         struct InodeSummary *thisIsp,
                         struct ViceInodeInfo *inodes, int check);

@@ -32,6 +32,11 @@
 
 #include "nfs.h"
 #include "ihandle.h"
+#ifdef BUILDING_RXOSD
+# include "../afsosd/rxosd_ihandle.h"
+#else
+# include "ihandle.h"
+#endif
 #include "viceinode.h"
 
 #ifdef AFS_PTHREAD_ENV
@@ -416,7 +421,11 @@ ih_attachfd(IHandle_t *ihP, FD_t fd)
  * Get a file descriptor handle given an Inode handle
  */
 FdHandle_t *
+#ifdef BUILDING_RXOSD
+common_open(IHandle_t * ihP, int dontOpen, int open_fd)
+#else
 ih_open(IHandle_t * ihP)
+#endif
 {
     FdHandle_t *fdP;
     FD_t fd;
@@ -456,12 +465,27 @@ ih_open(IHandle_t * ihP)
 	return fdP;
     }
 
+#ifdef BUILDING_RXOSD
+    if (dontOpen) {
+	IH_UNLOCK;
+	return NULL;
+    }
+#endif
+
     /*
      * Try to open the Inode, return NULL on error.
      */
     fdInUseCount += 1;
     IH_UNLOCK;
 ih_open_retry:
+#ifdef BUILDING_RXOSD
+    if (open_fd >= 0) {
+	/* make sure ihp->ih_ops get filled correctly */
+	namei_t name;
+	namei_HandleToName(&name, ihP);
+	fd = open_fd;
+    } else
+#endif
     fd = OS_IOPEN(ihP);
     IH_LOCK;
     if (fd == INVALID_FD && (errno != EMFILE || fdLruHead == NULL) ) {
@@ -481,6 +505,41 @@ ih_open_retry:
 
     return fdP;
 }
+
+#ifdef BUILDING_RXOSD
+ /*
+ * Get a file descriptor handle given an Inode handle
+ */
+FdHandle_t *
+ih_open(IHandle_t * ihP)
+{
+    FdHandle_t *f;
+    f = common_open(ihP, 0, -1);
+    return f;
+}
+
+/*
+ * Reopen a file descriptor handle given an Inode handle
+ * only possible if file has already been opened before;
+ */
+FdHandle_t *ih_reopen(IHandle_t *ihP)
+{
+    FdHandle_t *f;
+    f = common_open(ihP, 1, -1);
+    return f;
+}
+
+/*
+ * Return file descriptor handle given an Inode handle
+ * and an open fd returned from namei_icreate_open;
+ */
+FdHandle_t *ih_fakeopen(IHandle_t *ihP, int open_fd)
+{
+    FdHandle_t *f;
+    f = common_open(ihP, 0, open_fd);
+    return f;
+}
+#endif /* BUILDING_RXOSD */
 
 /*
  * Return a file descriptor handle to the cache
@@ -589,7 +648,11 @@ fd_reallyclose(FdHandle_t * fdP)
 
     if (fdP->fd_refcnt == 0) {
 	IH_UNLOCK;
+#ifdef BUILDING_RXOSD
+	(ihP->ih_ops->close)(closeFd);
+#else
 	OS_CLOSE(closeFd);
+#endif
 	IH_LOCK;
 	fdInUseCount -= 1;
     }
@@ -904,7 +967,11 @@ ih_fdclose(IHandle_t * ihP)
      */
     closeCount = 0;
     for (fdP = head; fdP != NULL; fdP = fdP->fd_next) {
+#ifdef BUILDING_RXOSD
+	(ihP->ih_ops->close)(fdP->fd_fd);
+#else
 	OS_CLOSE(fdP->fd_fd);
+#endif
 	fdP->fd_status = FD_HANDLE_AVAIL;
 	fdP->fd_refcnt = 0;
 	fdP->fd_fd = INVALID_FD;

@@ -122,17 +122,17 @@ extern afs_rwlock_t afs_xcbhash;
  * existing VM pages for the file.  We keep track of the number of
  * times we go back and forth from caching to bypass.
  */
-void
+afs_int32
 afs_TransitionToBypass(struct vcache *avc,
 		       afs_ucred_t *acred, int aflags)
 {
 
-    afs_int32 code;
     int setDesire = 0;
     int setManual = 0;
+    int bypasscache = 0;
 
     if (!avc)
-	return;
+	return 0;
 
     if (aflags & TRANSChangeDesiredBit)
 	setDesire = 1;
@@ -146,15 +146,21 @@ afs_TransitionToBypass(struct vcache *avc,
      * Someone may have beat us to doing the transition - we had no lock
      * when we checked the flag earlier.  No cause to panic, just return.
      */
-    if (avc->cachingStates & FCSBypass)
+    bypasscache = avc->cachingStates & FCSBypass ? 1 : 0;
+    if (bypasscache)
+	goto done;
+
+    if (avc->execsOrWriters || (avc->f.states & CDirty))       /* Need cache */
 	goto done;
 
     /* If we never cached this, just change state */
     if (setDesire && (!(avc->cachingStates & FCSBypass))) {
 	avc->cachingStates |= FCSBypass;
+	bypasscache = 1;
 	goto done;
     }
 
+#if 0
     /* cg2v, try to store any chunks not written 20071204 */
     if (avc->execsOrWriters > 0) {
 	struct vrequest *treq = NULL;
@@ -165,6 +171,7 @@ afs_TransitionToBypass(struct vcache *avc,
 	    afs_DestroyReq(treq);
 	}
     }
+#endif
 
     /* also cg2v, don't dequeue the callback */
     /* next reference will re-stat */
@@ -186,6 +193,7 @@ afs_TransitionToBypass(struct vcache *avc,
 done:
     ReleaseWriteLock(&avc->lock);
     AFS_GUNLOCK();
+    return bypasscache;
 }
 
 /*
@@ -195,16 +203,17 @@ done:
  * throw out any existing VM pages for the file.  We keep track of
  * the number of times we go back and forth from caching to bypass.
  */
-void
+afs_int32
 afs_TransitionToCaching(struct vcache *avc,
 		        afs_ucred_t *acred,
 			int aflags)
 {
     int resetDesire = 0;
     int setManual = 0;
+    int bypasscache = 1;
 
     if (!avc)
-	return;
+	return 1;
 
     if (aflags & TRANSChangeDesiredBit)
 	resetDesire = 1;
@@ -217,6 +226,7 @@ afs_TransitionToCaching(struct vcache *avc,
      * Someone may have beat us to doing the transition - we had no lock
      * when we checked the flag earlier.  No cause to panic, just return.
      */
+    bypasscache = avc->cachingStates & FCSBypass ? 1 : 0;
     if (!(avc->cachingStates & FCSBypass))
 	goto done;
 
@@ -232,6 +242,7 @@ afs_TransitionToCaching(struct vcache *avc,
     }
 
     avc->cachingStates &= ~(FCSBypass);    /* Reset the bypass flag */
+    bypasscache = 0;
     if (resetDesire)
 	avc->cachingStates &= ~(FCSDesireBypass);
     if (setManual)
@@ -241,8 +252,10 @@ afs_TransitionToCaching(struct vcache *avc,
 done:
     ReleaseWriteLock(&avc->lock);
     AFS_GUNLOCK();
+    return bypasscache;
 }
 
+#if 0
 /* In the case where there's an error in afs_NoCacheFetchProc or
  * afs_PrefetchNoCache, all of the pages they've been passed need
  * to be unlocked.
@@ -450,7 +463,7 @@ done:
     osi_FreeSmallSpace(rxiov);
     return result;
 }
-
+#endif
 
 /* dispatch a no-cache read request */
 afs_int32
@@ -540,18 +553,10 @@ afs_PrefetchNoCache(struct vcache *avc,
     struct vrequest *areq;
     afs_int32 code = 0;
     struct rx_connection *rxconn;
-#ifdef AFS_64BIT_CLIENT
-    afs_int32 length_hi, bytes, locked;
-#endif
 
     struct afs_conn *tc;
-    struct rx_call *tcall;
-    struct tlocal1 {
-	struct AFSVolSync tsync;
-	struct AFSFetchStatus OutStatus;
-	struct AFSCallBack CallBack;
-    };
-    struct tlocal1 *tcallspec;
+    afs_int32 i;
+    struct afs_FetchOutput *tcallspec;
 
     auio = bparms->auio;
     areq = bparms->areq;
@@ -559,91 +564,30 @@ afs_PrefetchNoCache(struct vcache *avc,
     iovecp = auio->uio_iov;
 #endif
 
-    tcallspec = osi_Alloc(sizeof(struct tlocal1));
+    tcallspec = osi_Alloc(sizeof(struct afs_FetchOutput));
     do {
 	tc = afs_Conn(&avc->f.fid, areq, SHARED_LOCK /* ignored */, &rxconn);
 	if (tc) {
 	    avc->callback = tc->parent->srvr->server;
-	    tcall = rx_NewCall(rxconn);
-#ifdef AFS_64BIT_CLIENT
-	    if (!afs_serverHasNo64Bit(tc)) {
-		code = StartRXAFS_FetchData64(tcall,
-					      (struct AFSFid *) &avc->f.fid.Fid,
-					      auio->uio_offset,
-					      bparms->length);
-		if (code == 0) {
-		    COND_GUNLOCK(locked);
-		    bytes = rx_Read(tcall, (char *)&length_hi,
-				    sizeof(afs_int32));
-		    COND_RE_GLOCK(locked);
-
-		    if (bytes != sizeof(afs_int32)) {
-			length_hi = 0;
-			COND_GUNLOCK(locked);
-			code = rx_EndCall(tcall, RX_PROTOCOL_ERROR);
-			COND_RE_GLOCK(locked);
-			tcall = NULL;
-		    }
-		}
-	    } /* afs_serverHasNo64Bit */
-	    if (code == RXGEN_OPCODE || afs_serverHasNo64Bit(tc)) {
-		if (auio->uio_offset > 0x7FFFFFFF) {
-		    code = EFBIG;
-		} else {
-		    afs_int32 pos;
-		    pos = auio->uio_offset;
-		    COND_GUNLOCK(locked);
-		    if (!tcall)
-			tcall = rx_NewCall(rxconn);
-		    code = StartRXAFS_FetchData(tcall,
-					(struct AFSFid *) &avc->f.fid.Fid,
-					pos, bparms->length);
-		    COND_RE_GLOCK(locked);
-		}
-		afs_serverSetNo64Bit(tc);
-	    }
-#else
-	    code = StartRXAFS_FetchData(tcall,
-			                (struct AFSFid *) &avc->f.fid.Fid,
-					auio->uio_offset, bparms->length);
-#endif
-	    if (code == 0) {
-		code = afs_NoCacheFetchProc(tcall, avc, auio,
-				            1 /* release_pages */,
-					    bparms->length);
-	    } else {
-		afs_warn("BYPASS: StartRXAFS_FetchData failed: %d\n", code);
-		unlock_and_release_pages(auio);
-		afs_PutConn(tc, rxconn, SHARED_LOCK);
-		goto done;
-	    }
-	    if (code == 0) {
-		code = EndRXAFS_FetchData(tcall, &tcallspec->OutStatus,
-					  &tcallspec->CallBack,
-					  &tcallspec->tsync);
-	    } else {
-		afs_warn("BYPASS: NoCacheFetchProc failed: %d\n", code);
-	    }
-	    code = rx_EndCall(tcall, code);
-	} else {
-	    afs_warn("BYPASS: No connection.\n");
+	    i = osi_Time();
+	    ObtainReadLock(&avc->lock);
+	    code = afs_FetchProc(tc, rxconn, NULL, areq, bparms->offset, NULL,
+				avc, bparms->length,
+				(void *)bparms, tcallspec);
+	    ReleaseReadLock(&avc->lock);
+	} else
 	    code = -1;
-	    unlock_and_release_pages(auio);
-	    goto done;
-	}
+
     } while (afs_Analyze(tc, rxconn, code, &avc->f.fid, areq,
 						 AFS_STATS_FS_RPCIDX_FETCHDATA,
 						 SHARED_LOCK,0));
-done:
-    /*
-     * Copy appropriate fields into vcache
-     */
-
-    if (!code)
+    if (code) {
+	unlock_and_release_pages(auio);
+    } else
 	afs_ProcessFS(avc, &tcallspec->OutStatus, areq);
 
     osi_Free(areq, sizeof(struct vrequest));
-    osi_Free(tcallspec, sizeof(struct tlocal1));
+    osi_Free(tcallspec, sizeof(struct afs_FetchOutput));
     osi_Free(bparms, sizeof(struct nocache_read_request));
 #ifndef UKERNEL
     /* in UKERNEL, the "pages" are passed in */

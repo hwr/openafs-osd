@@ -3631,6 +3631,15 @@ main(int argc, char **argv)
 {
     afs_int32 code;
     struct cmd_syndesc *ts;
+    int libafsosd = 0;
+
+#ifdef AFS_PTHREAD_ENV
+    {
+	extern int load_libcafsosd(const char *, void *, void *);
+	afs_int32 LogLevel = 0;
+	code = load_libcafsosd("init_fscmd_afsosd", &LogLevel, &libafsosd);
+    }
+#endif
 
 #ifdef	AFS_AIX32_ENV
     /*
@@ -3864,10 +3873,12 @@ defect 3069
     ts = cmd_CreateSyntax("whichcell", WhichCellCmd, NULL, 0, "list file's cell");
     cmd_AddParm(ts, "-path", CMD_LIST, CMD_OPTIONAL, "dir/file path");
 
-    ts = cmd_CreateSyntax("whereis", WhereIsCmd, NULL, 0, "list file's location");
-    cmd_AddParm(ts, "-path", CMD_LIST, CMD_OPTIONAL, "dir/file path");
+    if (!libafsosd) {
+        ts = cmd_CreateSyntax("whereis", WhereIsCmd, NULL, 0, "list file's location");
+        cmd_AddParm(ts, "-path", CMD_LIST, CMD_OPTIONAL, "dir/file path");
 
-    cmd_CreateSyntax("wscell", WSCellCmd, NULL, 0, "list workstation's cell");
+        cmd_CreateSyntax("wscell", WSCellCmd, NULL, 0, "list workstation's cell");
+    }
 
 /*
     ts = cmd_CreateSyntax("primarycell", PrimaryCellCmd, NULL, "obsolete (listed primary cell)");

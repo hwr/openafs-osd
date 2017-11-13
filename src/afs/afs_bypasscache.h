@@ -70,10 +70,87 @@
 #define AFS_CACHE_BYPASS_DISABLED -1
 
 #ifdef UKERNEL
+typedef struct uio uio_t;
 #ifndef PAGE_CACHE_SIZE
 #define PAGE_CACHE_SIZE 4096
 #endif
 #endif
+
+/* In the case where there's an error in afs_NoCacheFetchProc or
+ * afs_PrefetchNoCache, all of the pages they've been passed need
+ * to be unlocked.
+ */
+#ifdef UKERNEL
+typedef void * bypass_page_t;
+
+#define unlock_and_release_pages(auio)
+#define release_full_page(pp, pageoff)
+
+#else
+typedef struct page * bypass_page_t;
+
+#define copy_page(pp, pageoff, rxiov, iovno, iovoff, auio, curiov)      \
+    do { \
+        char *address;                                          \
+        int dolen = auio->uio_iov[curiov].iov_len - pageoff; \
+        address = kmap_atomic(pp, KM_USER0); \
+        memcpy(address + pageoff, \
+               (char *)(rxiov[iovno].iov_base) + iovoff, dolen);        \
+        kunmap_atomic(address, KM_USER0); \
+    } while(0)
+
+#define copy_pages(pp, pageoff, rxiov, iovno, iovoff, auio, curiov)     \
+    do { \
+        char *address; \
+        int dolen = rxiov[iovno].iov_len - iovoff; \
+        address = kmap_atomic(pp, KM_USER0); \
+        memcpy(address + pageoff, \
+               (char *)(rxiov[iovno].iov_base) + iovoff, dolen);        \
+        kunmap_atomic(address, KM_USER0); \
+    } while(0)
+
+#define unlock_and_release_pages(auio) \
+    do { \
+        struct iovec *ciov;     \
+        bypass_page_t pp; \
+        afs_int32 iovmax; \
+        afs_int32 iovno = 0; \
+        ciov = auio->uio_iov; \
+        iovmax = auio->uio_iovcnt - 1;  \
+        pp = (bypass_page_t) ciov->iov_base;     \
+        while(1) { \
+            if(pp) { \
+                if(PageLocked(pp)) \
+                    UnlockPage(pp); \
+                put_page(pp); /* decrement refcount */ \
+            } \
+            iovno++; \
+            if(iovno > iovmax) \
+                break; \
+            ciov = (auio->uio_iov + iovno);     \
+            pp = (bypass_page_t) ciov->iov_base; \
+        } \
+    } while(0)
+
+#define release_full_page(pp, pageoff)                  \
+    do { \
+        /* this is appropriate when no caller intends to unlock \
+         * and release the page */ \
+        SetPageUptodate(pp); \
+        if(PageLocked(pp)) \
+            unlock_page(pp); \
+        else \
+            afs_warn("afs_NoCacheFetchProc: page not locked!\n"); \
+        put_page(pp); /* decrement refcount */ \
+    } while(0)
+
+#endif
+
+#if defined(AFS_LINUX26_ENV)
+#define LockPage(pp) lock_page(pp)
+#define UnlockPage(pp) unlock_page(pp)
+#endif
+#define AFS_KMAP_ATOMIC         1
 
 /* A ptr to an object of the following type is expected to be passed
  * as the ab->parm[0] to afs_BQueue */
@@ -104,8 +181,8 @@ extern int cache_bypass_prefetch;
 extern int cache_bypass_strategy;
 extern afs_size_t cache_bypass_threshold;
 
-void afs_TransitionToBypass(struct vcache *, afs_ucred_t *, int);
-void afs_TransitionToCaching(struct vcache *, afs_ucred_t *, int);
+afs_int32 afs_TransitionToBypass(struct vcache *, afs_ucred_t *, int);
+afs_int32 afs_TransitionToCaching(struct vcache *, afs_ucred_t *, int);
 
 /* Cache strategy permits vnode transition between caching and no-cache--
  * currently, this means LARGE_FILES_BYPASS_CACHE.  Currently, no pioctl permits
@@ -120,10 +197,10 @@ void afs_TransitionToCaching(struct vcache *, afs_ucred_t *, int);
 	if(variable_cache_strategy) {					\
 	    if(bypasscache) {						\
 		if(!(avc->cachingStates & FCSBypass))			\
-		    afs_TransitionToBypass(avc, credp, TRANSChangeDesiredBit); \
+		    bypasscache = afs_TransitionToBypass(avc, credp, TRANSChangeDesiredBit); \
 	    } else {							\
 		if(avc->cachingStates & FCSBypass)			\
-		    afs_TransitionToCaching(avc, credp, TRANSChangeDesiredBit);	\
+		    bypasscache = afs_TransitionToCaching(avc, credp, TRANSChangeDesiredBit);	\
 	    }								\
 	}								\
     }									\

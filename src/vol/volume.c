@@ -113,6 +113,9 @@
 #include "common.h"
 #include "vutils.h"
 #include <afs/dir.h>
+#include "../rxosd/afsosd.h"
+
+struct osd_vol_ops_v0 *osdvol = NULL;
 
 #ifdef AFS_PTHREAD_ENV
 pthread_mutex_t vol_glock_mutex;
@@ -1903,6 +1906,8 @@ HeaderName(bit32 magic)
 	return "small index";
     case LARGEINDEXMAGIC:
 	return "large index";
+    case OSDMETAMAGIC:
+	return "osdmetadata";
     case LINKTABLEMAGIC:
 	return "link table";
     }
@@ -2027,12 +2032,15 @@ VolumeHeaderToDisk(VolumeDiskHeader_t * dh, VolumeHeader_t * h)
     dh->largeVnodeIndex_lo = (afs_int32) h->largeVnodeIndex & 0xffffffff;
     dh->largeVnodeIndex_hi =
 	(afs_int32) (h->largeVnodeIndex >> 32) & 0xffffffff;
+    dh->OsdMetadata_lo = (afs_int32) h->OsdMetadata & 0xffffffff;
+    dh->OsdMetadata_hi = (afs_int32) (h->OsdMetadata >> 32) & 0xffffffff;
     dh->linkTable_lo = (afs_int32) h->linkTable & 0xffffffff;
     dh->linkTable_hi = (afs_int32) (h->linkTable >> 32) & 0xffffffff;
 #else
     dh->volumeInfo_lo = h->volumeInfo;
     dh->smallVnodeIndex_lo = h->smallVnodeIndex;
     dh->largeVnodeIndex_lo = h->largeVnodeIndex;
+    dh->OsdMetadata_lo = h->OsdMetadata;
     dh->linkTable_lo = h->linkTable;
 #endif
 }
@@ -2064,12 +2072,16 @@ DiskToVolumeHeader(VolumeHeader_t * h, VolumeDiskHeader_t * dh)
     h->largeVnodeIndex =
 	(Inode) dh->largeVnodeIndex_lo | ((Inode) dh->
 					  largeVnodeIndex_hi << 32);
+    h->OsdMetadata =
+	(Inode) dh->OsdMetadata_lo | ((Inode) dh->OsdMetadata_hi << 32);
+
     h->linkTable =
 	(Inode) dh->linkTable_lo | ((Inode) dh->linkTable_hi << 32);
 #else
     h->volumeInfo = dh->volumeInfo_lo;
     h->smallVnodeIndex = dh->smallVnodeIndex_lo;
     h->largeVnodeIndex = dh->largeVnodeIndex_lo;
+    h->OsdMetadata = dh->OsdMetadata_lo;
     h->linkTable = dh->linkTable_lo;
 #endif
 }
@@ -2939,6 +2951,12 @@ attach_volume_header(Error *ec, Volume *vp, struct DiskPartition64 *partp,
 	    header.smallVnodeIndex);
     IH_INIT(vp->diskDataHandle, partp->device, header.parent,
 	    header.volumeInfo);
+    if (osdvol && header.OsdMetadata) {
+	IH_INIT(vp->osdMetadataHandle, partp->device, header.parent,
+		header.OsdMetadata);
+	Lock_Init(&vp->lock);
+    } else
+	vp->osdMetadataHandle = NULL;
     IH_INIT(vp->linkHandle, partp->device, header.parent, header.linkTable);
 
     if (first_try) {
@@ -4833,6 +4851,8 @@ VCloseVolumeHandles_r(Volume * vp)
 	IH_CONDSYNC(vp->vnodeIndex[vLarge].handle);
 	IH_CONDSYNC(vp->vnodeIndex[vSmall].handle);
 	IH_CONDSYNC(vp->diskDataHandle);
+	if (osdvol && vp->osdMetadataHandle)
+	    IH_CONDSYNC(vp->osdMetadataHandle);
 #ifdef AFS_NAMEI_ENV
 	IH_CONDSYNC(vp->linkHandle);
 #endif /* AFS_NAMEI_ENV */
@@ -4841,6 +4861,8 @@ VCloseVolumeHandles_r(Volume * vp)
     IH_REALLYCLOSE(vp->vnodeIndex[vLarge].handle);
     IH_REALLYCLOSE(vp->vnodeIndex[vSmall].handle);
     IH_REALLYCLOSE(vp->diskDataHandle);
+    if (osdvol && vp->osdMetadataHandle)
+	IH_REALLYCLOSE(vp->osdMetadataHandle);
     IH_REALLYCLOSE(vp->linkHandle);
 
 #ifdef AFS_DEMAND_ATTACH_FS
@@ -6566,7 +6588,7 @@ VGetBitmap_r(Error * ec, Volume * vp, VnodeClass class)
 	    if (STREAM_READ(vnode, vcp->diskSize, 1, file) != 1)
 		break;
 	    if (vnode->type != vNull) {
-		if (vnode->vnodeMagic != vcp->magic) {
+		if (!V_osdPolicy(vp) && vnode->vnodeMagic != vcp->magic) {
 		    Log("GetBitmap: addled vnode index in volume %s; volume needs salvage\n", V_name(vp));
 		    *ec = VSALVAGE;
 		    break;
@@ -6586,7 +6608,8 @@ VGetBitmap_r(Error * ec, Volume * vp, VnodeClass class)
 #endif /* !AFS_PTHREAD_ENV */
 	}
     }
-    if (vp->nextVnodeUnique < unique) {
+    /* In Osd-volumes the uniquifier has only 24 bits and can therefore rewrap easily */
+    if (!V_osdPolicy(vp) && vp->nextVnodeUnique < unique) {
 	Log("GetBitmap: bad volume uniquifier for volume %s; volume needs salvage\n", V_name(vp));
 	*ec = VSALVAGE;
     }

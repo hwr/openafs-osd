@@ -27,9 +27,10 @@
  * etc.
  */
 
-#define	MAXFDCACHE  4
+#define	MAXFDCACHE  4 * MAX_UBIK_DBASES
 static struct fdcache {
     int fd;
+    int index;
     int fileID;
     int refCount;
 } fdcache[MAXFDCACHE];
@@ -47,6 +48,7 @@ uphys_open(struct ubik_dbase *adbase, afs_int32 afid)
     int i;
     struct fdcache *tfd;
     struct fdcache *bestfd;
+    int index = adbase->dbase_number;
 
     /* initialize package */
     if (!initd) {
@@ -54,6 +56,7 @@ uphys_open(struct ubik_dbase *adbase, afs_int32 afid)
 	tfd = fdcache;
 	for (i = 0; i < MAXFDCACHE; tfd++, i++) {
 	    tfd->fd = -1;	/* invalid value */
+	    tfd->index = -10000;	/* invalid value */
 	    tfd->fileID = -10000;	/* invalid value */
 	    tfd->refCount = 0;
 	}
@@ -61,7 +64,8 @@ uphys_open(struct ubik_dbase *adbase, afs_int32 afid)
 
     /* scan file descr cache */
     for (tfd = fdcache, i = 0; i < MAXFDCACHE; i++, tfd++) {
-	if (afid == tfd->fileID && tfd->refCount == 0) {	/* don't use open fd */
+	if (afid == tfd->fileID && index == tfd->index
+	  && tfd->refCount == 0) {	/* don't use open fd */
 	    lseek(tfd->fd, 0, 0);	/* reset ptr just like open would have */
 	    tfd->refCount++;
 	    return tfd->fd;
@@ -102,6 +106,7 @@ uphys_open(struct ubik_dbase *adbase, afs_int32 afid)
 	if (tfd->fd >= 0)
 	    close(tfd->fd);
 	tfd->fd = fd;
+	tfd->index = index;
 	tfd->refCount = 1;	/* us */
 	tfd->fileID = afid;
     }
@@ -305,11 +310,13 @@ uphys_invalidate(struct ubik_dbase *adbase, afs_int32 afid)
 {
     int i;
     struct fdcache *tfd;
+    afs_int32 index = adbase->dbase_number;
 
     /* scan file descr cache */
     for (tfd = fdcache, i = 0; i < MAXFDCACHE; i++, tfd++) {
-	if (afid == tfd->fileID) {
+	if (afid == tfd->fileID && afid == tfd->fileID) {
 	    tfd->fileID = -10000;
+	    tfd->index = -10000;
 	    if (tfd->fd >= 0 && tfd->refCount == 0) {
 		close(tfd->fd);
 		tfd->fd = -1;

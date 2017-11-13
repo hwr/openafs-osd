@@ -1724,16 +1724,16 @@ Print_vos_volintInfo(afs_uint32 server, afs_uint32 partition, volintInfo* pinfo,
     printf("%sflags\t\t%#lx\t(Optional)\n",prefix, afs_printable_int32_ld(pinfo->flags));
     printf("%sdiskused\t%u\n",prefix, pinfo->size);
     printf("%smaxquota\t%u\n",prefix, pinfo->maxquota);
-    printf("%sminquota\t%lu\t(Optional)\n",prefix,
-	   afs_printable_uint32_lu(pinfo->spare0));
+    printf("%sosdPolicy\t%lu\n",prefix,
+	   afs_printable_uint32_lu(pinfo->osdPolicy));
     printf("%sfilecount\t%u\n",prefix, pinfo->filecount);
     printf("%sdayUse\t\t%u\n",prefix, pinfo->dayUse);
     printf("%sweekUse\t%lu\t(Optional)\n",prefix,
 	   afs_printable_uint32_lu(pinfo->spare1));
     printf("%svolUpdateCounter\t\t%lu\t(Optional)\n",prefix,
            afs_printable_uint32_lu(pinfo->spare2));
-    printf("%sspare3\t\t%lu\t(Optional)\n",prefix,
-	   afs_printable_uint32_lu(pinfo->spare3));
+    printf("%sfilequota\t\t%lu\t(Optional)\n",prefix,
+	   afs_printable_uint32_lu(pinfo->filequota));
 }
 
 int

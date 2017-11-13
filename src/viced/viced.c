@@ -80,6 +80,8 @@
 # include "sys/lock.h"
 #endif
 #include <rx/rx_globals.h>
+#define BUILDING_FILESERVER    1
+#include "../rxosd/afsosd.h"
 
 extern int etext;
 
@@ -87,6 +89,8 @@ static void ClearXStatValues(void);
 static void PrintCounters(void);
 
 static afs_int32 Do_VLRegisterRPC(void);
+extern void TimeoutAsyncTransactions(void);
+struct timeval statisticStart;
 
 int eventlog = 0, rxlog = 0;
 FILE *debugFile;
@@ -162,6 +166,7 @@ int abort_threshold = 10;
 int udpBufSize = 0;		/* UDP buffer size for receive */
 int sendBufSize = 16384;	/* send buffer size */
 int saneacls = 0;		/* Sane ACLs Flag */
+int libafsosd = 0;		/* load shared library libafsosd.so or libdafsosd.so */
 static int unsafe_attach = 0;   /* avoid inUse check on vol attach? */
 static int offline_timeout = -1; /* -offline-timeout option */
 static int offline_shutdown_timeout = -1; /* -offline-shutdown-timeout option */
@@ -390,7 +395,11 @@ FiveMinuteCheckLWP(void *unused)
     while (1) {
 #endif
 
+	if (osdvol)
+	    (osdvol->op_osd_5min_check)();
 	sleep(fiveminutes);
+	if (osdvol)
+	    (osdvol->op_transferRate)();
 
 #ifdef AFS_DEMAND_ATTACH_FS
 	FS_STATE_WRLOCK;
@@ -875,6 +884,7 @@ enum optionsList {
     OPT_lock,
     OPT_readonly,
     OPT_saneacls,
+    OPT_libafsosd,
     OPT_buffers,
     OPT_callbacks,
     OPT_vcsize,
@@ -969,6 +979,8 @@ ParseArgs(int argc, char *argv[])
 			CMD_OPTIONAL, "be a readonly fileserver");
     cmd_AddParmAtOffset(opts, OPT_saneacls, "-saneacls", CMD_FLAG,
 		        CMD_OPTIONAL, "set the saneacls capability bit");
+    cmd_AddParmAtOffset(opts, OPT_libafsosd, "-libafsosd", CMD_FLAG,
+			CMD_OPTIONAL, "load libafsosd to support object storage");
 
     cmd_AddParmAtOffset(opts, OPT_buffers, "-b", CMD_SINGLE,
 			CMD_OPTIONAL, "buffers");
@@ -1169,6 +1181,7 @@ ParseArgs(int argc, char *argv[])
 #endif
     cmd_OptionAsFlag(opts, OPT_readonly, &readonlyServer);
     cmd_OptionAsFlag(opts, OPT_saneacls, &saneacls);
+    cmd_OptionAsFlag(opts, OPT_libafsosd, &libafsosd);
     cmd_OptionAsInt(opts, OPT_buffers, &buffs);
 
     if (cmd_OptionAsInt(opts, OPT_callbacks, &numberofcbs) == 0) {
@@ -2034,6 +2047,34 @@ main(int argc, char *argv[])
     rx_SetMinProcs(tservice, 2);
     rx_SetMaxProcs(tservice, 4);
 
+    if (libafsosd) {
+	extern struct vol_data_v0 vol_data_v0;
+	extern struct viced_data_v0 viced_data_v0;
+	extern struct osd_viced_data_v0 *osddata;
+	struct init_viced_inputs input = {
+	    &vol_data_v0,
+	    &viced_data_v0
+	};
+	struct init_viced_outputs output = {
+	    &osdvol,
+	    &osdviced,
+	    &osddata
+	};
+	code = load_libafsosd("init_viced_afsosd", &input, &output);
+	if (code) {
+	    ViceLog(0, ("Loading libafsosd.so failed with code %d, aborting\n",
+			code));
+	    exit(-1);
+	}
+	tservice =
+	    rx_NewService(0, 2 /* VICEDOSD_SERVICE */, "afsosd", securityClasses,
+			  numClasses, (osdviced->op_RXAFSOSD_ExecuteRequest));
+	if (!tservice) {
+	    ViceLog(0, ("Failed to initialize afsosd rpc service.\n"));
+	    exit(-1);
+	}
+    }
+
     /* Some rx debugging */
     if (rxlog || eventlog) {
 	debugFile = afs_fopen("rx_dbg", "w");
@@ -2169,6 +2210,7 @@ main(int argc, char *argv[])
 			      &fiveminutes) == 0);
 
     gettimeofday(&tp, 0);
+    statisticStart = tp;
 
     /*
      * Figure out the FileServer's name and primary address.

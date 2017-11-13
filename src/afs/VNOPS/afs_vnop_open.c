@@ -25,6 +25,7 @@
 #include "afs/nfsclient.h"
 #include "afs/afs_osidnlc.h"
 
+extern afs_uint32 afs_protocols;
 
 
 /* given a vnode ptr, open flags and credentials, open the file.  No access
@@ -138,6 +139,15 @@ afs_open(struct vcache **avcp, afs_int32 aflags, afs_ucred_t *acred)
 	/* normal file or symlink */
 	osi_FlushText(tvc);	/* only needed to flush text if text locked last time */
 	osi_FlushPages(tvc, acred);
+	if (tvc->protocol & RX_OSD_NOT_ONLINE) {
+	    if (osd_procs->rxosd_bringOnline) {
+		code = (osd_procs->rxosd_bringOnline)(tvc, &treq);
+		if (code)
+		    goto done;
+		tvc->protocol &= ~RX_OSD_NOT_ONLINE;
+	    } else /* forget about OSD stuff - interface not loaded */
+		tvc->protocol = 1;
+	}
     }
     /* set date on file if open in O_TRUNC mode */
     if (aflags & FTRUNC) {

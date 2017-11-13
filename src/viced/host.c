@@ -46,6 +46,8 @@
 #include "serialize_state.h"
 #endif /* AFS_DEMAND_ATTACH_FS */
 
+extern void* osdvol;
+
 pthread_mutex_t host_glock_mutex;
 
 extern int Console;
@@ -107,6 +109,9 @@ void h_TossStuff_r(struct host *host);
 #define	IN_CLASSB_SUBNET	0xffffff00
 #endif
 
+#define hostBusyFlags(hf) \
+	((hf) & (HWHO_INPROGRESS | HCPS_INPROGRESS | HCPS_WAITING) \
+	|| !((hf) & ALTADDR))
 
 /* get a new block of CEs and chain it on CEFree */
 static void
@@ -2442,6 +2447,13 @@ MapName_r(char *uname, afs_int32 * aval)
 	if (lids.idlist_val) {
 	    *aval = lids.idlist_val[0];
 	    if (*aval == AnonymousID) {
+		/*
+		 * To allow -localauth for 'fs' commands it's necessary to map
+		 * "afs" to someone with privileges! (assuming 1 == admin).
+		 */
+		if (osdvol && !strcmp(uname, "afs"))
+		    *aval = 1;
+		else
 		ViceLog(2,
 			("MapName: NameToId on %s returns anonymousID\n",
 			 lnames.namelist_val[0]));
@@ -3174,8 +3186,7 @@ h_isBusy_r(struct host *host)
 	return 1;
     }
 
-    if ((host->z.hostFlags & HWHO_INPROGRESS) || !(host->z.hostFlags & ALTADDR)) {
-	/* We shouldn't hit this if the host wasn't locked, but just in case... */
+    if (hostBusyFlags(host->z.hostFlags)) {
 	return 1;
     }
 
@@ -3637,7 +3648,7 @@ h_stateRestoreHost(struct fs_dump_state * state)
 	opr_Assert(hcps != NULL);
     }
 
-    if ((hdsk.hostFlags & HWHO_INPROGRESS) || !(hdsk.hostFlags & ALTADDR)) {
+    if (hostBusyFlags(hdsk.hostFlags)) {
 	char hoststr[16];
 	ViceLog(0, ("h_stateRestoreHost: skipping host %s:%d due to invalid flags 0x%x\n",
 	            afs_inet_ntoa_r(hdsk.host, hoststr), (int)ntohs(hdsk.port),

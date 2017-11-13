@@ -1,0 +1,280 @@
+/*
+ * Copyright (c) 2011, Hartmut Reuter,
+ * RZG, Max-Planck-Institut f. Plasmaphysik.
+ * All Rights Reserved.
+ *
+ */
+
+/*
+ * afsosdint.xg:
+ *	Definition of the AFS File Server RPC interface extensions for AFS/OSD.
+ */
+
+%#include "fs_rxosd_common.h"
+%#include "../fsint/afsint.h"
+
+%#define VICEDOSD_SERVICE 2
+
+struct osd_obj {
+    struct ometa m;
+    afs_uint32 osd_id;
+    struct rx_endp addr;
+    afs_uint32 osd_flag;
+    afs_uint32 stripe;
+    afs_uint32 osd_type;
+    t10rock rock;
+};
+
+typedef struct osd_obj osd_objList <>;
+
+struct osd_segm {
+    afs_uint64 length;
+    afs_uint64 offset;
+    afs_uint32 raid_level;
+    afs_uint32 nstripes;
+    afs_uint32 stripe_size;
+    afs_uint32 copies;
+    struct osd_objList objList;
+};
+
+typedef struct osd_segm osd_segmList <>;
+
+struct osd_file {
+    afs_uint64 length;
+    struct osd_segmList segmList;
+};
+
+typedef struct osd_file osd_fileList <>;
+
+%#define MAXOBJPERSEGM 8
+
+%#define PSEODO_STRIPED 9
+%#define MAXOSDSTRIPES  8
+%#define OSD_WAIT_FOR_TAPE 1096
+
+struct viced_stat {
+        afs_uint32 rpc;
+        afs_uint64 cnt;
+};
+typedef viced_stat viced_statList<>;
+
+struct viced_kbps {
+        afs_uint32 val[96];
+};
+
+struct viced_md5 {
+        afs_uint32 md5[4];
+};
+
+struct vicep_path_info {
+    afs_uint64 ino;
+    afs_uint32 lun;
+    afsUUID uuid;
+    path_info path;
+};
+
+union async switch(afs_int32 type) {
+case 1:
+        osd_fileList p1;
+case 3:
+        struct vicep_path_info p3;
+};
+
+struct store_recovery {
+    afs_uint64 offset;
+    afs_uint64 resid;
+    afs_uint32 osd;
+    afs_int32 retcd;
+};
+typedef store_recovery store_recoveryList<>;
+
+
+union asyncError switch(afs_int32 error) {
+case 0:
+        afs_int32 no_new_version;
+case 1:
+        store_recoveryList recovList;
+};
+
+struct activecall {
+        afs_uint32 num;
+        afs_uint32 volume;
+        afs_uint32 vnode;
+        afs_uint32 unique;
+        afs_uint32 ip;
+        afs_uint32 timeStamp;
+        afs_uint32 flag;
+};
+typedef activecall activecallList<>;
+
+%#define OSD_WRITING                            1
+%#define OSD_WAIT                               2
+%#define FS_OSD_COMMAND				4
+
+%#define CMD_WIPEFILE                           7
+%#define CMD_FETCHSTATUS                        9
+%#define CMD_SERVERPATH                         10
+%#define CMD_LISTOFFLINEVOLUMES                 11
+%#define CMD_LISTLOCKEDVNODES                   12
+%#define CMD_LISTDISKVNODE                      13
+%#define CMD_LISTFSYNCTRACE                     14
+%#define CMD_SHOWTHREADS                        15
+%#define CMD_INVERSELOOKUP                      16
+%#define CMD_OSD_ARCHIVE                        17
+%#define CMD_OSD_MD5SUM                         18
+%#define CMD_SET_OSD_MD5SUM                     19
+%#define CMD_STRIPED_OSD_FILE                   20
+%#define CMD_REPLACE_OSD                        21
+%#define CMD_GET_ARCH_OSDS                      22
+%#define CMD_LIST_OSDS                          23
+%#define CMD_SET_POLICY                         24
+%#define CMD_GET_POLICIES                       25
+%#define CMD_LIST_VARIABLES                     26
+
+%#define MAXAFSPATHLENGTH 1024
+
+typedef opaque afs_filename<MAXAFSPATHLENGTH>;
+
+/* prototype for pseudo-RPC call */
+%char *RXAFSOSD_TranslateOpCode(afs_int32 code);
+
+package RXAFSOSD_
+prefix S
+statindex 7
+
+/***************************************************************
+ * Used by the cache manager if it suspects that the OSD couldnt decrypt
+ * the osdRock because the rx-connection between FS and rxosd had been reaped */
+
+CheckOSDconns() = 1;
+
+/***************************************************************
+ * Used by the cache manager before storing a file when the fileserver
+ * had indicated the file could possibly be stored in object storage. */
+
+ApplyOsdPolicy(
+  IN AFSFid *Fid,
+  IN afs_uint64 length,
+  OUT afs_uint32 *protocol
+) = 2;
+
+/***************************************************************
+ * Called by 'fs osd' or 'fs fidosd' to see the osd metadata
+ * stored in the volume for a file in object storage. */
+
+GetOsdMetadata(
+  IN AFSFid *Fid
+) split = 3;
+
+/***************************************************************
+ * Called by cache mamager on clients with visible fileserver partitions
+ * and enabled vicep-access to get the path of a file inside the partition. */
+
+GetPath(
+  IN  AFSFid *Fid,
+  INOUT struct async *a
+) = 4;
+
+/***************************************************************
+ * Called by rxosd after copy on write to inform fileserver about
+ * new tag of an object */
+
+UpdateOSDmetadata(
+  IN struct ometa *old,
+  IN struct ometa *new
+) = 5;
+
+/***************************************************************
+ * Called by archival rxosds after restore of a file from HSM to
+ * object storage to update the metadata and to check the md5-checksum. */
+
+SetOsdFileReady(
+  IN AFSFid *Fid,
+  IN struct cksum *checksum
+) = 6;
+
+/***************************************************************
+ * Called by clients to bring wiped files on-line. Either during
+ * open or by a prefetch command. */
+
+BringOnline(
+  IN AFSFid *Fid,
+  OUT AFSFetchStatus *OutStatus,
+  AFSCallBack *CallBack
+) = 7;
+
+/***************************************************************
+ * Called by clients to start a fetch operation for a file either in
+ * object storage or/and in a visible partition. */
+
+StartAsyncFetch(
+  IN AFSFid *Fid,
+  IN RWparm *p,
+  INOUT struct async *a,
+  OUT afs_uint64 *transId,
+  OUT afs_uint32 *expires,
+  OUT AFSFetchStatus *OutStatus,
+  OUT AFSCallBack *CallBack
+) = 8;
+
+ExtendAsyncFetch(
+  IN AFSFid *fid,
+  IN afs_uint64 transId,
+  OUT afs_uint32 *expires
+) = 9;
+
+EndAsyncFetch(
+  IN AFSFid *fid,
+  IN afs_uint64 transId,
+  IN afs_uint64 bytes_sent,
+  IN afs_uint32 osd
+) = 10;
+
+StartAsyncStore(
+  IN AFSFid *Fid,
+  IN struct RWparm *p,
+  INOUT struct async *a,
+  OUT afs_uint64 *maxlength,
+  OUT afs_uint64 *transid,
+  OUT afs_uint32 *expires,
+  OUT AFSFetchStatus *OutStatus
+) = 11;
+
+ExtendAsyncStore(
+  IN AFSFid *Fid,
+  IN afs_uint64 transid,
+  OUT afs_uint32 *expires
+) = 12;
+
+EndAsyncStore(
+  IN AFSFid *Fid,
+  IN afs_uint64 transid,
+  IN afs_uint64 filelength,
+  IN afs_uint64 bytes_rcvd,
+  IN afs_uint64 bytes_sent,
+  IN afs_uint32 osd,
+  IN afs_int32 error,
+  IN struct asyncError *ae,
+  IN struct AFSStoreStatus *Instatus,
+  OUT struct AFSFetchStatus *OutStatus
+) = 13;
+
+Threads(
+  OUT struct activecallList *list
+) = 14;
+
+Statistic(
+  IN afs_int32 reset,
+  OUT afs_uint32 *since,
+  OUT afs_uint64 *rcvd,
+  OUT afs_uint64 *sent,
+  OUT viced_statList *l,
+  OUT struct viced_kbps *kbpsrcvd,
+  OUT struct viced_kbps *kbpssent
+) = 15;
+
+Archive(
+  IN AFSFid *Fid,
+  IN afs_uint32 osd,
+  IN afs_int32 flags
+) = 16; 

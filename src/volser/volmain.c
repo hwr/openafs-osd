@@ -54,6 +54,13 @@
 #include "volint.h"
 #include "volser_internal.h"
 
+#define BUILDING_VOLSERVER     1
+#include "../rxosd/afsosd.h"
+afs_int32 convertToOsd = 0;
+#ifdef AFS_PTHREAD_ENV
+int libafsosd = 0;
+#endif
+
 #define VolserVersion "2.0"
 #define N_SECURITY_OBJECTS 3
 
@@ -76,12 +83,13 @@ int restrictedQueryLevel = RESTRICTED_QUERY_ANYUSER;
 
 int rxBind = 0;
 int rxkadDisableDotCheck = 0;
-int DoPreserveVolumeStats = 0;
+int DoPreserveVolumeStats = 1;
 int rxJumbograms = 0;	/* default is to not send and receive jumbograms. */
 int rxMaxMTU = -1;
 char *auditFileName = NULL;
 static struct logOptions logopts;
 char *configDir = NULL;
+struct timeval statisticStart;
 
 enum vol_s2s_crypt doCrypt = VS2SC_NEVER;
 
@@ -153,6 +161,8 @@ BKGLoop(void *unused)
 	if (loop == 10) {	/* reopen log every 5 minutes */
 	    loop = 0;
 	    ReOpenLog();
+	    if (osdvol)
+		(osdvol->op_osd_5min_check)();
 	}
     }
 
@@ -237,6 +247,7 @@ enum optionsList {
     OPT_peer,
     OPT_process,
     OPT_preserve_vol_stats,
+    OPT_clear_vol_stats,
     OPT_sync,
 #ifdef HAVE_SYSLOG
     OPT_syslog,
@@ -245,7 +256,9 @@ enum optionsList {
     OPT_config,
     OPT_restricted_query,
     OPT_transarc_logs,
-    OPT_s2s_crypt
+    OPT_s2s_crypt,
+    OPT_libafsosd,
+    OPT_convert
 };
 
 static int
@@ -288,8 +301,12 @@ ParseArgs(int argc, char **argv) {
 	    CMD_OPTIONAL, "enable RX transport statistics");
     cmd_AddParmAtOffset(opts, OPT_process, "-enable_process_stats", CMD_FLAG,
 	    CMD_OPTIONAL, "enable RX RPC statistics");
+    /* -preserve-vol-stats on by default now. */
     cmd_AddParmAtOffset(opts, OPT_preserve_vol_stats, "-preserve-vol-stats", CMD_FLAG,
-	    CMD_OPTIONAL, "preserve volume statistics");
+	    CMD_OPTIONAL|CMD_HIDDEN,
+	    "preserve volume statistics when restoring/recloning");
+    cmd_AddParmAtOffset(opts, OPT_clear_vol_stats, "-clear-vol-stats", CMD_FLAG,
+	    CMD_OPTIONAL, "clear volume statistics when restoring/recloning");
 #ifdef HAVE_SYSLOG
     cmd_AddParmAtOffset(opts, OPT_syslog, "-syslog", CMD_SINGLE_OR_FLAG,
 	    CMD_OPTIONAL, "log to syslog");
@@ -306,6 +323,12 @@ ParseArgs(int argc, char **argv) {
 	    CMD_SINGLE, CMD_OPTIONAL, "anyuser | admin");
     cmd_AddParmAtOffset(opts, OPT_s2s_crypt, "-s2scrypt",
 	    CMD_SINGLE, CMD_OPTIONAL, "always | inherit | never");
+#ifdef AFS_PTHREAD_ENV
+    cmd_AddParmAtOffset(opts, OPT_libafsosd, "-libafsosd", CMD_FLAG,
+	    CMD_OPTIONAL, "load shared library for RXOSD support");
+    cmd_AddParmAtOffset(opts, OPT_convert, "-convert", CMD_FLAG,
+	    CMD_OPTIONAL, "convert during volume restore large files to OSD files");
+#endif
 
     code = cmd_Parse(argc, argv, &opts);
     if (code == CMD_HELP) {
@@ -317,7 +340,8 @@ ParseArgs(int argc, char **argv) {
     cmd_OptionAsFlag(opts, OPT_log, &DoLogging);
     cmd_OptionAsFlag(opts, OPT_rxbind, &rxBind);
     cmd_OptionAsFlag(opts, OPT_dotted, &rxkadDisableDotCheck);
-    cmd_OptionAsFlag(opts, OPT_preserve_vol_stats, &DoPreserveVolumeStats);
+    if (cmd_OptionPresent(opts, OPT_clear_vol_stats))
+	DoPreserveVolumeStats = 0;
     if (cmd_OptionPresent(opts, OPT_peer))
 	rx_enablePeerRPCStats();
     if (cmd_OptionPresent(opts, OPT_process))
@@ -416,6 +440,12 @@ ParseArgs(int argc, char **argv) {
 	}
 	free(s2s_crypt_behavior);
     }
+#ifdef AFS_PTHREAD_ENV
+    if (cmd_OptionPresent(opts, OPT_libafsosd))
+	libafsosd = 1;
+    if (cmd_OptionPresent(opts, OPT_convert))
+	convertToOsd = 1;
+#endif
 
     return 0;
 }
@@ -494,6 +524,29 @@ main(int argc, char **argv)
     OpenLog(&logopts);
 
     VOptDefaults(volumeServer, &opts);
+#ifdef AFS_PTHREAD_ENV
+    if (libafsosd) {
+	extern char *AFSVersion;
+	extern struct vol_data_v0 vol_data_v0;
+	extern struct volser_data_v0 volser_data_v0;
+	struct init_volser_inputs input = {
+	    &vol_data_v0,
+	    &volser_data_v0
+	};
+	struct init_volser_outputs output = {
+	    &osdvol,
+	    &osdvolser
+	};
+
+	code = load_libafsosd("init_volser_afsosd", &input, &output);
+	if (code) {
+	    ViceLog(0, ("Loading libafsosd.so failed with code %d, aborting\n",
+			code));
+	    return -1;
+	}
+    }
+#endif
+
     if (VInitVolumePackage2(volumeServer, &opts)) {
 	Log("Shutting down: errors encountered initializing volume package\n");
 	exit(1);
@@ -615,8 +668,20 @@ main(int argc, char **argv)
     rx_SetMinProcs(service, 2);
     rx_SetMaxProcs(service, 4);
 
+#ifdef AFS_PTHREAD_ENV
+    if (libafsosd) {
+	service =
+	    rx_NewService(0, 7, "afsosd", securityClasses,
+			numClasses, (osdvolser->op_AFSVOLOSD_ExecuteRequest));
+	if (!service) {
+	    ViceLog(0, ("Failed to initialize afsosd rpc service.\n"));
+	    exit(-1);
+	}
+    }
+#endif
     LogCommandLine(argc, argv, "Volserver", VolserVersion, "Starting AFS",
 		   Log);
+    FT_GetTimeOfDay(&statisticStart, 0);
     if (afsconf_GetLatestKey(tdir, NULL, NULL) == 0) {
 	LogDesWarning();
     }

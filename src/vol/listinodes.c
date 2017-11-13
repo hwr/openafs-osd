@@ -1246,7 +1246,7 @@ bread(FD_t fd, char *buf, daddr_t blk, afs_int32 size)
 
 #endif /* AFS_LINUX20_ENV */
 static afs_int32
-convertVolumeInfo(FdHandle_t *fdhr, FdHandle_t *fdhw, VolumeId vid)
+convertVolumeInfo(FdHandle_t *fdhr, FdHandle_t *fdhw, VolumeId vid, int osdSeen)
 {
     struct VolumeDiskData vd;
     char *p;
@@ -1256,6 +1256,10 @@ convertVolumeInfo(FdHandle_t *fdhr, FdHandle_t *fdhw, VolumeId vid)
         Log("1 convertiVolumeInfo: read failed for %lu with code %d\n", vid,
             errno);
         return -1;
+    }
+    if (vd.osdPolicy && !osdSeen) {
+	Log("1 convertiVolumeInfo: osd volume %lu without metadata filled\n", vid);
+	return -1;
     }
     vd.restoredFromId = vd.id;  /* remember the RO volume here */
     vd.cloneId = vd.id;

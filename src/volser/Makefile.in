@@ -98,9 +98,8 @@ ${TOP_INCDIR}/afs/volint.h: volint.h
 ${TOP_LIBDIR}/libvolser.a: libvolser.a
 	${INSTALL_DATA} $? $@
 
-restorevol: restorevol.o
-	$(AFS_LDRULE) restorevol.o ${TOP_LIBDIR}/libcmd.a \
-		${TOP_LIBDIR}/util.a $(LIB_roken) ${XLIBS}
+restorevol: restorevol.o ${LIBS}
+	$(AFS_LDRULE) restorevol.o ${LIBS} $(LIB_roken) ${XLIBS}
 
 vos: vos.o libvolser.a ${LIBS}
 	$(AFS_LDRULE) vos.o libvolser.a \
@@ -114,7 +113,7 @@ volserver: $(SOBJS) volerr.lo volint.xdr.lo volint.cs.lo \
 
 voldump: vol-dump.o ${VOLDUMP_LIBS}
 	$(AFS_LDRULE) vol-dump.o ${VOLDUMP_LIBS} \
-		$(LIB_roken) ${XLIBS}
+		${LIBS} $(LIB_roken) ${XLIBS}
 
 libvolser.a: $(LT_objs)
 	$(LT_LDLIB_lwp) $(LT_objs)

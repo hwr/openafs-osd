@@ -1,0 +1,707 @@
+
+			AFS/OSD: How it all works
+
+	This document is intended for system programmers, not for end-users.
+	It assumes that the reader is familiar with the source code of openafs
+	and that she/he has attended already a talk about AFS/OSD to know
+	about its concept and features.
+
+Introduction 
+
+	Files in "OpenAFS + Object Storage" (AFS/OSD) can be stored in object
+	storage devices (OSDs). The server process running on an OSD is the 
+	program "rxosd".  The rxosd listens (presently) on port 7011 and 
+	offers under the service id 900 a number of RPCs described in 
+	src/rxosd/rxosd.xg.
+
+	All OSDs are described in a ubik database called OSDDB. The process 
+	running on the database servers belonging to the OSDDB database is 
+	called "osddbserver" and listens presently on port 7012 and in the 
+	future on port 7006 which once has been reserved for AFS at IANA, but 
+	never has been actually used. IANA doesn't like that AFS/OSD uses 
+	ports 7011 and 7012 because these ports were reserved for "talon disc" 
+	and "talon engine". Therefore we decided to move the OSDDB service to 
+	port 7006 and to not have a fixed port for rxosd, but to store the 
+	actual port number of each OSD in the OSDDB. The RPCs for the osddb are 
+	described in src/OSDDB/osddb.xg.
+
+	Volumes on AFS/OSD servers differ from those on normal AFS servers
+	in several points:
+
+	1)	Each volume has an osdMetadata volume special file (number 5)
+		for the osd metadata of files in OSDs. This file contains
+		as usual a header with magic number and version and
+		then any number of slots of constant length. The first of
+		them is the first allocation bitmap. The others are either
+		osd metadata entries or free or subsequent allocation bitmaps.
+		The size of the slots is presently 512 bytes because it turned
+		out that this size mostly is large enough to store all the osd 
+		metadata of a file, but in the case the metadata require more
+		space these entries are chained. The metadata are storeed in
+		NBO by XDR routines because during volume move or replication
+		they are sent to other servers which may have different 
+		endianess. 
+	2)	The vnode does not contain a magic number. Instead of it
+		it contains a 31-bit field where the index of the first entry
+		in the osdMetadata volume special file belonging to this 
+		vnode is stored (or zero). It also contains a 1-bit field which 
+		indicates whether the file is on-line or only on archival OSDs.
+	3)	the field vn_ino_high which on NAMEI-servers used to contain
+		redundantly the uniquifier is used to store the access time
+		of the file.
+	4)	The volume info special file contains a field called "osdPolicy"
+		which contains zero for non AFS/OSD volumes.
+	5)	The volume info special file contains a field called "maxfiles"
+		which is used to enforce a quota for the number of files in a 
+		volume. (Volumes with millions of files in object storage are
+		not very handy).
+	This list probably is not complete!
+		
+	There are also a number of new RPCs for the fileserver and volserver 
+	in order to support object storage which are described in 
+	src/fsint/afsint.xg and src/volser/volint.xg.
+
+	In the following I try to describe the flow of information and RPCs 
+	used during the different activities which may happen in an AFS cell 
+	with object storage.
+
+RPC names
+
+	RPCs in AFS are defined in the .xg-files which typically contain a
+	"package" line which sets the prefix for the RPC names. OSDDB_ and
+	RXOSD_ are new with AFS/OSD. List of all(?) prefices in OpenAFS:
+
+	AFSVOL	 src/volser/volint.xg 	for RPCs to the volserver
+	BC_	 src/bubasics/bumon.xg	for BC_Print RPC to ?
+	BOZO_	 src/bozo/bozo.xg	for RPCs to the bosserver
+	BUDB_	 src/budb/budb.rg	for RPCs to the budb_server
+	BUMON_	 src/bubasics/backmon.xg for BUMON_Print RPC to ?
+	DISK_	 src/ubik/ubik_int.xg	for synchronization RPCs between ubik
+					databases
+	KAA_	 src/kauth/kauth.rg	for RPCs to the kaserver
+	PAGCB_	 src/fsint/pagcb.xg	for RPCs from NFS to cache manager 
+					with NFS support
+	PR_	 src/ptserver/ptint.xg	for RPCs to the ptserver
+	RMTSYS_	 src/sys/rmtsys.xg	for RPCs to the rmtsysd
+	RXAFS_	 src/fsint/afsint.xg	for RPCs to the fileserver
+	RXAFSCB_ src/fsint/afsintcb.xg	for RPCs to the AFS client's cache 
+					manager
+	RXSTATS_ src/rxstat/rxstat.xg	for RPCs to the statitic layer of RX
+	SAMPLE_	 src/ubik/utst_int.xg	for RPCs to the ubik statistics layer
+	TC_	 src/bubasics/butc.xg	for RPCs to the butc
+	UPDATE_	 src/update/update.xg	for RPCs to the upserver
+	VL_	 src/vlserver/vldbint.xg for RPCs to the vlserver
+	VOTE_	 src/ubik_ubik_int.xg	for voting RPCs between ubik databases
+	
+	The followning RPC names are new and used for AFS/OSD:
+
+	OSDDB_	 src/osddb/osddb.xg	for RPCs in libafsosd to the vlserver
+	RXAFSOSD_ src/fsint/afsosdint.xg for RPCs in libafsosd to the fileserver
+	AFSVOLOSD_ src/shlibafsosd/volosdint.xg for RPCS in libafsosd to volserver
+	RXOSD_	 src/rxosd/rxosd.xg	for RPCs to the rxosd
+	
+	In this document all RPCs are with their full name to make it easy
+	to look them up in the corresponding .xg- or .rg-file.
+	
+The information about OSDs in the OSDDB
+
+	If a cell starts using object storage it must create on the database
+	servers instances running the program "osddbserver". When started
+	the first time the OSDDB contains a single entry for the pseudo-OSD
+	"local disk" with id 1 which is only used to store the maximum file size
+	for files in the local /vicep-partition of the fileserver in volumes
+	which should use object storage. The idea is to let the small files 
+	stay in the fileserver partitions as with normal AFS and to store only 
+	large files in object storage.
+
+	The AFS administrator then can add entries for real OSDs using the
+	"osd createosd" comamnd. Each OSD has a unique number which cannot be 
+	changed later on because this number is part of the OSD-metadata 
+	describing the objects an AFS file consists of in the AFS volume's 
+	osdMetadata special file. OSDs also have names which may be altered by 
+	the administrator.  There are many other fields which either the 
+	administrator can set or the OSD itself (such as filling state).
+	
+	For creation, modification, and deletion of OSD entries
+	the following RPCs are offered: OSDDB_AddOsd and OSDDB_SetOsd.
+	There is no RPC to delete OSDs because it may be unsafe to delete 
+	information in the case anywhere in a fileserver such an OSD is still 
+	referenced. Instead of deleting OSDs they are just flagged as obsolete.
+
+	In order to know which OSDs are up the OSDs are obliged to tell the
+	OSDDB every 5 minutes their filling state using the RPC RXOSD_SetOsdUsage.
+
+	The fileserver and the volserver both need information about OSDs.
+	They use a RPC OSDDB_OsdList which copies all information about
+	OSDs contained into the database to the server. This RPC is called 
+	also every five minutes so that any change in the database is known
+	after relatively short time also by all file- and volservers.
+
+How get files into OSDs
+
+	With AFS/OSD still all files normally are created as local files in
+	the fileserver's partition where the volume lives. If a volume has 
+	the field "osdPolicy"  set in the volume info file then the
+	struct AFSFetchStatus returns in the field ResidencyMask which 
+	now also can be accessed under the name FetchStatusProtocol
+	the information that this file could end up in object storage.
+	In this case the new AFS client issues a new RPC called
+	RXAFS_ApplyOsdPolicy to the fileserver before storing the file.
+	This RPC returns the protocol to apply which either can be 1
+	indicating the file is to be stored on th fileserver or 2 which means
+	the file has no been transfered to object storage.
+
+	This transfer to object storage done by the fileserver consists in 
+	choosing an appropriate OSD from the list of OSDs obtained from the
+	OSDDB and then allocating the object on the OSD by calling
+	RXOSD_create. RXOSD_create returns the object-id this new file got
+	and the fileserver creates for this file an entry in the 
+	osdMetadata volume special file. If the file was not empty it
+	is copied into the newly created object by the RXOSD_write.
+	When all was successfull the link count of the original file
+	gets decremented and the inode number cleared in the file's vnode
+	and instead the  number of the osd metadata entry belonging to the 
+	file is stored in the vnode field osdMetadataIndex.
+
+	When RXAFS_ApplyOsdPolicy returned the protocol number 2 (RXOSD)
+	the switch statement in afs_CacheStoreVCache lets the client call
+	rxosd_storeInit instead of rxfs_storeInit. These xxxx_storeInit
+	routines all return on success a vector of operations which in the
+	following loop are used to read data from the cache and to store 
+	them on the fileserver or OSD or in a visible OSD or fileserver
+	partition.
+
+	rxosd_storeInit must get the information where the object(s) the
+	file consists of lives and how it is organized (simple, striped, 
+	mirrored ...). Also because the storing is asynchronously to the
+	fileserver the file must be write-locked on the fileserver to 
+	prevent other clients to read or write to the same file before 
+	the file's data version has been updated. For this purpose the
+	client issues the RPC RXAFS_StartAsyncStore. The RPC returns a unique 
+	64-bit transaction id which in subsequent RPCs is to be used, the 
+	number of seconds this transaction is valid without being extended,
+	and all information the client needs to access the OSDs in play.
+	For each object this information contains the IP-address of the 
+	OSD, the partition-id and the object-id of the object the number
+	of stripe-number and stripe-size in case the files is striped,
+	and an encrypted rock which must be sent with all RPCs to the 
+	OSD to make sure the fileserver granted access to the object.
+
+	For each object to be written the client calls StartRXOSD_write
+	to the OSD where the object lives. At the end rxosd_storeInit
+	returns a pointer to the the data used by the operations and the
+	operation vector.
+
+	In the then following loop the write-operation sends data on 
+	the already opened calls to the OSDs. In the case that the transaction
+	is expired the write-operation has to issue a RXAFS_ExtendAsyncWrite
+	to the fileserver before continuing to send data to the OSD.
+	
+	At the end of the loop the close operation is called which 
+	checks the resturn code of the write operations and
+	returns the result to the fileserver by issuing the RPC
+	RXAFS_EndAsyncStore. When all went ok the fileserver 
+	updates the file length and the data version in the vnode
+	and unlocks the file.
+
+	If the file is mirrored and in the case that the writing of one of the 
+	mirror-objects failed the fileserver does the necessary corrections 
+	by creating a new mirror by RXOSD_create on another OSD and issuing a 
+	RXOSD_copy RPC to the OSD where the good copy of the object lives. 
+	This OSD then copies the data to the new mirror using RXOSD_write.
+	 
+Opening a file in object storage
+
+	From the status information got by RXAFS_FetchStatus or RXAFS_BulkStatus
+	the client already knows that for this file applies protocol number 2.
+	the protocol field also contains information whether the file is on-line 
+	or not. In the case that a file exists only on an archival OSD which 
+	typically is a HSM system the file must be restored to a non-archival
+	OSD before clients can access it. Because there may tape mounts 
+	required this is a macroscopically slow operation and should not
+	block rx-calls and threads on the fileserver or OSD. Therefore 
+	the client issues the RPC RXAFSOSD_BingOnline to the fileserver
+	and waits for a callback for the file. When the rxosd has finished the
+	copying back of the file to a normal OSD it calls RXAFSOSD_SetOSdFileReady
+	which breaks the callback on the client and thus wakes the client process up.
+
+	The client configuration may, however, deny bringing files online or it may
+	require to happen this asynchronously. In this case opening an offline file
+	results in an error code.
+	
+Reading a file in object storage
+
+	From the status information got by RXAFS_FetchStatus or RXAFS_BulkStatus
+	the client already knows that for this file applies protocol number 2.
+	So in the switch in afs_FetchProc instead of rxfs_fetchInit rxosd_fetchInit
+	is called. rxosd_fetchInit issues RXAFS_StartAsyncFetch to the
+	fileserver and gets as in the case of storing the file a transaction-id,
+	the expiration time and the description of the file back.
+	In this case it calls StartRXOSD_read for each object needed.
+
+	Again follows the loop over the length to be read which calls
+	the read and write operations appropriate for the protocol and
+	type of cache (or bypass cache) to be used. These operations
+	are found by the operation vector returned by the xxxx_fetchInit 
+	routine. Also with read it may be necesary to extend the transaction
+	when the transaction is going to expire (not really very probable
+	as long as the cache manager fetches still fetches only one chunk
+	at a time).
+
+	The close operation then calls RXAFS_EndAsyncFetch to unlock the
+	file in the fileserver.
+	 
+Deleting files in object storage
+	
+	When the user removes a file which resides in object storage the
+	fileserver issues RXOSD_incdec RPCs to all involved OSDs and finally
+	removes the osd metadata from the osdMetadata volume special file.
+
+Cloning and releasing volumes
+
+	Volumes using object storage may be cloned, and released as normal
+	AFS volumes. Because the files in object storage are located on
+	remote OSDs cloning is not a local action of the volserver. If an
+	object belongs to multiple volumes (RW-volume, local clones, remote
+	RO-volumes ...) it is very important to keep the link count of 
+	the object correct. Otherwise deleting the file in the RW-volume
+	or removing a RO-copy of the volume could bring the link count down to
+	zero and finaly unlink the object in the OSD's partition.
+
+	When an AFS/OSD volume is cloned the first action is to create a list
+	of all objects which's link count has to be changed. There are two 
+	lists per OSD: one with the object who's link count must be incremented
+	and a seperate one for the link counts to be decremented. At the end of 
+	this step the increment lists are used in RXOSD_bulkincdec RPCs to all
+	involved OSDs to first increment the link counts. When this failes,
+	perhaps, because one of the OSDs is down at this moment all the already
+	incremented link counts are decremented again with RXOSD_bulkincdec and
+	the cloning is aborted. The increment of the link counts in the OSDs is
+	done first because the probability that it fails is much higher than
+	for the local files. Also the processing order of the vnode files
+	is changed to first process the small vnodes because only in those
+	files in object storage can appear.
+
+	If the increment of the object's link counts succeeded the next step is
+	the normal loop over all vnodes which for files in object storage
+	may result also in an update of the file's osd metadata in the cloned
+	volume. 
+
+	After this step the cloned volume is consistent and can be closed.
+	At the end the lists of objects who's link count has to be decrementd
+	is processed again with RXOSD_bulkincdec RPCs. Here any errors are
+	logged, but the processing is not aborted. Those to high link counts
+	can be corrected later when the OSDs are back again by a "vos salvage"
+	command for the RW-volume.
+
+	A release to a remote server basically is a dump and restore 
+	processing. Here all link count actions to objects have to happen
+	synchronously by RXOSD_incdec. This results for new RO-volumes in 
+	a huge number of RPCs, but there is no other secure way to keep the 
+	link counts and the volumes consistent than to do it synchronously.
+	The dump stream contains, of course, also the osd metadata which 
+	on the receiving side have to be stored in the osdMetadata volume
+	special file.
+
+	However, in order to be backward compatible to non AFS/OSD servers
+	the volserver checks before it begins to create the dump by issuing
+	a AFSVolOsdSupport RPC to the receiving side whether the other side
+	is also an AFS/OSD server. If this is not the case a normal AFS 
+	dump stream is created and instead of the osd metadata the data of
+	the files are included in the stream. This requires the volserver
+	to get the data on the fly from the involved OSDs by RXOSD_read RPCs.
+
+	Also the other way around is possible: if the volserver is started
+	with the parameter "-convert" all files larger than the maximal
+	size specified in the OSDDB for OSD 1 (local disk) are converted
+	to OSD files. The volserver issues the RXOSD_create RPC and then
+	stores the data by RXOSD_write on the fly to the OSD and finally
+	creates the appropriate osd metadata entries in the osdMetadata 
+	volume special file.
+
+Archival copies of files in object storage and HSM
+
+	As mentioned before a volume replication doesn't replicate the data
+	in OSDs, but only the meta data describing them. Therefor it's 
+	necessary to protect files in object storage against loss by damaged
+	partitons on OSD servers. For this purpose you can define OSDs 
+	which have the archival flag in the OSDDB. They never will be chosen
+	for allocation of new files, butr they can be used to create copies
+	of files stored on other OSDs. In the first place this is a backup
+	solution for files in OSDs, but it also can easily be used to introduce
+	HSM (hierarchical storage management) into AFS. This makes sense
+	especially if the archival OSD lives on a "real" underlying HSM system
+	such as TSM-HSM, SamFS, HPSS or others. Once you are sure the data 
+	are stored correctly in the HSM system (perhaps two tape copies)
+	you can remove the copy on the non-archival OSD without loosing data.
+	Subsequent accesses to the file require, however, the staging from the
+	"real" HSM-system to a non-archival OSD before the user actually
+	can access the file. This staging is managed automatically as mentioned
+	before by cache manager, fileserver and OSDs so that it is transparent
+	for the end-user except that he has to wait.
+
+	Archiving of files in object storage is done by the "fs archive" or
+	"fs fidarchive" command. Both commands differ in that the forst one 
+	takes a path in AFS while th other one takes a FID. In any case a
+	RXAFS_FsCmd RPC is used to fileserver. The thread which handles these 
+	commands in the fileserver first checks whether the number of archival 
+	copies requested for the file is already in place and whether they are 
+	all from the actual data version of the file. If this is the case 
+	nothing happens. Otherwise an archival OSD is chosen based on the file 
+	size and other parameters and a RXOSD_create_archive RPC is sent to this 
+	archival OSD. Along with the RPC a description of the on-line version of 
+	the file is sent which allows the archival OSD to copy all pieces 
+	(perhaps stripes) of the file together by use of RXOSD_read RPCs to the 
+	involved OSDs and to write the data to its OSD partition or HSM system. 
+	If the RXOSD_create_archive RPC was successfull the fileserver updates 
+	the osd metadata of the file adding this file copy to them along with
+	the md5-checksum which the archival OSD has calculated on the fly while
+	writing the data. The md5-checksum later can be used to verify the 
+	correctness of the data when the file is being staged back because 
+	then again the md5-checksum is built on the fly and compared to the
+	one stored in the osd metadata. If the new archival copy replaces an
+	outdated copy on the same archival OSD at the end the fileserver deletes
+	the old copy issuing a RXOSD_incdec RPC to the archival OSD.
+
+	The "fs archive" or "fs fidarchive" commands can be used by the 
+	administrator "by hand", but typically they are called from scripts.
+	In order to find out which files require to be archived a "vos archcand"
+	command exists which does a AFSVOL_GetArchCandidates RPC to the 
+	volserver. The volserver goes through all volumes with osdPolicy != 0
+	and looks for files in object storage without the requested number of
+	valid archival copies. It sorts these files by age and skips files which 
+	were too recently modified because only with a certain delay you can be 
+	sure that the file is not being modified soon again (which would make 
+	the archival copy worthless). In the case you want to have multiple 
+	archival copies it makes sense to do a "fs fidlistarch" in the script
+	which returns the OSD numbers of already existing actual archival copies
+	and the file size. This allows the script easy to decide on which
+	OSD it should create a copy.
+	 
+Wiping files
+
+	In an HSM environmet another script can be used to wipe files from 
+	non-archival OSDs when they become to full. Wiping means here to remove
+	the on-line copy so that only one or more archval copies of the file
+	remain. The wiper script collects every ten minutes the OSD entries
+	from the OSDDB. When a wipeable OSD is filled more than its 
+	highWaterMark the script asks this OSD which are the objects which 
+	should be wiped first. This is the "osd wipecand" command which issues
+	a RXOSD_wipe_candidates RPC to the OSD. The candidates may be order 
+	either by access time or by size or by a combination of both. The script 
+	then goes through the list it got back and does "fs fidwipe" until
+	it was wiped enough to get under the highWaterMark again. "fs fidwipe"
+	issues a RXAFS_FsCmd RPC to the fileserver. Before wiping a file the
+	fileserver checks that the archival copies are really good by doing 
+	RXOSD_examine to the archival OSDs for the objects which returns not
+	only the size and the linkcount, but also wether the objects have got
+	their tape copies. If this is the case the fileserver removes the 
+	on-line copy from the osd metadata of the file and sends a RXOSD_incdec 
+	to the on-line OSD to decrement the link count. When the command comes
+	back with return code zero only the link count is decremented , but not 
+	necessarily any space freed because there may exist also RO-copies of
+	the file which go away only with the next release of the volume. The 
+	script therefore puts the volume id into a list which at the end is
+	used to release all volumes where wiped files belonged to. It is not
+	recomanded to use backup voiumes if you have wipeable OSDs because 
+	then you would have to remove them too in order to get rid of the
+	objects.
+	
+Restoring (staging) of wiped files
+
+	As metioned before wiped files come back transparently to non-archival
+	OSDs when they are tried to open. There is also a "fs prefetch" command
+	to asynchronously restore wiped files. In any case when the fileserver
+	detects that the file is not on-line it looks whether the new on-line
+	copy of the file already had been preallocated on an OSD. If not it
+	chooses an non-archival OSD and allocates the object there by 
+	RXOSD_create. This copy of the file is added to the osd metadata, but 
+	with a flag which indicates RESTORE_IN_PROGRESS. 
+	
+	Now the fileserver sends a RXOSD_restore_archive RPC to one of the 
+	archival OSDs where copies exist. If multiple copies exist the read
+	priority in the OSDDB determines which is tried first. Unless the file
+	is already on-line in the partition of the archival OSD this RPC returns
+	immediately with an error code of 1096 which is OSD_WAITING_FOR_TAPE.
+	The request is stored then in the so called fetch queue and served 
+	asynchronously. The fetch queue may contain many (hundreds or sometimes
+	thousands) of entries. It is not a simple FIFO queue because AFS/OSD 
+	wants to be fair to users which need only one or few files while others 
+	request hundreds. Therefore the queue has a ranking and the oldest entry 
+	of each requestor (user) competes with the oldest entries of the other
+	requestors. After each removal of an entry from the fetch queue the
+	renking is re-calculated. Most HSM systems don't like too many requests
+	in parallel. Therefore only "maxParallelFetche" are given to the HSM 
+	system at any time. The rxosd is based on the same framework as the
+	fileserver and also has the IHandle technique which keeps file 
+	descriptors open unless a FDH_REALLYCLOSE happens or they have to be
+	recycled. For rxosd a IH_REOPEN has been added to the code which only
+	returns an FdHandle if the file already was open. The purpose of this 
+	call is that we don't want to block rxosd threads while they are trying
+	to open a file which is not yet back from tape. This should happen
+	asynchronously in another process which gets forked of when a fetch
+	queue entry is ready to be processed by the HSM system. Depending on 
+	the actual HSM system this can be different scripts or commands. The 
+	important thing is that when they come back with a return code of zero
+	the rxosd can be sure it is safe to open the file because the file
+	is staged inside the HSM system.
+
+	Once the file is the rxosd sends the data by RXOSD_write RPCs to the 
+	on-line OSD(s) described in the list which came with the original
+	RXOSD_restore_archive RPC and which had been stored in the fetch queue.
+	If all is done the fileserver has to be notified that now the on-line
+	copy of the file is complete. 
+	
+Displaying the fetch queue
+
+	The "osd fetchqueue" command is used to dieplay the fetch queues on the
+	different archival OSDs. It uses first the RPC OSDDB_OsdList to find
+	out the archival OSDs and then the RPC RXOSD_fetchqueue to each of them
+	to get the actual fetch queue data.
+
+Prefetching files from tape
+
+	The "fs prefetch" command is used to restore asynchronously files from
+	an archival OSD. It does an pioctl with VIOC_PREFETCHTAPE. The cache
+	manager directs then a RXAFS_FetchData RPC to the fileserver with
+	length zero. The fileserver does what is described in chapter 
+	"Restoring (staging) of wiped files" and returns immediately. 
+
+The legacy interface
+
+	AFS/OSD, of course, runs fastest if the clients are also AFS/OSD capable.
+	However, this is not always the case. Old clients, clients belonging to
+	other non AFS/OSD cells and still also the Windows-client do not know
+	about AFS/OSD. Therefore from the beginning the fileserver must have
+	the ability to serve files in object storage to these clients as if they 
+	were normal AFS files.
+
+	If a RXAFS_FetchData64 (or RXAFS_FetchData) RPC is directed to a 
+	fileserver for a file which is stored in object storage it can either be 
+	a prefetch request (length == 0) or a legacy client which wants data 
+	back. In this case the fileserver does the necessary RXOSD_read requests 
+	to the OSD that whould do an AFS/OSD capable client itself and sends the
+	data over the rx_call to the client.
+
+	The same happens when a RXAFS_StoreData64 (or RXAFS_StoreData) RPC is
+	deirected to a fileserver. Then the fileserver sends the data read from
+	the rxcall through a RXOSD_write call to the OSD. In both cases also
+	complex files with striping or mirroring are supported by the legacy
+	interface.
+
+	This is the same code which is also used in the volserver in 
+	in duump or restore to/from non AFS/OSD volservers as mentioned before.
+
+	Things become more complicated if the file is not on-line. In this case
+	the fileserver runs through the code it uses when it restores a file
+	from an archival OSD. With an AFS/OSD client it would then end the call
+	and the client would poll the fileserver until the file has come back
+	on-line. But in this case the RPC thread must stay active in the 
+	fileserver because legacy clients would interpret it as an error when 
+	RXAFS_FetchData returns without having sent the data. The special
+	problem here is that the locks on the vnode have to be released and 
+	later reaquired because otherwise the RXAFS_SetOsdFileReady RPC sent
+	by the archival OSD could not be processed. The thread remains in 
+	a loop sleeping 10 seconds and retrying. Since some time ago the
+	idleDead mechanism has been implemented in the OpenAFS client it is
+	questionable whether it makes sense to keep the thread alive. With
+	older AFS clients, however, this worked perfectly. Another point is 
+	that these blocked clients easily can become a problem if many clients
+	do the same thing or the idleDead'ed client retries it in a loop.
+	Therefore a variable maxLegacyThreadsPerClient had been introduced.
+	The default value is 3 and it can be changed by "fs setvariable".
+	Only maxLegacyThreadsPerClient requests are accepted by the fileserver
+	at a time from a single client machine. 
+
+Revisiting the OSDDB: on which OSD to allocate an object?
+
+	The decision on which OSD an object should be allocated is, of course,
+	based on the information in the OSDDB which in its actual form is 
+	stored on each fileserver and volserver. All client side interface 
+	routines are contained in src/osddb/osddbuser.c. There are several
+	routines to find OSDs by different parameters. The OSDs have in the
+	OSDDB a write priority which better should be called allocation
+	priority, but it turned out that decisions based only on this priority
+	lead to very unbalanced allocations unless you permanently change
+	the priorities. Presently the decision is based more on the filling
+	state of the OSD and - in case it's wipeable - on the access time of
+	the newest wiped file (which is stored in the OSDDB by the wiper
+	script).
+
+	The OSDDB allows also do specify an owner and a location for OSDs.
+	The idea is that the group which is funding the hardware the OSD is 
+	running on doesn't want that anybody stores his data on their OSD.
+	The group owning some OSDs probably is also owning some fileservers.
+	Therefore the OSDDB has got another type of entries namely server
+	which is neccessary for each fileserver owned by a group. These 
+	fileservers read the information from the OSDDB and understand that
+	they are owned bay a group. This information is used also by the
+	routines which decide where to allocate an object.
+	
+	Our AFS cell is split over two geographic locations many hundred
+	kilometers distant. So it makes sense to allocate objects on an OSD
+	which is in the same location otherwise the data would have to go
+	wich each access over the WAN. Also for this purpose the server
+	entries are used. There are some additional subcommands for "osd"
+	to maintain the server information:
+
+	"osd addserver"  creates a server entry in the OSDDB. It calls
+		OSDDB_AddServer.
+	"osd deleteserver" removes an server entry from the OSDDB by calling
+		OSDDB_DeleteServer.
+	"osd servers" displays a list of all server entries in the OSDDB and
+		calls OSDDB_ServerList and for each server OSDDB_GetServer.
+	There is also implemented a OSDDB_SetServer RPC which presently isn't
+	used anywhere!
+
+osd subcommands directed to OSDs
+
+	Some subcommands of the "osd" command are directed to the OSDDB, others
+	to OSDs or to both. There are some administrator commands for which 
+	special RPCs have been created in the rxosd:
+	
+	"osd volumes"	does a RXOSD_volume_groupes RPC which is a split type
+	RPC that returns the RW-volume ids of all subtrees under AFSIDat in a
+	/vicep-partition.
+
+	"osd objects"	does a RXOSD_listobjects RPC which also is split type
+	and returns a stream of struct ometa for all objects found in a volume 
+	group which then are translated to printable lines.
+
+	"osd md5sum"	does a RXOSD_md5sum RPC. for this RPC the rxosd forks
+	a task which executes either the md5sum command or in the case of HPSS
+	a wrapper command which calls hpsscat piped into md5sum. In both cases
+	the stdout stream starts with the md5-checksum and is interpreted by
+	rxosd and the actual md5-cehcksum is returned to the caller.
+
+	"osd threads"	does a RXOSD_threads RPC which returns a struct
+	activeRPClist. The osd command uses RXOSD_TranslateOpCode (generated
+	by rxgen) to show the RPC names and numbers in the active threads.
+
+	"osd statistic" does a RXOSD_statitic RPC which returns counters for
+	received and sent data, the number of times RPCs were called.
+
+	"osd whichvariables", "osd getvariable", and "osd setvariable" all call
+	the RXOSD_Variable RPC which either returns a list of the accessible 
+	variables, or the contents of a variable in case of setvariable after
+	having set it.
+	
+Policies
+
+	At RZG only part of what is implemented in AFS/OSD is used. When the 
+	design was developed in 2005 at a meeting at CERN the structure of 
+	files in OSDs should allow multiple segments and up to eight objects
+	per segment allowing for striping and mirroring of data. This all is
+	implemented and also the psosibility to have archival copies of files
+	which was not part of the original design but which was assential for
+	RZG in order to replace MR-AFS. At our - except a few test files - all
+	files consist in a single segment with a single object in it.
+
+	Other sites were interested to test the possibilities of striping and
+	mirroring and to compare the resulting throughput and maximal transfer
+	rates. Therefore Felix Frank who at this time worked for his thesis in
+	informatics developed at DESY Zeuthen the part of AFS/OSD which 
+	implements the policies. The policies are rules based on file names
+	(and actually also some other values) which determine in which form
+	files should be created in object storage. Each policy has a number.
+	Policy no. 1 is what we use: files larger than maximal size for OSD 1
+	(local_disk) should go into OSDs. Policy 1 is implicit but the numbers,
+	names and rules of all other policies are stored in the OSDDB. 
+	
+	Each site may define their own policies which also can be quite complex. 
+	Which policy is to be applied depends on the value for osdPolicy in the 
+	volume info special file, but can be overwritten per directory by the 
+	policy number stored in the field osdPolicyIndex which is an alias for 
+	osdMetadataIndex in the struct VnodeDiskObject. To use this field for 
+	different purposes is possible because only files are allowed to be 
+	stored in object storage while directories mus be always in the local 
+	partitioon (Also because otherwise a "salvage -dir" wouldn't be 
+	possible).
+
+	The fileserver calls the OSDDB_PolicyList RPC when it is newly started
+	and each five minutes the OSDDB_GetPolicyRevision in order to know
+	whether it's necessary to reload the information about policies from
+	the OSDDB. The idea here is that the policy definitions are rather 
+	unlikely to change frequently. 
+
+	Felix developed also a some subcommands to "fs" and "osd" to handle
+	policies:
+
+	"osd addpolicy" uses the OSDDB_AddPolicy RPC to store a new policy in 
+		the OSDDB.
+	"osd deletepolicy" uses the OSDDB_DeletePolicy RPC to delete a policy 
+		entry in the OSDDB.
+	"osd policies" uses the RPCs OSDDB_PolicyList and OSDDB_GetPolicyId to
+		display the defined policies.
+
+	"fs policy" shows which policy is to be applied in the current
+		directory. It calls pioctl which then callsa RXAFS_FsCmd with 
+		CMD_GET_POLICIES.
+
+	"fs setpolicy" is used to set a policy number for a directory. It calls
+		pioctl which then calls RXAFS_FsCmd with CMD_SET_POLICIES.
+
+libafsosd.so
+	
+	In order to minimize the modificarions in the normal OpenAFS code
+	all AFS/OSD specific code has been concentratied in a shared library
+	which - on the server sied - can be loaded by commond line parameter.
+	Now the normal source code contains only hooks into the shared library
+	which are used only when the library has been loaded.
+
+	The new RPCs used for AFS/OSD therefore have to be in separate xg-files
+	with a different name prefix. These interfaces are reached over the
+	same port number, but with a different service id:
+
+	original     service 	AFS/OSD	     service
+
+	RXAFS_		1	RXAFSOSD_	2
+	AFSVOL		6	AFSOSDVOL_	7
+
+	Using different RPC xg-files allowed also to renumber the new RPCs
+	beginning with 1 instead of the huge old numbers.
+
+	libafsosd.so (and libdafsosd.so for DAFS-servers) are built only
+	for pthreaded servers. 
+
+	libafsosd.so also contains the code to integrate the OSDDB database
+	into the pthreaded vlserver (built under src/tvlserver).
+	If the vlserver is started with -libafsosd it hosts also the	
+	OSDDB which can be reached under service id 13 and - for backward
+	compatibility - also under port 7012.
+
+Asynchronous I/O 
+
+	As mentioned before fetch or store access to data in object storage
+	begins with an RPC to the fileserver 
+	*	to check the access rights of the user,  
+	*	to lock the file
+	*	to get the information about the objects the file consists of
+		which is needed to start the data transfer.
+	These RPCs are called RXAFS_StartAsyncFetch and RXAFS_StartAsyncStore.
+	They could also have been directed to the new interface RXAFSOSD_
+	in the libafsosd.so, but in a discussion with Jeffrey Altman and
+	Derrick Brashear at the European AFS meeting in Hamburg in 2011
+	was proposed to implement these RPCs in the main afsfileprocs.c
+	because there could be also new usage cases in OpenAFS which require
+	asynchronous operations in the future.
+	In order to make these RPCs extendable and not dependend on AFS/OSD
+	only the parameters common to any form of asynchronous I/O such as
+	the file's AFSFid, offset and length of data to be transferred and
+	- in case of store - the file length - are unmarshalled directly in
+	the RPC header routine while all other input and output parameters
+	are hidden in a struct opaque and ummarshalled/marshalled only in
+	the backend routines in case of AFS/OSD in the libafsosd.so.
+
+	The Async I/O is ended with RPCs RXAFS_EndAsyncFetch and 
+	RXAFS_EndAsyncStore which do the unlocking of the file and
+	- in case of store - the updating of the metadata, such as data version
+	and file length.
+
+	In order to prevent files from being locked for-ever the Start-Async-RPCs
+	set an expiration time for the transaction after which the file is
+	unlocked automatically. The client gets the possibility to extend
+	the expriration time by use of two more RPCs: RXAFS_ExtendAsyncFetch
+	and RXAFS_ExtendAsyncStore.
+
+

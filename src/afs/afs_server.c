@@ -67,6 +67,8 @@
 #endif
 #include <inet/ip.h>
 #endif
+#include "../rxosd/fs_rxosd_common.h"
+#include "../rxosd/rxosd.h"
 
 /* Exported variables */
 afs_rwlock_t afs_xserver;	/* allocation lock for servers */
@@ -315,6 +317,47 @@ CheckVLServer(struct srvAddr *sa, struct vrequest *areq)
     afs_PutConn(tc, rxconn, SHARED_LOCK);
 
 }				/*CheckVLServer */
+
+static void
+CheckRxosdServer(struct srvAddr *sa, struct vrequest *areq)
+{
+    struct server *aserver = sa->server;
+    struct afs_conn *tc;
+    afs_int32 code;
+    struct rx_connection *rxconn;
+
+    AFS_STATCNT(CheckRxosdServer);
+    /* Ping dead servers to see if they're back */
+    if (!((aserver->flags & SRVR_ISDOWN) || (sa->sa_flags & SRVADDR_ISDOWN))
+	|| (aserver->flags & SRVR_ISGONE))
+	return;
+    if (!aserver->cell)
+	return;                 /* can't do much */
+
+    tc = afs_ConnByHostSrv(aserver, sa->sa_portal, 900, 
+			aserver->cell->cellNum, areq, 1, SHARED_LOCK, 0, &rxconn);
+    if (!tc)
+	return;
+    rx_SetConnDeadTime(rxconn, 3);
+
+    RX_AFS_GUNLOCK();
+    code = RXOSD_ProbeServer(rxconn);
+    RX_AFS_GLOCK();
+    rx_SetConnDeadTime(rxconn, afs_rx_deadtime);
+    /*
+     * If probe worked, or probe call not yet defined (for compatibility
+     * with old vlsevers), then we treat this server as running again
+     */
+    if (code == 0) {
+	if (tc->parent->srvr == sa) {
+	    afs_MarkServerUpOrDown(sa, 0);
+		print_internet_address("afs: rxosd server ", sa,
+					" is back up", 2, code, rxconn);
+	}
+    }
+    afs_PutConn(tc, rxconn, SHARED_LOCK);
+}
+
 
 
 #ifndef	AFS_MINCHANGE		/* So that some can increase it in param.h */
@@ -608,14 +651,14 @@ CkSrv_GetCaps(int nconns, struct rx_connection **rxconns,
 void
 afs_CheckServers(int adown, struct cell *acellp)
 {
-    afs_LoopServers(adown?AFS_LS_DOWN:AFS_LS_UP, acellp, 1, CkSrv_GetCaps, NULL);
+    afs_LoopServers(adown?AFS_LS_DOWN:AFS_LS_UP, acellp, 1, 1, CkSrv_GetCaps, NULL);
 }
 
 /* adown: AFS_LS_UP   - check only up
  *        AFS_LS_DOWN - check only down.
  *        AFS_LS_ALL  - check all */
 void
-afs_LoopServers(int adown, struct cell *acellp, int vlalso,
+afs_LoopServers(int adown, struct cell *acellp, int vlalso, int rxosdalso,
 		void (*func1) (int nservers, struct rx_connection **rxconns,
 		               struct afs_conn **conns),
 		void (*func2) (int nservers, struct rx_connection **rxconns,
@@ -699,6 +742,13 @@ afs_LoopServers(int adown, struct cell *acellp, int vlalso,
 	if (sa->sa_portal == AFS_VLPORT) {
 	    if (vlalso)
 		CheckVLServer(sa, treq);
+	    continue;
+	}
+
+	/* check rxosd with special code */
+	if (sa->sa_portal != AFS_VLPORT && sa->sa_portal != AFS_FSPORT) {
+	    if (rxosdalso)
+		CheckRxosdServer(sa, &treq);
 	    continue;
 	}
 
@@ -1675,7 +1725,8 @@ afs_GetServer(afs_uint32 *aserverp, afs_int32 nservers, afs_int32 acell,
 	newts->flags |= SRVR_MULTIHOMED;
     }
     if (acell)
-	newts->cell = afs_GetCell(acell, 0);
+	/* Use the afs_GetCellStale variant to avoid afs_GetServer recursion. */
+	newts->cell = afs_GetCellStale(acell, 0);
 
     /* For each IP address we are registering */
     for (k = 0; k < nservers; k++) {
@@ -1764,7 +1815,8 @@ afs_GetServer(afs_uint32 *aserverp, afs_int32 nservers, afs_int32 acell,
 		afs_servers[iphash] = orphts;
 
 		if (acell)
-		    orphts->cell = afs_GetCell(acell, 0);
+		    /* Use the afs_GetCellStale variant to avoid afs_GetServer recursion. */
+		    orphts->cell = afs_GetCellStale(acell, 0);
 	    }
 
 	    /* Hang the srvAddr struct off of the server structure. The server

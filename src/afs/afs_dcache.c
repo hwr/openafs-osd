@@ -2404,8 +2404,8 @@ afs_GetDCache(struct vcache *avc, afs_size_t abyte,
 			setNewCallback = 1;
 		    }
 		    i = osi_Time();
-		    code = afs_CacheFetchProc(tc, rxconn, file, Position, tdc,
-					       avc, size, tsmall);
+		    code = afs_FetchProc(tc, rxconn, file, areq, Position, tdc,
+					       avc, size, NULL, tsmall);
 		} else
 		   code = -1;
 

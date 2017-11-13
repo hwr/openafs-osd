@@ -7,12 +7,14 @@ prefix S
 
 %#include <rx/rx.h>
 %#include <rx/rx_null.h>
+#include "fs_rxosd_common.xg"
+
+/* %#define NEW_OSD_FILE 1	 not yet because our fileservers don't understand it */
 
 /* prototype for pseudo-RPC call */
 %char *RXOSD_TranslateOpCode(afs_int32 code);
 
-%#define	OSD_SERVER_PORT		htons(7011) /* as MR-AFS remioserver */
-%#define	OSD_SERVICE_PORT	htons(0)
+%#define	OSD_SERVER_PORT		htons(7006)
 %#define	OSD_SERVICE_ID		900   /* same as REMIOSRV for MR-AFS */
 %#define	OSD_NULL			0
 %#define	OSD_RXKAD			2
@@ -22,271 +24,207 @@ prefix S
 %#define OSD_WAIT_FOR_TAPE	1096
 %#endif
 
-%#define T10_CDB_SIZE 200
+/***************************************************************************
+ * Create a volume group in the rxosd partition
+ * (not used at all: NAMEI-tree and linktable are created automatically)
+ * It's here for future use with other back-ends than NAMEI */
 
-typedef opaque t10rock<T10_CDB_SIZE>;
+create_volume   (IN afs_uint64 part_id) = 1;
 
-%#define CAPCRYPTLEN 72
-struct t10cap {
-	afs_uint32 pid_hi;
-	afs_uint32 pid_lo;
-	afs_uint32 oid_hi;
-	afs_uint32 oid_lo;
-	afs_uint32 maxlen_hi;
-	afs_uint32 maxlen_lo;
-	afs_uint32 ip;
-	short port;
-	short reserved;
-	afsUUID uuid;
-	afs_uint32 cap;
-	afs_uint32 expires;
-	afs_uint32 user;
-	afs_uint32 spare[3];
-	afs_uint32 epoch;
-	afs_uint32 cid;
-};
+/***************************************************************************
+ * Remove the remains of an volume group (NAMEI directory tree, linktable)
+ * (not yet implemented or used) */
 
-struct t10sec {
-        char check[20];
-        char nonce[12];
-        char datain[4];
-        char dataout[4];
-};
+remove_volume	(IN struct ometa *o) = 2;
 
-struct t10cdb {
-        char    operation;
-        char    control;
-        char    res1[5];
-        char    lng;
-        char    action[2];
-        char    service[6];
-        char    pid[8];
-        char    oid[8];
-        char    res2[4];
-        char    length[8];
-        char    offset[8];
-        char    attrparm[28];
-        struct t10cap cap;
-        struct t10sec sec;
-};
+/***************************************************************************
+ * Get a list of all volume groups in a partition (called by 'osd volumes') */
 
-struct osd_incdec {
-	afs_uint64 oid;
-	afs_uint64 pid;
-	afs_int32  todo;
-	afs_int32  done;
-};
-typedef struct osd_incdec osd_incdecList <>;
+volume_groups 	(IN struct ometa *o) split = 3;
 
-struct osd_md5 {
-	afs_uint64 oid;
-	afs_uint64 pid;
-	afs_uint64 size;
-	afs_uint32 md5[4];
-};
+/***************************************************************************
+ * Create an object
+ * used by the fileserver and volserver (and for testing by 'osd createobject') */
 
-struct osd_obj_desc {
-	afs_uint64 oid;
-	afs_uint64 pid;
-	afs_uint32 id;
-	afs_uint32 ip;
-	afs_uint32 stripe;
-};
-typedef struct osd_obj_desc osd_obj_descList <>;
+create		(IN struct ometa *o,
+		 OUT struct ometa *r) = 4;
 
-struct osd_segm_desc {
-	afs_uint64 length;
-	afs_uint32 stripes;
-	afs_uint32 stripe_size;
-	osd_obj_descList objList;
-};
-typedef struct osd_segm_desc osd_segm_descList <>;
+/***************************************************************************
+ * Increment or decrement the link count of an object.
+ * Used when deleting a file, but also by the volserver when volumes are
+ * moved or released or salvaged.
+ * Also 'osd increment' and 'osd decremnt' use it. */
 
-struct rxosd_fetch_entry {
-	afs_uint64 part_id;
-	afs_uint64 obj_id;
-	afs_uint32 user;
-	afs_uint32 time;
-	afs_uint32 fileserver;
-	struct osd_segm_descList list;
-};
-typedef struct rxosd_fetch_entry rxosd_fetch_entryList<>;
+incdec		(IN struct ometa *o,
+		 IN afs_int32 diff) = 5;
 
-%#define TAPE_FETCH  	1
-%#define XFERING     	2
-%#define SET_FILE_READY 3
+/***************************************************************************
+ * Increment or decrement the link count of many objects in a single RPC.
+ * Used when deleting a volume instance and when cloning a volume. */
 
-struct FetchEntry {
-    afs_uint32 Requestor;
-    afs_uint32 TimeStamp;
-    afs_uint32 Volume;
-    afs_uint32 Vnode;
-    afs_uint32 Uniquifier;
-    afs_uint32 rank;
-    afs_uint32 state;
-    afs_uint32 caller;
-};
-typedef FetchEntry FetchEntryList<>;
+bulkincdec	(INOUT struct osd_incdecList *list) = 6;
 
-struct WipeCandidate {
-    afs_uint64 p_id;
-    afs_uint64 o_id;
-    afs_uint64 size;
-    afs_uint32 atime;
-};
-typedef WipeCandidate WipeCandidateList<>;
+/***************************************************************************
+ * Get a list of all objects belonging to a volume group.
+ * Used by 'osd objects' */
 
-struct activerpc {
-        afs_uint32 num;
-        afs_uint32 ip;
-        afs_uint64 part;
-        afs_uint64 obj;
-};
-typedef activerpc activerpcList<>;
+listobjects	(IN struct ometa *o) split = 7;
 
-struct varname {
-        char name[64];
-};
+/***************************************************************************
+ * Get detailed information about an object.
+ * Used by the fileserver to check the archival version of a file before wiping,
+ * used by the cache manager when the rxosd partition is visible to get the
+ * path of an object, used the volserver for 'vos salvage', and by 'osd examine' */
 
-struct rxosd_stat {
-	afs_uint32 rpc;
-	afs_uint64 cnt;
-};
-typedef rxosd_stat rxosd_statList<>;
+examine		(IN t10rock *rock,
+		 IN struct ometa *o,
+		 IN afs_int32 mask,
+		 OUT struct exam *e) = 8;
 
-struct rxosd_kbps {
-	afs_uint32 val[96];
-};
+/***************************************************************************
+ * Write into an existing object.
+ * Used by the cache manager, by the fileserver for legacy clients, by afsio,
+ * and by 'osd write'. It's also used by the rxosd when moving objects to other
+ * rxosds on behalf of 'fs replaceosd' */
 
-create_part	(IN afs_uint64 part_id) = 1;
+write		(IN t10rock *rock,
+		 IN struct RWparm *p,
+		 INOUT struct ometa *o) split = 9;
 
-create		(IN afs_uint64 part_id,
-		 IN afs_uint64 from_id,
-		 OUT afs_uint64 *obj_id) = 2;
+/***************************************************************************
+ * When link count != 1 copy contents of the object to a new one.
+ * Used by the fileserver when handling RXAFS_StartAsyncStore */
 
-hardlink	(IN afs_uint64 from_part,
-		 IN afs_uint64 from_id,
-		 IN afs_uint64 to_part,
-		 IN afs_uint64 to_id,
-		 OUT afs_uint64 *obj_id) = 3;
-
-write		(IN t10rock rock,
-		 IN afs_uint64 part_id,
-		 IN afs_uint64 obj_id,
-		 IN afs_uint64 offset,
-		 IN afs_uint64 length) split = 4;
-
-write_keep	(IN afs_uint64 part_id,
-		 IN afs_uint64 obj_id,
-		 IN afs_uint64 offset,
-		 IN afs_uint64 length,
-		 IN afs_uint32 atime,
-		 IN afs_uint32 mtime) split = 5;
-
-writePS		(IN t10rock rock,
-		 IN afs_uint64 part_id,
-		 IN afs_uint64 obj_id,
-		 IN afs_uint64 offset,
-		 IN afs_uint64 length,
-		 IN afs_uint32 stripe_size,
-		 IN afs_uint32 nstripes,
-		 IN afs_uint32 mystripe) split = 6;
-
-read		(IN t10rock rock,
-		 IN afs_uint64 part_id,
-		 IN afs_uint64 obj_id,
-		 IN afs_uint64 offset,
-		 IN afs_uint64 length) split = 7;
-
-readPS		(IN t10rock rock,
-		 IN afs_uint64 part_id,
-		 IN afs_uint64 obj_id,
-		 IN afs_uint64 offset,
-		 IN afs_uint64 length,
-		 IN afs_uint32 stripe_size,
-		 IN afs_uint32 nstripes,
-		 IN afs_uint32 mystripe) split = 8;
-
-truncate	(IN afs_uint64 part_id,
-		 IN afs_uint64 obj_id,
-		 IN afs_uint64 length) = 9;
-
-incdec		(IN afs_uint64 part_id,
-		 IN afs_uint64 obj_id,
-		 IN afs_int32 diff) = 10;
-
-bulkincdec	(INOUT osd_incdecList *list) = 11;
-
-remove_part	(IN afs_uint64 part_id) = 12;
-
-list		(IN afs_uint64 part_id,
-		 IN afs_uint64 start_id) split = 13;
-
-examine		(IN afs_uint64 part_id,
-		 IN afs_uint64 obj_id,
-		 OUT afs_uint64 *size,
-		 OUT afs_uint32 *linkcount,
-		 OUT afs_uint32 *mtime,
-		 OUT afs_uint32 *atime) = 14;
-
-examineHSM	(IN afs_uint64 part_id,
-		 IN afs_uint64 obj_id,
-		 OUT afs_uint64 *size,
-		 OUT afs_uint32 *linkcount,
-		 OUT afs_uint32 *time,
-		 OUT afs_int32 *status) = 15;
-
-list_part	(IN afs_uint64 start_id) split = 16;
-
-copy		(IN afs_uint64 from_part,
-		 IN afs_uint64 to_part,
-		 IN afs_uint64 from_id,
-		 IN afs_uint64 to_id,
-		 IN afs_uint32 to_osd) = 17;
-
-CopyOnWrite     (IN afs_uint64 part_id,
-                 IN afs_uint64 from_id,
+CopyOnWrite     (IN struct ometa *o,
 		 IN afs_uint64 offs,
 		 IN afs_uint64 length,
 		 IN afs_uint64 size,
-                 OUT afs_uint64 *obj_id) = 18;
+                 OUT struct ometa *new) = 10;
 
-Dummy           (IN afs_uint32 in,
-                 OUT afs_uint32 *out) = 19;
+/***************************************************************************
+ * Truncate an object.
+ * Used by the fileserver */
 
-md5sum          (IN afs_uint64 part_id,
-                 IN afs_uint64 obj_id,
-                 OUT struct osd_md5 *md5) = 20;
+truncate	(IN struct ometa *o,
+		 IN afs_uint64 length,
+		 OUT struct ometa *out) = 11;
 
-create_archive  (IN afs_uint64 part_id,
-		 IN afs_uint64 from_id,
-		 IN struct osd_segm_descList *list,
-		 OUT struct osd_md5 *output) = 21;
+/***************************************************************************
+ * Read data from an object.
+ * Used by the cache manager, by the fileserver for legacy clients, by afsio,
+ * and by 'osd read'. It's also used by the rxosd when archiving files to collect
+ * the data from other rxosds */
 
-restore_archive (IN afs_uint64 part_id,
-		 IN afs_uint64 obj_id,
+read		(IN t10rock *rock,
+		 IN struct RWparm *p,
+		 IN struct ometa *o) split = 12;
+
+/***************************************************************************
+ * Create a hard link into another volume group.
+ * Used by the the volserver on behalf of 'vos split' */
+
+hardlink	(IN struct ometa *from,
+		 IN struct ometa *to,
+		 OUT struct ometa *r) = 13;
+
+/***************************************************************************
+ * Create a copy of an object on another rxosd.
+ * Used by the the fileserver on behalf of 'fs replaceosd' */
+
+copy		(IN struct ometa *from,
+		 IN struct ometa *to,
+		 IN afs_uint32 to_osd) = 14;
+
+/***************************************************************************
+ * Dummy RPC used by the fileserver to keep the connection to the rxosd alife.
+ * This is necessary because the session key of that connection is used by
+ * the rxosd to decrypt the t10cap the client has to provide to "authenticate".
+ * Also calles in afs_server.c when connection to the server was lost  */
+
+ProbeServer     () = 15;
+
+/***************************************************************************
+ * Calls the md5sum binary on the rxosd machine. Much faster than doing it on
+ * the client. Used by 'osd md5sum' */
+
+md5sum          (IN struct ometa *o,
+                 OUT struct osd_cksum *md5) = 16;
+
+/***************************************************************************
+ * Create an archival object (typically in an HSM system). Used by the fileserver.
+ * Calls either 'read' RPCs to the rxosds where the objects live or if the file
+ * consists in a single object and HPSS is visible on the rxosd where the file
+ * lives it calls 'write_to_hpss'. In any case the new object metadata and the
+ * md5 checksum are returned to the fileserver */
+
+create_archive  (IN struct ometa *o,
+		 IN struct osd_segm_descList *l,
+		 IN afs_int32 flag,
+		 OUT struct osd_cksum *output) = 17; 
+
+/***************************************************************************
+ * Restore a file from an archival object. Used by the fileserver.
+ * Calls either 'write' RPCs to the rxosds where the objects should be restored
+ * to or if the file should consist in a single object and HPSS is visible on
+ * the rxosd where the file should go it calls 'read_from_hpss'. In any case
+ * md5 checksum are returned to the fileserver for verification */
+
+restore_archive (IN struct ometa *o,
 		 IN afs_uint32 user,
-		 IN struct osd_segm_descList *listi,
-		 OUT osd_md5 *output) = 22;
+		 IN struct osd_segm_descList *l,
+		 IN afs_int32 flag,
+		 OUT osd_cksum *output) = 18;
 
-close_file	(IN afs_uint64 part_id,
-		 IN afs_uint64 obj_id) = 23;
-
-fetchqueue	(OUT FetchEntryList *list) = 24;
+/***************************************************************************
+ * Get a list of objects which could be wiped.  The algorithm determines
+ * whether the selection should be based on atime or on size or on a
+ * combination of both. Used by 'osd wipecandiates' */
 
 wipe_candidates (IN afs_uint32 lun,
 		 IN afs_uint32 max,
 		 IN afs_uint32 algorithm,
 		 IN afs_uint32 minMB,
 		 IN afs_uint32 spare,
-		 OUT WipeCandidateList *list) = 25;
+		 OUT WipeCandidateList *list) = 19;
+
+/***************************************************************************
+ * Used by 'osd fetchq' to get the actual fetch queue from an archival rxosd
+ * with underlying HSM system */
+
+fetchqueue	(OUT FetchEntryList *list) = 20;
+
+/***************************************************************************
+ * Not yet implemented, but should be used to make changes in the fetch queue */
+
+%#define MOD_FETCHQUEUE_CMD_BITS        8
+%#define MAX_FETCHQUEUE_MOVE            0xFFFFFFFF >> MOD_FETCHQUEUE_CMD_BITS
+%#define REMOVE_FROM_FETCHQUEUE		1
+%#define MOVE_UP_IN_FETCHQUEUE          2
+%#define MOVE_DOWN_IN_FETCHQUEUE        4
+
+modify_fetchq	(IN struct ometa *o,
+		 IN afs_int32 what,
+		 OUT afs_int32 *result) = 21;
+
+/***************************************************************************
+ * Used by 'osd variable' and 'osd listvariables' to display or modify variables
+ * in the rxosd. This allows changing parameters without a restart and also
+ * diagnostic wihout attaching a debugger. */
 
 Variable	(IN afs_int32 cmd,
- 		 IN string name<256>,
- 		 IN afs_int64 value,
- 		 OUT afs_int64 *result) = 26;
+  		 IN var_info *name,
+  		 IN afs_int64 value,
+  		 OUT afs_int64 *result,
+		 OUT var_info *str) = 22;
 
-threads		(OUT struct activerpcList *list)  = 27;
+/***************************************************************************
+ * Shows the active RPCs in an rxosd. Used by 'osd threads' */
+
+threads		(OUT struct activerpcList *list)  = 23;
+
+/***************************************************************************
+ * Shows the a statistic about RPC calls and about the amount of data
+ * received or sent by the rxosd. Used by 'osd statistic' */
 
 statistic	(IN afs_int32 reset,
 		 OUT afs_uint32 *since,
@@ -294,27 +232,68 @@ statistic	(IN afs_int32 reset,
 		 OUT afs_uint64 *sent,
 		 OUT rxosd_statList *stat,
 		 OUT struct rxosd_kbps *kbpsrcvd,
-		 OUT struct rxosd_kbps *kbpssent) = 28;
+		 OUT struct rxosd_kbps *kbpssent) = 24;
 
-setatime	(IN afs_uint64 part_id,
-		 IN afs_uint64 obj_id,
-		 IN afs_uint32 atime,
-		 IN afs_uint32 mtime) = 29;
+/***************************************************************************
+ * Updates statistic counters for received or sent data. Used by the fileserver
+ * when clients which can directly write or read to/from the osd partition
+ * tell the fileserver at the end what they did */
 
 updatecounters	(IN afs_uint64 bytes_rcvd,
-		 IN afs_uint64 bytes_sent) = 30;
+		 IN afs_uint64 bytes_sent) = 25;
 
-write_to_hpss	(IN afs_uint64 part_id,
-		 IN afs_uint64 obj_id,
+/***************************************************************************
+ * Write contents of an object directly into HPSS. Allows for archiving without
+ * an additional transfer of the data over the network. Used by archival rxosds
+ * when processing 'create_archive' */
+
+write_to_hpss	(IN struct ometa *o,
 		 IN struct osd_segm_descList *list,
-		 OUT osd_md5 *output) = 31;
+		 IN afs_int32 flag,
+		 OUT osd_cksum *output) = 26;
 
-read_from_hpss	(IN afs_uint64 part_id,
-		 IN afs_uint64 obj_id,
+/***************************************************************************
+ * Read contents of an archival bject directly from HPSS to restore it into
+ * a local object. Used by archival rxosds when processing 'restore_archive' */
+
+read_from_hpss	(IN struct ometa *o,
 		 IN struct osd_segm_descList *list,
-		 OUT osd_md5 *output) = 32;
+		 IN afs_int32 flag,
+		 OUT osd_cksum *output) = 27;
 
-ProbeServer     () = 33;
+/***************************************************************************
+ * Bring object on-line (in HSM context) */
 
+online		(IN struct ometa *o,
+		 IN afs_int32 flag,
+		 OUT struct exam *e) = 28;
+/***************************************************************************
+ * Hard delete unlinked object(s) from HSM osd */
+
+%#define WHOLE_VOLUME 		1
+%#define HARD_DELETE_EXACT	2
+%#define HARD_DELETE_OLDER	4
+
+hard_delete 	(IN struct ometa *o,
+		 IN afs_uint32 packed_unlinkdate,
+		 IN afs_int32 flag) = 29;
+
+/***************************************************************************
+ * relink an unlinked object in HSM osd */
+
+relink 		(IN struct ometa *o,
+		 IN afs_uint32 packed_unlinkdate,
+		 IN afs_int32 flag) = 30;
+
+/***************************************************************************
+ * inventory of all objects in an OSD */
+
+%#define INVENTORY_UNLINKED      1
+%#define INVENTORY_ONLY_UNLINKED 2
+%#define INVENTORY_SPECIAL       4
+%#define INVENTORY_ONLY_SPECIAL  8
+
+inventory	(IN struct ometa *o,
+		 IN afs_uint32 flag) split = 31;
 /* end package */
 
