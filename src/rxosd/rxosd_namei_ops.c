@@ -736,10 +736,17 @@ restart:
         if (open_fd)
             *open_fd = fd;
         else {
+	    IHandle_t tmp;
 	    if (log_open_close) {
     	        ViceLog(0, ("namei_icreate: fd %d closed\n", fd));
 	    }
-            close(fd);
+            tmp.ih_dev = volutil_GetPartitionID(part);
+            if (tmp.ih_dev == hsmDev && p2 != NAMEI_VNODESPECIAL) {
+                tmp.ih_ops = ih_hsm_opsPtr;
+            } else {
+                tmp.ih_ops = &ih_namei_ops;
+            }  
+            (tmp.ih_ops->close)(fd);
 	}
     }
 
