@@ -2,7 +2,7 @@
 
 /* Copyright 2000, International Business Machines Corporation and others.
 	All Rights Reserved.
- 
+
 	This software has been released under the terms of the IBM Public
 	License.  For details, see the LICENSE file in the top-level source
 	directory or online at http://www.openafs.org/dl/license10.html
@@ -430,10 +430,10 @@ main(int argc, char *argv[])
 	    } else
 		usage();
 	    break;
-	case 3:		//1.0.401 or 1.0.40a are the same; 
+	case 3:		//1.0.401 or 1.0.40a are the same;
 	    if ((isdigit(*ptr) == 0)	// first 2 must be digit
 		|| (isdigit(*(ptr + 1)) == 0)
-		|| (*(ptr + 1) != '0' && isdigit(*(ptr + 2)) == 0)	// disallow 1.0.4b0  or 1.0.41a 
+		|| (*(ptr + 1) != '0' && isdigit(*(ptr + 2)) == 0)	// disallow 1.0.4b0  or 1.0.41a
 		)
 		usage();
 	    pat = *ptr - '0';
@@ -467,7 +467,7 @@ main(int argc, char *argv[])
 	if (file == NULL)
 	    usage();
 	len = filelength(_fileno(file));
-	save = (char *)malloc(len + 1);
+	save = malloc(len + 1);
 	buf = save;
 	len = fread(buf, sizeof(char), len, file);
 	buf[len] = 0;		//set eof
@@ -633,7 +633,7 @@ main(int argc, char *argv[])
 	if (file == NULL)
 	    exit(0xc000);
 	len = filelength(_fileno(file));
-	save = (char *)malloc(len + 2);
+	save = malloc(len + 2);
 	ch = save;
 	*ch++ = 0;		/* a small hack to allow matching /r/n if /n is first character */
 	len = fread(ch, sizeof(char), len, file);
@@ -655,7 +655,7 @@ main(int argc, char *argv[])
 	if (file == NULL)
 	    exit(0xc000);
 	len = filelength(_fileno(file));
-	save = (char *)malloc(len + 1);
+	save = malloc(len + 1);
 	ch = save;
 	len = fread(ch, sizeof(char), len, file);
 	file = freopen(fname, "wb", file);
@@ -674,7 +674,7 @@ main(int argc, char *argv[])
     if (file == NULL)
 	exit(0xc000);
     len = filelength(_fileno(file));
-    save = (char *)malloc(len + 1);
+    save = malloc(len + 1);
     ch = save;
     len = fread(ch, sizeof(char), len, file);
     file = freopen(fname, "wb", file);
@@ -684,7 +684,7 @@ main(int argc, char *argv[])
 	ch++;
     }
     fclose(file);
-    pvar = (char **)malloc(argc * sizeof(char *));
+    pvar = malloc(argc * sizeof(char *));
     for (i = 1; i < argc - 1; i++)
 	pvar[i] = argv[i + 1];
     pvar[argc - 1] = NULL;

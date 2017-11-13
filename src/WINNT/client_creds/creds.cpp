@@ -11,8 +11,9 @@
 #include <ws2tcpip.h>
 
 extern "C" {
-#include <afs\stds.h>
-#include <afs\param.h>
+#include <afsconfig.h>
+#include <afs/param.h>
+#include <roken.h>
 #include <afs\auth.h>
 #include <afs\kautils.h>
 #include <rx\rxkad.h>

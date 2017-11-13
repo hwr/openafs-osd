@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -57,6 +57,8 @@ PMGTEXPORT extern size_t pmgt_spawnDataLen;
 #define spawnprocveb(spath, sargv, senvp, sdatap, sdatalen) \
     pmgt_ProcessSpawnVEB(spath, sargv, senvp, sdatap, sdatalen)
 #define spawnprocve(spath, sargv, senvp, estatus) \
+    pmgt_ProcessSpawnVEB(spath, sargv, senvp, NULL, 0)
+#define spawnprocve_sig(spath, sargv, senvp, estatus, mask) \
     pmgt_ProcessSpawnVEB(spath, sargv, senvp, NULL, 0)
 #define spawnprocv(spath, sargv, estatus) \
     pmgt_ProcessSpawnVEB(spath, sargv, NULL, NULL, 0)
@@ -177,12 +179,14 @@ extern int pmgt_SignalRaiseRemote(pid_t pid, int signo);
 /* -----------------  Processes  ---------------- */
 
 #define spawnprocve(spath, sargv, senvp, estatus) \
-    pmgt_ProcessSpawnVE(spath, sargv, senvp, estatus)
+    pmgt_ProcessSpawnVE(spath, sargv, senvp, estatus, NULL)
+#define spawnprocve_sig(spath, sargv, senvp, estatus, mask) \
+    pmgt_ProcessSpawnVE(spath, sargv, senvp, estatus, mask)
 #define spawnprocv(spath, sargv, estatus) \
-    pmgt_ProcessSpawnVE(spath, sargv, NULL, estatus)
+    pmgt_ProcessSpawnVE(spath, sargv, NULL, estatus, NULL)
 
 extern pid_t pmgt_ProcessSpawnVE(const char *spath, char **sargv,
-				 char **senvp, int estatus);
+				 char **senvp, int estatus, sigset_t *mask);
 
 
 #endif /* AFS_NT40_ENV */

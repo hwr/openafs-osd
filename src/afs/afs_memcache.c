@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -35,7 +35,7 @@ afs_InitMemCache(int blkCount, int blkSize, int flags)
 	memCacheBlkSize = blkSize;
 
     memMaxBlkNumber = blkCount;
-    memCache = 
+    memCache =
 	afs_osi_Alloc(memMaxBlkNumber * sizeof(struct memCacheEntry));
     osi_Assert(memCache != NULL);
 
@@ -89,7 +89,7 @@ afs_MemCacheOpen(afs_dcache_id_t *ainode)
 }
 
 /*
- * this routine simulates a read in the Memory Cache 
+ * this routine simulates a read in the Memory Cache
  */
 int
 afs_MemReadBlk(struct osi_file *fP, int offset, void *dest,
@@ -119,7 +119,7 @@ afs_MemReadBlk(struct osi_file *fP, int offset, void *dest,
 }
 
 /*
- * this routine simulates a readv in the Memory Cache 
+ * this routine simulates a readv in the Memory Cache
  */
 int
 afs_MemReadvBlk(struct memCacheEntry *mceP, int offset,
@@ -171,17 +171,15 @@ afs_MemReadUIO(afs_dcache_id_t *ainode, struct uio *uioP)
     return code;
 }
 
-int 
-afs_MemExtendEntry(struct memCacheEntry *mceP, afs_uint32 size)
+static int
+_afs_MemExtendEntry(struct memCacheEntry *mceP, afs_uint32 size)
 {
-    ObtainWriteLock(&mceP->afs_memLock, 560);
     if (size > mceP->dataSize) {
 	char *oldData = mceP->data;
 
 	mceP->data = afs_osi_Alloc(size);
-	if (mceP->data == NULL) {	/* no available memory */
-	    mceP->data = oldData;	/* revert back change that was made */
-	    ReleaseWriteLock(&mceP->afs_memLock);
+	if (mceP->data == NULL) {       /* no available memory */
+	    mceP->data = oldData;       /* revert back change that was made */
 	    afs_warn("afs: afs_MemWriteBlk mem alloc failure (%d bytes)\n", size);
 	    return -ENOMEM;
 	}
@@ -193,7 +191,6 @@ afs_MemExtendEntry(struct memCacheEntry *mceP, afs_uint32 size)
 	afs_osi_Free(oldData, mceP->dataSize);
 	mceP->dataSize = size;
     }
-    ReleaseWriteLock(&mceP->afs_memLock);
     return 0;
 }
 
@@ -218,12 +215,10 @@ afs_MemWritevBlk(struct memCacheEntry *mceP, int offset,
     int bytesWritten;
     int bytesToWrite;
     AFS_STATCNT(afs_MemWriteBlk);
-    if (offset + size > mceP->dataSize) {
-	int code = afs_MemExtendEntry(mceP, offset + size);
-	if (code)
-	    return code;
-    }
     ObtainWriteLock(&mceP->afs_memLock, 561);
+    bytesWritten = _afs_MemExtendEntry(mceP, (offset + size));
+    if (bytesWritten != 0)
+      goto out;
     AFS_GUNLOCK();
     if (mceP->size < offset)
 	memset(mceP->data + mceP->size, 0, offset - mceP->size);
@@ -236,25 +231,39 @@ afs_MemWritevBlk(struct memCacheEntry *mceP, int offset,
     }
     mceP->size = (offset < mceP->size) ? mceP->size : offset;
     AFS_GLOCK();
-
+out:
     ReleaseWriteLock(&mceP->afs_memLock);
     return bytesWritten;
 }
 
 int
-afs_MemWriteUIO(afs_dcache_id_t *ainode, struct uio *uioP)
+afs_MemWriteUIO(struct vcache *avc, afs_dcache_id_t *ainode, struct uio *uioP)
 {
     struct memCacheEntry *mceP =
 	(struct memCacheEntry *)afs_MemCacheOpen(ainode);
     afs_int32 code;
 
     AFS_STATCNT(afs_MemWriteUIO);
-    if (AFS_UIO_RESID(uioP) + AFS_UIO_OFFSET(uioP) > mceP->dataSize) {
-	code = afs_MemExtendEntry(mceP, AFS_UIO_RESID(uioP) + AFS_UIO_OFFSET(uioP));
-	if (code)
-	    return code;
-    }
     ObtainWriteLock(&mceP->afs_memLock, 312);
+    if (AFS_UIO_RESID(uioP) + AFS_UIO_OFFSET(uioP) > mceP->dataSize) {
+	char *oldData = mceP->data;
+
+	mceP->data = afs_osi_Alloc(AFS_UIO_RESID(uioP) + AFS_UIO_OFFSET(uioP));
+	if (mceP->data == NULL) {	/* no available memory */
+	    mceP->data = oldData;	/* revert back change that was made */
+	    ReleaseWriteLock(&mceP->afs_memLock);
+	    afs_warn("afs: afs_MemWriteBlk mem alloc failure (%ld bytes)\n",
+		     (long)(AFS_UIO_RESID(uioP) + AFS_UIO_OFFSET(uioP)));
+	    return -ENOMEM;
+	}
+
+	AFS_GUNLOCK();
+	memcpy(mceP->data, oldData, mceP->size);
+	AFS_GLOCK();
+
+	afs_osi_Free(oldData, mceP->dataSize);
+	mceP->dataSize = AFS_UIO_RESID(uioP) + AFS_UIO_OFFSET(uioP);
+    }
     if (mceP->size < AFS_UIO_OFFSET(uioP))
 	memset(mceP->data + mceP->size, 0,
 	       (int)(AFS_UIO_OFFSET(uioP) - mceP->size));
@@ -296,21 +305,16 @@ afs_MemCacheTruncate(struct osi_file *fP, int size)
     return 0;
 }
 
-
-void
-afs_MemCacheClearChunkEnd(afs_dcache_id_t *ainode)
+int
+afs_MemExtendEntry(struct memCacheEntry *mceP, afs_uint32 size)
 {
-    struct memCacheEntry *mceP =
-	(struct memCacheEntry *)afs_MemCacheOpen(ainode);
-
-    if (mceP->dataSize > mceP->size) {
-	char *p = mceP->data;
-        ObtainWriteLock(&mceP->afs_memLock, 318);
-	memset(p + mceP->size, 0, mceP->dataSize - mceP->size);
-	ReleaseWriteLock(&mceP->afs_memLock);
-    }
+    int code = 0;
+    ObtainWriteLock(&mceP->afs_memLock, 560);
+    code = _afs_MemExtendEntry(mceP, size);
+    ReleaseWriteLock(&mceP->afs_memLock);
+    return code;
 }
-    
+
 void
 shutdown_memcache(void)
 {

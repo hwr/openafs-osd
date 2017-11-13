@@ -12,13 +12,17 @@ B<vos delentry> S<<< [B<-id> <I<volume name or ID>>+] >>>
     S<<< [B<-server> <I<machine name>>] >>>
     S<<< [B<-partition> <I<partition name>>] >>>
     S<<< [B<-cell> <I<cell name>>] >>> [B<-noauth>] [B<-localauth>]
-    [B<-dryrun>] [B<-verbose>] [B<-encrypt>] [B<-noresolve>] [B<-help>]
+    [B<-dryrun>] [B<-verbose>] [B<-encrypt>] [B<-noresolve>]
+    S<<< [B<-config> <I<config directory>>] >>>
+    [B<-help>]
 
 B<vos de> S<<< [B<-i> <I<volume name or ID>>+] >>>
     S<<< [B<-pr> <I<prefix of volume whose VLDB entry is to be deleted>>] >>>
     S<<< [B<-s> <I<machine name>>] >>> S<<< [B<-pa> <I<partition name>>] >>>
     S<<< [B<-c> <I<cell name>>] >>> [B<-noa>] [B<-l>]
-    [B<-d>] [B<-v>] [B<-e>] [B<-nor>] [B<-h>]
+    [B<-d>] [B<-v>] [B<-e>] [B<-nor>]
+    S<<< [B<-co> <I<config directory>>] >>>
+    [B<-h>]
 
 =for html
 </div>
@@ -122,6 +126,10 @@ acceptable abbreviated forms. For details, see L<vos(1)>.
 Combine this argument with the B<-prefix> argument, the B<-server>
 argument, or both.
 
+=item B<-dryrun>
+
+Show the actions which would be taken, but do not make changes.
+
 =item B<-cell> <I<cell name>>
 
 Names the cell in which to run the command. Do not combine this argument
@@ -141,10 +149,6 @@ to the Volume Server and Volume Location Server during mutual
 authentication. Do not combine this flag with the B<-cell> argument or
 B<-noauth> flag. For more details, see L<vos(1)>.
 
-=item B<-dryrun>
-
-Show the actions which would be taken, but do not make changes.
-
 =item B<-verbose>
 
 Produces on the standard output stream a detailed trace of the command's
@@ -163,6 +167,13 @@ Shows all servers as IP addresses instead of the DNS name. This is very
 useful when the server address is registered as 127.0.0.1 or when dealing
 with multi-homed servers. This option is available in OpenAFS
 versions 1.4.8 or later and 1.5.35 or later.
+
+=item B<-config> <I<configuration directory>>
+
+Set the location of the configuration directory to be used. This defaults to
+F</usr/vice/etc>, except if B<-localauth> is specified, in which case the
+default is F</usr/afs/etc>. This option allows the use of alternative
+configuration locations for testing purposes.
 
 =item B<-help>
 
@@ -186,9 +197,9 @@ The following command removes the VLDB entry for the volume C<user.temp>.
 
 The following command removes the VLDB entry for every volume whose name
 begins with the string C<test> and for which the VLDB lists a site on the
-file server machine C<fs3.abc.com>.
+file server machine C<fs3.example.com>.
 
-   % vos delentry -prefix test -server fs3.abc.com
+   % vos delentry -prefix test -server fs3.example.com
 
 =head1 PRIVILEGE REQUIRED
 

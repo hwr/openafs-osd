@@ -78,7 +78,7 @@ typedef struct leaf {
     Nptr	nextNode;
 } Leaf;
 
-typedef struct data {
+typedef struct btree_data {
     keyT        key;
     dataT	value;
     Nptr        next;
@@ -151,6 +151,7 @@ long cm_BPlusDirBuildTree(cm_scache_t *scp, cm_user_t *userp, cm_req_t* reqp);
 int  cm_BPlusDirFoo(struct cm_scache *scp, struct cm_dirEntry *dep, void *dummy, osi_hyper_t *entryOffsetp);
 void cm_BPlusDumpStats(void);
 int  cm_MemDumpBPlusStats(FILE *outputFile, char *cookie, int lock);
+int  cm_BPlusDirIsEmpty(cm_dirOp_t *op, afs_uint32 *pbEmpty);
 
 /******************* directory enumeration operations ****************/
 typedef struct cm_direnum_entry {
@@ -158,6 +159,7 @@ typedef struct cm_direnum_entry {
     cm_fid_t 	 fid;
     normchar_t   shortName[13];
     afs_uint32   flags;
+    afs_uint32   errorCode;
 } cm_direnum_entry_t;
 
 #define CM_DIRENUM_FLAG_GOT_STATUS     1
@@ -165,6 +167,7 @@ typedef struct cm_direnum_entry {
 typedef struct cm_direnum {
     cm_scache_t        *dscp;
     cm_user_t          *userp;
+    afs_uint64          dataVersion;    /* enumeration snapshot dir version */
     afs_uint32          reqFlags;
     afs_uint32		count;
     afs_uint32  	next;
@@ -179,6 +182,7 @@ long cm_BPlusDirPeekNextEnumEntry(cm_direnum_t *enump, cm_direnum_entry_t **entr
 long cm_BPlusDirFreeEnumeration(cm_direnum_t *enump);
 long cm_BPlusDirEnumTest(cm_scache_t * dscp, cm_user_t *userp, cm_req_t *reqp, afs_uint32 locked);
 long cm_BPlusDirEnumBulkStat(cm_direnum_t *enump);
+long cm_BPlusDirEnumBulkStatOne(cm_direnum_t *enump, cm_scache_t *scp);
 
 long cm_InitBPlusDir(void);
 
@@ -203,7 +207,7 @@ extern afs_uint64 bplus_free_time;
 /* access tree flag values */
 #define settreeflags(B,v) (B->flags |= (v & TREE_FLAGS_MASK))
 #define gettreeflags(B)   (B->flags)
-#define cleartreeflags(B) (B->flags = 0);
+#define cleartreeflags(B) (B->flags = 0)
 
 /* access node flag values */
 #define setflag(j, v) ((j)->flags |= (v & FLAGS_MASK))

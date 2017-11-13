@@ -1,5 +1,5 @@
 /*
- * Copyright 2004, Secure Endpoints Inc.
+ * Copyright 2004-2011, Secure Endpoints Inc.
  * All Rights Reserved.
  *
  * This software has been released under the terms of the IBM Public
@@ -10,7 +10,7 @@
 #ifndef CM_MEMMAP_H
 #define CM_MEMMAP_H 1
 
-#define CM_CONFIG_DATA_VERSION  16
+#define CM_CONFIG_DATA_VERSION  23
 #define CM_CONFIG_DATA_MAGIC            ('A' | 'F'<<8 | 'S'<<16 | CM_CONFIG_DATA_VERSION<<24)
 
 typedef struct cm_config_data {
@@ -40,8 +40,8 @@ typedef struct cm_config_data {
 
     cm_cell_t	*       allCellsp;
     cm_cell_t   *       freeCellsp;
-    afs_uint32          currentCells;
-    afs_uint32          maxCells;
+    afs_int32           currentCells;
+    afs_int32           maxCells;
 
     cm_volume_t	*       rootVolumep;
     cm_cell_t   *       rootCellp;
@@ -49,6 +49,7 @@ typedef struct cm_config_data {
     cm_scache_t *       rootSCachep;
     cm_scache_t         fakeSCache;
     afs_uint64          fakeDirVersion;
+    afs_uint32          fakeUnique;
 
     cm_aclent_t *       aclLRUp;
     cm_aclent_t	*       aclLRUEndp;
@@ -82,17 +83,32 @@ typedef struct cm_config_data {
     cm_buf_t    *       buf_freeListEndp;
     cm_buf_t	*       buf_dirtyListp;
     cm_buf_t    *       buf_dirtyListEndp;
+    cm_buf_t    *       buf_redirListp;
+    cm_buf_t    *       buf_redirListEndp;
     cm_buf_t	**      buf_scacheHashTablepp;
     cm_buf_t	**      buf_fileHashTablepp;
     cm_buf_t	*       buf_allp;
-    afs_uint64		buf_nbuffers;
     afs_uint32		buf_blockSize;
     afs_uint32		buf_hashSize;
+#ifdef _M_IX86
+    afs_uint32		buf_nbuffers;
+    afs_uint32		buf_nOrigBuffers;
+    afs_uint32          buf_reservedBufs;
+    afs_uint32          buf_maxReservedBufs;
+    afs_uint32          buf_reserveWaiting;
+    afs_uint32          buf_freeCount;
+    afs_uint32          buf_redirCount;
+    afs_uint32          buf_usedCount;
+#else
+    afs_uint64		buf_nbuffers;
     afs_uint64		buf_nOrigBuffers;
     afs_uint64          buf_reservedBufs;
     afs_uint64          buf_maxReservedBufs;
     afs_uint64          buf_reserveWaiting;
-
+    afs_uint64          buf_freeCount;
+    afs_uint64          buf_redirCount;
+    afs_uint64          buf_usedCount;
+#endif
     time_t              mountRootGen;
     afsUUID             Uuid;
     DWORD 		volSerialNumber;

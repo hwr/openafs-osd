@@ -1,3 +1,8 @@
+
+#include <afsconfig.h>
+#include <afs/param.h>
+#include <roken.h>
+
 #include <windows.h>
 #include <tchar.h>
 #include "afsd.h"
@@ -5,6 +10,9 @@
 
 extern void afsi_log(char *pattern, ...);
 extern DWORD cm_ValidateCache;
+
+static HANDLE hMemoryMappedFile = NULL;
+static HANDLE hCacheHeap = NULL;
 
 afs_uint64
 GranularityAdjustment(afs_uint64 size)
@@ -42,7 +50,7 @@ afs_uint64
 ComputeSizeOfCellHT(DWORD maxcells)
 {
     afs_uint64 size;
-    size = osi_PrimeLessThan((afs_uint32)(maxcells/7 + 1)) * sizeof(cm_cell_t *);
+    size = cm_NextHighestPowerOf2((afs_uint32)(maxcells/7)) * sizeof(cm_cell_t *);
     return size;
 }
 
@@ -50,7 +58,7 @@ afs_uint64
 ComputeSizeOfVolumeHT(DWORD maxvols)
 {
     afs_uint64 size;
-    size = osi_PrimeLessThan((afs_uint32)(maxvols/7 + 1)) * sizeof(cm_volume_t *);
+    size = cm_NextHighestPowerOf2((afs_uint32)(maxvols/7)) * sizeof(cm_volume_t *);
     return size;
 }
 
@@ -82,7 +90,7 @@ afs_uint64
 ComputeSizeOfSCacheHT(DWORD stats)
 {
     afs_uint64 size;
-    size = osi_PrimeLessThan(stats / 2 + 1) * sizeof(cm_scache_t *);;
+    size = cm_NextHighestPowerOf2(stats / 2 ) * sizeof(cm_scache_t *);;
     return size;
 }
 
@@ -106,7 +114,7 @@ afs_uint64
 ComputeSizeOfDataHT(afs_uint64 cacheBlocks)
 {
     afs_uint64 size;
-    size = osi_PrimeLessThan((afs_uint32)(cacheBlocks/7 + 1)) * sizeof(cm_buf_t *);
+    size = cm_NextHighestPowerOf2((afs_uint32)(cacheBlocks/7)) * sizeof(cm_buf_t *);
     return size;
 }
 
@@ -197,8 +205,6 @@ VOID FreeCacheFileSA(PSECURITY_ATTRIBUTES psa)
     GlobalFree(psa);
 }
 
-static HANDLE hMemoryMappedFile = NULL;
-
 int
 cm_IsCacheValid(void)
 {
@@ -255,16 +261,21 @@ cm_ShutdownMappedMemory(void)
     cm_ShutdownCell();
     cm_ShutdownVolume();
 
-    if (cm_ValidateCache == 2)
-        dirty = !cm_IsCacheValid();
+    if (hCacheHeap) {
+        HeapFree(hCacheHeap, 0, cm_data.baseAddress);
+        HeapDestroy(hCacheHeap);
+        afsi_log("Memory Heap has been destroyed");
+    } else {
+        if (cm_ValidateCache == 2)
+            dirty = !cm_IsCacheValid();
 
-    *config_data_p = cm_data;
-    config_data_p->dirty = dirty;
-    UnmapViewOfFile(config_data_p);
-    CloseHandle(hMemoryMappedFile);
-    hMemoryMappedFile = NULL;
-
-    afsi_log("Memory Mapped File has been closed");
+        *config_data_p = cm_data;
+        config_data_p->dirty = dirty;
+        UnmapViewOfFile(config_data_p);
+        CloseHandle(hMemoryMappedFile);
+        hMemoryMappedFile = NULL;
+        afsi_log("Memory Mapped File has been closed");
+    }
     return 0;
 }
 
@@ -358,6 +369,24 @@ cm_ValidateMappedMemory(char * cachePath)
         return CM_ERROR_INVAL;
     }
 
+    if ( config_data_p->size != sizeof(cm_config_data_t) ) {
+        fprintf(stderr, "AFSCache Header Size 0x%08X != afsd_service Header Size 0x%08X\n",
+                config_data_p->size, sizeof(cm_config_data_t));
+        UnmapViewOfFile(config_data_p);
+        CloseHandle(hm);
+        CloseHandle(hf);
+        return CM_ERROR_INVAL;
+    }
+
+    if ( config_data_p->magic != CM_CONFIG_DATA_MAGIC ) {
+        fprintf(stderr, "AFSCache Magic 0x%08X != afsd_service Magic 0x%08X\n",
+                config_data_p->magic, CM_CONFIG_DATA_MAGIC);
+        UnmapViewOfFile(config_data_p);
+        CloseHandle(hm);
+        CloseHandle(hf);
+        return CM_ERROR_INVAL;
+    }
+
     if ( config_data_p->dirty ) {
         fprintf(stderr, "Previous session terminated prematurely\n");
         UnmapViewOfFile(config_data_p);
@@ -418,12 +447,15 @@ cm_ValidateMappedMemory(char * cachePath)
     config_data_p = (cm_config_data_t *) baseAddress;
 
     fprintf(stderr,"AFS Cache data:\n");
-    fprintf(stderr,"  Base Address   = %p\n",baseAddress);
+    fprintf(stderr,"  Header size    = %u\n", config_data_p->size);
+    fprintf(stderr,"  Magic          = %08x\n", config_data_p->magic);
+    fprintf(stderr,"  Base Address   = %p\n", baseAddress);
     fprintf(stderr,"  stats          = %u\n", config_data_p->stats);
     fprintf(stderr,"  chunkSize      = %u\n", config_data_p->chunkSize);
     fprintf(stderr,"  blockSize      = %u\n", config_data_p->blockSize);
     fprintf(stderr,"  bufferSize     = %I64u\n", config_data_p->bufferSize);
     fprintf(stderr,"  cacheType      = %u\n", config_data_p->cacheType);
+    fprintf(stderr,"  dirty          = %u\n", config_data_p->dirty);
     fprintf(stderr,"  volumeHashTableSize = %u\n", config_data_p->volumeHashTableSize);
     fprintf(stderr,"  currentVolumes = %u\n", config_data_p->currentVolumes);
     fprintf(stderr,"  maxVolumes     = %u\n", config_data_p->maxVolumes);
@@ -625,10 +657,8 @@ int
 cm_InitMappedMemory(DWORD virtualCache, char * cachePath, DWORD stats, DWORD maxVols, DWORD maxCells,
                     DWORD chunkSize, afs_uint64 cacheBlocks, afs_uint32 blockSize)
 {
-    HANDLE hf = INVALID_HANDLE_VALUE, hm;
-    PSECURITY_ATTRIBUTES psa;
-    int newFile = 1;
     afs_uint64 mappingSize;
+    int newCache = 1;
     DWORD volumeSerialNumber = 0;
     DWORD sidStringSize = 0;
     DWORD rc;
@@ -642,7 +672,21 @@ cm_InitMappedMemory(DWORD virtualCache, char * cachePath, DWORD stats, DWORD max
 
     mappingSize = ComputeSizeOfMappingFile(stats, maxVols, maxCells, chunkSize, cacheBlocks, blockSize);
 
-    if ( !virtualCache ) {
+    if ( virtualCache ) {
+        hCacheHeap = HeapCreate( HEAP_GENERATE_EXCEPTIONS, 0, 0);
+
+        baseAddress = HeapAlloc(hCacheHeap, 0, mappingSize);
+
+        if (baseAddress == NULL) {
+            afsi_log("Error allocating Virtual Memory gle=%d",
+                     GetLastError());
+            return CM_ERROR_INVAL;
+        }
+        newCache = 1;
+    } else {
+        HANDLE hf = INVALID_HANDLE_VALUE, hm;
+        PSECURITY_ATTRIBUTES psa;
+
         psa = CreateCacheFileSA();
         hf = CreateFile( cachePath,
                          GENERIC_READ | GENERIC_WRITE,
@@ -762,7 +806,7 @@ cm_InitMappedMemory(DWORD virtualCache, char * cachePath, DWORD stats, DWORD max
                     afsi_log("Previous session terminated prematurely");
                 } else {
                     baseAddress = config_data_p->baseAddress;
-                    newFile = 0;
+                    newCache = 0;
                 }
             } else {
                 afsi_log("Configuration changed or Not a persistent cache file");
@@ -770,50 +814,51 @@ cm_InitMappedMemory(DWORD virtualCache, char * cachePath, DWORD stats, DWORD max
             UnmapViewOfFile(config_data_p);
             CloseHandle(hm);
         }
-    }
 
-    hm = CreateFileMapping( hf,
-                            NULL,
-                            PAGE_READWRITE,
-			    (DWORD)(mappingSize >> 32),
-			    (DWORD)(mappingSize & 0xFFFFFFFF),
-                            NULL);
-    if (hm == NULL) {
-        if (GetLastError() == ERROR_DISK_FULL) {
-            afsi_log("Error creating file mapping for \"%s\": disk full [2]",
-                      cachePath);
-            return CM_ERROR_TOOMANYBUFS;
-        }
-        afsi_log("Error creating file mapping for \"%s\": %d",
-                  cachePath, GetLastError());
-        return CM_ERROR_INVAL;
-    }
-    baseAddress = MapViewOfFileEx( hm,
-                                   FILE_MAP_ALL_ACCESS,
-                                   0,
-				   0,
-				   (SIZE_T)mappingSize,
-                                   baseAddress );
-    if (baseAddress == NULL) {
-        afsi_log("Error mapping view of file: %d", GetLastError());
-        baseAddress = MapViewOfFile( hm,
-                                     FILE_MAP_ALL_ACCESS,
-                                     0,
-				     0,
-				     (SIZE_T)mappingSize);
-        if (baseAddress == NULL) {
-            if (hf != INVALID_HANDLE_VALUE)
-                CloseHandle(hf);
-            CloseHandle(hm);
+        hm = CreateFileMapping( hf,
+                                NULL,
+                                PAGE_READWRITE,
+                                (DWORD)(mappingSize >> 32),
+                                (DWORD)(mappingSize & 0xFFFFFFFF),
+                                NULL);
+        if (hm == NULL) {
+            if (GetLastError() == ERROR_DISK_FULL) {
+                afsi_log("Error creating file mapping for \"%s\": disk full [2]",
+                          cachePath);
+                return CM_ERROR_TOOMANYBUFS;
+            }
+            afsi_log("Error creating file mapping for \"%s\": %d",
+                      cachePath, GetLastError());
             return CM_ERROR_INVAL;
         }
-        newFile = 1;
+        baseAddress = MapViewOfFileEx( hm,
+                                       FILE_MAP_ALL_ACCESS,
+                                       0,
+                                       0,
+                                       (SIZE_T)mappingSize,
+                                       baseAddress );
+        if (baseAddress == NULL) {
+            afsi_log("Error mapping view of file: %d", GetLastError());
+            baseAddress = MapViewOfFile( hm,
+                                         FILE_MAP_ALL_ACCESS,
+                                         0,
+                                         0,
+                                         (SIZE_T)mappingSize);
+            if (baseAddress == NULL) {
+                if (hf != INVALID_HANDLE_VALUE)
+                    CloseHandle(hf);
+                CloseHandle(hm);
+                return CM_ERROR_INVAL;
+            }
+            newCache = 1;
+        }
+        CloseHandle(hm);
+        hMemoryMappedFile = hf;
     }
-    CloseHandle(hm);
 
     config_data_p = (cm_config_data_t *) baseAddress;
 
-    if (!newFile) {
+    if (!newCache) {
         afsi_log("Reusing existing AFS Cache data:");
         cm_data = *config_data_p;
 
@@ -846,11 +891,11 @@ cm_InitMappedMemory(DWORD virtualCache, char * cachePath, DWORD stats, DWORD max
          */
         if (baseAddress != cm_data.baseAddress ||
             cm_ValidateCache && !cm_IsCacheValid()) {
-            newFile = 1;
+            newCache = 1;
         }
     }
 
-    if ( newFile ) {
+    if ( newCache ) {
         afsi_log("Building AFS Cache from scratch");
 	memset(&cm_data, 0, sizeof(cm_config_data_t));
         cm_data.size = sizeof(cm_config_data_t);
@@ -860,9 +905,10 @@ cm_InitMappedMemory(DWORD virtualCache, char * cachePath, DWORD stats, DWORD max
         cm_data.chunkSize = chunkSize;
         cm_data.blockSize = blockSize;
         cm_data.bufferSize = mappingSize;
-        cm_data.scacheHashTableSize = osi_PrimeLessThan(stats / 2 + 1);
-        cm_data.volumeHashTableSize = osi_PrimeLessThan((afs_uint32)(maxVols/7 + 1));
-        cm_data.cellHashTableSize = osi_PrimeLessThan((afs_uint32)(maxCells/7 + 1));
+
+        cm_data.scacheHashTableSize = cm_NextHighestPowerOf2(stats / 2);
+        cm_data.volumeHashTableSize = cm_NextHighestPowerOf2((afs_uint32)(maxVols/7));
+        cm_data.cellHashTableSize = cm_NextHighestPowerOf2((afs_uint32)(maxCells/7));
         if (virtualCache) {
             cm_data.cacheType = CM_BUF_CACHETYPE_VIRTUAL;
         } else {
@@ -870,9 +916,10 @@ cm_InitMappedMemory(DWORD virtualCache, char * cachePath, DWORD stats, DWORD max
         }
 
         cm_data.buf_nbuffers = cacheBlocks;
-        cm_data.buf_nOrigBuffers = 0;
+        cm_data.buf_nOrigBuffers = cacheBlocks;
+        cm_data.buf_usedCount = 0;
         cm_data.buf_blockSize = blockSize;
-        cm_data.buf_hashSize = osi_PrimeLessThan((afs_uint32)(cacheBlocks/7 + 1));
+        cm_data.buf_hashSize = cm_NextHighestPowerOf2((afs_uint32)(cacheBlocks/7));
 
         cm_data.mountRootGen = 0;
 
@@ -912,10 +959,18 @@ cm_InitMappedMemory(DWORD virtualCache, char * cachePath, DWORD stats, DWORD max
         cm_data.bufEndOfData = (char *) baseAddress;
 	cm_data.buf_dirtyListp = NULL;
 	cm_data.buf_dirtyListEndp = NULL;
-        cm_data.fakeDirVersion = 0x8;
+        /* Make sure the fakeDirVersion is always increasing */
+        cm_data.fakeDirVersion = time(NULL);
+        cm_data.fakeUnique = 0;
         UuidCreate((UUID *)&cm_data.Uuid);
 	cm_data.volSerialNumber = volumeSerialNumber;
 	memcpy(cm_data.Sid, machineSid, sizeof(machineSid));
+
+        /*
+         * make sure that the file is fully allocated
+         * by writing a non-zero byte to the end
+         */
+        cm_data.baseAddress[mappingSize-1] = 0xFF;
     } else {
 	int gennew = 0;
 
@@ -965,24 +1020,23 @@ cm_InitMappedMemory(DWORD virtualCache, char * cachePath, DWORD stats, DWORD max
     RpcStringFree(&p);
 
     afsi_log("Initializing Volume Data");
-    cm_InitVolume(newFile, maxVols);
+    cm_InitVolume(newCache, maxVols);
 
     afsi_log("Initializing Cell Data");
-    cm_InitCell(newFile, maxCells);
+    cm_InitCell(newCache, maxCells);
 
     afsi_log("Initializing ACL Data");
-    cm_InitACLCache(newFile, 2*stats);
+    cm_InitACLCache(newCache, 2*stats);
 
     afsi_log("Initializing Stat Data");
-    cm_InitSCache(newFile, stats);
+    cm_InitSCache(newCache, stats);
 
     afsi_log("Initializing Data Buffers");
-    cm_InitDCache(newFile, 0, cacheBlocks);
+    cm_InitDCache(newCache, 0, cacheBlocks);
 
     *config_data_p = cm_data;
     config_data_p->dirty = 1;
 
-    hMemoryMappedFile = hf;
     afsi_log("Cache Initialization Complete");
     return 0;
 }

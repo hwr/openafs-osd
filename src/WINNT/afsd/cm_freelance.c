@@ -1,4 +1,7 @@
+#include <afsconfig.h>
 #include <afs/param.h>
+#include <roken.h>
+
 #include <afs/stds.h>
 
 #include <windows.h>
@@ -28,6 +31,7 @@ static cm_localMountPoint_t* cm_localMountPoints;
 osi_mutex_t cm_Freelance_Lock;
 static int cm_localMountPointChangeFlag = 0;
 int cm_freelanceEnabled = 1;
+int cm_freelanceDiscovery = 1;
 int cm_freelanceImportCellServDB = 0;
 time_t FakeFreelanceModTime = 0x3b49f6e2;
 
@@ -228,6 +232,9 @@ void cm_InitFakeRootDir() {
     int sizeOfCurEntry;
     int dirSize;
 
+    /* Increment the fake Uniquifier */
+    cm_data.fakeUnique++;
+
     /* Reserve 2 directory chunks for "." and ".." */
     curChunk += 2;
 
@@ -264,7 +271,7 @@ void cm_InitFakeRootDir() {
     fakeEntry.flag = 1;
     fakeEntry.length = 0;
     fakeEntry.next = 0;
-    fakeEntry.fid.unique = htonl(1);
+    fakeEntry.fid.unique = htonl(1 + cm_data.fakeUnique);
 
     // the first page is special, it uses fakeDirHeader instead of fakePageHeader
     // we fill up the page with dirEntries that belong there and we make changes
@@ -307,7 +314,7 @@ void cm_InitFakeRootDir() {
         noChunks = cm_NameEntries((cm_localMountPoints+curDirEntry)->namep, 0);
         /* enforce the rule that only directories have odd vnode values */
         fakeEntry.fid.vnode = htonl((curDirEntry + 1) * 2);
-        fakeEntry.fid.unique = htonl(curDirEntry + 1);
+        fakeEntry.fid.unique = htonl(curDirEntry + 1 + cm_data.fakeUnique);
         currentPos = cm_FakeRootDir + curPage * CM_DIR_PAGESIZE + curChunk * CM_DIR_CHUNKSIZE;
 
         memcpy(currentPos, &fakeEntry, CM_DIR_CHUNKSIZE);
@@ -351,7 +358,7 @@ void cm_InitFakeRootDir() {
             noChunks = cm_NameEntries((cm_localMountPoints+curDirEntry)->namep, 0);
             /* enforce the rule that only directories have odd vnode values */
             fakeEntry.fid.vnode = htonl((curDirEntry + 1) * 2);
-            fakeEntry.fid.unique = htonl(curDirEntry + 1);
+            fakeEntry.fid.unique = htonl(curDirEntry + 1 + cm_data.fakeUnique);
             currentPos = cm_FakeRootDir + curPage * CM_DIR_PAGESIZE + curChunk * CM_DIR_CHUNKSIZE;
             memcpy(currentPos, &fakeEntry, CM_DIR_CHUNKSIZE);
             strcpy(currentPos + 12, (cm_localMountPoints+curDirEntry)->namep);
@@ -391,8 +398,16 @@ int cm_noteLocalMountPointChange(afs_int32 locked) {
         lock_ObtainMutex(&cm_Freelance_Lock);
     cm_data.fakeDirVersion++;
     cm_localMountPointChangeFlag = 1;
+
     if (!locked)
         lock_ReleaseMutex(&cm_Freelance_Lock);
+
+    if (RDR_Initialized) {
+        cm_fid_t fid;
+        cm_FakeRootFid(&fid);
+	RDR_InvalidateVolume(AFS_FAKE_ROOT_CELL_ID, AFS_FAKE_ROOT_VOL_ID,
+			     AFS_INVALIDATE_DATA_VERSION);
+    }
     return 1;
 }
 
@@ -488,6 +503,10 @@ int cm_reInitLocalMountPoints() {
     cm_GetCallback(cm_data.rootSCachep, cm_rootUserp, &req, 0);
     lock_ReleaseWrite(&cm_data.rootSCachep->rw);
 
+    if (RDR_Initialized)
+	RDR_InvalidateVolume(AFS_FAKE_ROOT_CELL_ID, AFS_FAKE_ROOT_VOL_ID,
+			     AFS_INVALIDATE_DATA_VERSION);
+
     osi_Log0(afsd_logp,"----- freelance reinit complete -----");
     return 0;
 }
@@ -501,6 +520,11 @@ int cm_reInitLocalMountPoints() {
 static int
 cm_enforceTrailingDot(char * line, size_t cchLine, DWORD *pdwSize)
 {
+    if (*pdwSize < 4) {
+        afsi_log("invalid string");
+        return 0;
+    }
+
     /* trailing white space first. */
     if (line[(*pdwSize)-1] == '\0') {
         while (isspace(line[(*pdwSize)-2])) {
@@ -1185,13 +1209,13 @@ long cm_FreelanceAddMount(char *filename, char *cellname, char *volume, int rw, 
         if (cm_getLocalMountPointChange()) {	// check for changes
             cm_clearLocalMountPointChange();    // clear the changefile
             cm_reInitLocalMountPoints();	// start reinit
-        }
+	}
 
-        code = cm_NameI(cm_RootSCachep(cm_rootUserp, &req), cpath,
-                        CM_FLAG_FOLLOW | CM_FLAG_CASEFOLD | CM_FLAG_DFS_REFERRAL,
-                        cm_rootUserp, NULL, &req, &scp);
-        free(cpath);
-        if (code)
+	code = cm_NameI(cm_RootSCachep(cm_rootUserp, &req), cpath,
+			CM_FLAG_DIRSEARCH | CM_FLAG_CASEFOLD,
+			cm_rootUserp, NULL, &req, &scp);
+	free(cpath);
+	if (code)
             return code;
         *fidp = scp->fid;
         cm_ReleaseSCache(scp);
@@ -1429,13 +1453,13 @@ long cm_FreelanceAddSymlink(char *filename, char *destination, cm_fid_t *fidp)
             if (cm_getLocalMountPointChange()) {	// check for changes
                 cm_clearLocalMountPointChange();    // clear the changefile
                 cm_reInitLocalMountPoints();	// start reinit
-            }
+	    }
 
-            code = cm_NameI(cm_RootSCachep(cm_rootUserp, &req), cpath,
-                             CM_FLAG_FOLLOW | CM_FLAG_CASEFOLD | CM_FLAG_DFS_REFERRAL,
-                             cm_rootUserp, NULL, &req, &scp);
-            free(cpath);
-            if (code == 0) {
+	    code = cm_NameI(cm_RootSCachep(cm_rootUserp, &req), cpath,
+			     CM_FLAG_DIRSEARCH | CM_FLAG_CASEFOLD,
+			     cm_rootUserp, NULL, &req, &scp);
+	    free(cpath);
+	    if (code == 0) {
                 *fidp = scp->fid;
                 cm_ReleaseSCache(scp);
             }
@@ -1510,12 +1534,14 @@ long
 cm_FreelanceFetchMountPointString(cm_scache_t *scp)
 {
     lock_ObtainMutex(&cm_Freelance_Lock);
-    if (!scp->mountPointStringp[0] &&
+    if (scp->mpDataVersion != scp->dataVersion &&
         scp->fid.cell == AFS_FAKE_ROOT_CELL_ID &&
         scp->fid.volume == AFS_FAKE_ROOT_VOL_ID &&
-        scp->fid.unique <= cm_noLocalMountPoints) {
-        strncpy(scp->mountPointStringp, cm_localMountPoints[scp->fid.unique-1].mountPointStringp, MOUNTPOINTLEN);
+        (afs_int32)(scp->fid.unique - cm_data.fakeUnique) - 1 >= 0 &&
+        scp->fid.unique - cm_data.fakeUnique <= cm_noLocalMountPoints) {
+        strncpy(scp->mountPointStringp, cm_localMountPoints[scp->fid.unique-cm_data.fakeUnique-1].mountPointStringp, MOUNTPOINTLEN);
         scp->mountPointStringp[MOUNTPOINTLEN-1] = 0;	/* null terminate */
+        scp->mpDataVersion = scp->dataVersion;
     }
     lock_ReleaseMutex(&cm_Freelance_Lock);
 
@@ -1528,12 +1554,13 @@ cm_FreelanceFetchFileType(cm_scache_t *scp)
     lock_ObtainMutex(&cm_Freelance_Lock);
     if (scp->fid.cell == AFS_FAKE_ROOT_CELL_ID &&
         scp->fid.volume == AFS_FAKE_ROOT_VOL_ID &&
-        scp->fid.unique <= cm_noLocalMountPoints)
+        (afs_int32)(scp->fid.unique - cm_data.fakeUnique) - 1 >= 0 &&
+        scp->fid.unique - cm_data.fakeUnique <= cm_noLocalMountPoints)
     {
-        scp->fileType = cm_localMountPoints[scp->fid.unique-1].fileType;
+        scp->fileType = cm_localMountPoints[scp->fid.unique-cm_data.fakeUnique-1].fileType;
 
-        if ( scp->fileType == CM_SCACHETYPE_SYMLINK &&
-             !strnicmp(cm_localMountPoints[scp->fid.unique-1].mountPointStringp, "msdfs:", strlen("msdfs:")) )
+        if (scp->fileType == CM_SCACHETYPE_SYMLINK &&
+            !strnicmp(cm_localMountPoints[scp->fid.unique-cm_data.fakeUnique-1].mountPointStringp, "msdfs:", strlen("msdfs:")) )
         {
             scp->fileType = CM_SCACHETYPE_DFSLINK;
         }

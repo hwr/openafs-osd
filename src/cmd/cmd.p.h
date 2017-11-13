@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -14,10 +14,10 @@
 #define	CMD_FLAG	1	/* no parms */
 #define	CMD_SINGLE	2	/* one parm */
 #define	CMD_LIST	3	/* two parms */
+#define CMD_SINGLE_OR_FLAG 4	/* one parm or flag */
 
 /* syndesc flags */
 #define	CMD_ALIAS	1	/* this is an alias */
-#define CMD_ADMIN       2	/* admin. command, show only with -admin */
 #define CMD_HIDDEN      4	/* A hidden command - similar to CMD_HIDE */
 
 #define CMD_HELPPARM	(CMD_MAXPARMS-1)	/* last one is used by -help switch */
@@ -35,6 +35,7 @@ struct cmd_parmdesc {
     struct cmd_item *items;	/* list of cmd items */
     afs_int32 flags;		/* flags */
     char *help;			/* optional help descr */
+    struct cmd_item *aliases;   /* optional aliases */
 };
 
 /* cmd_parmdesc flags */
@@ -43,6 +44,7 @@ struct cmd_parmdesc {
 #define	CMD_EXPANDS	    2	/* if list, try to eat tokens through eoline, instead of just 1 */
 #define CMD_HIDE            4	/* A hidden option */
 #define	CMD_PROCESSED	    8
+#define CMD_NOABBRV	   16   /* Abbreviation not supported */
 
 struct cmd_syndesc {
     struct cmd_syndesc *next;	/* next one in system list */
@@ -54,14 +56,14 @@ struct cmd_syndesc {
     int (*proc) (struct cmd_syndesc * ts, void *arock);
     void *rock;
     int nParms;			/* number of parms */
-    afs_int32 flags;		/* random flags */
+    afs_uint32 flags;		/* random flags */
     struct cmd_parmdesc parms[CMD_MAXPARMS];	/* parms themselves */
 };
 
 extern struct cmd_syndesc *cmd_CreateSyntax(char *namep,
 					    int (*aprocp) (struct cmd_syndesc
 							   * ts, void *arock),
-					    void *rockp, char *helpp);
+					    void *rockp, afs_uint32 aflags, char *helpp);
 extern int
   cmd_SetBeforeProc(int (*aproc) (struct cmd_syndesc * ts, void *beforeRock),
 		    void *arock);
@@ -72,73 +74,57 @@ extern int cmd_CreateAlias(struct cmd_syndesc *as, char *aname);
 extern int cmd_Seek(struct cmd_syndesc *as, int apos);
 extern int cmd_AddParm(struct cmd_syndesc *as, char *aname, int atype,
 		       afs_int32 aflags, char *ahelp);
+extern int cmd_AddParmAtOffset(struct cmd_syndesc *as, int ref, char *name,
+			       int atype, afs_int32 aflags, char *ahelp);
+extern int cmd_AddParmAlias(struct cmd_syndesc *as, int pos, char *alias);
 extern int cmd_Dispatch(int argc, char **argv);
 extern int cmd_FreeArgv(char **argv);
 extern int cmd_ParseLine(char *aline, char **argv, afs_int32 * an,
 			 afs_int32 amaxn);
-extern int cmd_IsAdministratorCommand(struct cmd_syndesc *as);
+extern void cmd_DisablePositionalCommands(void);
+extern void cmd_DisableAbbreviations(void);
 extern void PrintSyntax(struct cmd_syndesc *as);
 extern void PrintFlagHelp(struct cmd_syndesc *as);
 
-/* For pretty output */
-#define T_MAX_CELLS 20
-#define T_MAX_CELLCONTENT_LEN 30
-#define T_TYPE_ASCII_SPARTAN 0
-#define T_TYPE_ASCII_INNERLINE 1
-#define T_TYPE_ASCII_FULLNET 2
-#define T_TYPE_HTML 3
-#define T_TYPE_CSV 4
-#define T_TYPE_MAX 4
-#define T_CELL_JUST_LEFT -1
-#define T_CELL_JUST_CENTRE 0
-#define T_CELL_JUST_RIGHT 1
+extern int cmd_Parse(int argc, char **argv, struct cmd_syndesc **outsyntax);
+extern void cmd_FreeOptions(struct cmd_syndesc **ts);
+extern int cmd_OptionAsInt(struct cmd_syndesc *syn, int pos, int *value);
+extern int cmd_OptionAsUint(struct cmd_syndesc *, int, unsigned int *);
+extern int cmd_OptionAsString(struct cmd_syndesc *syn, int pos, char **value);
+extern int cmd_OptionAsList(struct cmd_syndesc *syn, int pos, struct cmd_item **);
+extern int cmd_OptionAsFlag(struct cmd_syndesc *syn, int pos, int *value);
+extern int cmd_OptionPresent(struct cmd_syndesc *syn, int pos);
 
+/* Config files */
 
-struct TableCell {
-    int Width;
-    int Justification;
-    char Content[T_MAX_CELLCONTENT_LEN];
-    struct TableCell *next;
-    struct TableCell* (*append) (struct TableCell *,char *Content, int Width,int Justification);
-    struct TableCell* (*set) (struct TableCell *,char *Content, int Width,int Justification) ;
+struct cmd_config_binding {
+    enum { cmd_config_string, cmd_config_list } type;
+    char *name;
+    struct cmd_config_binding *next;
+    union {
+	char *string;
+	struct cmd_config_binding *list;
+	void *generic;
+    } u;
 };
 
-struct TableRow {
-    struct TableCell *Head;
-    struct TableRow *next;
-    struct TableRow*  (*append) (struct TableRow *, struct TableCell *);
-    struct TableRow* (*set) (struct TableRow *, struct TableCell *);
-};
+/* Raw config file access */
+typedef struct cmd_config_binding cmd_config_binding;
+typedef struct cmd_config_binding cmd_config_section;
 
-struct Table {
-    int Type;
-    int CellsperRow;
-    /* Attribtues required for formatted ASCII-ouput */
-    int *CellWidth;
-    int RowLength; /* number of character per Row */
-    char CellSeparator;
-    char RowSeparator;
-    /* Basic subentities */
-    struct TableCell *Header;
-    struct TableRow *Body;
-    struct TableCell *Footer;
-    /* ouput methods provided for this table */
-    void (*printHeader) (struct Table *);
-    void (*printBody) (struct Table *);
-    void (*printFooter) (struct Table *);
-    void (*printRow) (struct Table *, struct TableCell *);
-    void (*setLayout) (struct Table *Table,int CellsperRow,int *allCellWidth,int*chosenIdx);
-    void (*setType) (struct Table *Table,int TableType);
-    int* (*newTableLayout) (int CellsperRow);
-};
+extern int cmd_RawConfigParseFileMulti(const char *, cmd_config_section **);
+extern int cmd_RawConfigParseFile(const char *, cmd_config_section **);
+extern int cmd_RawConfigFileFree(cmd_config_section *s);
+extern const char* cmd_RawConfigGetString(const cmd_config_section *,
+					  const char *, ...);
+extern int cmd_RawConfigGetBool(const cmd_config_section *, int, ...);
+extern int cmd_RawConfigGetInt(const cmd_config_section *, int, ...);
+extern const cmd_config_binding *cmd_RawConfigGetList
+	(const cmd_config_section *, ...);
 
-extern void PrintTime(afs_uint32 intdate);
-extern void PrintDate(afs_uint32 intdate);
-extern void sprintDate( char *string, afs_uint32 intdate);
-extern void printTable(struct Table *Table);
-extern struct TableRow* newTableRow();
-extern struct TableCell* newTableCell(); 
-extern struct Table* newTable(); 
-
+extern int cmd_OpenConfigFile(const char *file);
+extern void cmd_SetCommandName(const char *command);
+extern const cmd_config_section *cmd_RawFile(void);
+extern const cmd_config_section *cmd_RawSection(void);
 
 #endif /* __CMD_INCL__ */

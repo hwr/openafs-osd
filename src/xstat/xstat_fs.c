@@ -17,13 +17,13 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
+#include <roken.h>
 
 #include "xstat_fs.h"		/*Interface for this module */
 #include <lwp.h>		/*Lightweight process package */
 
 #include <afs/afsutil.h>
 #include <afs/afscbint.h>
-#include <string.h>
 
 #define LWP_STACK_SIZE	(16 * 1024)
 
@@ -50,13 +50,6 @@ static int (*xstat_fs_Handler) (void);	/*Probe handler routine */
 static PROCESS probeLWP_ID;	/*Probe LWP process ID */
 static int xstat_fs_numCollections;	/*Number of desired collections */
 static afs_int32 *xstat_fs_collIDP;	/*Ptr to collection IDs desired */
-
-/*
- * We have to pass a port to Rx to start up our callback listener
- * service, but 7001 is already taken up by the Cache Manager.  So,
- * we make up our own.
- */
-#define XSTAT_FS_CBPORT	7101
 
 
 /*------------------------------------------------------------------------
@@ -419,7 +412,6 @@ xstat_fs_Init(int a_numServers, struct sockaddr_in *a_socketArray,
     struct xstat_fs_ConnectionInfo *curr_conn;	/*Ptr to current conn */
     char *hostNameFound;	/*Ptr to returned host name */
     int conn_err;		/*Connection error? */
-    int PortToUse;		/*Callback port to use */
     int collIDBytes;		/*Num bytes in coll ID array */
     char hoststr[16];
 
@@ -477,7 +469,7 @@ xstat_fs_Init(int a_numServers, struct sockaddr_in *a_socketArray,
     xstat_fs_ProbeFreqInSecs = a_ProbeFreqInSecs;
     xstat_fs_numCollections = a_numCollections;
     collIDBytes = xstat_fs_numCollections * sizeof(afs_int32);
-    xstat_fs_collIDP = (afs_int32 *) (malloc(collIDBytes));
+    xstat_fs_collIDP = malloc(collIDBytes);
     memcpy(xstat_fs_collIDP, a_collIDP, collIDBytes);
     if (xstat_fs_debug) {
 	printf("[%s] Asking for %d collection(s): ", rn,
@@ -499,8 +491,8 @@ xstat_fs_Init(int a_numServers, struct sockaddr_in *a_socketArray,
      * Allocate the necessary data structures and initialize everything
      * else.
      */
-    xstat_fs_ConnInfo = (struct xstat_fs_ConnectionInfo *)
-	malloc(a_numServers * sizeof(struct xstat_fs_ConnectionInfo));
+    xstat_fs_ConnInfo = malloc(a_numServers
+			       * sizeof(struct xstat_fs_ConnectionInfo));
     if (xstat_fs_ConnInfo == (struct xstat_fs_ConnectionInfo *)0) {
 	fprintf(stderr,
 		"[%s] Can't allocate %d connection info structs (%" AFS_SIZET_FMT " bytes)\n",
@@ -514,25 +506,13 @@ xstat_fs_Init(int a_numServers, struct sockaddr_in *a_socketArray,
      */
     if (xstat_fs_debug)
 	printf("[%s] Initializing Rx\n", rn);
-    PortToUse = XSTAT_FS_CBPORT;
-
-    do {
-	code = rx_Init(htons(PortToUse));
-	if (code) {
-	    if (code == RX_ADDRINUSE) {
-		if (xstat_fs_debug)
-		    fprintf(stderr,
-			    "[%s] Callback port %d in use, advancing\n", rn,
-			    PortToUse);
-		PortToUse++;
-	    } else {
-		fprintf(stderr, "[%s] Fatal error in rx_Init()\n", rn);
-		return (-1);
-	    }
-	}
-    } while (code);
+    code = rx_Init(0);
+    if (code) {
+	fprintf(stderr, "[%s] Fatal error in rx_Init()\n", rn);
+	return (-1);
+    }
     if (xstat_fs_debug)
-	printf("[%s] Rx initialized on port %d\n", rn, PortToUse);
+	printf("[%s] Rx initialized\n", rn);
 
     /*
      * Create a null Rx server security object, to be used by the

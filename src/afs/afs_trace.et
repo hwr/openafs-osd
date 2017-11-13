@@ -26,7 +26,7 @@ error_table 2 ZCM
 	ec	CM_TRACE_STOREALL, "StoreAll vp 0x%lx len (0x%x, 0x%x)"
 	ec	CM_TRACE_INVALL, "InvalAll vp 0x%lx len 0x%x"
 	ec	CM_TRACE_TRUNCALL, "TruncAll vp 0x%lx old len (0x%x, 0x%x) new len (0x%x, 0x%x)"
-	
+
 	ec	CM_TRACE_GNLINK, "Gn_link vp 0x%lx name %s (returns 0x%x)"
 	ec	CM_TRACE_GMKDIR, "Gn_mkdir vp 0x%lx name %s mode 0x%x (returns 0x%x)"
 	ec	CM_TRACE_GMKNOD, "Gn_mknod vp 0x%lx name %s mode 0x%x (returns 0x%x)"
@@ -122,7 +122,7 @@ error_table 2 ZCM
 	ec	CM_TRACE_NFS3IN1, "Nfs3 Root fid client 0x%lx fid (%x:%d.%d.%d)"
 	ec	CM_TRACE_VGET, "Vget vp 0x%lx uid %x fid (%x:%d.%d.%d)"
 	ec	CM_TRACE_VFSROOT, "vfs root vp 0x%lx, code %d"
-	ec	CM_TRACE_READOP, "Iread ip 0x%lx pos (0x%x, 0x%x) count 0x%x code %x"
+	ec	CM_TRACE_READOP, "Iread ip x%lx pos (0x%x, 0x%x) count 0x%x code %x"
 	ec	CM_TRACE_WRITEOP, "Iwrite ip 0x%lx pos (0x%x, 0x%x) count 0x%x code %x"
 	ec	CM_TRACE_READPAGE, "Ireadpage ip 0x%lx pp 0x%x count 0x%x code %x"
 	ec	CM_TRACE_UPDATEPAGE, "Iupdatepage ip 0x%lx pp 0x%x count 0x%x code %d"
@@ -153,9 +153,9 @@ error_table 2 ZCM
 	ec	CM_TRACE_STOREPROC2, "StoreProc got (0x%x, 0x%x) length 0x%x"
 	ec	CM_TRACE_ADJUSTSIZE, "AdjustSize index %d oldSize %d newSize %d blocksUsed %d"
 	ec	CM_TRACE_SETLENGTH, "%s line %d: m.Length was (0x%x, 0x%x), now (0x%x, 0x%x)"
-	ec	CM_TRACE_DCACHEWAIT, "%s line %d: waiting for 0x%x flags 0x%x" 
-	ec	CM_TRACE_VNODEREAD, "UFSRead: tdc 0x%lx, offset (0x%x, 0x%x) len (0x%x 0x%x)" 
-	ec	CM_TRACE_SLEEP, "Sleep: evp 0x%lx, count %d seq 0x%x evp->seq 0x%x" 
+	ec	CM_TRACE_DCACHEWAIT, "%s line %d: waiting for 0x%x flags 0x%x"
+	ec	CM_TRACE_VNODEREAD, "UFSRead: tdc 0x%lx, offset (0x%x, 0x%x) len (0x%x 0x%x)"
+	ec	CM_TRACE_SLEEP, "Sleep: evp 0x%lx, count %d seq 0x%x evp->seq 0x%x"
 	ec	CM_TRACE_WAKE, "Wakeup: evp 0x%lx, evp->seq 0x%x"
 	ec	CM_TRACE_DENTRYDELETE, "d_delete inode 0x%x d_name %s/%s"
 	ec	CM_TRACE_DENTRYIPUT, "d_iput inode 0x%x d_name %s/%s"
@@ -175,9 +175,5 @@ error_table 2 ZCM
 	ec 	CM_TRACE_AFSDB, "AFSDB lookup %s returned %d"
 	ec	CM_TRACE_AIOREADOP, "Iaioread ip x%lx pos (0x%x, 0x%x) segs 0x%x code %x"
 	ec	CM_TRACE_AIOWRITEOP, "Iaiowrite ip x%lx pos (0x%x, 0x%x) segs 0x%x code %x"
-        ec      CM_TRACE_SERVERUUID, "afsUUID = 0x%x 0x%x 0x%x 0x%x, volume %lu"
-        ec      CM_TRACE_NAMEI, "in vcache 0x%x: hint to namei vnode 0x%x found for %s"
-        ec      CM_TRACE_POINTER, "Pointer %s == 0x%x"
-        ec      CM_TRACE_WASHERE64, "Was here: %s line %d, %s=%lld"
 end
 

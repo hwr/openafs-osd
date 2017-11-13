@@ -15,8 +15,10 @@
 #include <ws2tcpip.h>
 
 extern "C" {
+#include <afsconfig.h>
 #include <afs/param.h>
 #include <afs/stds.h>
+#include <roken.h>
 }
 
 #include "afscfg.h"
@@ -26,6 +28,7 @@ extern "C" {
 #include <afs\afs_vosAdmin.h>
 #include <afs\afs_bosAdmin.h>
 #include <afs\afs_clientAdmin.h>
+#include <afs\afsint.h>
 #include <afs\volser.h>
 #include <afs\dirpath.h>
 #include <WINNT\afsreg.h>

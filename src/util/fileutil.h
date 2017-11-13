@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -11,9 +11,6 @@
 #define OPENAFS_FILEUTIL_H
 
 /* File-oriented utility functions */
-
-extern int
-  renamefile(const char *oldname, const char *newname);
 
 /* Path normalization routines */
 #define FPN_FORWARD_SLASHES 1

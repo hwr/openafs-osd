@@ -93,18 +93,18 @@
 
 #define VIOC_STATISTICS         _VICEIOCTL(68)	/* arla: fetch statistics */
 #define VIOC_GETVCXSTATUS2      _VICEIOCTL(69)  /* vcache statistics */
-#define VIOC_SETPROTOCOLS	_VICEIOCTL(70)	/* allow more protocols */
-#define VIOC_SETHOMECELL	_VICEIOCTL(71)	/* change home cell */
 
 /* Coordinated 'C' pioctl's */
 #define VIOC_NEWALIAS		_CVICEIOCTL(1)	/* create new cell alias */
 #define VIOC_GETALIAS		_CVICEIOCTL(2)	/* get alias info */
 #define VIOC_CBADDR		_CVICEIOCTL(3)	/* push callback addr */
 #define VIOC_DISCON		_CVICEIOCTL(5)	/* set/get discon mode */
+#define VIOC_GETTOK2            _CVICEIOCTL(7)  /* extended fetch tokens */
+#define VIOC_SETTOK2            _CVICEIOCTL(8)  /* extended set tokens */
 #define VIOC_NEWUUID            _CVICEIOCTL(9)  /* new uuid */
 #define VIOCPRECACHE            _CVICEIOCTL(12) /* precache size */
 #define VIOC_GETPAG             _CVICEIOCTL(13) /* get pag value */
-#define VIOC_FLUSHALL		_CVICEIOCTL(14) /* flush all volume data */
+#define VIOC_FLUSHALL           _CVICEIOCTL(14) /* flush all volume data */
 
 /* OpenAFS-specific 'O' pioctl's */
 #define VIOC_NFS_NUKE_CREDS	_OVICEIOCTL(1)	/* nuke creds for all PAG's */

@@ -7,7 +7,10 @@
  * directory or online at http://www.openafs.org/dl/license10.html
  */
 
+#include <afsconfig.h>
 #include <afs/param.h>
+#include <roken.h>
+
 #include <afs/afs_args.h>
 #include <afs/stds.h>
 
@@ -33,7 +36,7 @@ osi_rwlock_t cm_callbackLock;
 
 afs_int32 cm_OfflineROIsValid = 0;
 
-afs_int32 cm_giveUpAllCBs = 0;
+afs_int32 cm_giveUpAllCBs = 1;
 
 afs_int32 cm_shutdown = 0;
 
@@ -166,6 +169,7 @@ void cm_RevokeCallback(struct rx_call *callp, cm_cell_t * cellp, AFSFid *fidp)
     tfid.volume = fidp->Volume;
     tfid.vnode = fidp->Vnode;
     tfid.unique = fidp->Unique;
+    CM_FID_GEN_HASH(&tfid);
     hash = CM_SCACHE_HASH(&tfid);
 
     osi_Log3(afsd_logp, "RevokeCallback vol %u vn %u uniq %u",
@@ -198,6 +202,10 @@ void cm_RevokeCallback(struct rx_call *callp, cm_cell_t * cellp, AFSFid *fidp)
             cm_DiscardSCache(scp);
             lock_ReleaseWrite(&scp->rw);
 
+            if (RDR_Initialized)
+                RDR_InvalidateObject(scp->fid.cell, scp->fid.volume, scp->fid.vnode, scp->fid.unique,
+                                     scp->fid.hash, scp->fileType, AFS_INVALIDATE_CALLBACK);
+
             cm_CallbackNotifyChange(scp);
 
             lock_ObtainWrite(&cm_scacheLock);
@@ -218,6 +226,9 @@ cm_callbackDiscardROVolumeByFID(cm_fid_t *fidp)
         cm_PutVolume(volp);
         if (volp->cbExpiresRO) {
             volp->cbExpiresRO = 0;
+            volp->cbIssuedRO = 0;
+            volp->volumeSizeRO = 0;
+            _InterlockedAnd(&volp->flags, ~CM_VOLUMEFLAG_RO_SIZE_VALID);
             if (volp->cbServerpRO) {
                 cm_PutServer(volp->cbServerpRO);
                 volp->cbServerpRO = NULL;
@@ -238,7 +249,7 @@ void cm_RevokeVolumeCallback(struct rx_call *callp, cm_cell_t *cellp, AFSFid *fi
     cm_scache_t *scp;
     cm_fid_t tfid;
 
-    osi_Log1(afsd_logp, "RevokeVolumeCallback vol %d", fidp->Volume);
+    osi_Log1(afsd_logp, "RevokeVolumeCallback vol %u", fidp->Volume);
 
     /* do this first, so that if we're executing a callback granting call
      * at this moment, we kill it before it can be merged in.  Otherwise,
@@ -248,7 +259,6 @@ void cm_RevokeVolumeCallback(struct rx_call *callp, cm_cell_t *cellp, AFSFid *fi
     tfid.cell = cellp ? cellp->cellID : 0;
     tfid.volume = fidp->Volume;
     tfid.vnode = tfid.unique = 0;
-
     cm_RecordRacingRevoke(&tfid, CM_RACINGFLAG_CANCELVOL);
 
     lock_ObtainWrite(&cm_scacheLock);
@@ -262,10 +272,18 @@ void cm_RevokeVolumeCallback(struct rx_call *callp, cm_cell_t *cellp, AFSFid *fi
                 lock_ReleaseWrite(&cm_scacheLock);
 
                 lock_ObtainWrite(&scp->rw);
-                osi_Log4(afsd_logp, "RevokeVolumeCallback Discarding SCache scp 0x%p vol %u vn %u uniq %u",
-                          scp, scp->fid.volume, scp->fid.vnode, scp->fid.unique);
+                osi_Log5(afsd_logp, "RevokeVolumeCallback Discarding SCache scp 0x%p vol %u vn %u uniq %u",
+                          scp, scp->fid.cell, scp->fid.volume, scp->fid.vnode, scp->fid.unique);
+                osi_Log2(afsd_logp, ".... dv 0x%x:%x",
+                          (afs_uint32)((scp->dataVersion >> 32) & 0xFFFFFFFF),
+                          (afs_uint32)(scp->dataVersion & 0xFFFFFFFF));
+
                 cm_DiscardSCache(scp);
                 lock_ReleaseWrite(&scp->rw);
+
+                if (RDR_Initialized)
+                    RDR_InvalidateObject(scp->fid.cell, scp->fid.volume, scp->fid.vnode, scp->fid.unique,
+                                         scp->fid.hash, scp->fileType, AFS_INVALIDATE_CALLBACK);
 
                 cm_CallbackNotifyChange(scp);
                 lock_ObtainWrite(&cm_scacheLock);
@@ -277,6 +295,9 @@ void cm_RevokeVolumeCallback(struct rx_call *callp, cm_cell_t *cellp, AFSFid *fi
     }	/* search all hash buckets */
 
     lock_ReleaseWrite(&cm_scacheLock);
+
+    if (cellp && RDR_Initialized)
+        RDR_InvalidateVolume(cellp->cellID, fidp->Volume, AFS_INVALIDATE_CALLBACK);
 
     osi_Log1(afsd_logp, "RevokeVolumeCallback Complete vol %d", fidp->Volume);
 }
@@ -505,7 +526,6 @@ extern osi_rwlock_t cm_aclLock;
 extern osi_rwlock_t buf_globalLock;
 extern osi_rwlock_t cm_cellLock;
 extern osi_rwlock_t cm_connLock;
-extern osi_rwlock_t cm_daemonLock;
 extern osi_rwlock_t cm_dnlcLock;
 extern osi_rwlock_t cm_scacheLock;
 extern osi_rwlock_t cm_serverLock;
@@ -540,7 +560,6 @@ static struct _ltable {
     {"cm_connLock",      (char*)&cm_connLock,           LOCKTYPE_RW},
     {"cm_userLock",      (char*)&cm_userLock,           LOCKTYPE_RW},
     {"cm_volumeLock",    (char*)&cm_volumeLock,         LOCKTYPE_RW},
-    {"cm_daemonLock",    (char*)&cm_daemonLock,         LOCKTYPE_RW},
     {"cm_dnlcLock",      (char*)&cm_dnlcLock,           LOCKTYPE_RW},
     {"cm_utilsLock",     (char*)&cm_utilsLock,          LOCKTYPE_RW},
     {"smb_globalLock",   (char*)&smb_globalLock,        LOCKTYPE_RW},
@@ -709,14 +728,14 @@ SRXAFSCB_GetCE(struct rx_call *callp, long index, AFSDBCacheEntry *cep)
         break;
     }
     cep->states = 0;
-    if (scp->flags & CM_SCACHEFLAG_STATD)
+    if (cm_HaveCallback(scp))
         cep->states |= 1;
     if (scp->flags & CM_SCACHEFLAG_RO || scp->flags & CM_SCACHEFLAG_PURERO)
         cep->states |= 4;
     if (scp->fileType == CM_SCACHETYPE_MOUNTPOINT &&
-        scp->mountPointStringp[0])
+        scp->mpDataVersion == scp->dataVersion)
         cep->states |= 8;
-    if (scp->flags & CM_SCACHEFLAG_WAITING)
+    if (!osi_QIsEmpty(&scp->waitQueueH))
         cep->states |= 0x40;
     code = 0;
 
@@ -784,12 +803,7 @@ SRXAFSCB_GetCE64(struct rx_call *callp, long index, AFSDBCacheEntry64 *cep)
     cep->lock.pid_last_reader = 0;
     cep->lock.pid_writer = 0;
     cep->lock.src_indicator = 0;
-#if !defined(AFS_64BIT_ENV)
-    cep->Length.high = scp->length.HighPart;
-    cep->Length.low = scp->length.LowPart;
-#else
     cep->Length = (afs_int64) scp->length.QuadPart;
-#endif
     cep->DataVersion = (afs_uint32)(scp->dataVersion & 0xFFFFFFFF);
     cep->callback = afs_data_pointer_to_int32(scp->cbServerp);
     if (scp->flags & CM_SCACHEFLAG_PURERO) {
@@ -829,14 +843,14 @@ SRXAFSCB_GetCE64(struct rx_call *callp, long index, AFSDBCacheEntry64 *cep)
         break;
     }
     cep->states = 0;
-    if (scp->flags & CM_SCACHEFLAG_STATD)
+    if (cm_HaveCallback(scp))
         cep->states |= 1;
     if (scp->flags & CM_SCACHEFLAG_RO || scp->flags & CM_SCACHEFLAG_PURERO)
         cep->states |= 4;
     if (scp->fileType == CM_SCACHETYPE_MOUNTPOINT &&
-        scp->mountPointStringp[0])
+        scp->mpDataVersion == scp->dataVersion)
         cep->states |= 8;
-    if (scp->flags & CM_SCACHEFLAG_WAITING)
+    if (!osi_QIsEmpty(&scp->waitQueueH))
         cep->states |= 0x40;
     code = 0;
 
@@ -934,14 +948,9 @@ SRXAFSCB_WhoAreYou(struct rx_call *callp, struct interfaceAddr* addr)
     lock_ObtainRead(&cm_syscfgLock);
     if (cm_LanAdapterChangeDetected) {
         lock_ConvertRToW(&cm_syscfgLock);
-        if (cm_LanAdapterChangeDetected) {
-            /* get network related info */
-            cm_noIPAddr = CM_MAXINTERFACE_ADDR;
-            code = syscfg_GetIFInfo(&cm_noIPAddr,
-                                     cm_IPAddr, cm_SubnetMask,
-                                     cm_NetMtu, cm_NetFlags);
-            cm_LanAdapterChangeDetected = 0;
-        }
+	if (cm_LanAdapterChangeDetected) {
+	    code = cm_UpdateIFInfo();
+	}
         lock_ConvertWToR(&cm_syscfgLock);
     }
 
@@ -970,6 +979,8 @@ SRXAFSCB_InitCallBackState3(struct rx_call *callp, afsUUID* serverUuid)
     cm_cell_t* cellp = NULL;
     afs_uint32 hash;
     int discarded;
+    cm_fid_t discardFid;
+    afs_uint32 discardType;
     struct rx_connection *connp;
     struct rx_peer *peerp;
     unsigned long host = 0;
@@ -1051,28 +1062,35 @@ SRXAFSCB_InitCallBackState3(struct rx_call *callp, afsUUID* serverUuid)
 	lock_ObtainWrite(&cm_scacheLock);
 	for (hash = 0; hash < cm_data.scacheHashTableSize; hash++) {
             for (scp=cm_data.scacheHashTablep[hash]; scp; scp=scp->nextp) {
-                cm_HoldSCacheNoLock(scp);
-                lock_ReleaseWrite(&cm_scacheLock);
-                lock_ObtainWrite(&scp->rw);
-                discarded = 0;
                 if (scp->cbExpires > 0 && scp->cbServerp != NULL) {
-                    /* we have a callback, now decide if we should clear it */
-                    if (cm_ServerEqual(scp->cbServerp, tsp)) {
-                        osi_Log4(afsd_logp, "InitCallbackState3 Discarding SCache scp 0x%p vol %u vn %u uniq %u",
-                                  scp, scp->fid.volume, scp->fid.vnode, scp->fid.unique);
-                        cm_DiscardSCache(scp);
-                        discarded = 1;
+                    cm_HoldSCacheNoLock(scp);
+                    lock_ReleaseWrite(&cm_scacheLock);
+                    discarded = 0;
+                    lock_ObtainWrite(&scp->rw);
+                    if (scp->cbExpires > 0 && scp->cbServerp != NULL) {
+                        /* we have a callback, now decide if we should clear it */
+                        if (cm_ServerEqual(scp->cbServerp, tsp)) {
+                            osi_Log4(afsd_logp, "InitCallbackState3 Discarding SCache scp 0x%p vol %u vn %u uniq %u",
+                                     scp, scp->fid.volume, scp->fid.vnode, scp->fid.unique);
+                            discardFid = scp->fid;
+                            discardType = scp->fileType;
+                            cm_DiscardSCache(scp);
+                            discarded = 1;
+                        }
                     }
+                    lock_ReleaseWrite(&scp->rw);
+                    if (discarded) {
+                        cm_CallbackNotifyChange(scp);
+                        if (RDR_Initialized)
+                            RDR_InvalidateObject(discardFid.cell, discardFid.volume, discardFid.vnode, discardFid.unique,
+                                                 discardFid.hash, discardType, AFS_INVALIDATE_EXPIRED);
+                    }
+                    lock_ObtainWrite(&cm_scacheLock);
+                    cm_ReleaseSCacheNoLock(scp);
+
+                    if (discarded && (scp->flags & CM_SCACHEFLAG_PURERO))
+                        cm_callbackDiscardROVolumeByFID(&scp->fid);
                 }
-                lock_ReleaseWrite(&scp->rw);
-                if (discarded)
-                    cm_CallbackNotifyChange(scp);
-                lock_ObtainWrite(&cm_scacheLock);
-                cm_ReleaseSCacheNoLock(scp);
-
-                if (discarded && (scp->flags & CM_SCACHEFLAG_PURERO))
-                    cm_callbackDiscardROVolumeByFID(&scp->fid);
-
             }	/* search one hash bucket */
 	}      	/* search all hash buckets */
 
@@ -1232,12 +1250,7 @@ SRXAFSCB_TellMeAboutYourself( struct rx_call *callp,
     if (cm_LanAdapterChangeDetected) {
         lock_ConvertRToW(&cm_syscfgLock);
         if (cm_LanAdapterChangeDetected) {
-            /* get network related info */
-            cm_noIPAddr = CM_MAXINTERFACE_ADDR;
-            code = syscfg_GetIFInfo(&cm_noIPAddr,
-                                     cm_IPAddr, cm_SubnetMask,
-                                     cm_NetMtu, cm_NetFlags);
-            cm_LanAdapterChangeDetected = 0;
+	    code = cm_UpdateIFInfo();
         }
         lock_ConvertWToR(&cm_syscfgLock);
     }
@@ -1571,7 +1584,9 @@ int cm_HaveCallback(cm_scache_t *scp)
                     break;
                 }
             }
-            if (!haveCB &&
+            if (cm_readonlyVolumeVersioning &&
+                !haveCB &&
+                scp->volumeCreationDate != 0 &&
                 volp->creationDateRO == scp->volumeCreationDate &&
                 volp->cbServerpRO != NULL) {
                 haveCB = 1;
@@ -1617,52 +1632,40 @@ void cm_StartCallbackGrantingCall(cm_scache_t *scp, cm_callbackRequest_t *cbrp)
  *
  * Called with scp write locked, so we can discard the callbacks easily with
  * this locking hierarchy.
+ *
+ * Performs cleanup of the stack allocated cm_callbackRequest_t object.
+ *
+ * Returns 0 on success and non-zero if the callback lost a race.
  */
-void cm_EndCallbackGrantingCall(cm_scache_t *scp, cm_callbackRequest_t *cbrp,
-                                AFSCallBack *cbp, AFSVolSync *volSyncp, long flags)
+int
+cm_EndCallbackGrantingCall(cm_scache_t *scp, cm_callbackRequest_t *cbrp,
+                           AFSCallBack *cbp, AFSVolSync *volSyncp, long flags)
 {
     cm_racingRevokes_t *revp;		/* where we are */
     cm_racingRevokes_t *nrevp;		/* where we'll be next */
-    int freeFlag;
+    int freeRacingRevokes;
+    int freeServer;
     cm_server_t * serverp = NULL;
-    int discardScp = 0, discardVolCB = 0;
+    int lostRace = 0;
 
     lock_ObtainWrite(&cm_callbackLock);
     if (flags & CM_CALLBACK_MAINTAINCOUNT) {
         osi_assertx(cm_activeCallbackGrantingCalls > 0,
                     "CM_CALLBACK_MAINTAINCOUNT && cm_activeCallbackGrantingCalls == 0");
+        freeServer = 0;
     }
     else {
         osi_assertx(cm_activeCallbackGrantingCalls-- > 0,
                     "!CM_CALLBACK_MAINTAINCOUNT && cm_activeCallbackGrantingCalls == 0");
+        freeServer = 1;
     }
     if (cm_activeCallbackGrantingCalls == 0)
-        freeFlag = 1;
+        freeRacingRevokes = 1;
     else
-        freeFlag = 0;
+        freeRacingRevokes = 0;
 
-    /* record the callback; we'll clear it below if we really lose it */
-    if (cbrp) {
-	if (scp) {
-            if (!cm_ServerEqual(scp->cbServerp, cbrp->serverp)) {
-                serverp = scp->cbServerp;
-                if (!freeFlag)
-                    cm_GetServer(cbrp->serverp);
-                scp->cbServerp = cbrp->serverp;
-            } else {
-                if (freeFlag)
-                    serverp = cbrp->serverp;
-            }
-            scp->cbExpires = cbrp->startTime + cbp->ExpirationTime;
-        } else {
-            if (freeFlag)
-                serverp = cbrp->serverp;
-        }
-        if (freeFlag)
-            cbrp->serverp = NULL;
-    }
-
-    /* a callback was actually revoked during our granting call, so
+    /*
+     * a callback was revoked during our granting call, so
      * run down the list of revoked fids, looking for ours.
      * If activeCallbackGrantingCalls is zero, free the elements, too.
      *
@@ -1691,34 +1694,50 @@ void cm_EndCallbackGrantingCall(cm_scache_t *scp, cm_callbackRequest_t *cbrp,
                       scp,
                       cbrp->callbackCount, revp->callbackCount,
                       cm_callbackCount);
-            discardScp = 1;
+            lostRace = 1;
             if ((scp->flags & CM_SCACHEFLAG_PURERO) &&
                  (revp->flags & CM_RACINGFLAG_ALL))
                 cm_callbackDiscardROVolumeByFID(&scp->fid);
         }
-        if (freeFlag)
+        if (freeRacingRevokes)
             free(revp);
     }
 
     /* if we freed the list, zap the pointer to it */
-    if (freeFlag)
+    if (freeRacingRevokes)
         cm_racingRevokesp = NULL;
-
     lock_ReleaseWrite(&cm_callbackLock);
 
-    if ( discardScp ) {
-        cm_DiscardSCache(scp);
-        lock_ReleaseWrite(&scp->rw);
-        cm_CallbackNotifyChange(scp);
-        lock_ObtainWrite(&scp->rw);
-    } else {
-        if (scp && scp->flags & CM_SCACHEFLAG_PURERO) {
+    /* record the callback if we didn't lose it */
+    if (!lostRace && scp) {
+        if (cbrp) {
+            if (!cm_ServerEqual(scp->cbServerp, cbrp->serverp)) {
+                serverp = scp->cbServerp;
+                scp->cbServerp = cbrp->serverp;
+                if (freeServer) {
+                    cbrp->serverp = NULL;
+                } else {
+                    cm_GetServer(scp->cbServerp);
+                }
+            } else if (freeServer) {
+                serverp = cbrp->serverp;
+                cbrp->serverp = NULL;
+            }
+            scp->cbExpires = cbrp->startTime + cbp->ExpirationTime;
+            scp->cbIssued = time(NULL);
+        }
+
+        if (scp->flags & CM_SCACHEFLAG_PURERO) {
             cm_volume_t * volp = cm_GetVolumeByFID(&scp->fid);
             if (volp) {
                 if (volSyncp) {
                     lock_ObtainWrite(&cm_scacheLock);
                     volp->cbExpiresRO = scp->cbExpires;
-                    volp->creationDateRO = volSyncp->spare1;
+                    volp->cbIssuedRO = scp->cbIssued;
+                    if (cm_readonlyVolumeVersioning || !(flags & CM_CALLBACK_BULKSTAT))
+                        volp->creationDateRO = volSyncp->spare1;
+                    else
+                        volp->creationDateRO = 0;
                     if (volp->cbServerpRO != scp->cbServerp) {
                         if (volp->cbServerpRO)
                             cm_PutServer(volp->cbServerpRO);
@@ -1731,12 +1750,27 @@ void cm_EndCallbackGrantingCall(cm_scache_t *scp, cm_callbackRequest_t *cbrp,
             }
         }
     }
+    else
+    {
+        /*
+         * No need to discard the cm_scache object or notify the
+         * afs redirector or smb client about a change if we did lose
+         * the race.  That was done when the callback was processed in
+         * cm_RevokeCallback().
+         */
+        if (cbrp && freeServer) {
+            serverp = cbrp->serverp;
+            cbrp->serverp = NULL;
+        }
+    }
 
     if ( serverp ) {
         lock_ObtainWrite(&cm_serverLock);
         cm_FreeServer(serverp);
         lock_ReleaseWrite(&cm_serverLock);
     }
+
+    return lostRace;
 }
 
 /* if flags is 1, we want to force the code to make one call, anyway.
@@ -1782,7 +1816,7 @@ long cm_GetCallback(cm_scache_t *scp, struct cm_user *userp,
             InterlockedIncrement(&scp->activeRPCs);
 
             // Fetch the status info
-            cm_MergeStatus(NULL, scp, &afsStatus, &volSync, userp, reqp, 0);
+            code = cm_MergeStatus(NULL, scp, &afsStatus, &volSync, userp, reqp, 0);
         }
         goto done;
     }
@@ -1823,7 +1857,7 @@ long cm_GetCallback(cm_scache_t *scp, struct cm_user *userp,
                                      &afsStatus, &callback, &volSync);
             rx_PutConnection(rxconnp);
 
-        } while (cm_Analyze(connp, userp, reqp, &sfid, 0, &volSync, NULL,
+        } while (cm_Analyze(connp, userp, reqp, &sfid, NULL, 0, &afsStatus, &volSync, NULL,
                             &cbr, code));
         code = cm_MapRPCError(code, reqp);
         if (code)
@@ -1835,8 +1869,12 @@ long cm_GetCallback(cm_scache_t *scp, struct cm_user *userp,
 
         lock_ObtainWrite(&scp->rw);
         if (code == 0) {
-            cm_EndCallbackGrantingCall(scp, &cbr, &callback, &volSync, 0);
-            cm_MergeStatus(NULL, scp, &afsStatus, &volSync, userp, reqp, 0);
+            int lostRace = cm_EndCallbackGrantingCall(scp, &cbr, &callback, &volSync, 0);
+	    if (lostRace) {
+		InterlockedDecrement(&scp->activeRPCs);
+	    } else {
+                code = cm_MergeStatus(NULL, scp, &afsStatus, &volSync, userp, reqp, 0);
+	    }
         } else {
             cm_EndCallbackGrantingCall(NULL, &cbr, NULL, NULL, 0);
             InterlockedDecrement(&scp->activeRPCs);
@@ -1974,6 +2012,7 @@ void cm_CheckCBExpiration(void)
                 {
                     lock_ObtainWrite(&scp->rw);
                     scp->cbExpires = volp->cbExpiresRO;
+                    scp->cbIssued = volp->cbIssuedRO;
                     if (volp->cbServerpRO != scp->cbServerp) {
                         if (scp->cbServerp)
                             cm_PutServer(scp->cbServerp);
@@ -2007,7 +2046,16 @@ void cm_CheckCBExpiration(void)
             cm_DiscardSCache(scp);
             lock_ReleaseWrite(&scp->rw);
 
+            if (RDR_Initialized)
+                RDR_InvalidateObject(scp->fid.cell, scp->fid.volume, scp->fid.vnode, scp->fid.unique,
+                                     scp->fid.hash, scp->fileType, AFS_INVALIDATE_EXPIRED);
+
             cm_CallbackNotifyChange(scp);
+
+            if (scp->fileType == CM_SCACHETYPE_DIRECTORY &&
+                !(volp && (volp->flags & CM_VOLUMEFLAG_DFS_VOLUME)) &&
+                !cm_accessPerFileCheck)
+                cm_EAccesClearParentEntries(&scp->fid);
 
           scp_complete:
             if (volp)
@@ -2085,7 +2133,9 @@ cm_GiveUpAllCallbacksAllServers(afs_int32 markDown)
         return;
 
     lock_ObtainRead(&cm_serverLock);
-    for (tsp = cm_allServersp; tsp; tsp = tsp->allNextp) {
+    for (tsp = cm_serversAllFirstp;
+	 tsp;
+	 tsp = (cm_server_t *)osi_QNext(&tsp->allq)) {
         cm_GetServerNoLock(tsp);
         lock_ReleaseRead(&cm_serverLock);
         cm_GiveUpAllCallbacks(tsp, markDown);
@@ -2117,7 +2167,9 @@ cm_GiveUpAllCallbacksAllServersMulti(afs_int32 markDown)
     serversp = (cm_server_t **)malloc(maxconns * sizeof(cm_server_t *));
 
     lock_ObtainRead(&cm_serverLock);
-    for (nconns=0, tsp = cm_allServersp; tsp && nconns < maxconns; tsp = tsp->allNextp) {
+    for (nconns=0, tsp = cm_serversAllFirstp;
+	 tsp && nconns < maxconns;
+	 tsp = (cm_server_t *)osi_QNext(&tsp->allq)) {
         if (tsp->type != CM_SERVER_FILE ||
             (tsp->flags & CM_SERVERFLAG_DOWN) ||
             tsp->cellp == NULL          /* SetPrefs only */)

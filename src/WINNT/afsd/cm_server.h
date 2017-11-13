@@ -1,4 +1,3 @@
-
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
@@ -25,7 +24,7 @@ typedef struct cm_server_vols {
  * at the appropriate times to change the pointers to these servers.
  */
 typedef struct cm_server {
-    struct cm_server *allNextp;		/* locked by cm_serverLock */
+    osi_queue_t allq;			/* locked by cm_serverLock */
     struct sockaddr_in addr;		/* by mx */
     int type;				/* by mx */
     struct cm_conn *connsp;		/* locked by cm_connLock */
@@ -34,12 +33,18 @@ typedef struct cm_server {
     afs_int32 capabilities;		/* by mx */
     struct cm_cell *cellp;		/* cell containing this server */
     afs_int32 refCount;		        /* Interlocked with cm_serverLock */
+    afs_int32 pingCount;		/* Interlocked by mx */
     osi_mutex_t mx;
-    unsigned short ipRank;		/* server priority */
+    unsigned short ipRank;		/* network class rank */
+    unsigned short adminRank;		/* set if admin sets a rank
+                                         * (fs setserverpref or registry or dns)
+                                         */
+    unsigned short activeRank;          /* Computed rank combining ipRank, adminRank,
+                                         * and performance data.
+                                         */
     cm_server_vols_t *  vols;           /* by mx */
     time_t downTime;                    /* by mx */
     afsUUID uuid;                       /* by mx */
-    unsigned short adminRank;		/* only set if admin sets a rank */
 } cm_server_t;
 
 enum repstate {srv_not_busy, srv_busy, srv_offline, srv_deleted};
@@ -59,7 +64,7 @@ typedef struct cm_serverRef {
 /* flags */
 #define CM_SERVERFLAG_DOWN	0x1	/* server is down */
 #define CM_SERVERFLAG_PREF_SET	0x2     /* server preference set by user */
-#define CM_SERVERFLAG_PINGING 	0x4 	/* a ping against this server in progress */
+
 #define CM_SERVERFLAG_NO64BIT   0x8     /* server has no support for
                                            64-bit operations. */
 #define CM_SERVERFLAG_NOINLINEBULK 0x10	/* server has no support for inline bulk */
@@ -76,6 +81,7 @@ typedef struct cm_serverRef {
 #define CM_IPRANK_HI	20000	/* on same subnet  */
 #define CM_IPRANK_MED	30000	/* on same network */
 #define CM_IPRANK_LOW	40000	/* on different networks */
+#define CM_IPRANK_DOWN  65535   /* unavailable */
 
 /* the maximum number of network interfaces that this client has */
 
@@ -116,7 +122,9 @@ extern afs_int32 cm_RankServer(cm_server_t * server);
 
 extern void cm_RankUpServers();
 
-extern void cm_SetServerPrefs(cm_server_t * serverp);
+extern void cm_SetServerIPRank(cm_server_t * serverp);
+
+extern afs_int32 cm_UpdateIFInfo(void);
 
 extern void cm_InsertServerList(cm_serverRef_t** list,cm_serverRef_t* element);
 
@@ -126,9 +134,13 @@ extern void cm_RandomizeServer(cm_serverRef_t** list);
 
 extern void cm_FreeServer(cm_server_t* server);
 
+extern afs_uint32 cm_ServerListSize(cm_serverRef_t* list);
+
 #define CM_FREESERVERLIST_DELETE 1
 
 extern void cm_FreeServerList(cm_serverRef_t** list, afs_uint32 flags);
+
+extern void cm_AppendServerList(cm_serverRef_t *dest, cm_serverRef_t **src);
 
 extern void cm_ForceNewConnectionsAllServers(void);
 
@@ -148,6 +160,10 @@ extern int cm_DumpServers(FILE *outputFile, char *cookie, int lock);
 
 extern int cm_ServerEqual(cm_server_t *srv1, cm_server_t *srv2);
 
+extern int cm_IsServerListEmpty(cm_serverRef_t *serversp);
+
+extern void cm_ServerClearRPCStats(void);
+
 /* Protected by cm_syscfgLock (rw) */
 extern int cm_noIPAddr;         /* number of client network interfaces */
 extern int cm_IPAddr[CM_MAXINTERFACE_ADDR];    /* client's IP address in host order */
@@ -157,7 +173,8 @@ extern int cm_NetFlags[CM_MAXINTERFACE_ADDR];  /* network flags */
 extern int cm_LanAdapterChangeDetected;
 
 /* Protected by cm_serverLock */
-extern cm_server_t *cm_allServersp;
+extern cm_server_t *cm_serversAllFirstp;
+extern cm_server_t *cm_serversAllLastp;
 extern afs_uint32   cm_numFileServers;
 extern afs_uint32   cm_numVldbServers;
 #endif /*  OPENAFS_WINNT_AFSD_CM_SERVER_H */

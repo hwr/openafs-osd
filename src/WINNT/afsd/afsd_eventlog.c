@@ -7,6 +7,10 @@
 ////////////////////////////////////////////////////////////////////
 
 
+#include <afsconfig.h>
+#include <afs/param.h>
+#include <roken.h>
+
 #include <windows.h>
 #include <stdarg.h>
 #include <string.h>
@@ -212,7 +216,14 @@ LogEvent(WORD wEventType, DWORD dwEventID, ...)
         break;
     case MSG_SERVICE_RUNNING:
         wNumArgs = 1;
-        lpArgs[0] = "SMB interface";
+        if (smb_Enabled && RDR_Initialized)
+            lpArgs[0] = "SMB and RDR interfaces";
+        else if (smb_Enabled)
+            lpArgs[0] = "SMB interface";
+        else if (RDR_Initialized)
+            lpArgs[0] = "RDR interface";
+        else
+            lpArgs[0] = "No active interface";
         break;
     case MSG_FLUSH_BAD_SHARE_NAME:
     case MSG_FLUSH_OPEN_ENUM_ERROR:
@@ -243,6 +254,7 @@ LogEvent(WORD wEventType, DWORD dwEventID, ...)
     case MSG_SERVER_REPORTS_VIO:
     case MSG_SERVER_REPORTS_VBUSY:
     case MSG_SERVER_REPORTS_VRESTARTING:
+    case MSG_SERVER_REPLIED_BAD_STATUS:
 	wNumArgs = 3;
 	lpArgs[0] = va_arg(listArgs, LPTSTR);
 	StringCbPrintf(lpStrings[1],STRLEN,"%d",va_arg(listArgs,afs_int32));

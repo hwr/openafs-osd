@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -9,13 +9,9 @@
 
 #include <afsconfig.h>
 #include <afs/param.h>
-
-
 #include <afs/stds.h>
 
-#include <stddef.h>
-#include <stdlib.h>
-#include <errno.h>
+#include <roken.h>
 
 #include "procmgmt.h"
 #include "pmgtprivate.h"
@@ -33,11 +29,13 @@
  *            Open files are not inherited, except stdin, stdout, and stderr.
  *            If child fails to exec() spath, its exit code is estatus.
  *
+ * If provided, a signal mask will be set for the spawned process.
+ *
  * ASSUMPTIONS: sargv[0] is the same as spath (or its last component).
  */
 pid_t
 pmgt_ProcessSpawnVE(const char *spath, char *sargv[], char *senvp[],
-		    int estatus)
+		    int estatus, sigset_t *mask)
 {
     pid_t pid;
 
@@ -50,6 +48,8 @@ pmgt_ProcessSpawnVE(const char *spath, char *sargv[], char *senvp[],
 	for (i = 3; i < 64; i++) {
 	    close(i);
 	}
+
+	sigprocmask(SIG_SETMASK, mask, NULL);
 
 	if (senvp) {
 	    execve(spath, sargv, senvp);

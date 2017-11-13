@@ -26,7 +26,6 @@ SOFTWARE.
 /* We only support VC 1200 and above anyway */
 #pragma once
 
-#include <windows.h>
 #include <objbase.h>
 #include <npapi.h>
 #if (_WIN32_WINNT < 0x0501)
@@ -45,8 +44,10 @@ SOFTWARE.
 #define REG_CLIENT_TRACE_OPTION_PARM	"TraceOption"
 #define REG_CLIENT_LOGON_OPTION_PARM	"LogonOptions"
 #define REG_CLIENT_LOGON_SCRIPT_PARMW	L"LogonScript"
+#define REG_CLIENT_LOGON_SCRIPT_PARM	"LogonScript"
 #define REG_CLIENT_DEBUG_PARM           "Debug"
 #define REG_CLIENT_REALM_PARM           "Realm"
+#define REG_CLIENT_USERNAME_PARM        "Username"
 #define REG_CLIENT_THESE_CELLS_PARM     "TheseCells"
 #define REG_CLIENT_LOGOFF_TOKENS_PARM	"LogoffPreserveTokens"
 #define DEFAULT_RETRY_INTERVAL          60                        /* seconds*/
@@ -59,15 +60,16 @@ SOFTWARE.
 #define ISLOGONTRACE(v) ( ((v) & TRACE_OPTION_EVENT)==TRACE_OPTION_EVENT)
 
 #define ISLOGONINTEGRATED(v) ( ((v) & LOGON_OPTION_INTEGRATED)==LOGON_OPTION_INTEGRATED)
-#define ISHIGHSECURITY(v) ( ((v) & LOGON_OPTION_HIGHSECURITY)==LOGON_OPTION_HIGHSECURITY)
 
 #define ISREMOTE(v) ( ((v) & LOGON_FLAG_REMOTE)==LOGON_FLAG_REMOTE)
 #define ISADREALM(v) ( ((v) & LOGON_FLAG_AD_REALM)==LOGON_FLAG_AD_REALM)
+#define ISLSA(v) ( ((v) & LOGON_FLAG_LSA)==LOGON_FLAG_LSA)
 extern DWORD TraceOption;
 
 #define LOGON_FLAG_LOCAL	0
 #define LOGON_FLAG_REMOTE	1
-#define LOGON_FLAG_AD_REALM 2
+#define LOGON_FLAG_AD_REALM     2
+#define LOGON_FLAG_LSA          4       /* Kerberos credentials in LSA */
 
 typedef struct LogonOptions_type {
 	DWORD	LogonOption;
@@ -78,6 +80,7 @@ typedef struct LogonOptions_type {
 	LPWSTR	logonScript;
 	DWORD	flags; /* LOGON_FLAG_* */
         char *  theseCells;
+        char *  username;
         char *  realm;
 } LogonOptions_t;
 
@@ -126,11 +129,15 @@ BOOL IsServiceRunning (void);
 
 static BOOL WINAPI UnicodeStringToANSI(UNICODE_STRING uInputString, LPSTR lpszOutputString, int nOutStringLen);
 
-void GetDomainLogonOptions( PLUID lpLogonId, char * username, char * domain, LogonOptions_t *opt );
+void GetDomainLogonOptions( PLUID lpLogonId, BOOLEAN bKerberos, char * username, char * domain, LogonOptions_t *opt);
 DWORD GetFileCellName(char * path, char * cell, size_t cellLen);
 DWORD GetAdHomePath(char * homePath, size_t homePathLen, PLUID lpLogonId, LogonOptions_t * opt);
 DWORD QueryAdHomePathFromSid(char * homePath, size_t homePathLen, PSID psid, PWSTR domain);
 BOOL GetLocalShortDomain(PWSTR Domain, DWORD cbDomain);
+
+void AFSCreatePAG(PLUID lpLogonId);
+
+DWORD LogonSSP(PLUID lpLogonId, PCtxtHandle outCtx);
 
 #ifdef __cplusplus
 }

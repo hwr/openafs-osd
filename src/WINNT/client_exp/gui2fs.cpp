@@ -12,7 +12,9 @@
 #include <ws2tcpip.h>
 
 extern "C" {
+#include <afsconfig.h>
 #include <afs/param.h>
+#include <roken.h>
 #include <afs/stds.h>
 }
 
@@ -30,11 +32,13 @@ extern "C" {
 
 extern "C" {
 #include <rx/rx_globals.h>
-#include "fs.h"
 #include "fs_utils.h"
+#include "fs_acl.h"
 #include <afs/afsint.h>
 #include <afs/afs_consts.h>
 #include <afs/cellconfig.h>
+#include <afs/ptserver.h>
+#include <afs/ptuser.h>
 #include <afs/vldbint.h>
 #include <afs/volser.h>
 #include <afs/auth.h>
@@ -45,10 +49,18 @@ extern "C" {
 #include <cm_user.h>
 #include <cm_scache.h>
 #include <cm_ioctl.h>
+#include <cm_config.h>
 }
 
 #define STRSAFE_NO_DEPRECATE
 #include <strsafe.h>
+
+/*
+ * the NO_CALLER symbol is used to document functions
+ * that are present in this file but have no caller
+ */
+#define NO_CALLER
+
 
 #define PCCHAR(str)		((char *)(const char *)(str))
 #define VL_NOENT                (363524L)
@@ -133,7 +145,8 @@ public:
     }
 };
 
-long pioctl_T(const CString& path, long opcode, struct ViceIoctl * blob, int follow)
+long
+pioctl_T(const CString& path, long opcode, struct ViceIoctl * blob, int follow)
 {
     CStringUtf8 upath(path);
 
@@ -146,9 +159,7 @@ long pioctl_T(const CString& path, long opcode, struct ViceIoctl * blob, int fol
 #define Utf8ToCString(cs) (cs)
 #endif
 
-
-
-static int
+static int NO_CALLER
 VLDBInit(int noAuthFlag, struct afsconf_cell *info)
 {
     afs_int32 code;
@@ -186,7 +197,7 @@ OpenFile(char *file, char *rwp)
     return fp;
 }
 
-CString StripPath(CString& strPath)
+CString StripPath(const CString& strPath)
 {
     int nIndex = strPath.ReverseFind('\\');
 
@@ -197,7 +208,8 @@ CString StripPath(CString& strPath)
     return strFile;
 }
 
-CStringArray& StripPath(CStringArray& files)
+CStringArray&
+StripPath(CStringArray& files)
 {
     for (int i = 0; i < files.GetSize(); i++)
         files[i] = StripPath(files[i]);
@@ -205,7 +217,8 @@ CStringArray& StripPath(CStringArray& files)
     return files;
 }
 
-void Flush(const CStringArray& files)
+void
+Flush(const CStringArray& files)
 {
     LONG code;
     struct ViceIoctl blob;
@@ -230,7 +243,8 @@ void Flush(const CStringArray& files)
         ShowMessageBox(IDS_FLUSH_OK, MB_ICONINFORMATION, IDS_FLUSH_OK);
 }
 
-void FlushVolume(const CStringArray& files)
+void
+FlushVolume(const CStringArray& files)
 {
     LONG code;
     struct ViceIoctl blob;
@@ -252,7 +266,8 @@ void FlushVolume(const CStringArray& files)
         ShowMessageBox(IDS_FLUSH_VOLUME_OK, MB_ICONINFORMATION, IDS_FLUSH_VOLUME_OK);
 }
 
-void WhichCell(CStringArray& files)
+void NO_CALLER
+WhichCell(CStringArray& files)
 {
     LONG code;
     struct ViceIoctl blob;
@@ -293,7 +308,8 @@ void WhichCell(CStringArray& files)
     dlg.DoModal();
 }
 
-void WSCellCmd()
+void NO_CALLER
+WSCellCmd(void)
 {
     char space[AFS_PIOCTL_MAXSIZE];
     LONG code;
@@ -308,14 +324,14 @@ void WSCellCmd()
 
     code = pioctl((char *) 0, VIOC_GET_WS_CELL, &blob, 1);
 
-    if (code) {
-        //Die(errno, (char *) 0);
-    }
-    //else
-    //printf("This workstation belongs to cell '%s'\n", space);
+    /*
+     * Cell name is left in 'space' as side effect.
+     * At present no callers of this function.
+     */
 }
 
-BOOL CheckVolumes()
+BOOL NO_CALLER
+CheckVolumes(void)
 {
     LONG code;
     struct ViceIoctl blob;
@@ -333,7 +349,8 @@ BOOL CheckVolumes()
     return TRUE;
 }
 
-void SetCacheSizeCmd(LONG nNewCacheSize)
+void NO_CALLER
+SetCacheSizeCmd(LONG nNewCacheSize)
 {
     LONG code;
     struct ViceIoctl blob;
@@ -345,13 +362,12 @@ void SetCacheSizeCmd(LONG nNewCacheSize)
     blob.out_size = 0;
 
     code = pioctl(0, VIOCSETCACHESIZE, &blob, 1);
-    //if (code)
-    //	Die(errno, (char *) 0);
-    //else
-    //	printf("New cache size set.\n");
+
+    /* error handling? */
 }
 
-void WhereIs(CStringArray& files)
+void NO_CALLER
+WhereIs(CStringArray& files)
 {
     LONG code;
     struct ViceIoctl blob;
@@ -443,7 +459,8 @@ CMtoUNIXerror(int cm_code)
     }
 }
 
-CString GetAfsError(int code, const TCHAR *filename)
+CString
+GetAfsError(int code, const TCHAR *filename)
 {
     CString strMsg;
 
@@ -479,30 +496,8 @@ CString GetAfsError(int code, const TCHAR *filename)
 }
 
 
-/************************************************************************
-************************** ACL Code *************************************
-************************************************************************/
-
-typedef char sec_rgy_name_t[1025];	/* A DCE definition */
-
-struct AclEntry {
-    struct AclEntry *next;
-    char name[MAXNAME];
-    LONG rights;
-};
-
-struct Acl {
-    int dfs;			//	Originally true if a dfs acl; now also the type
-                                //	of the acl (1, 2, or 3, corresponding to object,
-				//	initial dir, or initial object).
-    sec_rgy_name_t cell;	//	DFS cell name
-    int nplus;
-    int nminus;
-    struct AclEntry *pluslist;
-    struct AclEntry *minuslist;
-};
-
-int foldcmp (char *a, char *b)
+static int
+foldcmp (char *a, char *b)
 {
     char t, u;
     while (1) {
@@ -515,70 +510,8 @@ int foldcmp (char *a, char *b)
     }
 }
 
-extern "C" void ZapList(struct AclEntry *alist)
-{
-    struct AclEntry *tp, *np;
-
-    for (tp = alist; tp; tp = np) {
-        np = tp->next;
-        free(tp);
-    }
-}
-
-extern "C" void ZapAcl (struct Acl *acl)
-{
-    ZapList(acl->pluslist);
-    ZapList(acl->minuslist);
-    free(acl);
-}
-
-extern "C" int PruneList (struct AclEntry **ae, int dfs)
-{
-    struct AclEntry **lp = ae;
-    struct AclEntry *te, *ne;
-    LONG ctr = 0;
-
-    for (te = *ae; te; te = ne) {
-        if ((!dfs && te->rights == 0) || te->rights == -1) {
-            *lp = te->next;
-            ne = te->next;
-            free(te);
-            ctr++;
-        }
-        else {
-            ne = te->next;
-            lp = &te->next;
-        }
-    }
-
-    return ctr;
-}
-
-char *SkipLine (char *astr)
-{
-    while (*astr != '\n')
-        astr++;
-
-    astr++;
-
-    return astr;
-}
-
-/* tell if a name is 23 or -45 (digits or minus digits), which are bad names we must prune */
-static int BadName(char *aname)
-{
-    int tc;
-
-    /* all must be '-' or digit to be bad */
-    while (tc = *aname++) {
-        if ((tc != '-') && (tc < '0' || tc > '9'))
-            return 0;
-    }
-
-    return 1;
-}
-
-CString GetRightsString(LONG arights, int dfs)
+CString
+GetRightsString(LONG arights, int dfs)
 {
     CString str;
 
@@ -606,33 +539,8 @@ CString GetRightsString(LONG arights, int dfs)
     return str;
 }
 
-char *AclToString(struct Acl *acl)
-{
-    static char mydata[AFS_PIOCTL_MAXSIZE];
-    char tstring[AFS_PIOCTL_MAXSIZE];
-    char dfsstring[30];
-    struct AclEntry *tp;
-
-    if (acl->dfs)
-        sprintf(dfsstring, " dfs:%d %s", acl->dfs, acl->cell);
-    else
-        dfsstring[0] = '\0';
-    sprintf(mydata, "%d%s\n%d\n", acl->nplus, dfsstring, acl->nminus);
-
-    for(tp = acl->pluslist; tp; tp = tp->next) {
-        sprintf(tstring, "%s %d\n", tp->name, tp->rights);
-        strcat(mydata, tstring);
-    }
-
-    for(tp = acl->minuslist; tp; tp = tp->next) {
-        sprintf(tstring, "%s %d\n", tp->name, tp->rights);
-        strcat(mydata, tstring);
-    }
-
-    return mydata;
-}
-
-struct Acl *EmptyAcl(const CString& strCellName)
+struct Acl *
+EmptyAcl(const CString& strCellName)
 {
     struct Acl *tp;
     CStringUtf8 ustrCell(strCellName);
@@ -646,158 +554,8 @@ struct Acl *EmptyAcl(const CString& strCellName)
     return tp;
 }
 
-struct Acl *EmptyAcl(char *astr)
-{
-    struct Acl *tp;
-    int junk;
-
-    tp = (struct Acl *)malloc(sizeof (struct Acl));
-    tp->nplus = tp->nminus = 0;
-    tp->pluslist = tp->minuslist = 0;
-    tp->dfs = 0;
-    if (astr == NULL || sscanf(astr, "%d dfs:%d %s", &junk, &tp->dfs, tp->cell) <= 0) {
-        tp->dfs = 0;
-        tp->cell[0] = '\0';
-    }
-    return tp;
-}
-
-struct Acl *
-ParseAcl (char *astr)
-{
-    int nplus, nminus, i, trights, ret;
-    char tname[MAXNAME];
-    struct AclEntry *first, *next, *last, *tl;
-    struct Acl *ta;
-
-    ta = EmptyAcl(NULL);
-    if (astr == NULL || strlen(astr) == 0)
-        return ta;
-
-    ret = sscanf(astr, "%d dfs:%d %s", &ta->nplus, &ta->dfs, ta->cell);
-    if (ret <= 0) {
-        free(ta);
-        return NULL;
-    }
-    astr = SkipLine(astr);
-    ret = sscanf(astr, "%d", &ta->nminus);
-    if (ret <= 0) {
-        free(ta);
-        return NULL;
-    }
-    astr = SkipLine(astr);
-
-    nplus = ta->nplus;
-    nminus = ta->nminus;
-
-    last = 0;
-    first = 0;
-    for(i=0;i<nplus;i++) {
-        ret = sscanf(astr, "%100s %d", tname, &trights);
-        if (ret <= 0)
-            goto nplus_err;
-        astr = SkipLine(astr);
-        tl = (struct AclEntry *) malloc(sizeof (struct AclEntry));
-        if (tl == NULL)
-            goto nplus_err;
-        if (!first)
-            first = tl;
-        strcpy(tl->name, tname);
-        tl->rights = trights;
-        tl->next = 0;
-        if (last)
-            last->next = tl;
-        last = tl;
-    }
-    ta->pluslist = first;
-
-    last = 0;
-    first = 0;
-    for(i=0;i<nminus;i++) {
-        ret = sscanf(astr, "%100s %d", tname, &trights);
-        if (ret <= 0)
-            goto nminus_err;
-        astr = SkipLine(astr);
-        tl = (struct AclEntry *) malloc(sizeof (struct AclEntry));
-        if (tl == NULL)
-            goto nminus_err;
-        if (!first)
-            first = tl;
-        strcpy(tl->name, tname);
-        tl->rights = trights;
-        tl->next = 0;
-        if (last)
-            last->next = tl;
-        last = tl;
-    }
-    ta->minuslist = first;
-
-    return ta;
-
-  nminus_err:
-    for (;first; first = next) {
-        next = first->next;
-        free(first);
-    }
-    first = ta->pluslist;
-
-  nplus_err:
-    for (;first; first = next) {
-        next = first->next;
-        free(first);
-    }
-    free(ta);
-    return NULL;
-}
-
-/* clean up an access control list of its bad entries; return 1 if we made
-   any changes to the list, and 0 otherwise */
-extern "C" int CleanAcl(struct Acl *aa)
-{
-    struct AclEntry *te, **le, *ne;
-    int changes;
-
-    HOURGLASS hourglass;
-
-    /* Don't correct DFS ACL's for now */
-    if (aa->dfs)
-        return 0;
-
-    /* prune out bad entries */
-    changes = 0;	    /* count deleted entries */
-    le = &aa->pluslist;
-    for(te = aa->pluslist; te; te = ne) {
-        ne = te->next;
-        if (BadName(te->name)) {
-            /* zap this dude */
-            *le = te->next;
-            aa->nplus--;
-            free(te);
-            changes++;
-        }
-        else
-            le = &te->next;
-    }
-
-    le = &aa->minuslist;
-
-    for(te = aa->minuslist; te; te = ne) {
-        ne = te->next;
-        if (BadName(te->name)) {
-            /* zap this dude */
-            *le = te->next;
-            aa->nminus--;
-            free(te);
-            changes++;
-        }
-        else
-            le = &te->next;
-    }
-
-    return changes;
-}
-
-void CleanACL(CStringArray& names)
+void
+CleanACL(CStringArray& names)
 {
     LONG code;
     struct Acl *ta;
@@ -821,7 +579,7 @@ void CleanACL(CStringArray& names)
             continue;
         }
 
-        ta = ParseAcl(space);
+        ta = ParseAcl(space, AFS_PIOCTL_MAXSIZE);
         if (ta == NULL) {
             ShowMessageBox(IDS_INVALID_ACL_DATA, MB_ICONERROR, IDS_INVALID_ACL_DATA);
             continue;
@@ -831,7 +589,7 @@ void CleanACL(CStringArray& names)
             continue;
         }
 
-        changes = CleanAcl(ta);
+        changes = CleanAcl(ta, NULL);
         if (!changes)
             continue;
 
@@ -855,7 +613,8 @@ void CleanACL(CStringArray& names)
 }
 
 // Derived from fs.c's ListAclCmd
-BOOL GetRights(const CString& strDir, CStringArray& strNormal, CStringArray& strNegative)
+BOOL
+GetRights(const CString& strDir, CStringArray& strNormal, CStringArray& strNegative)
 {
     LONG code;
     struct Acl *ta;
@@ -875,7 +634,7 @@ BOOL GetRights(const CString& strDir, CStringArray& strNormal, CStringArray& str
         return FALSE;
     }
 
-    ta = ParseAcl(space);
+    ta = ParseAcl(space, AFS_PIOCTL_MAXSIZE);
     if (ta == NULL) {
         ShowMessageBox(IDS_INVALID_ACL_DATA, MB_ICONERROR, IDS_INVALID_ACL_DATA);
         return FALSE;
@@ -907,7 +666,8 @@ BOOL GetRights(const CString& strDir, CStringArray& strNormal, CStringArray& str
     return TRUE;
 }
 
-struct AclEntry *FindList(struct AclEntry *pCurEntry, const char *entryName)
+struct AclEntry *
+FindList(struct AclEntry *pCurEntry, const char *entryName)
 {
     while (pCurEntry) {
         if (!foldcmp(pCurEntry->name, PCCHAR(entryName)))
@@ -918,7 +678,8 @@ struct AclEntry *FindList(struct AclEntry *pCurEntry, const char *entryName)
     return 0;
 }
 
-void ChangeList(struct Acl *pAcl, BYTE bNormalRights, const CString & entryName, LONG nEntryRights)
+void
+ChangeList(struct Acl *pAcl, BYTE bNormalRights, const CString & entryName, LONG nEntryRights)
 {
     ASSERT(pAcl);
     ASSERT(entryName);
@@ -964,9 +725,8 @@ void ChangeList(struct Acl *pAcl, BYTE bNormalRights, const CString & entryName,
     }
 }
 
-enum rtype {add, destroy, deny};
-
-static LONG Convert(const CString& strRights, int dfs, enum rtype *rtypep)
+static LONG
+Convert(const CString& strRights, int dfs, enum rtype *rtypep)
 {
     int i, len;
     LONG mode;
@@ -1007,7 +767,8 @@ static LONG Convert(const CString& strRights, int dfs, enum rtype *rtypep)
     return mode;
 }
 
-BOOL SaveACL(const CString& strCellName, const CString& strDir, const CStringArray& normal, const CStringArray& negative)
+BOOL
+SaveACL(const CString& strCellName, const CString& strDir, const CStringArray& normal, const CStringArray& negative)
 {
     LONG code;
     struct ViceIoctl blob;
@@ -1051,7 +812,8 @@ BOOL SaveACL(const CString& strCellName, const CString& strDir, const CStringArr
     return (code == 0);
 }
 
-BOOL CopyACL(const CString& strToDir, const CStringArray& normal, const CStringArray& negative, BOOL bClear)
+BOOL
+CopyACL(const CString& strToDir, const CStringArray& normal, const CStringArray& negative, BOOL bClear)
 {
     LONG code;
     struct ViceIoctl blob;
@@ -1074,14 +836,14 @@ BOOL CopyACL(const CString& strToDir, const CStringArray& normal, const CStringA
     if (bClear)
         pToAcl = EmptyAcl(space);
     else
-        pToAcl = ParseAcl(space);
+        pToAcl = ParseAcl(space, AFS_PIOCTL_MAXSIZE);
 
     if (pToAcl == NULL) {
         ShowMessageBox(IDS_INVALID_ACL_DATA, MB_ICONERROR, IDS_INVALID_ACL_DATA);
         return FALSE;
     }
 
-    CleanAcl(pToAcl);
+    CleanAcl(pToAcl, NULL);
 
     if (pToAcl->dfs) {
         ShowMessageBox(IDS_NO_DFS_COPY_ACL, MB_ICONERROR, IDS_NO_DFS_COPY_ACL, strToDir);
@@ -1126,7 +888,8 @@ BOOL CopyACL(const CString& strToDir, const CStringArray& normal, const CStringA
     return TRUE;
 }
 
-CString ParseMountPoint(const CString strFile, CString strMountPoint)
+CString
+ParseMountPoint(const CString strFile, CString strMountPoint)
 {
     CString strType;
     CString strVolume;
@@ -1142,24 +905,57 @@ CString ParseMountPoint(const CString strFile, CString strMountPoint)
     if (nColon >= 0) {
         strCell = strMountPoint.Mid(1, nColon - 1);
         strVolume = strMountPoint.Mid(nColon + 1);
-    } else
+    } else {
         strVolume = strMountPoint.Mid(1);
+        strCell = _T("(local)");
+    }
 
-    strMountPointInfo = strFile + _T("\t") + strVolume + _T("\t") + strCell + _T("\t") + strType;
+    strMountPointInfo = _T("=> ") + strVolume + _T(" : ") + strCell + _T(" cell [") + strType + _T("]");
 
     return strMountPointInfo;
 }
 
-CString ParseSymlink(const CString strFile, CString strSymlink)
+CString
+ParseSymlink(const CString strFile, CString strSymlink)
 {
     CString strSymlinkInfo;
 
-    strSymlinkInfo = strFile + _T("\t") + strSymlink;
+    strSymlinkInfo = _T("-> ") + strSymlink;
 
     return strSymlinkInfo;
 }
 
-BOOL IsPathInAfs(const CString & strPath)
+BOOL
+GetFID(const CString& path, CString& fidstring, BOOL bLiteral)
+{
+    struct ViceIoctl blob;
+    cm_ioctlQueryOptions_t options;
+    cm_fid_t fid;
+    int code;
+
+    memset(&options, 0, sizeof(options));
+    options.size = sizeof(options);
+    options.field_flags |= CM_IOCTL_QOPTS_FIELD_LITERAL;
+    options.literal = bLiteral ? 1 : 0;
+    blob.in_size = options.size;    /* no variable length data */
+    blob.in = &options;
+    blob.out_size = sizeof(cm_fid_t);
+    blob.out = (char *) &fid;
+
+    code = pioctl_T(path, VIOCGETFID, &blob, 1);
+    fidstring.Empty();
+    if (code == 0) {
+        fidstring.Format( TEXT("%lu.%lu.%lu"),
+                          fid.volume,
+                          fid.vnode,
+                          fid.unique);
+        return TRUE;
+    }
+    return FALSE;
+}
+
+BOOL
+IsPathInAfs(const CString & strPath)
 {
     struct ViceIoctl blob;
     cm_ioctlQueryOptions_t options;
@@ -1202,7 +998,8 @@ IsFreelanceRoot(const CString& apath)
     return 1;   /* assume it is because it is more restrictive that way */
 }
 
-static const char * NetbiosName(void)
+static const char *
+NetbiosName(void)
 {
     static char buffer[1024] = "AFS";
     HKEY  parmKey;
@@ -1223,7 +1020,8 @@ static const char * NetbiosName(void)
     return buffer;
 }
 
-static void FixNetbiosPath(CString& path)
+static void
+FixNetbiosPath(CString& path)
 {
     if (!IsPathInAfs(path)) {
         CString nbroot;
@@ -1239,7 +1037,8 @@ static void FixNetbiosPath(CString& path)
 
 #define AFSCLIENT_ADMIN_GROUPNAME "AFS Client Admins"
 
-static BOOL IsAdmin (void)
+static BOOL
+IsAdmin (void)
 {
     static BOOL fAdmin = FALSE;
     static BOOL fTested = FALSE;
@@ -1372,7 +1171,8 @@ static BOOL IsAdmin (void)
     return fAdmin;
 }
 
-CString Parent(const CString& path)
+CString
+Parent(const CString& path)
 {
     int last_slash = path.ReverseFind(_T('\\'));
 
@@ -1391,7 +1191,8 @@ CString Parent(const CString& path)
     }
     }
 
-CString LastComponent(const CString& path)
+CString
+LastComponent(const CString& path)
 {
     int last_slash = path.ReverseFind(_T('\\'));
 
@@ -1410,7 +1211,10 @@ CString LastComponent(const CString& path)
 }
 
 static CString
-GetCell(const CString & path)
+GetCell(const CString & path, BOOL bFollow = TRUE);
+
+static CString
+GetCell(const CString & path, BOOL bFollow)
 {
     char cellname[MAXCELLCHARS];
     afs_int32 code;
@@ -1432,7 +1236,8 @@ GetCell(const CString & path)
 }
 
 
-BOOL ListMount(CStringArray& files)
+BOOL
+ListMount(CStringArray& files)
 {
     LONG code;
     struct ViceIoctl blob;
@@ -1557,39 +1362,8 @@ MakeMount(const CString& strDir,
     return TRUE;
 }
 
-/*
-*/
-long fs_ExtractDriveLetter(const char *inPathp, char *outPathp)
-{
-    if (inPathp[0] != 0 && inPathp[1] == ':') {
-        /* there is a drive letter */
-        *outPathp++ = *inPathp++;
-        *outPathp++ = *inPathp++;
-        *outPathp++ = 0;
-    }
-    else *outPathp = 0;
-
-    return 0;
-}
-
-/* strip the drive letter from a component */
-long fs_StripDriveLetter(const char *inPathp, char *outPathp, long outSize)
-{
-    char tempBuffer[1000];
-    strcpy(tempBuffer, inPathp);
-    if (tempBuffer[0] != 0 && tempBuffer[1] == ':') {
-        /* drive letter present */
-        strcpy(outPathp, tempBuffer+2);
-    }
-    else {
-        /* no drive letter present */
-        strcpy(outPathp, tempBuffer);
-    }
-    return 0;
-}
-
-
-BOOL RemoveSymlink(const CString& strName)
+BOOL
+RemoveSymlink(const CString& strName)
 {
     BOOL error = FALSE;
     INT code=0;
@@ -1626,7 +1400,8 @@ BOOL RemoveSymlink(const CString& strName)
     return (code == 0);
 }
 
-BOOL IsSymlink(const CString& strName)
+BOOL
+IsSymlink(const CString& strName)
 {
     struct ViceIoctl blob;
     int code;
@@ -1652,7 +1427,8 @@ BOOL IsSymlink(const CString& strName)
 }
 
 
-BOOL IsMountPoint(const CString& path)
+BOOL
+IsMountPoint(const CString& path)
 {
     LONG code = 0;
     struct ViceIoctl blob;
@@ -1684,7 +1460,8 @@ BOOL IsMountPoint(const CString& path)
  *	    (or ``.'' if none is provided)
  *      tp: Set to point to the actual name of the mount point to nuke.
  */
-BOOL RemoveMount(CStringArray& files)
+BOOL
+RemoveMount(CStringArray& files)
 {
     LONG code = 0;
     struct ViceIoctl blob;
@@ -1739,7 +1516,8 @@ BOOL RemoveMount(CStringArray& files)
     return !error;
 }
 
-BOOL GetVolumeInfo(CString strFile, CVolInfo& volInfo)
+BOOL
+GetVolumeInfo(CString strFile, CVolInfo& volInfo, BOOL bFollow)
 {
     LONG code;
     struct ViceIoctl blob;
@@ -1747,9 +1525,10 @@ BOOL GetVolumeInfo(CString strFile, CVolInfo& volInfo)
     char *name;
     char space[AFS_PIOCTL_MAXSIZE];
     HOURGLASS hourglass;
+    CString strTarget = bFollow ? strFile : Parent(strFile);
 
-    volInfo.m_strFilePath = strFile;
-    volInfo.m_strFileName = StripPath(strFile);
+    volInfo.m_strFilePath = strTarget;
+    volInfo.m_strFileName = StripPath(strTarget);
 
     /*
 	volInfo.m_strName = "VolumeName";
@@ -1767,9 +1546,9 @@ BOOL GetVolumeInfo(CString strFile, CVolInfo& volInfo)
     blob.in_size = 0;
     blob.out = space;
 
-    code = pioctl_T(strFile, VIOCGETVOLSTAT, &blob, 1);
+    code = pioctl_T(strTarget, VIOCGETVOLSTAT, &blob, 1);
     if (code || blob.out_size < sizeof(*status)) {
-        volInfo.m_strErrorMsg = GetAfsError(errno, strFile);
+        volInfo.m_strErrorMsg = GetAfsError(errno, strTarget);
         return FALSE;
     }
 
@@ -1785,10 +1564,30 @@ BOOL GetVolumeInfo(CString strFile, CVolInfo& volInfo)
     volInfo.m_nPartFree = status->PartBlocksAvail;
     volInfo.m_nDup = -1;
 
+    errno = 0;
+    code = pioctl_T(strTarget, VIOC_PATH_AVAILABILITY, &blob, 1);
+    switch (errno) {
+    case 0:
+        volInfo.m_strAvail =_T("Online");
+        break;
+    case ENXIO:
+        volInfo.m_strAvail = _T("Offline");
+        break;
+    case ENOSYS:
+        volInfo.m_strAvail = _T("Unreachable");
+        break;
+    case EBUSY:
+        volInfo.m_strAvail = _T("Busy");
+        break;
+    default:
+        volInfo.m_strAvail = _T("Unknown");
+    }
+
     return TRUE;
 }
 
-BOOL SetVolInfo(CVolInfo& volInfo)
+BOOL
+SetVolInfo(CVolInfo& volInfo)
 {
     LONG code;
     struct ViceIoctl blob;
@@ -1835,14 +1634,16 @@ BOOL SetVolInfo(CVolInfo& volInfo)
     return TRUE;
 }
 
-void GetCellName(const CString& cellNamep, struct afsconf_cell *infop)
+void
+GetCellName(const CString& cellNamep, struct afsconf_cell *infop)
 {
     CStringUtf8 uCellName(cellNamep);
 
     StringCbCopyA(infop->name, sizeof(infop->name), uCellName);
 }
 
-BOOL CheckServers(const CString& strCellName, WHICH_CELLS nCellsToCheck, BOOL bFast)
+BOOL NO_CALLER
+CheckServers(const CString& strCellName, WHICH_CELLS nCellsToCheck, BOOL bFast)
 {
     LONG code;
     struct ViceIoctl blob;
@@ -1909,7 +1710,8 @@ BOOL CheckServers(const CString& strCellName, WHICH_CELLS nCellsToCheck, BOOL bF
     return TRUE;
 }
 
-BOOL GetTokenInfo(CStringArray& tokenInfo)
+BOOL
+GetTokenInfo(CStringArray& tokenInfo)
 {
     int cellNum;
     int rc;
@@ -2012,7 +1814,8 @@ BOOL GetTokenInfo(CStringArray& tokenInfo)
     return TRUE;
 }
 
-UINT MakeSymbolicLink(const CString& strName, const CString& strTarget)
+UINT
+MakeSymbolicLink(const CString& strName, const CString& strTarget)
 {
     struct ViceIoctl blob;
     UINT code;
@@ -2020,6 +1823,11 @@ UINT MakeSymbolicLink(const CString& strName, const CString& strTarget)
 
     CString strParent = Parent(strName);
     FixNetbiosPath(strParent);
+
+    if (!IsPathInAfs(strParent)) {
+	    ShowMessageBox(IDS_MAKE_LNK_NOT_AFS_ERROR, MB_ICONERROR, IDS_MAKE_MP_NOT_AFS_ERROR);
+	    return FALSE;
+    }
 
     if ( IsFreelanceRoot(strParent) && !IsAdmin() ) {
 	ShowMessageBox(IDS_NOT_AFS_CLIENT_ADMIN_ERROR, MB_ICONERROR, IDS_NOT_AFS_CLIENT_ADMIN_ERROR);
@@ -2042,7 +1850,8 @@ UINT MakeSymbolicLink(const CString& strName, const CString& strTarget)
     return 0;
 }
 
-void ListSymbolicLinkPath(const char *strName,char *strPath,UINT nlenPath)
+void NO_CALLER
+ListSymbolicLinkPath(const char *strName,char *strPath,UINT nlenPath)
 {
     ASSERT(nlenPath<MAX_PATH);
     struct ViceIoctl blob;
@@ -2105,7 +1914,8 @@ void ListSymbolicLinkPath(const char *strName,char *strPath,UINT nlenPath)
     strncpy(strPath,space,nlenPath);
 }
 
-BOOL ListSymlink(CStringArray& files)
+BOOL NO_CALLER
+ListSymlink(CStringArray& files)
 {
     LONG code;
     struct ViceIoctl blob;
@@ -2164,3 +1974,345 @@ BOOL ListSymlink(CStringArray& files)
     return !error;
 }
 
+CString
+GetCellName( const CString& strPath, BOOL bFollow )
+{
+    return GetCell(bFollow ? strPath : Parent(strPath));
+}
+
+CString
+GetServer( const CString& strPath, BOOL bFollow )
+{
+    LONG code;
+    struct ViceIoctl blob;
+    CString server;
+    char space[AFS_PIOCTL_MAXSIZE];
+
+    blob.out_size = AFS_PIOCTL_MAXSIZE;
+    blob.in_size = 0;
+    blob.out = space;
+    memset(space, 0, sizeof(space));
+
+    code = pioctl_T(bFollow ? strPath : Parent(strPath), VIOCWHEREIS, &blob, 1);
+    if (code) {
+        server=GetAfsError(errno);
+    } else {
+        LONG *hosts = (LONG *)space;
+
+        for (int j = 0; j < AFS_MAXHOSTS; j++) {
+            if (hosts[j] == 0)
+                break;
+            char *hostName = hostutil_GetNameByINet(hosts[j]);
+            server=hostName;
+        }
+    }
+
+    return server;
+}
+
+void
+GetServers( const CString& strPath, CStringArray& servers, BOOL bFollow )
+{
+    LONG code;
+    struct ViceIoctl blob;
+    char space[AFS_PIOCTL_MAXSIZE];
+
+    blob.out_size = AFS_PIOCTL_MAXSIZE;
+    blob.in_size = 0;
+    blob.out = space;
+    memset(space, 0, sizeof(space));
+
+    code = pioctl_T(bFollow ? strPath : Parent(strPath), VIOCWHEREIS, &blob, 1);
+    if (code) {
+        servers.Add(GetAfsError(errno));
+    } else {
+        LONG *hosts = (LONG *)space;
+
+        for (int j = 0; j < AFS_MAXHOSTS; j++) {
+            if (hosts[j] == 0)
+                break;
+            char *hostName = hostutil_GetNameByINet(hosts[j]);
+            servers.Add(hostName);
+        }
+    }
+}
+
+CString
+GetOwner( const CString& strPath, BOOL bFollow )
+{
+    LONG code;
+    struct ViceIoctl blob;
+    afs_int32 owner[2];
+    CString ret = TEXT("(unknown)");
+
+    blob.in_size = 0;
+    blob.out_size = 2 * sizeof(afs_int32);
+    blob.out = (char *) &owner;
+
+    code = pioctl_T(bFollow ? strPath : Parent(strPath), VIOCGETOWNER, &blob, 1);
+    if (code == 0 && blob.out_size == 2 * sizeof(afs_int32)) {
+        char oname[PR_MAXNAMELEN] = "(unknown)";
+        char confDir[257];
+        CStringUtf8 cell;
+
+        cell = GetCell(strPath, bFollow);
+
+        /* Go to the PRDB and see if this all number username is valid */
+        cm_GetConfigDir(confDir, sizeof(confDir));
+
+        pr_Initialize(1, confDir, PCCHAR(cell));
+        pr_SIdToName(owner[0], oname);
+
+        ret.Empty();
+        ret.Format(TEXT("%s [%d]"), (LPCTSTR)CString(oname), owner[0]);
+    }
+
+    return ret;
+}
+
+CString
+GetGroup( const CString& strPath, BOOL bFollow )
+{
+    LONG code;
+    struct ViceIoctl blob;
+    afs_int32 owner[2];
+    CString ret = TEXT("(unknown)");
+
+    blob.in_size = 0;
+    blob.out_size = 2 * sizeof(afs_int32);
+    blob.out = (char *) &owner;
+
+    code = pioctl_T(bFollow ? strPath : Parent(strPath), VIOCGETOWNER, &blob, 1);
+    if (code == 0 && blob.out_size == 2 * sizeof(afs_int32)) {
+        char gname[PR_MAXNAMELEN] = "(unknown)";
+        char confDir[257];
+        CStringUtf8 cell;
+
+        cell = GetCell(strPath, bFollow);
+
+        /* Go to the PRDB and see if this all number username is valid */
+        cm_GetConfigDir(confDir, sizeof(confDir));
+
+        pr_Initialize(1, confDir, PCCHAR(cell));
+        pr_SIdToName(owner[1], gname);
+
+        ret.Empty();
+        ret.Format(TEXT("%s [%d]"), (LPCTSTR)CString(gname), owner[1]);
+    }
+
+    return ret;
+}
+
+BOOL
+GetUnixModeBits( const CString& strPath, CString& user, CString& group, CString& other, CString& suid )
+{
+    // the strings must match the unix ls command output: "rwx" means read/write/execute permissions
+
+    LONG code;
+    struct ViceIoctl blob;
+    afs_uint32 unixModeBits;
+    CString ret = TEXT("(unknown)");
+
+    user.Empty();
+    group.Empty();
+    other.Empty();
+    suid.Empty();
+
+    blob.in_size = 0;
+    blob.out_size = sizeof(afs_int32);
+    blob.out = (char *) &unixModeBits;
+
+    code = pioctl_T(strPath, VIOC_GETUNIXMODE, &blob, 1);
+    if (code == 0 && blob.out_size == sizeof(afs_uint32)) {
+        if (unixModeBits & S_IRUSR)
+            user += _T("r");
+        if (unixModeBits & S_IWUSR)
+            user += _T("w");
+        if (unixModeBits & S_IXUSR)
+            user += _T("x");
+
+        if (unixModeBits & S_IRGRP)
+            group += _T("r");
+        if (unixModeBits & S_IWGRP)
+            group += _T("w");
+        if (unixModeBits & S_IXGRP)
+            group += _T("x");
+
+        if (unixModeBits & S_IROTH)
+            other += _T("r");
+        if (unixModeBits & S_IWOTH)
+            other += _T("w");
+        if (unixModeBits & S_IXOTH)
+            other += _T("x");
+
+        if (unixModeBits & S_ISUID)
+            suid += _T("s");
+        if (unixModeBits & S_ISGID)
+            suid += _T("g");
+        if (unixModeBits & S_ISVTX)
+            suid += _T("v");
+
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
+void
+SetUnixModeBits( const CStringArray& files, const CString& user, const CString& group, const CString& other, const CString& suid )
+{
+    // set the unix file attributes for all paths in 'files'.
+    LONG code;
+    struct ViceIoctl blob;
+    struct {
+        cm_ioctlQueryOptions_t options;
+        afs_uint32 unixModeBits;
+    } inData;
+
+    memset(&inData, 0, sizeof(inData));
+    inData.options.size = sizeof(inData.options);
+    inData.options.field_flags = 0;
+    inData.options.literal = 0;            /* always applying to target */
+    blob.in_size = sizeof(inData);         /* no variable length data */
+    blob.in = &inData;
+    blob.out = NULL;
+    blob.out_size = 0;
+    inData.unixModeBits = 0;
+
+    if (user.Find(_T('r')) != -1)
+        inData.unixModeBits |= S_IRUSR;
+    if (user.Find(_T('w')) != -1)
+        inData.unixModeBits |= S_IWUSR;
+    if (user.Find(_T('x')) != -1)
+        inData.unixModeBits |= S_IXUSR;
+
+    if (group.Find(_T('r')) != -1)
+        inData.unixModeBits |= S_IRGRP;
+    if (group.Find(_T('w')) != -1)
+        inData.unixModeBits |= S_IWGRP;
+    if (group.Find(_T('x')) != -1)
+        inData.unixModeBits |= S_IXGRP;
+
+    if (other.Find(_T('r')) != -1)
+        inData.unixModeBits |= S_IROTH;
+    if (other.Find(_T('w')) != -1)
+        inData.unixModeBits |= S_IWOTH;
+    if (other.Find(_T('x')) != -1)
+        inData.unixModeBits |= S_IXOTH;
+
+    if (suid.Find(_T('s')) != -1)
+        inData.unixModeBits |= S_ISUID;
+    if (suid.Find(_T('g')) != -1)
+        inData.unixModeBits |= S_ISGID;
+    if (suid.Find(_T('v')) != -1)
+        inData.unixModeBits |= S_ISVTX;
+
+    for (int i = 0; i < files.GetSize(); i++)
+        code = pioctl_T(files[i], VIOC_SETUNIXMODE, &blob, 1);
+}
+
+CString GetMountpoint( const CString& strPath )
+{
+    LONG code;
+    struct ViceIoctl blob;
+    char space[AFS_PIOCTL_MAXSIZE];
+    CString parent_dir;		/* Parent directory of true name */
+    CStringUtf8 last_component;	        /* Last component of true name */
+
+    CString mountPoint;
+
+
+    int last_slash = strPath.ReverseFind(_T('\\'));
+
+    if (last_slash != -1) {
+        last_component.SetString( strPath.Mid(last_slash + 1) );
+        parent_dir.SetString( strPath.Left(last_slash + 1) );
+        FixNetbiosPath(parent_dir);
+    } else {
+        // The path is of the form "C:foo" or just "foo".  If
+        // there is a drive, then use the current directory of
+        // that drive.  Otherwise we just use '.'.
+
+        if (strPath.GetLength() >= 2 && strPath[1] == _T(':')) {
+            parent_dir.Format(_T("%c:."), strPath[0]);
+            last_component.SetString( strPath.Mid(2) );
+        } else {
+            parent_dir.SetString( _T("."));
+            last_component.SetString( strPath );
+        }
+    }
+
+    blob.in_size = last_component.GetLength() + 1;
+    blob.in = last_component.GetBuffer();
+    blob.out_size = AFS_PIOCTL_MAXSIZE;
+    blob.out = space;
+    memset(space, 0, AFS_PIOCTL_MAXSIZE);
+
+    code = pioctl_T(parent_dir, VIOC_AFS_STAT_MT_PT, &blob, 1);
+
+    last_component.ReleaseBuffer();
+
+    if (code == 0) {
+        int nPos;
+        space[AFS_PIOCTL_MAXSIZE - 1] = '\0';
+        nPos = strlen(space) - 1;
+        if (space[nPos] == '.')
+            space[nPos] = 0;
+        mountPoint = ParseMountPoint(StripPath(strPath), Utf8ToCString(space));
+    } else {
+        if (errno == EINVAL)
+            mountPoint = GetMessageString(IDS_NOT_MOUNT_POINT_ERROR, StripPath(strPath));
+        else
+            mountPoint = GetMessageString(IDS_LIST_MOUNT_POINT_ERROR, GetAfsError(errno, StripPath(strPath)));
+    }
+
+    return mountPoint;
+}
+
+CString GetSymlink( const CString& strPath )
+{
+    LONG code;
+    struct ViceIoctl blob;
+    CString symlink;
+    char space[AFS_PIOCTL_MAXSIZE];
+
+    CString strParent = Parent(strPath);
+    CStringUtf8 ustrLast(LastComponent(strPath));
+
+    FixNetbiosPath(strParent);
+
+    blob.in_size = ustrLast.GetLength() + 1;
+    blob.in = ustrLast.GetBuffer();
+    blob.out_size = AFS_PIOCTL_MAXSIZE;
+    blob.out = space;
+    memset(space, 0, AFS_PIOCTL_MAXSIZE);
+
+    code = pioctl_T(strParent, VIOC_LISTSYMLINK, &blob, 1);
+
+    ustrLast.ReleaseBuffer();
+
+    if (code == 0) {
+        CString syml;
+        int len;
+
+        space[AFS_PIOCTL_MAXSIZE - 1] = '\0';
+        syml = Utf8ToCString(space);
+        len = syml.GetLength();
+
+        if (len > 0) {
+            if (syml[len - 1] == _T('.'))
+                syml.Truncate(len - 1);
+        }
+
+        symlink = ParseSymlink(StripPath(strPath), syml);
+
+    } else {
+        if (errno == EINVAL)
+            symlink = GetMessageString(IDS_NOT_SYMLINK_ERROR, StripPath(strPath));
+        else
+            symlink = GetMessageString(IDS_LIST_MOUNT_POINT_ERROR, GetAfsError(errno, StripPath(strPath)));
+    }
+
+
+    return symlink;
+}

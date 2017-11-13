@@ -1,30 +1,26 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
  */
 
 #include <afsconfig.h>
-#ifdef	KERNEL
-#include "afs/param.h"
-#else
 #include <afs/param.h>
-#endif
-
 
 #ifdef KERNEL
-#ifndef	UKERNEL
-#include "h/types.h"
-#else /* !UKERNEL */
-#include "afs/sysincludes.h"
-#endif /* !UKERNEL */
-#include "rx/rx.h"
+# ifndef UKERNEL
+#  include "h/types.h"
+# else /* !UKERNEL */
+#  include "afs/sysincludes.h"
+# endif /* !UKERNEL */
 #else /* KERNEL */
-#include "rx.h"
+# include <roken.h>
 #endif /* KERNEL */
+
+#include "rx.h"
 
 /* The null security object.  No authentication, no nothing. */
 

@@ -12,13 +12,17 @@ B<vos listvol> S<<< B<-server> <I<machine name>> >>>
     [B<-fast>] [B<-long>] [B<-quiet>]
     [B<-extended>] [B<-format>]
     S<<< [B<-cell> <I<cell name>>] >>> [B<-noauth>] [B<-localauth>]
-    [B<-verbose>] [B<-encrypt>] [B<-noresolve>] [B<-help>]
+    [B<-verbose>] [B<-encrypt>] [B<-noresolve>]
+    S<<< [B<-config> <I<config directory>>] >>>
+    [B<-help>]
 
 B<vos listvo> S<<< B<-s> <I<machine name>> >>>
     S<<< [B<-p> <I<partition name>>] >>>
     [B<-fa>] [-lon] [B<-q>] [B<-ex>] [B<-fo>]
     S<<< [B<-c> <I<cell name>>] >>>
-    [B<-noa>] [B<-loc>] [B<-v>] [B<-en>] [B<-nor>] [B<-h>]
+    [B<-noa>] [B<-loc>] [B<-v>] [B<-en>] [B<-nor>]
+    S<<< [B<-co> <I<config directory>>] >>>
+    [B<-h>]
 
 =for html
 </div>
@@ -142,6 +146,13 @@ Shows all servers as IP addresses instead of the DNS name. This is very
 useful when the server address is registered as 127.0.0.1 or when dealing
 with multi-homed servers. This option is available in OpenAFS
 versions 1.4.8 or later and 1.5.35 or later.
+
+=item B<-config> <I<configuration directory>>
+
+Set the location of the configuration directory to be used. This defaults to
+F</usr/vice/etc>, except if B<-localauth> is specified, in which case the
+default is F</usr/afs/etc>. This option allows the use of alternative
+configuration locations for testing purposes.
 
 =item B<-help>
 
@@ -311,10 +322,10 @@ volume.
 =head1 EXAMPLES
 
 The following example shows the output for the F</vicepb> partition on the
-file server machine C<fs2.abc.com> when no flags are provided:
+file server machine C<fs2.example.com> when no flags are provided:
 
-   % vos listvol -server fs2.abc.com -partition b
-   Total number of volumes on server fs2.abc.com partition /vicepb : 66
+   % vos listvol -server fs2.example.com -partition b
+   Total number of volumes on server fs2.example.com partition /vicepb : 66
    sys                  1969534847 RW       1582 K On-line
    sys.backup           1969535105 BK       1582 K On-line
          .                   .     .         .   .    .
@@ -325,8 +336,8 @@ file server machine C<fs2.abc.com> when no flags are provided:
 
 The following example shows the output when the B<-fast> flag is added:
 
-   % vos listvol -server fs2.abc.com -partition b -fast
-   Total number of volumes on server fs2.abc.com partition /vicepb : 66
+   % vos listvol -server fs2.example.com -partition b -fast
+   Total number of volumes on server fs2.example.com partition /vicepb : 66
     1969516782
     1969516784
         .
@@ -336,19 +347,19 @@ The following example shows the output when the B<-fast> flag is added:
 The following example shows two volumes from the output that appears when
 the B<-long> flag is added:
 
-   % vos listvol -server fs2.abc.com -partition b -long
-   Total number of volumes on server fs2.abc.com partition /vicepb: 66
+   % vos listvol -server fs2.example.com -partition b -long
+   Total number of volumes on server fs2.example.com partition /vicepb: 66
          .                   .      .         .   .    .
          .                   .      .         .   .    .
    user.pat             1969534536 RW      17518 K On-line
-        fs2.abc.com /vicepb
+        fs2.example.com /vicepb
         RWrite 1969534536 ROnly 0        Backup 1969534538
         MaxQuota      20000 K
         Creation    Mon Jun 12 09:02:25 1989
         Last Update Thu May 20 17:39:34 1999
         1573 accesses in the past day (i.e., vnode references)
    user.pat.backup      1969534538 BK      17537 K On-line
-        fs2.abc.com /vicepb
+        fs2.example.com /vicepb
         RWrite 1969534536 ROnly 0        Backup 1969534538
         MaxQuota      20000 K
         Creation    Tue Jun 13 04:37:59 1989

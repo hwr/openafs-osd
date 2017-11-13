@@ -24,9 +24,8 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
+#include <roken.h>
 
-#include <errno.h>
-#include <stdio.h>		/*Standard I/O stuff */
 #include <afs/afscbint.h>	/*Callback interface defs */
 #include <afs/afsutil.h>
 
@@ -750,18 +749,6 @@ SRXAFSCB_TellMeAboutYourself(struct rx_call * rxcall,
 int SRXAFSCB_GetDE(struct rx_call *a_call, afs_int32 a_index,
 		   afs_int32 addr, afs_int32 inode, afs_int32 flags,
 		   afs_int32 time, char ** fileName)
-{
-    return RXGEN_OPCODE;
-}
-
-int SRXAFSCB_GetDCacheEntry(struct rx_call *a_call, afs_int32 index,
-                 struct AFSDCacheEntry *a_result)
-{
-    return RXGEN_OPCODE;
-}
-
-int SRXAFSCB_GetDCacheEntryL(struct rx_call *a_call, afs_int32 index,
-                 struct AFSDCacheEntryL *a_result)
 {
     return RXGEN_OPCODE;
 }

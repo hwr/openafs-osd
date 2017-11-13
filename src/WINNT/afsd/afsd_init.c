@@ -7,7 +7,11 @@
  * directory or online at http://www.openafs.org/dl/license10.html
  */
 
+#include <afsconfig.h>
 #include <afs/param.h>
+
+#include <roken.h>
+
 #include <afs/stds.h>
 #include <afs/afs_args.h>
 
@@ -71,8 +75,16 @@ DWORD cm_mountRootCLen;
 int cm_readonlyVolumeVersioning = 0;
 int cm_logChunkSize;
 int cm_chunkSize;
+int cm_virtualCache = 0;
+afs_int32 cm_verifyData = 0;
+int cm_shortNames = 1;
+int cm_directIO = 1;
+int cm_volumeInfoReadOnlyFlag = 0;
+
+afs_uint32 rdr_ReparsePointPolicy = 0;
 
 int smb_UseV3 = 1;
+afs_uint32 smb_Enabled = 1;
 
 int LANadapter;
 
@@ -97,9 +109,10 @@ BOOL reportSessionStartups = FALSE;
 
 cm_initparams_v1 cm_initParams;
 
-clientchar_t *cm_sysName = 0;
 unsigned int  cm_sysNameCount = 0;
 clientchar_t *cm_sysNameList[MAXNUMSYSNAMES];
+unsigned int  cm_sysName64Count = 0;
+clientchar_t *cm_sysName64List[MAXNUMSYSNAMES];
 
 DWORD TraceOption = 0;
 
@@ -304,9 +317,9 @@ static void afsd_InitServerPreferences(void)
             if ( tsp )		/* an existing server - ref count increased */
             {
                 lock_ObtainMutex(&tsp->mx);
-                tsp->ipRank = (USHORT)dwRank;
+                tsp->adminRank = (USHORT)dwRank;
                 _InterlockedOr(&tsp->flags, CM_SERVERFLAG_PREF_SET);
-		tsp->adminRank = tsp->ipRank;
+                cm_RankServer(tsp);
                 lock_ReleaseMutex(&tsp->mx);
 
                 /* set preferences for an existing vlserver */
@@ -317,9 +330,9 @@ static void afsd_InitServerPreferences(void)
             {
                 tsp = cm_NewServer(&saddr, CM_SERVER_VLDB, NULL, NULL, CM_FLAG_NOPROBE); /* refcount = 1 */
                 lock_ObtainMutex(&tsp->mx);
-                tsp->ipRank = (USHORT)dwRank;
+                tsp->adminRank = (USHORT)dwRank;
                 _InterlockedOr(&tsp->flags, CM_SERVERFLAG_PREF_SET);
-		tsp->adminRank = tsp->ipRank;
+                cm_RankServer(tsp);
                 lock_ReleaseMutex(&tsp->mx);
             }
         }
@@ -380,9 +393,9 @@ static void afsd_InitServerPreferences(void)
             if ( tsp )		/* an existing server - ref count increased */
             {
                 lock_ObtainMutex(&tsp->mx);
-                tsp->ipRank = (USHORT)dwRank;
+                tsp->adminRank = (USHORT)dwRank;
 		_InterlockedOr(&tsp->flags, CM_SERVERFLAG_PREF_SET);
-		tsp->adminRank = tsp->ipRank;
+                cm_RankServer(tsp);
                 lock_ReleaseMutex(&tsp->mx);
 
                 /* find volumes which might have RO copy
@@ -396,9 +409,9 @@ static void afsd_InitServerPreferences(void)
             {
                 tsp = cm_NewServer(&saddr, CM_SERVER_FILE, NULL, NULL, CM_FLAG_NOPROBE); /* refcount = 1 */
                 lock_ObtainMutex(&tsp->mx);
-                tsp->ipRank = (USHORT)dwRank;
+                tsp->adminRank = (USHORT)dwRank;
                 _InterlockedOr(&tsp->flags, CM_SERVERFLAG_PREF_SET);
-		tsp->adminRank = tsp->ipRank;
+                cm_RankServer(tsp);
                 lock_ReleaseMutex(&tsp->mx);
             }
         }
@@ -472,7 +485,7 @@ afsd_InitRoot(char **reasonP)
         cm_SetFid(&cm_data.rootFid, cm_data.rootCellp->cellID, cm_GetROVolumeID(cm_data.rootVolumep), 1, 1);
     }
 
-    code = cm_GetSCache(&cm_data.rootFid, &cm_data.rootSCachep, cm_rootUserp, &req);
+    code = cm_GetSCache(&cm_data.rootFid, NULL, &cm_data.rootSCachep, cm_rootUserp, &req);
     afsi_log("cm_GetSCache code %x scache %x", code,
              (code ? (cm_scache_t *)-1 : cm_data.rootSCachep));
     if (code != 0) {
@@ -506,7 +519,7 @@ afsd_InitCM(char **reasonP)
     int  rx_max_rwin_size;
     int  rx_max_swin_size;
     int  rx_min_peer_timeout;
-    long virtualCache = 0;
+    DWORD virtualCache = 0;
     fschar_t rootCellName[256];
     struct rx_service *serverp;
     static struct rx_securityClass *nullServerSecurityClassp;
@@ -520,12 +533,13 @@ afsd_InitCM(char **reasonP)
     /*int freelanceEnabled;*/
     WSADATA WSAjunk;
     int i;
-    int cm_noIPAddr;         /* number of client network interfaces */
-    int cm_IPAddr[CM_MAXINTERFACE_ADDR];    /* client's IP address in host order */
-    int cm_SubnetMask[CM_MAXINTERFACE_ADDR];/* client's subnet mask in host order*/
-    int cm_NetMtu[CM_MAXINTERFACE_ADDR];    /* client's MTU sizes */
-    int cm_NetFlags[CM_MAXINTERFACE_ADDR];  /* network flags */
     DWORD dwPriority;
+    OSVERSIONINFO osVersion;
+
+    /* Get the version of Windows */
+    memset(&osVersion, 0x00, sizeof(osVersion));
+    osVersion.dwOSVersionInfoSize = sizeof(osVersion);
+    GetVersionEx(&osVersion);
 
     WSAStartup(0x0101, &WSAjunk);
 
@@ -681,15 +695,69 @@ afsd_InitCM(char **reasonP)
                            (BYTE *) &smb_monitorReqs, &dummyLen);
     afsi_log("SMB request monitoring is %s", (smb_monitorReqs != 0)? "enabled": "disabled");
 
+    dummyLen = sizeof(virtualCache);
+    code = RegQueryValueEx(parmKey, "NonPersistentCaching", NULL, NULL,
+                            (LPBYTE)&virtualCache, &dummyLen);
+    if (!code)
+        cm_virtualCache = virtualCache ? 1 : 0;
+    afsi_log("Cache type is %s", (cm_virtualCache?"VIRTUAL":"FILE"));
+
+    if (!cm_virtualCache) {
+        dummyLen = sizeof(cm_ValidateCache);
+        code = RegQueryValueEx(parmKey, "ValidateCache", NULL, NULL,
+                               (LPBYTE)&cm_ValidateCache, &dummyLen);
+        if ( cm_ValidateCache < 0 || cm_ValidateCache > 2 )
+            cm_ValidateCache = 1;
+        switch (cm_ValidateCache) {
+        case 0:
+            afsi_log("Cache Validation disabled");
+            break;
+        case 1:
+            afsi_log("Cache Validation on Startup");
+            break;
+        case 2:
+            afsi_log("Cache Validation on Startup and Shutdown");
+            break;
+        }
+    }
+
     dummyLen = sizeof(cacheSize);
     code = RegQueryValueEx(parmKey, "CacheSize", NULL, NULL,
                             (BYTE *) &cacheSize, &dummyLen);
-    if (code == ERROR_SUCCESS)
-        afsi_log("Cache size %d", cacheSize);
-    else {
+    if (code != ERROR_SUCCESS)
         cacheSize = CM_CONFIGDEFAULT_CACHESIZE;
-        afsi_log("Default cache size %d", cacheSize);
+
+#if defined(_X86)
+    /*
+     * For 32-bit systems the max process space is 2GB and the
+     * max cache size is the max contiguous free address space.
+     * Since it is too hard to calculate what that is simply
+     * cap the value at 716800.
+     */
+    if (cacheSize > 716800) {
+	afsi_log("Requested Cache size %u", cacheSize);
+	cacheSize = 716800;
     }
+#endif
+
+    if (cm_virtualCache) {
+        MEMORYSTATUSEX memStatus;
+        DWORD maxCacheSize;
+
+        memStatus.dwLength = sizeof(memStatus);
+        if (GlobalMemoryStatusEx(&memStatus)) {
+            /* Set maxCacheSize to 10% of physical memory */
+            maxCacheSize = (DWORD)(memStatus.ullTotalPhys / 1024 / 10);
+        } else {
+            /* Cannot determine physical memory, set limit to 64MB */
+            maxCacheSize = 65536;
+        }
+        if (cacheSize > maxCacheSize) {
+            afsi_log("Requested Cache size %u", cacheSize);
+            cacheSize = maxCacheSize;
+        }
+    }
+    afsi_log("Allocated Cache size %u", cacheSize);
 
     dummyLen = sizeof(logChunkSize);
     code = RegQueryValueEx(parmKey, "ChunkSize", NULL, NULL,
@@ -811,6 +879,17 @@ afsd_InitCM(char **reasonP)
     smb_LogoffTransferTimeout = ltto;
     afsi_log("Logoff token transfer timeout %d seconds", ltto);
 
+    dummyLen = sizeof(cm_NetbiosName);
+    code = RegQueryValueEx(parmKey, "NetbiosName", NULL, NULL,
+                            (LPBYTE) cm_NetbiosName, &dummyLen);
+    if (code == ERROR_SUCCESS)
+        afsi_log("NetbiosName %s", cm_NetbiosName);
+    else {
+        cm_FsStrCpy(cm_NetbiosName, lengthof(cm_NetbiosName), "AFS");
+        afsi_log("Default NetbiosName AFS");
+    }
+    cm_Utf8ToClientString(cm_NetbiosName, -1, cm_NetbiosNameC, MAX_NB_NAME_LENGTH);
+
     dummyLen = sizeof(cm_rootVolumeName);
     code = RegQueryValueEx(parmKey, "RootVolume", NULL, NULL,
                             (LPBYTE) cm_rootVolumeName, &dummyLen);
@@ -860,30 +939,6 @@ afsd_InitCM(char **reasonP)
         afsi_log("Default cache path %s", cm_CachePath);
     }
 
-    dummyLen = sizeof(virtualCache);
-    code = RegQueryValueEx(parmKey, "NonPersistentCaching", NULL, NULL,
-                            (LPBYTE)&virtualCache, &dummyLen);
-    afsi_log("Cache type is %s", (virtualCache?"VIRTUAL":"FILE"));
-
-    if (!virtualCache) {
-        dummyLen = sizeof(cm_ValidateCache);
-        code = RegQueryValueEx(parmKey, "ValidateCache", NULL, NULL,
-                               (LPBYTE)&cm_ValidateCache, &dummyLen);
-        if ( cm_ValidateCache < 0 || cm_ValidateCache > 2 )
-            cm_ValidateCache = 1;
-        switch (cm_ValidateCache) {
-        case 0:
-            afsi_log("Cache Validation disabled");
-            break;
-        case 1:
-            afsi_log("Cache Validation on Startup");
-            break;
-        case 2:
-            afsi_log("Cache Validation on Startup and Shutdown");
-            break;
-        }
-    }
-
     dummyLen = sizeof(traceOnPanic);
     code = RegQueryValueEx(parmKey, "TrapOnPanic", NULL, NULL,
                             (BYTE *) &traceOnPanic, &dummyLen);
@@ -905,12 +960,15 @@ afsd_InitCM(char **reasonP)
     for ( i=0; i < MAXNUMSYSNAMES; i++ ) {
         cm_sysNameList[i] = osi_Alloc(MAXSYSNAME * sizeof(clientchar_t));
         cm_sysNameList[i][0] = '\0';
+        cm_sysName64List[i] = osi_Alloc(MAXSYSNAME * sizeof(clientchar_t));
+        cm_sysName64List[i][0] = '\0';
     }
-    cm_sysName = cm_sysNameList[0];
 
+    /* Process SysName lists from the registry */
     {
         clientchar_t *p, *q;
         clientchar_t * cbuf = (clientchar_t *) buf;
+
         dummyLen = sizeof(buf);
         code = RegQueryValueExW(parmKey, L"SysName", NULL, NULL, (LPBYTE) cbuf, &dummyLen);
         if (code != ERROR_SUCCESS || !cbuf[0]) {
@@ -922,7 +980,7 @@ afsd_InitCM(char **reasonP)
             cm_ClientStrCpy(cbuf, lengthof(buf), _C("x86_win32 i386_w2k i386_nt40"));
 #endif
         }
-        afsi_log("Sys name %S", cbuf);
+        afsi_log("Sys name list: %S", cbuf);
 
         /* breakup buf into individual search string entries */
         for (p = q = cbuf; p < cbuf + dummyLen; p++) {
@@ -932,16 +990,49 @@ afsd_InitCM(char **reasonP)
                 cm_sysNameCount++;
                 do {
                     if (*p == '\0')
-                        goto done_sysname;
+                        goto done_sysname32;
                     p++;
                 } while (*p == '\0' || isspace(*p));
                 q = p;
                 p--;
             }
         }
+      done_sysname32:
+        ;
+
+#ifdef _WIN64
+        /*
+         * If there is a 64-bit list, process it.  Otherwise, we will leave
+         * it undefined which implies that the 32-bit list be used for both.
+         * The 64-bit list is only used for the native file system driver.
+         * The SMB redirector interface does not provide any means of indicating
+         * the source of the request.
+         */
+        dummyLen = sizeof(buf);
+        code = RegQueryValueExW(parmKey, L"SysName64", NULL, NULL, (LPBYTE) cbuf, &dummyLen);
+        if (code == ERROR_SUCCESS && cbuf[0]) {
+            afsi_log("Sys name 64 list: %S", cbuf);
+
+            /* breakup buf into individual search string entries */
+            for (p = q = cbuf; p < cbuf + dummyLen; p++) {
+                if (*p == '\0' || iswspace(*p)) {
+                    memcpy(cm_sysName64List[cm_sysName64Count],q,(p-q) * sizeof(clientchar_t));
+                    cm_sysName64List[cm_sysName64Count][p-q] = '\0';
+                    cm_sysName64Count++;
+                    do {
+                        if (*p == '\0')
+                            goto done_sysname64;
+                        p++;
+                    } while (*p == '\0' || isspace(*p));
+                    q = p;
+                    p--;
+                }
+            }
+        }
+      done_sysname64:
+        ;
+#endif
     }
-  done_sysname:
-    cm_ClientStrCpy(cm_sysName, MAXSYSNAME, cm_sysNameList[0]);
 
     dummyLen = sizeof(cryptall);
     code = RegQueryValueEx(parmKey, "SecurityLevel", NULL, NULL,
@@ -960,7 +1051,12 @@ afsd_InitCM(char **reasonP)
     else
 	LogEvent(EVENTLOG_INFORMATION_TYPE, MSG_CRYPT_OFF);
 
-    dummyLen = sizeof(cryptall);
+    dummyLen = sizeof(cm_verifyData);
+    code = RegQueryValueEx(parmKey, "VerifyData", NULL, NULL,
+                           (BYTE *) &cm_verifyData, &dummyLen);
+    afsi_log("VerifyData is %s", cm_verifyData?"on":"off");
+
+    dummyLen = sizeof(cm_anonvldb);
     code = RegQueryValueEx(parmKey, "ForceAnonVLDB", NULL, NULL,
                             (BYTE *) &cm_anonvldb, &dummyLen);
     afsi_log("CM ForceAnonVLDB is %s", cm_anonvldb ? "on" : "off");
@@ -989,6 +1085,13 @@ afsd_InitCM(char **reasonP)
                             (BYTE *) &cm_freelanceImportCellServDB, &dummyLen);
     afsi_log("Freelance client %s import CellServDB",
               cm_freelanceImportCellServDB ? "does" : "does not");
+
+    dummyLen = sizeof(cm_freelanceDiscovery);
+    code = RegQueryValueEx(parmKey, "FreelanceDiscovery", NULL, NULL,
+                            (BYTE *) &cm_freelanceDiscovery, &dummyLen);
+    afsi_log("Freelance client discovery is %s",
+              cm_freelanceDiscovery ? "on" : "off");
+
 #endif /* AFS_FREELANCE_CLIENT */
 
     dummyLen = sizeof(smb_UseUnicode);
@@ -1279,16 +1382,64 @@ afsd_InitCM(char **reasonP)
     }
     afsi_log("CM ReadOnlyVolumeVersioning is %u", cm_readonlyVolumeVersioning);
 
+    dummyLen = sizeof(DWORD);
+    code = RegQueryValueEx(parmKey, "ShortNames", NULL, NULL,
+                           (BYTE *) &dwValue, &dummyLen);
+    if (code == ERROR_SUCCESS) {
+        cm_shortNames = (unsigned short) dwValue;
+    } else {
+        /* disable by default on Win7, Win 8, Server 2008 R2 and Server 2012 */
+        if (osVersion.dwMajorVersion > 6 ||
+            osVersion.dwMajorVersion == 6 &&
+            osVersion.dwMinorVersion >= 1)
+            cm_shortNames = 0;
+        else
+            cm_shortNames = 1;
+    }
+    afsi_log("CM ShortNames is %u", cm_shortNames);
+
+    dummyLen = sizeof(DWORD);
+    code = RegQueryValueEx(parmKey, "VolumeInfoReadOnlyFlag", NULL, NULL,
+                           (BYTE *) &dwValue, &dummyLen);
+    if (code == ERROR_SUCCESS) {
+        cm_volumeInfoReadOnlyFlag = (unsigned short) dwValue;
+    } else {
+        /* enable by default on Win 8 and Server 2012 */
+        if (osVersion.dwMajorVersion > 6 ||
+            osVersion.dwMajorVersion == 6 &&
+            osVersion.dwMinorVersion >= 2)
+            cm_volumeInfoReadOnlyFlag = 1;
+        else
+            cm_volumeInfoReadOnlyFlag = 0;
+    }
+    afsi_log("CM VolumeInfoReadOnlyFlag is %u", cm_volumeInfoReadOnlyFlag);
+
+    dummyLen = sizeof(DWORD);
+    code = RegQueryValueEx(parmKey, "DirectIO", NULL, NULL,
+                           (BYTE *) &dwValue, &dummyLen);
+    if (code == ERROR_SUCCESS) {
+        cm_directIO = (unsigned short) dwValue;
+    } else {
+        cm_directIO = 1;
+    }
+    afsi_log("CM DirectIO is %u", cm_directIO);
+
+    dummyLen = sizeof(DWORD);
+    code = RegQueryValueEx(parmKey, "ReparsePointPolicy", NULL, NULL,
+			   (BYTE *) &dwValue, &dummyLen);
+    if (code == ERROR_SUCCESS) {
+	rdr_ReparsePointPolicy = (unsigned short) dwValue;
+    } else {
+	rdr_ReparsePointPolicy = 0;
+    }
+    afsi_log("RDR ReparsePointPolicy is 0x%x", rdr_ReparsePointPolicy);
+
     RegCloseKey (parmKey);
 
     cacheBlocks = ((afs_uint64)cacheSize * 1024) / blockSize;
 
     /* get network related info */
-    cm_noIPAddr = CM_MAXINTERFACE_ADDR;
-    code = syscfg_GetIFInfo(&cm_noIPAddr,
-                             cm_IPAddr, cm_SubnetMask,
-                             cm_NetMtu, cm_NetFlags);
-
+    code = cm_UpdateIFInfo();
     if ( (cm_noIPAddr <= 0) || (code <= 0 ) )
         afsi_log("syscfg_GetIFInfo error code %d", code);
     else
@@ -1296,7 +1447,7 @@ afsd_InitCM(char **reasonP)
                   cm_IPAddr[0], cm_SubnetMask[0]);
 
     /*
-     * Save client configuration for GetCacheConfig requests
+     * Save client configuration for GetCacheConfig requests
      */
     cm_initParams.nChunkFiles = 0;
     cm_initParams.nStatCaches = stats;
@@ -1323,12 +1474,15 @@ afsd_InitCM(char **reasonP)
 
     cm_InitNormalization();
 
-    code = cm_InitMappedMemory(virtualCache, cm_CachePath, stats, volumes, cells, cm_chunkSize, cacheBlocks, blockSize);
+    code = cm_InitMappedMemory(cm_virtualCache, cm_CachePath, stats, volumes, cells, cm_chunkSize, cacheBlocks, blockSize);
     afsi_log("cm_InitMappedMemory code %x", code);
     if (code != 0) {
         *reasonP = "error initializing cache file";
         return -1;
     }
+
+    /* Must be called after cm_InitMappedMemory. */
+    cm_EAccesInitCache();
 
 #if !defined(_WIN32_WINNT) || (_WIN32_WINNT < 0x0500)
     if (cm_InitDNS(cm_dnsEnabled) == -1)
@@ -1343,8 +1497,6 @@ afsd_InitCM(char **reasonP)
     }
 
     if ( rx_mtu != -1 ) {
-        extern void rx_SetMaxMTU(int);
-
         rx_SetMaxMTU(rx_mtu);
         afsi_log("rx_SetMaxMTU %d successful", rx_mtu);
     }
@@ -1353,8 +1505,6 @@ afsd_InitCM(char **reasonP)
         rx_SetUdpBufSize(rx_udpbufsize);
         afsi_log("rx_SetUdpBufSize %d", rx_udpbufsize);
     }
-
-    rx_SetBusyChannelError(1);  /* Activate busy call channel reporting */
 
     /* initialize RX, and tell it to listen to the callbackport,
      * which is used for callback RPC messages.
@@ -1504,14 +1654,31 @@ int afsd_InitSMB(char **reasonP, void *aMBfunc)
             smb_AsyncStoreSize = CM_CONFIGDEFAULT_ASYNCSTORESIZE;
         afsi_log("SMBAsyncStoreSize = %d", smb_AsyncStoreSize);
 
+        dummyLen = sizeof(DWORD);
+        code = RegQueryValueEx(parmKey, "SMBInterfaceEnabled", NULL, NULL,
+                                (BYTE *) &dwValue, &dummyLen);
+        if (code == ERROR_SUCCESS)
+            smb_Enabled = dwValue ? 1 : 0;
+        afsi_log("SMBInterfaceEnabled = %d", smb_Enabled);
+
         RegCloseKey (parmKey);
     }
 
-    /* Do this last so that we don't handle requests before init is done.
-     * Here we initialize the SMB listener.
-     */
-    smb_Init(afsd_logp, smb_UseV3, numSvThreads, aMBfunc);
-    afsi_log("smb_Init complete");
+    if ( smb_Enabled ) {
+        /* Do this last so that we don't handle requests before init is done.
+         * Here we initialize the SMB listener.
+         */
+        smb_Init(afsd_logp, smb_UseV3, numSvThreads, aMBfunc);
+        afsi_log("smb_Init complete");
+    } else {
+        smb_configureBackConnectionHostNames(FALSE);
+
+        if (msftSMBRedirectorSupportsExtendedTimeouts()) {
+            afsi_log("Microsoft SMB Redirector supports Extended Timeouts");
+            smb_configureExtendedSMBSessionTimeouts(FALSE);
+        }
+        afsi_log("smb_Init skipped");
+    }
 
     return 0;
 }

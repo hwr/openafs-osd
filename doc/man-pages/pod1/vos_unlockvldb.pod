@@ -11,12 +11,16 @@ B<vos unlockvldb> S<<< [B<-server> <I<machine name>>] >>>
     S<<< [B<-partition> <I<partition name>>] >>>
     S<<< [B<-cell> <I<cell name>>] >>>
     [B<-noauth>] [B<-localauth>]
-    [B<-verbose>] [B<-encrypt>] [B<-noresolve>] [B<-help>]
+    [B<-verbose>] [B<-encrypt>] [B<-noresolve>]
+    S<<< [B<-config> <I<config directory>>] >>>
+    [B<-help>]
 
 B<vos unlockv> S<<< [B<-s> <I<machine name>>] >>>
     S<<< [B<-p> <I<partition name>>] >>>
     S<<< [B<-c> <I<cell name>>] >>>
-    [B<-noa>] [B<-l>] [B<-v>] [B<-e>] [B<-nor>] [B<-h>]
+    [B<-noa>] [B<-l>] [B<-v>] [B<-e>] [B<-nor>]
+    S<<< [B<-co> <I<config directory>>] >>>
+    [B<-h>]
 
 =for html
 </div>
@@ -122,6 +126,13 @@ useful when the server address is registered as 127.0.0.1 or when dealing
 with multi-homed servers. This option is available in OpenAFS
 versions 1.4.8 or later and 1.5.35 or later.
 
+=item B<-config> <I<configuration directory>>
+
+Set the location of the configuration directory to be used. This defaults to
+F</usr/vice/etc>, except if B<-localauth> is specified, in which case the
+default is F</usr/afs/etc>. This option allows the use of alternative
+configuration locations for testing purposes.
+
 =item B<-help>
 
 Prints the online help for this command. All other valid options are
@@ -142,9 +153,9 @@ F</vicepa> partition in a site definition.
 
 The following command unlocks all locked VLDB entries that refer to
 volumes on the F</vicepc> partition of the file server machine
-C<fs3.abc.com>.
+C<fs3.example.com>.
 
-   % vos unlockvldb -server fs3.abc.com -partition c
+   % vos unlockvldb -server fs3.example.com -partition c
 
 =head1 PRIVILEGE REQUIRED
 

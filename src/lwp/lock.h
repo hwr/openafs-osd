@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -43,11 +43,10 @@
 #define ENDMAC   } while (0)
 
 #ifdef AFS_PTHREAD_ENV
-#include <pthread.h>
-/* can't include in non-lwp case; rx builds later */
-#include <rx/rx.h>
-#define LOCK_LOCK(A) MUTEX_ENTER(&(A)->mutex);
-#define LOCK_UNLOCK(A) MUTEX_EXIT(&(A)->mutex);
+#include <afs/opr.h>
+#include <opr/lock.h>
+#define LOCK_LOCK(A) opr_mutex_enter(&(A)->mutex)
+#define LOCK_UNLOCK(A) opr_mutex_exit(&(A)->mutex)
 #else /* AFS_PTHREAD_ENV */
 #define LOCK_LOCK(A)
 #define LOCK_UNLOCK(A)

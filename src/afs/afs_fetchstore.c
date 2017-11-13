@@ -27,8 +27,8 @@
 extern int cacheDiskType;
 
 #ifndef AFS_NOSTATS
-void
-FillStoreStats(int code, int idx, osi_timeval_t *xferStartTime,
+static void
+FillStoreStats(int code, int idx, osi_timeval_t xferStartTime,
 	       afs_size_t bytesToXfer, afs_size_t bytesXferred)
 {
     struct afs_stats_xferData *xferP;
@@ -63,7 +63,7 @@ FillStoreStats(int code, int idx, osi_timeval_t *xferStartTime,
 	else
 	    (xferP->count[8])++;
 
-	afs_stats_GetDiff(elapsedTime, (*xferStartTime), xferStopTime);
+	afs_stats_GetDiff(elapsedTime, xferStartTime, xferStopTime);
 	afs_stats_AddTo((xferP->sumTime), elapsedTime);
 	afs_stats_SquareAddTo((xferP->sqrTime), elapsedTime);
 	if (afs_stats_TimeLessThan(elapsedTime, (xferP->minTime))) {
@@ -86,18 +86,6 @@ rxfs_storeUfsPrepare(void *r, afs_uint32 size, afs_uint32 *tlen)
     *tlen = (size > AFS_LRALLOCSIZ ?  AFS_LRALLOCSIZ : size);
     return 0;
 }
-
-struct rxfs_storeVariables {
-    void *ops;
-    struct rx_call *call;
-    struct vcache *vcache;
-    struct osi_file *fP;
-    char *tbuffer;
-    struct iovec *tiov;
-    afs_int32 tnio;
-    afs_int32 hasNo64bit;
-    struct AFSStoreStatus InStatus;
-};
 
 afs_int32
 rxfs_storeMemPrepare(void *r, afs_uint32 size, afs_uint32 *tlen)
@@ -122,13 +110,12 @@ rxfs_storeMemPrepare(void *r, afs_uint32 size, afs_uint32 *tlen)
 
 afs_int32
 rxfs_storeUfsRead(void *r, struct osi_file *tfile, afs_uint32 offset,
-		  afs_uint32 tlen, afs_uint32 *bytesread, char **abuf)
+		  afs_uint32 tlen, afs_uint32 *bytesread)
 {
     afs_int32 code;
     struct rxfs_storeVariables *v = (struct rxfs_storeVariables *)r;
 
     *bytesread = 0;
-    *abuf = v->tbuffer;
     code = afs_osi_Read(tfile, -1, v->tbuffer, tlen);
     if (code < 0)
 	return EIO;
@@ -139,14 +126,12 @@ rxfs_storeUfsRead(void *r, struct osi_file *tfile, afs_uint32 offset,
     if (getuerror())
 	return EIO;
 #endif
-    if (code == 0)
-	return EIO;
     return 0;
 }
 
 afs_int32
 rxfs_storeMemRead(void *r, struct osi_file *tfile, afs_uint32 offset,
-		  afs_uint32 tlen, afs_uint32 *bytesread, char **abuf)
+		  afs_uint32 tlen, afs_uint32 *bytesread)
 {
     afs_int32 code;
     struct rxfs_storeVariables *v = (struct rxfs_storeVariables *)r;
@@ -161,7 +146,7 @@ rxfs_storeMemRead(void *r, struct osi_file *tfile, afs_uint32 offset,
 }
 
 afs_int32
-rxfs_storeMemWrite(void *r, char *abuf, afs_uint32 l, afs_uint32 *byteswritten)
+rxfs_storeMemWrite(void *r, afs_uint32 l, afs_uint32 *byteswritten)
 {
     afs_int32 code;
     struct rxfs_storeVariables *v = (struct rxfs_storeVariables *)r;
@@ -178,34 +163,18 @@ rxfs_storeMemWrite(void *r, char *abuf, afs_uint32 l, afs_uint32 *byteswritten)
 }
 
 afs_int32
-rxfs_storeUfsWrite(void *r, char *abuf, afs_uint32 l, afs_uint32 *byteswritten)
+rxfs_storeUfsWrite(void *r, afs_uint32 l, afs_uint32 *byteswritten)
 {
     afs_int32 code;
     struct rxfs_storeVariables *v = (struct rxfs_storeVariables *)r;
 
     RX_AFS_GUNLOCK();
-    code = rx_Write(v->call, abuf, l);
- 	/* writing 0 bytes will
+    code = rx_Write(v->call, v->tbuffer, l);
+	/* writing 0 bytes will
 	 * push a short packet.  Is that really what we want, just because the
 	 * data didn't come back from the disk yet?  Let's try it and see. */
     RX_AFS_GLOCK();
     if (code != l) {
-	code = rx_Error(v->call);
-        return (code ? code : -33);
-    }
-    *byteswritten = code;
-    return 0;
-}
-
-afs_int32
-rxfs_storeUfsWriteUnlocked(void *r, char *abuf, afs_uint32 len,
-			   afs_uint32 *byteswritten)
-{
-    afs_int32 code;
-    struct rxfs_storeVariables *v = (struct rxfs_storeVariables *)r;
-
-    code = rx_Write(v->call, abuf, len);
-    if (code != len) {
 	code = rx_Error(v->call);
         return (code ? code : -33);
     }
@@ -222,8 +191,6 @@ rxfs_storePadd(void *rock, afs_uint32 size)
 
     if (!v->tbuffer)
 	v->tbuffer = osi_AllocLargeSpace(AFS_LRALLOCSIZ);
-    if (!v->tbuffer)
-	osi_Panic("rxfs_storePadd: osi_AllocLargeSpace for tbuffer returned NULL\n");
     memset(v->tbuffer, 0, AFS_LRALLOCSIZ);
 
     while (size) {
@@ -253,7 +220,6 @@ afs_int32
 rxfs_storeClose(void *r, struct AFSFetchStatus *OutStatus, int *doProcessFS)
 {
     afs_int32 code;
-    afs_int32 code2;
     struct AFSVolSync tsync;
     struct rxfs_storeVariables *v = (struct rxfs_storeVariables *)r;
 
@@ -266,11 +232,7 @@ rxfs_storeClose(void *r, struct AFSFetchStatus *OutStatus, int *doProcessFS)
     else
 #endif
 	code = EndRXAFS_StoreData(v->call, OutStatus, &tsync);
-    code2 = rx_EndCall(v->call, code);
     RX_AFS_GLOCK();
-    if (code2)
-        code = code2;
-    v->call = NULL;
     if (!code)
 	*doProcessFS = 1;	/* Flag to run afs_ProcessFS() later on */
 
@@ -278,18 +240,15 @@ rxfs_storeClose(void *r, struct AFSFetchStatus *OutStatus, int *doProcessFS)
 }
 
 afs_int32
-rxfs_storeDestroy(void **r, afs_int32 error)
+rxfs_storeDestroy(void **r, afs_int32 code)
 {
-    afs_int32 code = error;
     struct rxfs_storeVariables *v = (struct rxfs_storeVariables *)*r;
 
     *r = NULL;
     if (v->call) {
 	RX_AFS_GUNLOCK();
-	code = rx_EndCall(v->call, error);
+	code = rx_EndCall(v->call, code);
 	RX_AFS_GLOCK();
-	if (!code && error)
-	    code = error;
     }
     if (v->tbuffer)
 	osi_FreeLargeSpace(v->tbuffer);
@@ -300,16 +259,16 @@ rxfs_storeDestroy(void **r, afs_int32 error)
 }
 
 afs_int32
-afs_GenericStoreProc(struct vcache *avc, struct storeOps *ops, void *rock,
+afs_GenericStoreProc(struct storeOps *ops, void *rock,
 		     struct dcache *tdc, int *shouldwake,
 		     afs_size_t *bytesXferred)
 {
+    struct rxfs_storeVariables *svar = rock;
     afs_uint32 tlen, bytesread, byteswritten;
     afs_int32 code = 0;
     int offset = 0;
     afs_size_t size;
     struct osi_file *tfile;
-    char *abuf;
 
     size = tdc->f.chunkBytes;
 
@@ -320,12 +279,12 @@ afs_GenericStoreProc(struct vcache *avc, struct storeOps *ops, void *rock,
 	if ( code )
 	    break;
 
-	code = (*ops->read)(rock, tfile, offset, tlen, &bytesread, &abuf);
+	code = (*ops->read)(rock, tfile, offset, tlen, &bytesread);
 	if (code)
 	    break;
 
 	tlen = bytesread;
-	code = (*ops->write)(rock, abuf, tlen, &byteswritten);
+	code = (*ops->write)(rock, tlen, &byteswritten);
 	if (code)
 	    break;
 #ifndef AFS_NOSTATS
@@ -340,7 +299,7 @@ afs_GenericStoreProc(struct vcache *avc, struct storeOps *ops, void *rock,
 	 */
 	if (shouldwake && *shouldwake && ((*ops->status)(rock) == 0)) {
 	    *shouldwake = 0;	/* only do this once */
-	    afs_wakeup(avc);
+	    afs_wakeup(svar->vcache);
 	}
     }
     afs_CFileClose(tfile);
@@ -362,11 +321,7 @@ struct storeOps rxfs_storeUfsOps = {
 #else
     .prepare = 	rxfs_storeUfsPrepare,
     .read =	rxfs_storeUfsRead,
-#ifdef AFS_LINUX26_ENV
-    .write =	rxfs_storeUfsWriteUnlocked,
-#else
     .write =	rxfs_storeUfsWrite,
-#endif
     .status =	rxfs_storeStatus,
     .padd =	rxfs_storePadd,
     .close =	rxfs_storeClose,
@@ -404,9 +359,9 @@ struct storeOps rxfs_storeMemOps = {
 
 afs_int32
 rxfs_storeInit(struct vcache *avc, struct afs_conn *tc,
-	       struct rx_connection *rxconn, afs_size_t base,
-	       afs_size_t bytes, afs_size_t length,
-	       int sync, struct storeOps **ops, void **rock)
+                struct rx_connection *rxconn, afs_size_t base,
+		afs_size_t bytes, afs_size_t length,
+		int sync, struct storeOps **ops, void **rock)
 {
     afs_int32 code;
     struct rxfs_storeVariables *v;
@@ -414,7 +369,7 @@ rxfs_storeInit(struct vcache *avc, struct afs_conn *tc,
     if ( !tc )
 	return -1;
 
-    v = (struct rxfs_storeVariables *) osi_AllocSmallSpace(sizeof(struct rxfs_storeVariables));
+    v = osi_AllocSmallSpace(sizeof(struct rxfs_storeVariables));
     if (!v)
         osi_Panic("rxfs_storeInit: osi_AllocSmallSpace returned NULL\n");
     memset(v, 0, sizeof(struct rxfs_storeVariables));
@@ -425,14 +380,14 @@ rxfs_storeInit(struct vcache *avc, struct afs_conn *tc,
     if (sync & AFS_SYNC)
         v->InStatus.Mask |= AFS_FSYNC;
     RX_AFS_GUNLOCK();
-    v->call = rx_NewCall(tc->id);
+    v->call = rx_NewCall(rxconn);
     if (v->call) {
 #ifdef AFS_64BIT_CLIENT
 	if (!afs_serverHasNo64Bit(tc))
 	    code = StartRXAFS_StoreData64(
-	    			v->call, (struct AFSFid*)&avc->f.fid.Fid,
-				&v->InStatus, base, bytes, length);
-	else
+		v->call, (struct AFSFid*)&avc->f.fid.Fid,
+		&v->InStatus, base, bytes, length);
+	else {
 	    if (length > 0xFFFFFFFF)
 		code = EFBIG;
 	    else {
@@ -441,6 +396,8 @@ rxfs_storeInit(struct vcache *avc, struct afs_conn *tc,
 					(struct AFSFid *) &avc->f.fid.Fid,
 					 &v->InStatus, t1, t2, t3);
 	    }
+	    v->hasNo64bit = 1;
+	}
 #else /* AFS_64BIT_CLIENT */
 	code = StartRXAFS_StoreData(v->call, (struct AFSFid *)&avc->f.fid.Fid,
 				    &v->InStatus, base, bytes, length);
@@ -479,7 +436,6 @@ rxfs_storeInit(struct vcache *avc, struct afs_conn *tc,
 #endif /* notdef */
     }
 
-    v->ops = (void *)*ops;
     *rock = (void *)v;
     return 0;
 }
@@ -506,6 +462,7 @@ afs_CacheStoreDCaches(struct vcache *avc, struct dcache **dclist,
 {
     int *shouldwake = NULL;
     unsigned int i;
+    int stored = 0;
     afs_int32 code = 0;
     afs_size_t bytesXferred;
 
@@ -514,16 +471,18 @@ afs_CacheStoreDCaches(struct vcache *avc, struct dcache **dclist,
     afs_size_t bytesToXfer = 10000;	/* # bytes to xfer */
 #endif /* AFS_NOSTATS */
     XSTATS_DECLS;
+    osi_Assert(nchunks != 0);
 
     for (i = 0; i < nchunks && !code; i++) {
-	int stored = 0; /* I think it has to be cleared for each chunk */
 	struct dcache *tdc = dclist[i];
-	afs_int32 size = tdc->f.chunkBytes;
+	afs_int32 size;
+
 	if (!tdc) {
 	    afs_warn("afs: missing dcache!\n");
 	    storeallmissing++;
 	    continue;	/* panic? */
 	}
+	size = tdc->f.chunkBytes;
 	afs_Trace4(afs_iclSetp, CM_TRACE_STOREALL2, ICL_TYPE_POINTER, avc,
 		    ICL_TYPE_INT32, tdc->f.chunk, ICL_TYPE_INT32, tdc->index,
 		    ICL_TYPE_INT32, afs_inode2trace(&tdc->f.inode));
@@ -556,7 +515,7 @@ afs_CacheStoreDCaches(struct vcache *avc, struct dcache **dclist,
 #endif /* AFS_NOSTATS */
 	bytesXferred = 0;
 
-	code = (*ops->storeproc)(avc, ops, rock, tdc, shouldwake,
+	code = (*ops->storeproc)(ops, rock, tdc, shouldwake,
 				     &bytesXferred);
 
 	afs_Trace4(afs_iclSetp, CM_TRACE_STOREPROC, ICL_TYPE_POINTER, avc,
@@ -565,7 +524,7 @@ afs_CacheStoreDCaches(struct vcache *avc, struct dcache **dclist,
 
 #ifndef AFS_NOSTATS
 	FillStoreStats(code, AFS_STATS_FS_XFERIDX_STOREDATA,
-		    &xferStartTime, bytesToXfer, bytesXferred);
+		    xferStartTime, bytesToXfer, bytesXferred);
 #endif /* AFS_NOSTATS */
 
 	if ((tdc->f.chunkBytes < afs_OtherCSize)
@@ -595,34 +554,9 @@ afs_CacheStoreDCaches(struct vcache *avc, struct dcache **dclist,
     /* if we errored, can't trust this. */
     if (code)
 	*doProcessFS = 0;
+
     return code;
 }
-
-#if defined(AFS_CACHE_BYPASS) && defined(AFS_LINUX24_ENV)
-#include "afs_bypasscache.h"
-#if defined(AFS_LINUX26_ENV)
-#define LockPage(pp) lock_page(pp)
-#define UnlockPage(pp) unlock_page(pp)
-#endif
-#endif
-
-/* conditional GUNLOCK macros */
-
-#define COND_GUNLOCK(var) \
-	do { \
-		var = ISAFS_GLOCK(); \
-		if(var) \
-			RX_AFS_GUNLOCK(); \
-	} while(0)
-	
-#define COND_RE_GLOCK(var) \
-	do { \
-		if(var) \
-			RX_AFS_GLOCK(); \
-	} while(0)
-afs_uint32 afs_protocols = RX_FILESERVER | RX_OSD;
-extern afs_int32 afs_soft_mounted;
-
 
 #define lmin(a,b) (((a) < (b)) ? (a) : (b))
 /*!
@@ -639,11 +573,6 @@ extern afs_int32 afs_soft_mounted;
  * \param amaxStoredLength Ptr to the amount of that is actually stored
  *
  * \note Environment: Nothing interesting.
- *
- * Locks held when called from afs_StoreAllSegments (afs_segments,c):
- *
- * Shared lock on avc->lock
- *
  */
 int
 afs_CacheStoreVCache(struct dcache **dcList, struct vcache *avc,
@@ -661,7 +590,7 @@ afs_CacheStoreVCache(struct dcache **dcList, struct vcache *avc,
     afs_size_t base, bytes, length;
     int nomore;
     unsigned int first = 0;
-    struct afs_conn *tc = NULL;
+    struct afs_conn *tc;
     struct rx_connection *rxconn;
 
     for (bytes = 0, j = 0; !code && j <= high; j++) {
@@ -705,82 +634,15 @@ afs_CacheStoreVCache(struct dcache **dcList, struct vcache *avc,
 		       ICL_HANDLE_OFFSET(base), ICL_TYPE_OFFSET,
 		       ICL_HANDLE_OFFSET(bytes), ICL_TYPE_OFFSET,
 		       ICL_HANDLE_OFFSET(length));
-            if ((afs_protocols & RX_OSD)
-              && (avc->protocol & POSSIBLY_OSD)) {
-                afs_int32 code;
-                afs_uint32 protocol = 0;
-
-                tc = afs_Conn(&avc->f.fid, areq, 0, &rxconn);
-		RX_AFS_GUNLOCK();
-                code = RXAFS_ApplyOsdPolicy(rxconn, &avc->f.fid.Fid, length,
-                                                &protocol);
-		RX_AFS_GLOCK();
-		afs_PutConn(tc, rxconn, 0);
-		tc = NULL;
-                if (!code) {
-		    UpgradeSToWLock(&avc->lock, 1211);
-#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
-                    if (avc->protocol & VICEP_ACCESS) {
-                        afs_close_vicep_file(avc, areq, 1);
-                        if (avc->vpacRock)
-                            printf("local file not closed after protocol change to RXOSD\n");
-                    }
-#endif
-                    avc->protocol = protocol;
-                    if (!(avc->protocol & PROTOCOL_MASK))
-                        avc->protocol = RX_FILESERVER;
-		    ConvertWToSLock(&avc->lock);
-                    afs_Trace3(afs_iclSetp, CM_TRACE_WASHERE,
-                           ICL_TYPE_STRING, __FILE__,
-                           ICL_TYPE_INT32, __LINE__,
-                           ICL_TYPE_INT32, avc->protocol);
-                }
-            }
-#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
-            if ((afs_protocols & VICEP_ACCESS)
-              && (avc->protocol & RX_FILESERVER)
-              && (avc->f.states & CPartVisible)
-              && !avc->vpacRock)  {
-		if (current_fsuid() == 0) {
-		    UpgradeSToWLock(&avc->lock, 1212);
-                    afs_open_vicep_localFile(avc, areq);
-		    ConvertWToSLock(&avc->lock);
-		} else
-		    afs_warn("afs_CacheStoreVCache: fs_uid %d, avoiding open vicep file\n",
-				current_fsuid());
-            }
-#endif
 
 	    do {
-		tc = afs_Conn(&avc->f.fid, areq, 0, &rxconn);
+	        tc = afs_Conn(&avc->f.fid, areq, 0, &rxconn);
 
 #ifdef AFS_64BIT_CLIENT
 	      restart:
 #endif
-                switch (avc->protocol & PROTOCOL_MASK) {
-                case RX_OSD:
-                    code =  rxosd_storeInit(avc, tc, rxconn, base, bytes, length,
-                                        sync, areq, &ops, &rock);
-                    break;
-#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
-                case VICEP_ACCESS:
-                    if (afs_protocols & VICEP_ACCESS) {
-			if (current_fsuid() == 0) {
-                            code = vpac_storeInit(avc, tc, rxconn, base, bytes, length,
-                                        sync, areq, &ops, &rock);
-                            if (!code)
-                                break;
-			} else
-			    afs_warn("afs_CacheStoreProc: fs_uid %d, avoiding vicep access\n",
-					current_fsuid());
-                    }
-#endif
-                case RX_FILESERVER:
-                default:
-		    code = rxfs_storeInit(avc, tc, rxconn, base, bytes, length,
+		code = rxfs_storeInit(avc, tc, rxconn, base, bytes, length,
 				      sync, &ops, &rock);
-                } /* switch */
-
 		if ( !code ) {
 		    code = afs_CacheStoreDCaches(avc, dclist, bytes, anewDV,
 			                         &doProcessFS, &OutStatus,
@@ -793,19 +655,10 @@ afs_CacheStoreVCache(struct dcache **dcList, struct vcache *avc,
 		    goto restart;
 		}
 #endif /* AFS_64BIT_CLIENT */
-                if (code && afs_soft_mounted 
-		  && (avc->protocol & PROTOCOL_MASK) != RX_FILESERVER
-		  && code != RX_CALL_BUSY) {
-                    printf("Leaving analyze_loop with code %d\n", code);
-                    areq->permWriteError = 1;
-		    code = EIO;
-                    goto leave_analyze_loop;
-                }
 	    } while (afs_Analyze
 		     (tc, rxconn, code, &avc->f.fid, areq,
 		      AFS_STATS_FS_RPCIDX_STOREDATA, SHARED_LOCK,
 		      NULL));
-leave_analyze_loop:
 
 	    /* put back all remaining locked dcache entries */
 	    for (i = 0; i < nchunks; i++) {
@@ -839,7 +692,7 @@ leave_analyze_loop:
 		dclist[i] = NULL;
 	    }
 
-	    if (!code && doProcessFS) {
+	    if (doProcessFS) {
 		/* Now copy out return params */
 		UpgradeSToWLock(&avc->lock, 28);	/* keep out others for a while */
 		afs_ProcessFS(avc, &OutStatus, areq);
@@ -875,18 +728,13 @@ leave_analyze_loop:
 /* rock and operations for RX_FILESERVER */
 
 struct rxfs_fetchVariables {
-    void *ops;
     struct rx_call *call;
     char *tbuffer;
-    afs_int32 hasNo64bit;
-    struct osi_file *fP;
     struct iovec *iov;
     afs_int32 nio;
-#if defined(AFS_CACHE_BYPASS) && defined(AFS_LINUX24_ENV)
+    afs_int32 hasNo64bit;
+    afs_int32 iovno;
     afs_int32 iovmax;
-    afs_int32 release_pages;
-    char *bypassparms;
-#endif
 };
 
 afs_int32
@@ -912,6 +760,7 @@ rxfs_fetchMemRead(void *r, afs_uint32 tlen, afs_uint32 *bytesread)
 {
     afs_int32 code;
     struct rxfs_fetchVariables *v = (struct rxfs_fetchVariables *)r;
+
     *bytesread = 0;
     RX_AFS_GUNLOCK();
     code = rx_Readv(v->call, v->iov, &v->nio, RX_MAXIOVECS, tlen);
@@ -922,117 +771,6 @@ rxfs_fetchMemRead(void *r, afs_uint32 tlen, afs_uint32 *bytesread)
     return 0;
 }
 
-#if defined(AFS_CACHE_BYPASS) && defined(AFS_LINUX24_ENV)
-static void
-afs_bypass_copy_page(bypass_page_t pp, int pageoff, struct iovec *rxiov,
-        int iovno, int iovoff, struct uio *auio, int curiov, int partial)
-{
-    char *address;
-    int dolen;
-
-    if (partial)
-        dolen = auio->uio_iov[curiov].iov_len - pageoff;
-    else
-        dolen = rxiov[iovno].iov_len - iovoff;
-
-#if !defined(UKERNEL)
-# if defined(KMAP_ATOMIC_TAKES_NO_KM_TYPE)
-    address = kmap_atomic(pp);
-# else
-    address = kmap_atomic(pp, KM_USER0);
-# endif
-#else
-    address = pp;
-#endif
-    memcpy(address + pageoff, (char *)(rxiov[iovno].iov_base) + iovoff, dolen);
-#if !defined(UKERNEL)
-# if defined(KMAP_ATOMIC_TAKES_NO_KM_TYPE)
-    kunmap_atomic(address);
-# else
-    kunmap_atomic(address, KM_USER0);
-# endif
-#endif
-}
-
-afs_int32
-rxfs_fetchBypassCacheRead(void *r, afs_uint32 size, afs_uint32 *bytesread)
-{
-    afs_int32 code = 0;
-    afs_uint32 length = size;
-    struct iovec *rxiov;
-    int iovno, nio, locked, curpage, bytes, iovoff, pageoff;
-    struct page *pp;
-    struct rxfs_fetchVariables *v = (struct rxfs_fetchVariables *)r;
-    struct nocache_read_request *bparms =
-                                (struct nocache_read_request *) v->bypassparms;
-
-    *bytesread = 0;
-    rxiov = osi_AllocSmallSpace(sizeof(struct iovec) * RX_MAXIOVECS);
-    iovno = nio = iovoff = 0;
-    for (curpage = 0; curpage <= v->iovmax; curpage++) {
-	pageoff = 0;
-	while (pageoff < 4096) {
-	    /* If no more iovs, issue new read. */
-	    if (iovno >= nio) {
-		COND_GUNLOCK(locked);
-		bytes = rx_Readv(v->call, rxiov, &nio, RX_MAXIOVECS, length);
-		COND_RE_GLOCK(locked);
-		if (bytes < 0) {
-	    	    afs_warn("rxfs_fetchBypassCacheRead: rx_Read error. Return code was %d\n",
-		    	     bytes);
-	    	    unlock_and_release_pages(bparms->auio);
-            	    code = -34;
-		    goto done;
-		}
-		if (bytes == 0) {
-	    	    afs_warn("rxfs_fetchBypassCacheRead: rx_Read returned zero. Aborting\n");
-	    	    unlock_and_release_pages(bparms->auio);
-		    goto done;
-		}
-		*bytesread += bytes;
-		length -= bytes;
-		iovno = 0;
-		iovoff = 0;
-	    }
-	    pp = (struct page *)bparms->auio->uio_iov[curpage].iov_base;
-	    if (pageoff + (rxiov[iovno].iov_len - iovoff) <= PAGE_CACHE_SIZE) {
-		/* Copy entire (or rest of) current iovec into current page */
-		if (pp) 
-		    afs_bypass_copy_page(pp, pageoff, rxiov, iovno, iovoff,
-					 bparms->auio, curpage, 0);
-		pageoff += rxiov[iovno].iov_len - iovoff;
-		iovno++;
-		iovoff = 0;
-	    } else {
-		/* Copy only what's needed to fill current page */
-		if (pp)
-		    afs_bypass_copy_page(pp, pageoff, rxiov, iovno, iovoff,
-					 bparms->auio, curpage, 1);
-		iovoff += PAGE_CACHE_SIZE - pageoff;
-		pageoff = PAGE_CACHE_SIZE;
-	    }
-	    /* we filled a page, or this is the last page.  conditionally release it */
-	    if (pp && ((pageoff == PAGE_CACHE_SIZE && v->release_pages)
-			|| (length == 0 && iovno >= nio))) {
-		/* this is appropriate when no caller intends to unlock
-		 * and release the page */
-		SetPageUptodate(pp);
-		if (PageLocked(pp))
-		    unlock_page(pp);
-		else
-		    afs_warn("rxfs_fetchBypassCacheRead: page not locked!\n");
-		put_page(pp); /* decrement refcount */
-	    }
-	    if (length == 0 && iovno >= nio)
-		goto done;
-	}
-    }
-
-done:
-    osi_FreeSmallSpace(rxiov);
-    return code;
-}
-#endif /* AFS_CACHE_BYPASS && AFS_LINUX24_ENV */
 
 afs_int32
 rxfs_fetchMemWrite(void *r, struct osi_file *fP, afs_uint32 offset,
@@ -1065,23 +803,12 @@ rxfs_fetchUfsWrite(void *r, struct osi_file *fP, afs_uint32 offset,
     return 0;
 }
 
-#if defined(AFS_CACHE_BYPASS) && defined(AFS_LINUX24_ENV)
-/* This is a dummy routine, all I/O happened already in rxfs_fetchBypassCacheRead */
-afs_int32
-rxfs_fetchBypassCacheWrite(void *r, struct osi_file *fP,
-                        afs_uint32 offset, afs_uint32 tlen,
-                        afs_uint32 *byteswritten)
-{
-    *byteswritten = tlen;
-    return 0;
-}
-#endif /* AFS_CACHE_BYPASS && AFS_LINUX24_ENV */
 
 afs_int32
 rxfs_fetchClose(void *r, struct vcache *avc, struct dcache * adc,
 		struct afs_FetchOutput *o)
 {
-    afs_int32 code, code1 = 0;
+    afs_int32 code;
     struct rxfs_fetchVariables *v = (struct rxfs_fetchVariables *)r;
 
     if (!v->call)
@@ -1096,10 +823,8 @@ rxfs_fetchClose(void *r, struct vcache *avc, struct dcache * adc,
 #endif
         code = EndRXAFS_FetchData(v->call, &o->OutStatus, &o->CallBack,
 				&o->tsync);
-    code1 = rx_EndCall(v->call, code);
+    code = rx_EndCall(v->call, code);
     RX_AFS_GLOCK();
-    if (!code && code1)
-	code = code1;
 
     v->call = NULL;
 
@@ -1107,18 +832,15 @@ rxfs_fetchClose(void *r, struct vcache *avc, struct dcache * adc,
 }
 
 afs_int32
-rxfs_fetchDestroy(void **r, afs_int32 error)
+rxfs_fetchDestroy(void **r, afs_int32 code)
 {
-    afs_int32 code = error;
     struct rxfs_fetchVariables *v = (struct rxfs_fetchVariables *)*r;
 
     *r = NULL;
     if (v->call) {
         RX_AFS_GUNLOCK();
-	code = rx_EndCall(v->call, error);
+	code = rx_EndCall(v->call, code);
         RX_AFS_GLOCK();
-	if (error)
-	    code = error;
     }
     if (v->tbuffer)
 	osi_FreeLargeSpace(v->tbuffer);
@@ -1150,7 +872,6 @@ rxfs_fetchMore(void *r, afs_int32 *length, afs_uint32 *moredata)
 	*length = ntohl(*length);
 	if (code != sizeof(afs_int32)) {
 	    code = rx_Error(v->call);
-	    *length = 0;
 	    *moredata = 0;
 	    return (code ? code : -1);	/* try to return code, not -1 */
         }
@@ -1178,45 +899,25 @@ struct fetchOps rxfs_fetchMemOps = {
     rxfs_fetchDestroy
 };
 
-#if defined(AFS_CACHE_BYPASS) && defined(AFS_LINUX24_ENV)
-static
-struct fetchOps rxfs_fetchBypassCacheOps = {
-    rxfs_fetchMore,
-    rxfs_fetchBypassCacheRead,
-    rxfs_fetchBypassCacheWrite,
-    rxfs_fetchClose,
-    rxfs_fetchDestroy
-};
-#endif
-
 afs_int32
 rxfs_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
-	       struct vcache *avc, afs_offs_t base,
+               struct vcache *avc, afs_offs_t base,
 	       afs_uint32 size, afs_int32 *alength, struct dcache *adc,
-	       void *bypassparms,
 	       struct osi_file *fP, struct fetchOps **ops, void **rock)
 {
     struct rxfs_fetchVariables *v;
-    int code = 0, code1 = 0;
+    int code = 0;
 #ifdef AFS_64BIT_CLIENT
     afs_uint32 length_hi = 0;
 #endif
     afs_uint32 length = 0, bytes;
-#if defined(AFS_CACHE_BYPASS) && defined(AFS_LINUX24_ENV)
-    struct nocache_read_request *bparms;
 
-    bparms  = (struct nocache_read_request *) bypassparms;
-#endif
-
-    if (!tc || !rxconn)
-        return -1;
     v = (struct rxfs_fetchVariables *)
 	    osi_AllocSmallSpace(sizeof(struct rxfs_fetchVariables));
     if (!v)
         osi_Panic("rxfs_fetchInit: osi_AllocSmallSpace returned NULL\n");
     memset(v, 0, sizeof(struct rxfs_fetchVariables));
 
-    v->fP = fP;
     RX_AFS_GUNLOCK();
     v->call = rx_NewCall(rxconn);
     RX_AFS_GLOCK();
@@ -1239,9 +940,8 @@ rxfs_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
 		if (bytes == sizeof(afs_int32)) {
 		    length_hi = ntohl(length_hi);
 		} else {
-		    code = rx_Error(v->call);
 		    RX_AFS_GUNLOCK();
-		    code1 = rx_EndCall(v->call, code);
+		    code = rx_EndCall(v->call, RX_PROTOCOL_ERROR);
 		    RX_AFS_GLOCK();
 		    v->call = NULL;
 		}
@@ -1263,6 +963,7 @@ rxfs_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
 		RX_AFS_GLOCK();
 	    }
 	    afs_serverSetNo64Bit(tc);
+	    v->hasNo64bit = 1;
 	}
 	if (!code) {
 	    RX_AFS_GUNLOCK();
@@ -1272,8 +973,7 @@ rxfs_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
 		length = ntohl(length);
 	    else {
 		RX_AFS_GUNLOCK();
-		code = rx_Error(v->call);
-                code1 = rx_EndCall(v->call, code);
+                code = rx_EndCall(v->call, RX_PROTOCOL_ERROR);
 		v->call = NULL;
 		length = 0;
 		RX_AFS_GLOCK();
@@ -1285,7 +985,7 @@ rxfs_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
             /* Check if the fileserver said our length is bigger than can fit
              * in a signed 32-bit integer. If it is, we can't handle that, so
              * error out. */
-           if (length64 > MAX_AFS_INT32) {
+	    if (length64 > MAX_AFS_INT32) {
                 static int warned;
                 if (!warned) {
                     warned = 1;
@@ -1294,11 +994,11 @@ rxfs_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
                              "Aborting fetch request.\n",
                              length_hi, length);
                 }
-               RX_AFS_GUNLOCK();
+		RX_AFS_GUNLOCK();
                 code = rx_EndCall(v->call, RX_PROTOCOL_ERROR);
-               v->call = NULL;
-               length = 0;
-               RX_AFS_GLOCK();
+		v->call = NULL;
+		length = 0;
+		RX_AFS_GLOCK();
                 code = code != 0 ? code : EIO;
             }
         }
@@ -1341,8 +1041,7 @@ rxfs_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
                     *alength = 0;
                 }
 	    } else {
-		code = rx_Error(v->call);
-                code1 = rx_EndCall(v->call, code);
+                code = rx_EndCall(v->call, RX_PROTOCOL_ERROR);
 		v->call = NULL;
 	    }
 	}
@@ -1366,60 +1065,38 @@ rxfs_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
                      "happen! Aborting fetch request.\n",
                      (long)size, (long)*alength);
         }
-	code = rx_Error(v->call);
 	RX_AFS_GUNLOCK();
-	code1 = rx_EndCall(v->call, code);
+	code = rx_EndCall(v->call, RX_PROTOCOL_ERROR);
 	RX_AFS_GLOCK();
 	v->call = NULL;
-#if defined(AFS_CACHE_BYPASS) && defined(AFS_LINUX24_ENV)
-	if (bypassparms) {
-	    unlock_and_release_pages(bparms->auio);
-	}
-#endif
 	code = EIO;
     }
-
-    if (!code && code1)
-	code = code1;
 
     if (code) {
 	osi_FreeSmallSpace(v);
         return code;
     }
-#if defined(AFS_CACHE_BYPASS) && defined(AFS_LINUX24_ENV)
-    if (bypassparms) {          /* Called from afs_PrefetchNoCache */
-	if (*alength == 0) {
-	    unlock_and_release_pages(bparms->auio);
-	}
-        v->bypassparms = bypassparms;
-	v->release_pages = 1;
-        v->iovmax = bparms->auio->uio_iovcnt -1;
-        *ops = (struct fetchOps *) &rxfs_fetchBypassCacheOps;
-    } else
-#endif
     if (cacheDiskType == AFS_FCACHE_TYPE_UFS) {
-        v->tbuffer = osi_AllocLargeSpace(AFS_LRALLOCSIZ);
-        if (!v->tbuffer)
-	    osi_Panic("rxfs_fetchInit: osi_AllocLargeSpace for tbuffer returned NULL\n");
+	v->tbuffer = osi_AllocLargeSpace(AFS_LRALLOCSIZ);
+	if (!v->tbuffer)
+	    osi_Panic("rxfs_fetchInit: osi_AllocLargeSpace for iovecs returned NULL\n");
 	osi_Assert(WriteLocked(&adc->lock));
 	fP->offset = 0;
 	*ops = (struct fetchOps *) &rxfs_fetchUfsOps;
-    } else {
-	struct memCacheEntry *mceP = (struct memCacheEntry *)fP;
-	code = afs_MemExtendEntry(mceP, *alength);
-	if (code) {
-	    osi_FreeSmallSpace(v);
-	    return code;
-	}
+    }
+    else {
 	afs_Trace4(afs_iclSetp, CM_TRACE_MEMFETCH, ICL_TYPE_POINTER, avc,
 		   ICL_TYPE_POINTER, fP, ICL_TYPE_OFFSET,
 		   ICL_HANDLE_OFFSET(base), ICL_TYPE_INT32, length);
-        v->iov = osi_AllocSmallSpace(sizeof(struct iovec) * RX_MAXIOVECS);
-        if (!v->iov)
-            osi_Panic("rxfs_fetchInit: osi_AllocSmallSpace for iovecs returned NULL\n");
+	/*
+	 * We need to alloc the iovecs on the heap so that they are "pinned"
+	 * rather than declare them on the stack - defect 11272
+	 */
+	v->iov = osi_AllocSmallSpace(sizeof(struct iovec) * RX_MAXIOVECS);
+	if (!v->iov)
+	    osi_Panic("rxfs_fetchInit: osi_AllocSmallSpace for iovecs returned NULL\n");
 	*ops = (struct fetchOps *) &rxfs_fetchMemOps;
     }
-    v->ops = (void *) *ops;
     *rock = (void *)v;
     return 0;
 }
@@ -1429,10 +1106,9 @@ rxfs_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
  * Routine called on fetch; also tells people waiting for data
  *	that more has arrived.
  *
- * \param tc Ptr to the afs_conn structure.
+ * \param tc Ptr to the AFS connection structure.
  * \param rxconn Ptr to the Rx connection structure.
  * \param fP File descriptor for the cache file.
- * \param areq Ptr to vrequest structure.
  * \param base Base offset to fetch.
  * \param adc Ptr to the dcache entry for the file, write-locked.
  * \param avc Ptr to the vcache entry for the file.
@@ -1440,20 +1116,12 @@ rxfs_fetchInit(struct afs_conn *tc, struct rx_connection *rxconn,
  * \param tsmall Ptr to the afs_FetchOutput structure.
  *
  * \note Environment: Nothing interesting.
- *
- * Locks held when called from afs_GetDCache (afs_dcache.c):
- *     avc->lock(R) if setLocks && !slowPass
- *     avc->lock(W) if !setLocks || slowPass
- *     tdc->lock(W)
- *
- * Locks held when called from afs_PrefetchNoCache (afs_bypasscache.c)
- *     avc->lock(R) 
  */
 int
-afs_FetchProc(struct afs_conn *tc, struct rx_connection *rxconn,
-	      struct osi_file *fP, struct vrequest *areq, afs_size_t base,
-	      struct dcache *adc, struct vcache *avc, afs_int32 size,
-	      void *bypassparms, struct afs_FetchOutput *tsmall)
+afs_CacheFetchProc(struct afs_conn *tc, struct rx_connection *rxconn,
+                   struct osi_file *fP, afs_size_t base,
+		   struct dcache *adc, struct vcache *avc, afs_int32 size,
+		   struct afs_FetchOutput *tsmall)
 {
     afs_int32 code;
     afs_int32 length;
@@ -1479,62 +1147,14 @@ afs_FetchProc(struct afs_conn *tc, struct rx_connection *rxconn,
      * avc->lock(W) if !setLocks || slowPass
      * adc->lock(W)
      */
+    code = rxfs_fetchInit(
+		tc, rxconn, avc, base, size, &length, adc, fP, &ops, &rock);
+
 #ifndef AFS_NOSTATS
     osi_GetuTime(&xferStartTime);
 #endif /* AFS_NOSTATS */
 
-    if (adc) {
-	adc->validPos = base;
-    }
-
-#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
-    if (!(avc->f.fid.Fid.Vnode & 1)  /* not a directory */
-      && (avc->f.states & CPartVisible) && !avc->vpacRock) {
-	if (current_fsuid() == 0) {
-	    int excl_locked = avc->lock.excl_locked;
-	    if (!excl_locked) {
-	        ReleaseWriteLock(&adc->lock);
-	        ReleaseReadLock(&avc->lock);
-	        ObtainWriteLock(&avc->lock, 1213);
-	    }
-            afs_open_vicep_localFile(avc, areq);
-	    if (!excl_locked) {
-	        ConvertWToRLock(&avc->lock);
-	        ObtainWriteLock(&adc->lock, 1214);
-	    }
-	} else
-	    afs_warn("afs_FetchProc: fs_uid %d, avoiding open vicep file\n",
-			current_fsuid());
-    }
-#endif
-
-restart:
-    switch (avc->protocol & PROTOCOL_MASK) {
-        case RX_OSD:
-            code = rxosd_fetchInit(
-			tc, rxconn, avc, base, size, &length, bypassparms,
-			fP, areq, &ops, &rock);
-            break;
-#if defined(AFS_LINUX26_ENV) && !defined(UKERNEL)
-        case VICEP_ACCESS:
-            if (afs_protocols & VICEP_ACCESS) {
-		if (current_fsuid() == 0) {
-                    code = vpac_fetchInit(
-			    tc, rxconn, avc, base, size, &length, bypassparms,
-			    fP, areq, &ops, &rock);
-                    if (!code)
-                        break;
-		} else
-		    afs_warn("afs_FetchProc: fs_uid %d, avoiding vicep access\n",
-				current_fsuid());
-            }
-#endif
-        case RX_FILESERVER:
-        default:
-            code = rxfs_fetchInit(
-			tc, rxconn, avc, base, size, &length, adc, bypassparms,
-			fP, &ops, &rock);
-    }
+    adc->validPos = base;
 
     if ( !code ) do {
 	if (avc->f.states & CForeign) {
@@ -1566,37 +1186,27 @@ restart:
 		break;
 	    }
 	    code = (*ops->write)(rock, fP, offset, bytesread, &byteswritten);
-	    if (bytesread != byteswritten && !code)
-		code = EIO;
 	    if ( code )
 		break;
 	    offset += bytesread;
 	    base += bytesread;
 	    length -= bytesread;
-	    if (adc) {
-	        adc->validPos = base;
-	        if (afs_osi_Wakeup(&adc->validPos) == 0)
-		    afs_Trace4(afs_iclSetp, CM_TRACE_DCACHEWAKE, ICL_TYPE_STRING,
+	    adc->validPos = base;
+	    if (afs_osi_Wakeup(&adc->validPos) == 0)
+		afs_Trace4(afs_iclSetp, CM_TRACE_DCACHEWAKE, ICL_TYPE_STRING,
 			   __FILE__, ICL_TYPE_INT32, __LINE__,
 			   ICL_TYPE_POINTER, adc, ICL_TYPE_INT32,
 			   adc->dflags);
-	    }
 	}
 	code = 0;
     } while (moredata);
     if (!code)
 	code = (*ops->close)(rock, avc, adc, tsmall);
     if (ops)
-	(*ops->destroy)(&rock, code);
-#ifdef AFS_64BIT_CLIENT
-    if (code == RXGEN_OPCODE && !afs_serverHasNo64Bit(tc)) {
-        afs_serverSetNo64Bit(tc);
-        goto restart;
-    }
-#endif /* AFS_64BIT_CLIENT */
+	code = (*ops->destroy)(&rock, code);
 
 #ifndef AFS_NOSTATS
-    FillStoreStats(code, AFS_STATS_FS_XFERIDX_FETCHDATA, &xferStartTime,
+    FillStoreStats(code, AFS_STATS_FS_XFERIDX_FETCHDATA, xferStartTime,
 			bytesToXfer, bytesXferred);
 #endif
     XSTATS_END_TIME;

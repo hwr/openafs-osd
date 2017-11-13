@@ -7,7 +7,10 @@
  * directory or online at http://www.openafs.org/dl/license10.html
  */
 
+#include <afsconfig.h>
 #include <afs/param.h>
+#include <roken.h>
+
 #include <afs/stds.h>
 
 #include <windows.h>
@@ -147,7 +150,7 @@ void cm_InitConn(void)
          * the smb redirector session timeout (RDRtimeout).
          *
          * The UNIX cache manager uses 120 seconds for the hard dead
-         * timeout and 1200 seconds for the connection and idle timeouts.
+         * timeout and 50 seconds for the connection and idle timeouts.
          *
          * We base our values on those while making sure we leave
          * enough time for overhead.
@@ -157,23 +160,45 @@ void cm_InitConn(void)
          * of time it takes the file server to give up when attempting
          * to break callbacks to unresponsive clients.  The file
          * server hard dead timeout is 120 seconds.
+         *
+         * For SMB, we have no choice but to timeout quickly.  For
+         * the AFS redirector, we can wait.
          */
-        afsi_log("lanmanworkstation : SessTimeout %u", RDRtimeout);
-        if (ConnDeadtimeout == 0) {
-            ConnDeadtimeout = (unsigned short) ((RDRtimeout / 2) < 50 ? (RDRtimeout / 2) : 50);
-            afsi_log("ConnDeadTimeout is %d", ConnDeadtimeout);
-        }
-        if (HardDeadtimeout == 0) {
-            HardDeadtimeout = (unsigned short) (RDRtimeout > 125 ? 120 : (RDRtimeout - 5));
-            afsi_log("HardDeadTimeout is %d", HardDeadtimeout);
-        }
-        if (IdleDeadtimeout == 0) {
-            IdleDeadtimeout = 10 * (unsigned short) HardDeadtimeout;
-            afsi_log("IdleDeadTimeout is %d", IdleDeadtimeout);
-        }
-        if (ReplicaIdleDeadtimeout == 0) {
-            ReplicaIdleDeadtimeout = (unsigned short) HardDeadtimeout;
-            afsi_log("ReplicaIdleDeadTimeout is %d", ReplicaIdleDeadtimeout);
+        if (smb_Enabled) {
+            afsi_log("lanmanworkstation : SessTimeout %u", RDRtimeout);
+            if (ConnDeadtimeout == 0) {
+                ConnDeadtimeout = (unsigned short) ((RDRtimeout / 2) < 50 ? (RDRtimeout / 2) : 50);
+                afsi_log("ConnDeadTimeout is %d", ConnDeadtimeout);
+            }
+            if (HardDeadtimeout == 0) {
+                HardDeadtimeout = (unsigned short) (RDRtimeout > 125 ? 120 : (RDRtimeout - 5));
+                afsi_log("HardDeadTimeout is %d", HardDeadtimeout);
+            }
+            if (IdleDeadtimeout == 0) {
+                IdleDeadtimeout = 10 * (unsigned short) HardDeadtimeout;
+                afsi_log("IdleDeadTimeout is %d", IdleDeadtimeout);
+            }
+            if (ReplicaIdleDeadtimeout == 0) {
+                ReplicaIdleDeadtimeout = (unsigned short) HardDeadtimeout;
+                afsi_log("ReplicaIdleDeadTimeout is %d", ReplicaIdleDeadtimeout);
+            }
+        } else {
+            if (ConnDeadtimeout == 0) {
+                ConnDeadtimeout = CM_CONN_IFS_CONNDEADTIME;
+                afsi_log("ConnDeadTimeout is %d", ConnDeadtimeout);
+            }
+            if (HardDeadtimeout == 0) {
+                HardDeadtimeout = CM_CONN_IFS_HARDDEADTIME;
+                afsi_log("HardDeadTimeout is %d", HardDeadtimeout);
+            }
+            if (IdleDeadtimeout == 0) {
+                IdleDeadtimeout = CM_CONN_IFS_IDLEDEADTIME;
+                afsi_log("IdleDeadTimeout is %d", IdleDeadtimeout);
+            }
+            if (IdleDeadtimeout == 0) {
+                ReplicaIdleDeadtimeout = CM_CONN_IFS_IDLEDEADTIME_REP;
+                afsi_log("ReplicaIdleDeadTimeout is %d", ReplicaIdleDeadtimeout);
+            }
         }
 	osi_EndOnce(&once);
     }
@@ -185,12 +210,19 @@ void cm_InitReq(cm_req_t *reqp)
 	reqp->startTime = GetTickCount();
 }
 
-static long cm_GetServerList(struct cm_fid *fidp, struct cm_user *userp,
+long cm_GetVolServerList(cm_volume_t *volp, afs_uint32 volid, struct cm_user *userp,
+                         struct cm_req *reqp, afs_uint32 *replicated,
+                         cm_serverRef_t ***serversppp)
+{
+    *serversppp = cm_GetVolServers(volp, volid, userp, reqp, replicated);
+    return (*serversppp ? 0 : CM_ERROR_NOSUCHVOLUME);
+}
+
+long cm_GetServerList(struct cm_fid *fidp, struct cm_user *userp,
 	struct cm_req *reqp, afs_uint32 *replicated, cm_serverRef_t ***serversppp)
 {
     long code;
     cm_volume_t *volp = NULL;
-    cm_vol_state_t *volstatep = NULL;
     cm_cell_t *cellp = NULL;
 
     if (!fidp) {
@@ -206,9 +238,7 @@ static long cm_GetServerList(struct cm_fid *fidp, struct cm_user *userp,
     if (code)
         return code;
 
-    volstatep = cm_VolumeStateByID(volp, fidp->volume);
-    *replicated = (volstatep->flags & CM_VOL_STATE_FLAG_REPLICATED);
-    *serversppp = cm_GetVolServers(volp, fidp->volume, userp, reqp);
+    *serversppp = cm_GetVolServers(volp, fidp->volume, userp, reqp, replicated);
 
     lock_ObtainRead(&cm_volumeLock);
     cm_PutVolume(volp);
@@ -216,13 +246,13 @@ static long cm_GetServerList(struct cm_fid *fidp, struct cm_user *userp,
     return (*serversppp ? 0 : CM_ERROR_NOSUCHVOLUME);
 }
 
-void
-cm_SetServerBusyStatus(cm_serverRef_t *serversp, cm_server_t *serverp)
+static void
+cm_SetServerBusyStatus(cm_serverRef_t **serverspp, cm_server_t *serverp)
 {
     cm_serverRef_t *tsrp;
 
-    lock_ObtainWrite(&cm_serverLock);
-    for (tsrp = serversp; tsrp; tsrp=tsrp->next) {
+    lock_ObtainRead(&cm_serverLock);
+    for (tsrp = *serverspp; tsrp; tsrp=tsrp->next) {
         if (tsrp->status == srv_deleted)
             continue;
         if (cm_ServerEqual(tsrp->server, serverp) && tsrp->status == srv_not_busy) {
@@ -230,23 +260,31 @@ cm_SetServerBusyStatus(cm_serverRef_t *serversp, cm_server_t *serverp)
             break;
         }
     }
-    lock_ReleaseWrite(&cm_serverLock);
+    lock_ReleaseRead(&cm_serverLock);
 }
 
-void
-cm_ResetServerBusyStatus(cm_serverRef_t *serversp)
+static void
+cm_ResetServerBusyStatus(cm_serverRef_t **serverspp)
 {
     cm_serverRef_t *tsrp;
 
-    lock_ObtainWrite(&cm_serverLock);
-    for (tsrp = serversp; tsrp; tsrp=tsrp->next) {
+    lock_ObtainRead(&cm_serverLock);
+    for (tsrp = *serverspp; tsrp; tsrp=tsrp->next) {
         if (tsrp->status == srv_deleted)
             continue;
         if (tsrp->status == srv_busy) {
             tsrp->status = srv_not_busy;
         }
     }
-    lock_ReleaseWrite(&cm_serverLock);
+    lock_ReleaseRead(&cm_serverLock);
+}
+
+static int
+isNetworkError(int code)
+{
+    if (code >= -64 && code < 0)
+	return 1;
+    return 0;
 }
 
 /*
@@ -261,7 +299,7 @@ cm_ResetServerBusyStatus(cm_serverRef_t *serversp)
  *
  * If the error code is from cm_ConnFromFID() or friends, connp will be NULL.
  *
- * For VLDB calls, fidp will be NULL.
+ * For VLDB calls, fidp will be NULL and cellp will not be.
  *
  * volSyncp and/or cbrp may also be NULL.
  */
@@ -270,38 +308,39 @@ cm_Analyze(cm_conn_t *connp,
            cm_user_t *userp,
            cm_req_t *reqp,
            struct cm_fid *fidp,
+           cm_cell_t *cellp,
            afs_uint32 storeOp,
+           AFSFetchStatus *statusp,
            AFSVolSync *volSyncp,
-           cm_serverRef_t * serversp,
+           cm_serverRef_t ** vlServerspp,
            cm_callbackRequest_t *cbrp,
            long errorCode)
 {
     cm_server_t *serverp = NULL;
-    cm_serverRef_t **serverspp = NULL;
+    cm_serverRef_t **volServerspp = NULL;
     cm_serverRef_t *tsrp;
-    cm_cell_t  *cellp = NULL;
     cm_ucell_t *ucellp;
     cm_volume_t * volp = NULL;
     cm_vol_state_t *statep = NULL;
     cm_scache_t * scp = NULL;
-    afs_uint32 replicated;
+    afs_uint32 replicated = 0;
     int retry = 0;
     int free_svr_list = 0;
-    int dead_session;
+    int dead_session = (userp->cellInfop == NULL);
     long timeUsed, timeLeft;
-    long code;
+    long code = 0;
     char addr[16]="unknown";
     int forcing_new = 0;
     int location_updated = 0;
     char *format;
     DWORD msgID;
+    int invalid_status = 0;
 
     osi_Log2(afsd_logp, "cm_Analyze connp 0x%p, code 0x%x",
              connp, errorCode);
 
     /* no locking required, since connp->serverp never changes after
      * creation */
-    dead_session = (userp->cellInfop == NULL);
     if (connp)
         serverp = connp->serverp;
 
@@ -317,9 +356,7 @@ cm_Analyze(cm_conn_t *connp,
         } else {
             cm_GetServer(serverp);
         }
-        lock_ObtainWrite(&cm_callbackLock);
         cbrp->serverp = serverp;
-        lock_ReleaseWrite(&cm_callbackLock);
     }
 
     /* if timeout - check that it did not exceed the HardDead timeout
@@ -327,32 +364,60 @@ cm_Analyze(cm_conn_t *connp,
 
     /* timeleft - get it from reqp the same way as cm_ConnByMServers does */
     timeUsed = (GetTickCount() - reqp->startTime) / 1000;
-    timeLeft = HardDeadtimeout - timeUsed;
+    if ( (reqp->flags & CM_REQ_SOURCE_SMB) ||
+         (serverp && serverp->type == CM_SERVER_VLDB))
+        timeLeft = HardDeadtimeout - timeUsed;
+    else
+        timeLeft = 0x0FFFFFFF;
+
+    /*
+     * Similar to the UNIX cache manager, if the AFSFetchStatus info
+     * returned by the file server is invalid, consider the response
+     * as being equivalent to VBUSY so that another file server can
+     * be queried if there is one.  If there is no replica, then the
+     * request will fail.
+     */
+    if (errorCode == 0 && statusp && !cm_IsStatusValid(statusp)) {
+        invalid_status = 1;
+        errorCode = VBUSY;
+    }
 
     /* get a pointer to the cell */
     if (errorCode) {
         if (cellp == NULL && serverp)
             cellp = serverp->cellp;
-        if (cellp == NULL && serversp) {
+        if (cellp == NULL && vlServerspp) {
             struct cm_serverRef * refp;
-            for ( refp=serversp ; cellp == NULL && refp != NULL; refp=refp->next) {
+            lock_ObtainRead(&cm_serverLock);
+            for ( refp=*vlServerspp ; cellp == NULL && refp != NULL; refp=refp->next) {
                 if (refp->status == srv_deleted)
                     continue;
                 if ( refp->server )
                     cellp = refp->server->cellp;
             }
+            lock_ReleaseRead(&cm_serverLock);
         }
         if (cellp == NULL && fidp) {
             cellp = cm_FindCellByID(fidp->cell, 0);
         }
     }
 
-    if (errorCode == CM_ERROR_TIMEDOUT) {
+    if (errorCode == 0) {
+	if (connp)
+	    _InterlockedAnd(&connp->flags, ~CM_CONN_FLAG_NEW);
+    }
+    else if (errorCode == CM_ERROR_TIMEDOUT) {
+	osi_Log0(afsd_logp, "cm_Analyze passed CM_ERROR_TIMEDOUT");
         if ( timeLeft > 5 ) {
             thrd_Sleep(3000);
             cm_CheckServers(CM_FLAG_CHECKDOWNSERVERS, cellp);
             retry = 1;
         }
+    }
+
+    else if (errorCode == CM_ERROR_RETRY) {
+	osi_Log0(afsd_logp, "cm_Analyze passed CM_ERROR_RETRY");
+        retry = 1;
     }
 
     else if (errorCode == UAEWOULDBLOCK || errorCode == EWOULDBLOCK ||
@@ -362,6 +427,9 @@ cm_Analyze(cm_conn_t *connp,
             thrd_Sleep(1000);
             retry = 1;
         }
+
+	if (connp)
+	    _InterlockedAnd(&connp->flags, ~CM_CONN_FLAG_NEW);
     }
 
     /* if there is nosuchvolume, then we have a situation in which a
@@ -378,6 +446,41 @@ cm_Analyze(cm_conn_t *connp,
          */
     }
 
+    else if (errorCode == CM_ERROR_EMPTY) {
+        /*
+         * The server list is empty (or all entries have been deleted).
+         * If fidp is NULL, this was a vlServer list and we can attempt
+         * to force a cell lookup.  If fidp is not NULL, we can attempt
+         * to refresh the volume location list.
+         */
+        if (fidp) {
+            code = cm_FindVolumeByID(cellp, fidp->volume, userp, reqp,
+                                     CM_GETVOL_FLAG_NO_LRU_UPDATE,
+                                     &volp);
+            if (code == 0) {
+                lock_ObtainWrite(&volp->rw);
+                if (cm_UpdateVolumeLocation(cellp, userp, reqp, volp) == 0) {
+                    lock_ReleaseWrite(&volp->rw);
+                    code = cm_GetVolServerList(volp, fidp->volume, userp, reqp, &replicated, &volServerspp);
+                    if (code == 0) {
+                        if (!cm_IsServerListEmpty(*volServerspp))
+                            retry = 1;
+                        cm_FreeServerList(volServerspp, 0);
+                    }
+                } else {
+                    lock_ReleaseWrite(&volp->rw);
+                }
+                lock_ObtainRead(&cm_volumeLock);
+                cm_PutVolume(volp);
+                lock_ReleaseRead(&cm_volumeLock);
+                volp = NULL;
+            }
+        } else {
+            cm_cell_t * newCellp = cm_UpdateCell( cellp, 0);
+            if (newCellp)
+                retry = 1;
+        }
+    }
     else if (errorCode == CM_ERROR_ALLDOWN) {
 	/* Servers marked DOWN will be restored by the background daemon
 	 * thread as they become available.  The volume status is
@@ -393,7 +496,6 @@ cm_Analyze(cm_conn_t *connp,
             osi_Log0(afsd_logp, "cm_Analyze passed CM_ERROR_ALLDOWN (VL Server)");
         }
     }
-
     else if (errorCode == CM_ERROR_ALLOFFLINE) {
         /* Volume instances marked offline will be restored by the
          * background daemon thread as they become available
@@ -405,29 +507,30 @@ cm_Analyze(cm_conn_t *connp,
             format = "All servers are offline when accessing cell %s volume %d.";
 	    LogEvent(EVENTLOG_WARNING_TYPE, msgID, cellp->name, fidp->volume);
 
-            if (!serversp) {
-                code = cm_GetServerList(fidp, userp, reqp, &replicated, &serverspp);
-                if (code == 0) {
-                    serversp = *serverspp;
-                    free_svr_list = 1;
-                }
-            }
-            cm_ResetServerBusyStatus(serversp);
-            if (free_svr_list) {
-                cm_FreeServerList(serverspp, 0);
-                free_svr_list = 0;
-                serversp = NULL;
-            }
-
             code = cm_FindVolumeByID(cellp, fidp->volume, userp, reqp,
                                       CM_GETVOL_FLAG_NO_LRU_UPDATE,
                                       &volp);
             if (code == 0) {
+                if (volServerspp == NULL) {
+                    code = cm_GetVolServerList(volp, fidp->volume, userp, reqp, &replicated, &volServerspp);
+                    if (code == 0)
+                        free_svr_list = 1;
+                }
+                if (volServerspp)
+                    cm_ResetServerBusyStatus(volServerspp);
+                if (free_svr_list) {
+                    cm_FreeServerList(volServerspp, 0);
+                    free_svr_list = 0;
+                    volServerspp = NULL;
+                }
+
                 /*
                  * Do not perform a cm_CheckOfflineVolume() if cm_Analyze()
                  * was called by cm_CheckOfflineVolumeState().
                  */
-                if (!(reqp->flags & CM_REQ_OFFLINE_VOL_CHK) && timeLeft > 7) {
+		if (!(reqp->flags & (CM_REQ_OFFLINE_VOL_CHK|CM_REQ_NORETRY)) &&
+		    timeLeft > 7)
+		{
                     thrd_Sleep(5000);
 
                     /* cm_CheckOfflineVolume() resets the serverRef state */
@@ -456,27 +559,31 @@ cm_Analyze(cm_conn_t *connp,
             format = "All servers are busy when accessing cell %s volume %d.";
 	    LogEvent(EVENTLOG_WARNING_TYPE, msgID, cellp->name, fidp->volume);
 
-            if (!serversp) {
-                code = cm_GetServerList(fidp, userp, reqp, &replicated, &serverspp);
-                if (code == 0) {
-                    serversp = *serverspp;
-                    free_svr_list = 1;
-                }
-            }
-            cm_ResetServerBusyStatus(serversp);
-            if (free_svr_list) {
-                cm_FreeServerList(serverspp, 0);
-                free_svr_list = 0;
-                serversp = NULL;
-            }
-
             code = cm_FindVolumeByID(cellp, fidp->volume, userp, reqp,
                                      CM_GETVOL_FLAG_NO_LRU_UPDATE,
                                      &volp);
             if (code == 0) {
-                if (timeLeft > 7) {
-                    thrd_Sleep(5000);
-                    statep = cm_VolumeStateByID(volp, fidp->volume);
+                if (volServerspp == NULL) {
+                    code = cm_GetVolServerList(volp, fidp->volume, userp, reqp, &replicated, &volServerspp);
+                    if (code == 0)
+                        free_svr_list = 1;
+                }
+                if (volServerspp)
+                    cm_ResetServerBusyStatus(volServerspp);
+                if (free_svr_list) {
+                    cm_FreeServerList(volServerspp, 0);
+                    free_svr_list = 0;
+                    volServerspp = NULL;
+                }
+
+		/*
+		 * retry all replicas for 5 minutes waiting 15 seconds
+		 * between attempts.
+		 */
+		if (timeLeft > 20 && !(reqp->flags & CM_REQ_NORETRY) &&
+		    reqp->volbusyCount++ < 20)
+		{
+		    thrd_Sleep(15000);
                     retry = 1;
                 }
                 cm_UpdateVolumeStatus(volp, fidp->volume);
@@ -489,57 +596,32 @@ cm_Analyze(cm_conn_t *connp,
         } else {    /* VL Server query */
             osi_Log0(afsd_logp, "cm_Analyze passed CM_ERROR_ALLBUSY (VL Server).");
 
-            if (timeLeft > 7) {
+	    if (timeLeft > 7 && !(reqp->flags & CM_REQ_NORETRY) && vlServerspp)
+	    {
                 thrd_Sleep(5000);
 
-                if (serversp) {
-                    cm_ResetServerBusyStatus(serversp);
-                    retry = 1;
-                }
+		cm_ResetServerBusyStatus(vlServerspp);
+		retry = 1;
             }
         }
     }
 
     /* special codes:  VBUSY and VRESTARTING */
     else if (errorCode == VBUSY || errorCode == VRESTARTING) {
-        if (!serversp && fidp) {
-            code = cm_GetServerList(fidp, userp, reqp, &replicated, &serverspp);
-            if (code == 0) {
-                serversp = *serverspp;
-                free_svr_list = 1;
-            }
-        }
+	if (connp)
+	    _InterlockedAnd(&connp->flags, ~CM_CONN_FLAG_NEW);
 
-        switch ( errorCode ) {
-        case VBUSY:
-	    msgID = MSG_SERVER_REPORTS_VBUSY;
-            format = "Server %s reported busy when accessing volume %d in cell %s.";
-            break;
-        case VRESTARTING:
-	    msgID = MSG_SERVER_REPORTS_VRESTARTING;
-            format = "Server %s reported restarting when accessing volume %d in cell %s.";
-            break;
-        }
-
-        if (serverp && fidp) {
-            /* Log server being offline for this volume */
-            sprintf(addr, "%d.%d.%d.%d",
-                   ((serverp->addr.sin_addr.s_addr & 0xff)),
-                   ((serverp->addr.sin_addr.s_addr & 0xff00)>> 8),
-                   ((serverp->addr.sin_addr.s_addr & 0xff0000)>> 16),
-                   ((serverp->addr.sin_addr.s_addr & 0xff000000)>> 24));
-
-	    osi_Log3(afsd_logp, format, osi_LogSaveString(afsd_logp,addr), fidp->volume, cellp->name);
-	    LogEvent(EVENTLOG_WARNING_TYPE, msgID, addr, fidp->volume, cellp->name);
-        }
-
-        cm_SetServerBusyStatus(serversp, serverp);
-
-        if (fidp) { /* File Server query */
+        if (fidp) {
             code = cm_FindVolumeByID(cellp, fidp->volume, userp, reqp,
                                       CM_GETVOL_FLAG_NO_LRU_UPDATE,
                                       &volp);
             if (code == 0) {
+                if (volServerspp == NULL) {
+                    code = cm_GetVolServerList(volp, fidp->volume, userp, reqp, &replicated, &volServerspp);
+                    if (code == 0)
+                        free_svr_list = 1;
+                }
+
                 statep = cm_VolumeStateByID(volp, fidp->volume);
 
                 if (statep)
@@ -552,9 +634,40 @@ cm_Analyze(cm_conn_t *connp,
             }
         }
 
+        if (serverp) {
+            /* Log server being offline for this volume */
+            sprintf(addr, "%d.%d.%d.%d",
+                    ((serverp->addr.sin_addr.s_addr & 0xff)),
+                    ((serverp->addr.sin_addr.s_addr & 0xff00)>> 8),
+                    ((serverp->addr.sin_addr.s_addr & 0xff0000)>> 16),
+                     ((serverp->addr.sin_addr.s_addr & 0xff000000)>> 24));
+
+            switch ( errorCode ) {
+            case VBUSY:
+                if (invalid_status) {
+                    msgID = MSG_SERVER_REPLIED_BAD_STATUS;
+                    format = "Server %s replied with bad status info when accessing volume %d in cell %s.  Data discarded by cache manager.";
+                } else {
+                    msgID = MSG_SERVER_REPORTS_VBUSY;
+                    format = "Server %s reported busy when accessing volume %d in cell %s.";
+                }
+                break;
+            case VRESTARTING:
+                msgID = MSG_SERVER_REPORTS_VRESTARTING;
+                format = "Server %s reported restarting when accessing volume %d in cell %s.";
+                break;
+            }
+
+            osi_Log3(afsd_logp, format, osi_LogSaveString(afsd_logp,addr), fidp->volume, cellp->name);
+            LogEvent(EVENTLOG_WARNING_TYPE, msgID, addr, fidp->volume, cellp->name);
+
+            if (volServerspp)
+                cm_SetServerBusyStatus(volServerspp, serverp);
+        }
+
         if (free_svr_list) {
-            cm_FreeServerList(serverspp, 0);
-            serversp = NULL;
+            cm_FreeServerList(volServerspp, 0);
+            volServerspp = NULL;
             free_svr_list = 0;
         }
         retry = 1;
@@ -564,6 +677,9 @@ cm_Analyze(cm_conn_t *connp,
     else if (errorCode == VNOVOL || errorCode == VMOVED || errorCode == VOFFLINE ||
              errorCode == VSALVAGE || errorCode == VIO)
     {
+	if (connp)
+	    _InterlockedAnd(&connp->flags, ~CM_CONN_FLAG_NEW);
+
         /* In case of timeout */
         reqp->volumeError = errorCode;
 
@@ -612,15 +728,26 @@ cm_Analyze(cm_conn_t *connp,
             if ((errorCode == VMOVED || errorCode == VNOVOL || errorCode == VOFFLINE) &&
                 !(reqp->flags & CM_REQ_VOLUME_UPDATED))
             {
+                LONG_PTR oldSum, newSum;
+
+                oldSum = cm_ChecksumVolumeServerList(fidp, userp, reqp);
+
                 code = cm_ForceUpdateVolume(fidp, userp, reqp);
-                if (code == 0)
+                if (code == 0) {
                     location_updated = 1;
+                    newSum = cm_ChecksumVolumeServerList(fidp, userp, reqp);
+                }
 
-                /* Even if the update fails, there might still be another replica */
+                /*
+                 * Even if the update fails, there might still be another replica.
+                 * If the volume location list changed, permit another update on
+                 * a subsequent error.
+                 */
+                if (code || oldSum == newSum)
+                    reqp->flags |= CM_REQ_VOLUME_UPDATED;
 
-                reqp->flags |= CM_REQ_VOLUME_UPDATED;
                 osi_Log3(afsd_logp, "cm_Analyze called cm_ForceUpdateVolume cell %u vol %u code 0x%x",
-                        fidp->cell, fidp->volume, code);
+                         fidp->cell, fidp->volume, code);
             }
 
             if (statep) {
@@ -640,73 +767,75 @@ cm_Analyze(cm_conn_t *connp,
              * Mark server offline for this volume or delete the volume
              * from the server list if it was moved or is not present.
              */
-            if (!serversp || location_updated) {
-                code = cm_GetServerList(fidp, userp, reqp, &replicated, &serverspp);
-                if (code == 0) {
-                    serversp = *serverspp;
+            if (volServerspp == NULL || location_updated) {
+                code = cm_GetServerList(fidp, userp, reqp, &replicated, &volServerspp);
+                if (code == 0)
                     free_svr_list = 1;
-                }
             }
         }
 
-        lock_ObtainWrite(&cm_serverLock);
-        for (tsrp = serversp; tsrp; tsrp=tsrp->next) {
-            if (tsrp->status == srv_deleted)
-                continue;
 
-            sprintf(addr, "%d.%d.%d.%d",
-                     ((tsrp->server->addr.sin_addr.s_addr & 0xff)),
-                     ((tsrp->server->addr.sin_addr.s_addr & 0xff00)>> 8),
-                     ((tsrp->server->addr.sin_addr.s_addr & 0xff0000)>> 16),
-                     ((tsrp->server->addr.sin_addr.s_addr & 0xff000000)>> 24));
+        if (volServerspp) {
+            lock_ObtainWrite(&cm_serverLock);
+            for (tsrp = *volServerspp; tsrp; tsrp=tsrp->next) {
+                if (tsrp->status == srv_deleted)
+                    continue;
 
-            if (cm_ServerEqual(tsrp->server, serverp)) {
-                /* REDIRECT */
-                switch (errorCode) {
-                case VMOVED:
-                    osi_Log2(afsd_logp, "volume %u moved from server %s",
-                             fidp->volume, osi_LogSaveString(afsd_logp,addr));
-                    tsrp->status = srv_deleted;
-                    if (fidp)
-                        cm_RemoveVolumeFromServer(serverp, fidp->volume);
-                    break;
-                case VNOVOL:
-                    /*
-                     * The 1.6.0 and 1.6.1 file servers send transient VNOVOL errors which
-                     * are no indicative of the volume not being present.  For example,
-                     * VNOVOL can be sent during a transition to a VBUSY state prior to
-                     * salvaging or when cloning a .backup volume instance.  As a result
-                     * the cache manager must attempt at least one retry when a VNOVOL is
-                     * receive but there are no changes to the volume location information.
-                     */
-                    if (reqp->vnovolError > 0 && cm_ServerEqual(reqp->errorServp, serverp)) {
-                        osi_Log2(afsd_logp, "volume %u not present on server %s",
+                sprintf(addr, "%d.%d.%d.%d",
+                         ((tsrp->server->addr.sin_addr.s_addr & 0xff)),
+                         ((tsrp->server->addr.sin_addr.s_addr & 0xff00)>> 8),
+                         ((tsrp->server->addr.sin_addr.s_addr & 0xff0000)>> 16),
+                         ((tsrp->server->addr.sin_addr.s_addr & 0xff000000)>> 24));
+
+                if (cm_ServerEqual(tsrp->server, serverp)) {
+                    /* REDIRECT */
+                    switch (errorCode) {
+                    case VMOVED:
+                        osi_Log2(afsd_logp, "volume %u moved from server %s",
                                   fidp->volume, osi_LogSaveString(afsd_logp,addr));
                         tsrp->status = srv_deleted;
                         if (fidp)
                             cm_RemoveVolumeFromServer(serverp, fidp->volume);
-                    } else {
-                        osi_Log2(afsd_logp, "VNOVOL received for volume %u from server %s",
-                                 fidp->volume, osi_LogSaveString(afsd_logp,addr));
-                        if (replicated) {
-                            cm_SetServerBusyStatus(serversp, serverp);
+                        break;
+                    case VNOVOL:
+                        /*
+                        * The 1.6.0 and 1.6.1 file servers send transient VNOVOL errors which
+                        * are no indicative of the volume not being present.  For example,
+                        * VNOVOL can be sent during a transition to a VBUSY state prior to
+                        * salvaging or when cloning a .backup volume instance.  As a result
+                        * the cache manager must attempt at least one retry when a VNOVOL is
+                        * receive but there are no changes to the volume location information.
+                        */
+                        if (reqp->vnovolError > 0 && cm_ServerEqual(reqp->errorServp, serverp)) {
+                            osi_Log2(afsd_logp, "volume %u not present on server %s",
+                                      fidp->volume, osi_LogSaveString(afsd_logp,addr));
+                            tsrp->status = srv_deleted;
+                            if (fidp)
+                                cm_RemoveVolumeFromServer(serverp, fidp->volume);
                         } else {
-                            Sleep(2000);
+                            osi_Log2(afsd_logp, "VNOVOL received for volume %u from server %s",
+                                      fidp->volume, osi_LogSaveString(afsd_logp,addr));
+                            if (replicated) {
+                                if (tsrp->status == srv_not_busy)
+                                    tsrp->status = srv_busy;
+                            } else {
+                                Sleep(2000);
+                            }
                         }
+                        break;
+                    case VOFFLINE:
+                        osi_Log2(afsd_logp, "VOFFLINE received for volume %u from server %s",
+                                  fidp->volume, osi_LogSaveString(afsd_logp,addr));
+                        tsrp->status = srv_offline;
+                        break;
+                    default:
+                        osi_Log3(afsd_logp, "volume %u exists on server %s with status %u",
+                                  fidp->volume, osi_LogSaveString(afsd_logp,addr), tsrp->status);
                     }
-                    break;
-                case VOFFLINE:
-                    osi_Log2(afsd_logp, "VOFFLINE received for volume %u from server %s",
-                              fidp->volume, osi_LogSaveString(afsd_logp,addr));
-                    tsrp->status = srv_offline;
-                    break;
-                default:
-                    osi_Log3(afsd_logp, "volume %u exists on server %s with status %u",
-                             fidp->volume, osi_LogSaveString(afsd_logp,addr), tsrp->status);
                 }
             }
+            lock_ReleaseWrite(&cm_serverLock);
         }
-        lock_ReleaseWrite(&cm_serverLock);
 
         /* Remember that the VNOVOL error occurred */
         if (errorCode == VNOVOL) {
@@ -714,16 +843,25 @@ cm_Analyze(cm_conn_t *connp,
             reqp->vnovolError++;
         }
 
+        /* Remember that the VIO error occurred */
+        if (errorCode == VIO) {
+            reqp->errorServp = serverp;
+            reqp->vioCount++;
+        }
+
         /* Free the server list before cm_ForceUpdateVolume is called */
         if (free_svr_list) {
-            cm_FreeServerList(serverspp, 0);
-            serversp = NULL;
+            cm_FreeServerList(volServerspp, 0);
+            volServerspp = NULL;
             free_svr_list = 0;
         }
 
-        if ( timeLeft > 2 )
+        if ( timeLeft > 2 && reqp->vioCount < 100)
             retry = 1;
     } else if ( errorCode == VNOVNODE ) {
+	if (connp)
+	    _InterlockedAnd(&connp->flags, ~CM_CONN_FLAG_NEW);
+
 	if ( fidp ) {
 	    osi_Log4(afsd_logp, "cm_Analyze passed VNOVNODE cell %u vol %u vn %u uniq %u.",
 		      fidp->cell, fidp->volume, fidp->vnode, fidp->unique);
@@ -736,22 +874,29 @@ cm_Analyze(cm_conn_t *connp,
 		    pscp = cm_FindSCacheParent(scp);
 
 		lock_ObtainWrite(&scp->rw);
-		scp->flags |= CM_SCACHEFLAG_DELETED;
+		_InterlockedOr(&scp->flags, CM_SCACHEFLAG_DELETED);
 		lock_ObtainWrite(&cm_scacheLock);
                 cm_AdjustScacheLRU(scp);
-                cm_RemoveSCacheFromHashTable(scp);
 		lock_ReleaseWrite(&cm_scacheLock);
                 cm_LockMarkSCacheLost(scp);
 		lock_ReleaseWrite(&scp->rw);
+                if (RDR_Initialized)
+                    RDR_InvalidateObject(scp->fid.cell, scp->fid.volume, scp->fid.vnode, scp->fid.unique,
+                                          scp->fid.hash, scp->fileType, AFS_INVALIDATE_DELETED);
 		cm_ReleaseSCache(scp);
 
  		if (pscp) {
 		    if (cm_HaveCallback(pscp)) {
  			lock_ObtainWrite(&pscp->rw);
  			cm_DiscardSCache(pscp);
- 			lock_ReleaseWrite(&pscp->rw);
- 		    }
- 		    cm_ReleaseSCache(pscp);
+			lock_ReleaseWrite(&pscp->rw);
+
+                        if (RDR_Initialized)
+                            RDR_InvalidateObject(pscp->fid.cell, pscp->fid.volume, pscp->fid.vnode, pscp->fid.unique,
+                                                 pscp->fid.hash, pscp->fileType, AFS_INVALIDATE_EXPIRED);
+
+		    }
+		    cm_ReleaseSCache(pscp);
  		}
 	    }
 	} else {
@@ -804,7 +949,7 @@ cm_Analyze(cm_conn_t *connp,
             if (!fidp) { /* vldb */
                 retry = 1;
             } else { /* file */
-                cm_volume_t *volp = cm_GetVolumeByFID(fidp);
+		cm_volume_t *volp = cm_FindVolumeByFID(fidp, userp, reqp);
                 if (volp) {
                     if (fidp->volume == cm_GetROVolumeID(volp))
                         retry = 1;
@@ -832,25 +977,7 @@ cm_Analyze(cm_conn_t *connp,
         osi_Log1(afsd_logp, "cm_Analyze: Path MTU may have been exceeded addr[%s]",
                  osi_LogSaveString(afsd_logp,addr));
 
-        retry = 1;
-    }
-    else if (errorCode == RX_CALL_BUSY) {
-        /*
-         * RPC failed because the selected call channel
-         * is currently busy on the server.  Unconditionally
-         * retry the request so an alternate call channel can be used.
-         */
-        if (serverp)
-            sprintf(addr, "%d.%d.%d.%d",
-                    ((serverp->addr.sin_addr.s_addr & 0xff)),
-                    ((serverp->addr.sin_addr.s_addr & 0xff00)>> 8),
-                    ((serverp->addr.sin_addr.s_addr & 0xff0000)>> 16),
-                    ((serverp->addr.sin_addr.s_addr & 0xff000000)>> 24));
-
-        LogEvent(EVENTLOG_WARNING_TYPE, MSG_RX_BUSY_CALL_CHANNEL, addr);
-        osi_Log1(afsd_logp, "cm_Analyze: Retry RPC due to busy call channel addr[%s]",
-                 osi_LogSaveString(afsd_logp,addr));
-        retry = 1;
+        retry = 2;
     }
     else if (errorCode == VNOSERVICE) {
         /*
@@ -863,6 +990,9 @@ cm_Analyze(cm_conn_t *connp,
          * The RPC was not serviced so it can be retried and any
          * existing status information is still valid.
          */
+	if (connp)
+	    _InterlockedAnd(&connp->flags, ~CM_CONN_FLAG_NEW);
+
         if (fidp) {
             if (serverp)
                 sprintf(addr, "%d.%d.%d.%d",
@@ -877,85 +1007,7 @@ cm_Analyze(cm_conn_t *connp,
                      osi_LogSaveString(afsd_logp,addr), fidp->volume, cellp->name);
         }
 
-        if (timeLeft > 2)
-            retry = 1;
-    }
-    else if (errorCode == RX_CALL_IDLE) {
-        /*
-         * RPC failed because the server failed to respond with data
-         * within the idle dead timeout period.  This could be for a variety
-         * of reasons:
-         *  1. The server could have a bad partition such as a failed
-         *     disk or iSCSI target and all I/O to that partition is
-         *     blocking on the server and will never complete.
-         *
-         *  2. The server vnode may be locked by another client request
-         *     that is taking a very long time.
-         *
-         *  3. The server may have a very long queue of requests
-         *     pending and is unable to process this request.
-         *
-         *  4. The server could be malicious and is performing a denial
-         *     of service attack against the client.
-         *
-         * If this is a request against a .readonly with alternate sites
-         * the server should be marked down for this request and the
-         * client should fail over to another server.  If this is a
-         * request against a single source, the client may retry once.
-         */
-        if (serverp)
-            sprintf(addr, "%d.%d.%d.%d",
-                    ((serverp->addr.sin_addr.s_addr & 0xff)),
-                    ((serverp->addr.sin_addr.s_addr & 0xff00)>> 8),
-                    ((serverp->addr.sin_addr.s_addr & 0xff0000)>> 16),
-                    ((serverp->addr.sin_addr.s_addr & 0xff000000)>> 24));
-
-        if (fidp) {
-            code = cm_FindVolumeByID(cellp, fidp->volume, userp, reqp,
-                                     CM_GETVOL_FLAG_NO_LRU_UPDATE,
-                                     &volp);
-            if (code == 0) {
-                statep = cm_VolumeStateByID(volp, fidp->volume);
-
-                if (statep)
-                    replicated = (statep->flags & CM_VOL_STATE_FLAG_REPLICATED);
-
-                lock_ObtainRead(&cm_volumeLock);
-                cm_PutVolume(volp);
-                lock_ReleaseRead(&cm_volumeLock);
-                volp = NULL;
-            }
-
-            if (storeOp)
-                scp = cm_FindSCache(fidp);
-	    if (scp) {
-                if (cm_HaveCallback(scp)) {
-                    lock_ObtainWrite(&scp->rw);
-                    cm_DiscardSCache(scp);
-                    lock_ReleaseWrite(&scp->rw);
-
-                    /*
-                     * We really should notify the redirector that we discarded
-                     * the status information but doing so in this case is not
-                     * safe as it can result in a deadlock with extent release
-                     * processing.
-                     */
-                }
-                cm_ReleaseSCache(scp);
-            }
-        }
-
-        if (replicated && serverp) {
-            reqp->errorServp = serverp;
-            reqp->tokenError = errorCode;
-
-            if (timeLeft > 2)
-                retry = 1;
-        }
-
-        LogEvent(EVENTLOG_WARNING_TYPE, MSG_RX_IDLE_DEAD_TIMEOUT, addr, retry);
-        osi_Log2(afsd_logp, "cm_Analyze: RPC failed due to idle dead timeout addr[%s] retry=%u",
-                 osi_LogSaveString(afsd_logp,addr), retry);
+	retry = 2;
     }
     else if (errorCode == RX_CALL_DEAD) {
         /* mark server as down */
@@ -971,7 +1023,8 @@ cm_Analyze(cm_conn_t *connp,
                  (reqp->flags & CM_REQ_NEW_CONN_FORCED ? "yes" : "no"));
 
         if (serverp) {
-            if ((reqp->flags & CM_REQ_NEW_CONN_FORCED)) {
+	    if ((connp->flags & CM_CONN_FLAG_NEW) ||
+		(reqp->flags & CM_REQ_NEW_CONN_FORCED)) {
                 lock_ObtainMutex(&serverp->mx);
                 if (!(serverp->flags & CM_SERVERFLAG_DOWN)) {
                     _InterlockedOr(&serverp->flags, CM_SERVERFLAG_DOWN);
@@ -1006,9 +1059,23 @@ cm_Analyze(cm_conn_t *connp,
         if ( timeLeft > 2 )
             retry = 1;
     }
-    else if (errorCode >= -64 && errorCode < 0) {
-        /* mark server as down */
-        if (serverp)
+    else if (isNetworkError(errorCode)) {
+	/*
+	 * any other rx error - mark server as down.
+	 *
+	 * The most likely error to receive is RX_INVALID_OPERATION which
+	 * can be received as a result of an unrecognized rx service id or
+	 * an unrecognized security class.  Failing to mark the server down
+	 * when a service id or security class that is expected to be
+	 * recognized is not will result in an infinite retry loop.  Instead
+	 * mark the server down.  If we are ever able to successfully
+	 * communicate with it again it will be marked up via a probe.
+	 *
+	 * The most common scenario for this behavior would be an AuriStor
+	 * file server being replaced by an AFS3 file server or a reflected
+	 * packet.
+	 */
+	if (serverp)
             sprintf(addr, "%d.%d.%d.%d",
                     ((serverp->addr.sin_addr.s_addr & 0xff)),
                     ((serverp->addr.sin_addr.s_addr & 0xff00)>> 8),
@@ -1021,24 +1088,30 @@ cm_Analyze(cm_conn_t *connp,
                  (reqp->flags & CM_REQ_NEW_CONN_FORCED ? "yes" : "no"));
 
         if (serverp) {
-            if (reqp->flags & CM_REQ_NEW_CONN_FORCED) {
-                reqp->errorServp = serverp;
-                reqp->tokenError = errorCode;
-            } else {
+	    if ((connp->flags & CM_CONN_FLAG_NEW) ||
+		(reqp->flags & CM_REQ_NEW_CONN_FORCED)) {
+		lock_ObtainMutex(&serverp->mx);
+		if (!(serverp->flags & CM_SERVERFLAG_DOWN)) {
+		    _InterlockedOr(&serverp->flags, CM_SERVERFLAG_DOWN);
+		    serverp->downTime = time(NULL);
+		}
+		lock_ReleaseMutex(&serverp->mx);
+	    } else {
                 reqp->flags |= CM_REQ_NEW_CONN_FORCED;
                 forcing_new = 1;
                 cm_ForceNewConnections(serverp);
             }
+
+            if ( timeLeft > 2 )
+                retry = 1;
         }
-        if ( timeLeft > 2 )
-            retry = 1;
     }
     else if (errorCode == RXKADEXPIRED) {
         osi_Log1(afsd_logp, "cm_Analyze: rxkad error code 0x%x (RXKADEXPIRED)",
                  errorCode);
         if (!dead_session) {
             lock_ObtainMutex(&userp->mx);
-            ucellp = cm_GetUCell(userp, serverp->cellp);
+            ucellp = cm_GetUCell(userp, cellp);
             if (ucellp->ticketp) {
                 free(ucellp->ticketp);
                 ucellp->ticketp = NULL;
@@ -1046,8 +1119,13 @@ cm_Analyze(cm_conn_t *connp,
             _InterlockedAnd(&ucellp->flags, ~CM_UCELLFLAG_RXKAD);
             ucellp->gen++;
             lock_ReleaseMutex(&userp->mx);
-            if ( timeLeft > 2 )
-                retry = 1;
+
+            reqp->flags |= CM_REQ_NEW_CONN_FORCED;
+            forcing_new = 1;
+            cm_ForceNewConnections(serverp);
+
+	    if ( timeLeft > 2 )
+		retry = 2;
         }
     } else if (errorCode >= ERROR_TABLE_BASE_RXK && errorCode < ERROR_TABLE_BASE_RXK + 256) {
         char * s = "unknown error";
@@ -1069,6 +1147,9 @@ cm_Analyze(cm_conn_t *connp,
         osi_Log2(afsd_logp, "cm_Analyze: rxkad error code 0x%x (%s)",
                   errorCode, s);
 
+	if (connp)
+	    _InterlockedAnd(&connp->flags, ~CM_CONN_FLAG_NEW);
+
         if (serverp) {
             reqp->errorServp = serverp;
             reqp->tokenError = errorCode;
@@ -1082,16 +1163,23 @@ cm_Analyze(cm_conn_t *connp,
          * to answer our query.  Therefore, we will retry the request
          * and force the use of another server.
          */
+	if (connp)
+	    _InterlockedAnd(&connp->flags, ~CM_CONN_FLAG_NEW);
+
         if (serverp) {
             reqp->errorServp = serverp;
             reqp->tokenError = errorCode;
             retry = 1;
         }
     } else if (errorCode == VICECONNBAD || errorCode == VICETOKENDEAD) {
-	cm_ForceNewConnections(serverp);
-        if ( timeLeft > 2 )
-            retry = 1;
+        reqp->flags |= CM_REQ_NEW_CONN_FORCED;
+        forcing_new = 1;
+        cm_ForceNewConnections(serverp);
+	retry = 2;
     } else {
+	if (connp)
+	    _InterlockedAnd(&connp->flags, ~CM_CONN_FLAG_NEW);
+
         if (errorCode) {
             char * s = "unknown error";
             switch ( errorCode ) {
@@ -1158,8 +1246,6 @@ cm_Analyze(cm_conn_t *connp,
             case VL_BADMASK        : s = "VL_BADMASK";         break;
 	    case CM_ERROR_NOSUCHCELL	    : s = "CM_ERROR_NOSUCHCELL";         break;
 	    case CM_ERROR_NOSUCHVOLUME	    : s = "CM_ERROR_NOSUCHVOLUME";       break;
-	    case CM_ERROR_TIMEDOUT	    : s = "CM_ERROR_TIMEDOUT";           break;
-	    case CM_ERROR_RETRY		    : s = "CM_ERROR_RETRY";              break;
 	    case CM_ERROR_NOACCESS	    : s = "CM_ERROR_NOACCESS";           break;
 	    case CM_ERROR_NOSUCHFILE	    : s = "CM_ERROR_NOSUCHFILE";         break;
 	    case CM_ERROR_STOPNOW	    : s = "CM_ERROR_STOPNOW";            break;
@@ -1207,6 +1293,8 @@ cm_Analyze(cm_conn_t *connp,
 	    case CM_ERROR_ALLDOWN           : s = "CM_ERROR_ALLDOWN";            break;
 	    case CM_ERROR_TOOFEWBUFS	    : s = "CM_ERROR_TOOFEWBUFS";         break;
 	    case CM_ERROR_TOOMANYBUFS	    : s = "CM_ERROR_TOOMANYBUFS";        break;
+            case UAEIO                      : s = "UAEIO";                       break;
+            case EIO                        : s = "EIO";                         break;
             }
             osi_Log2(afsd_logp, "cm_Analyze: ignoring error code 0x%x (%s)",
                      errorCode, s);
@@ -1215,17 +1303,17 @@ cm_Analyze(cm_conn_t *connp,
     }
 
     /* If not allowed to retry, don't */
-    if (!forcing_new && (reqp->flags & CM_REQ_NORETRY) &&
-        (errorCode != RX_MSGSIZE && errorCode != RX_CALL_BUSY))
+    if (dead_session)
 	retry = 0;
-    else if (retry && dead_session)
-        retry = 0;
+    else if (!forcing_new && (retry < 2) && (reqp->flags & CM_REQ_NORETRY))
+	retry = 0;
 
     /* drop this on the way out */
     if (connp)
         cm_PutConn(connp);
 
     /*
+
      * clear the volume updated flag if we succeed.
      * this way the flag will not prevent a subsequent volume
      * from being updated if necessary.
@@ -1235,12 +1323,12 @@ cm_Analyze(cm_conn_t *connp,
         reqp->flags &= ~CM_REQ_VOLUME_UPDATED;
     }
 
-    if ( serversp &&
+    if ( vlServerspp &&
          errorCode != VBUSY &&
          errorCode != VRESTARTING &&
          errorCode != CM_ERROR_ALLBUSY)
     {
-        cm_ResetServerBusyStatus(serversp);
+        cm_ResetServerBusyStatus(vlServerspp);
     }
 
     /* retry until we fail to find a connection */
@@ -1254,15 +1342,15 @@ long cm_ConnByMServers(cm_serverRef_t *serversp, afs_uint32 replicated, cm_user_
     cm_serverRef_t *tsrp;
     cm_server_t *tsp;
     long firstError = 0;
-    int someBusy = 0, someOffline = 0, allOffline = 1, allBusy = 1, allDown = 1;
+    int someBusy = 0, someOffline = 0, allOffline = 1, allBusy = 1, allDown = 1, allDeleted = 1;
 #ifdef SET_RX_TIMEOUTS_TO_TIMELEFT
     long timeUsed, timeLeft, hardTimeLeft;
 #endif
     *connpp = NULL;
 
     if (serversp == NULL) {
-	osi_Log1(afsd_logp, "cm_ConnByMServers returning 0x%x", CM_ERROR_ALLDOWN);
-	return CM_ERROR_ALLDOWN;
+	osi_Log1(afsd_logp, "cm_ConnByMServers returning 0x%x", CM_ERROR_EMPTY);
+	return CM_ERROR_EMPTY;
     }
 
 #ifdef SET_RX_TIMEOUTS_TO_TIMELEFT
@@ -1278,12 +1366,14 @@ long cm_ConnByMServers(cm_serverRef_t *serversp, afs_uint32 replicated, cm_user_
         if (tsrp->status == srv_deleted)
             continue;
 
+        allDeleted = 0;
+
         tsp = tsrp->server;
         if (reqp->errorServp) {
             /*
              * search the list until we find the server
              * that failed last time.  When we find it
-             * clear the error, skip it and try the one
+             * clear the error, skip it and try the next one
              * in the list.
              */
             if (tsp == reqp->errorServp)
@@ -1335,7 +1425,9 @@ long cm_ConnByMServers(cm_serverRef_t *serversp, afs_uint32 replicated, cm_user_
     lock_ReleaseRead(&cm_serverLock);
 
     if (firstError == 0) {
-        if (allDown) {
+        if (allDeleted) {
+            firstError = CM_ERROR_EMPTY;
+        } else if (allDown) {
             firstError = (reqp->tokenError ? reqp->tokenError :
                           (reqp->idleError ? RX_CALL_TIMEOUT : CM_ERROR_ALLDOWN));
             /*
@@ -1440,13 +1532,15 @@ static void cm_NewRXConnection(cm_conn_t *tcp, cm_ucell_t *ucellp,
                                     secObjp,
                                     secIndex);
     rx_SetConnDeadTime(tcp->rxconnp, ConnDeadtimeout);
-    rx_SetConnHardDeadTime(tcp->rxconnp, HardDeadtimeout);
+    if (smb_Enabled || tcp->serverp->type == CM_SERVER_VLDB)
+        rx_SetConnHardDeadTime(tcp->rxconnp, HardDeadtimeout);
 
     /*
-     * Setting idle dead timeout to a non-zero value activates RX_CALL_IDLE errors
+     * Setting idle dead timeout to a non-zero value activates RX_CALL_TIMEOUT
+     * errors if the call is idle for a certain amount of time.
      */
     if (replicated) {
-        tcp->flags &= CM_CONN_FLAG_REPLICATION;
+	_InterlockedOr(&tcp->flags, CM_CONN_FLAG_REPLICATION);
         rx_SetConnIdleDeadTime(tcp->rxconnp, ReplicaIdleDeadtimeout);
     } else {
         rx_SetConnIdleDeadTime(tcp->rxconnp, IdleDeadtimeout);
@@ -1472,6 +1566,9 @@ static void cm_NewRXConnection(cm_conn_t *tcp, cm_ucell_t *ucellp,
     tcp->ucgen = ucellp->gen;
     if (secObjp)
         rxs_Release(secObjp);   /* Decrement the initial refCount */
+
+    _InterlockedAnd(&tcp->flags, ~CM_CONN_FLAG_FORCE_NEW);
+    _InterlockedOr(&tcp->flags, CM_CONN_FLAG_NEW);
 }
 
 long cm_ConnByServer(cm_server_t *serverp, cm_user_t *userp, afs_uint32 replicated, cm_conn_t **connpp)
@@ -1485,6 +1582,9 @@ long cm_ConnByServer(cm_server_t *serverp, cm_user_t *userp, afs_uint32 replicat
         userp = cm_rootUserp;
 
     lock_ObtainMutex(&userp->mx);
+    /* find ucell structure */
+    ucellp = cm_GetUCell(userp, serverp->cellp);
+
     lock_ObtainRead(&cm_connLock);
     for (tcp = serverp->connsp; tcp; tcp=tcp->nextp) {
         if (tcp->userp == userp &&
@@ -1493,15 +1593,16 @@ long cm_ConnByServer(cm_server_t *serverp, cm_user_t *userp, afs_uint32 replicat
             break;
     }
 
-    /* find ucell structure */
-    ucellp = cm_GetUCell(userp, serverp->cellp);
     if (!tcp) {
         lock_ConvertRToW(&cm_connLock);
         for (tcp = serverp->connsp; tcp; tcp=tcp->nextp) {
-            if (tcp->userp == userp)
-                break;
+	    if (tcp->userp == userp &&
+		 (replicated && (tcp->flags & CM_CONN_FLAG_REPLICATION) ||
+		  !replicated && !(tcp->flags & CM_CONN_FLAG_REPLICATION)))
+		break;
         }
         if (tcp) {
+            InterlockedIncrement(&tcp->refCount);
             lock_ReleaseWrite(&cm_connLock);
             goto haveconn;
         }
@@ -1520,10 +1621,10 @@ long cm_ConnByServer(cm_server_t *serverp, cm_user_t *userp, afs_uint32 replicat
         lock_ReleaseWrite(&cm_connLock);
         lock_ReleaseMutex(&userp->mx);
     } else {
+        InterlockedIncrement(&tcp->refCount);
         lock_ReleaseRead(&cm_connLock);
       haveconn:
         lock_ReleaseMutex(&userp->mx);
-        InterlockedIncrement(&tcp->refCount);
 
         lock_ObtainMutex(&tcp->mx);
         if ((tcp->flags & CM_CONN_FLAG_FORCE_NEW) ||
@@ -1534,7 +1635,6 @@ long cm_ConnByServer(cm_server_t *serverp, cm_user_t *userp, afs_uint32 replicat
                 osi_Log0(afsd_logp, "cm_ConnByServer replace connection due to token update");
             else
                 osi_Log0(afsd_logp, "cm_ConnByServer replace connection due to crypt change");
-            tcp->flags &= ~CM_CONN_FLAG_FORCE_NEW;
             rx_SetConnSecondsUntilNatPing(tcp->rxconnp, 0);
             rx_DestroyConnection(tcp->rxconnp);
             cm_NewRXConnection(tcp, ucellp, serverp, replicated);
@@ -1626,13 +1726,12 @@ long cm_ConnFromVolume(struct cm_volume *volp, unsigned long volid, struct cm_us
     long code;
     cm_serverRef_t **serverspp;
     afs_uint32 replicated;
-    cm_vol_state_t * volstatep;
 
     *connpp = NULL;
 
-    volstatep = cm_VolumeStateByID(volp, volid);
-    replicated = (volstatep->flags & CM_VOL_STATE_FLAG_REPLICATED);
-    serverspp = cm_GetVolServers(volp, volid, userp, reqp);
+    code = cm_GetVolServerList(volp, volid, userp, reqp, &replicated, &serverspp);
+    if (code)
+        return code;
 
     code = cm_ConnByMServers(*serverspp, replicated, userp, reqp, connpp);
     cm_FreeServerList(serverspp, 0);
@@ -1655,10 +1754,13 @@ void cm_ForceNewConnections(cm_server_t *serverp)
 {
     cm_conn_t *tcp;
 
+    if (serverp == NULL)
+	return;
+
     lock_ObtainWrite(&cm_connLock);
     for (tcp = serverp->connsp; tcp; tcp=tcp->nextp) {
 	lock_ObtainMutex(&tcp->mx);
-	tcp->flags |= CM_CONN_FLAG_FORCE_NEW;
+	_InterlockedOr(&tcp->flags, CM_CONN_FLAG_FORCE_NEW);
 	lock_ReleaseMutex(&tcp->mx);
     }
     lock_ReleaseWrite(&cm_connLock);

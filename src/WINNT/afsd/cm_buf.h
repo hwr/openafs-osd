@@ -13,12 +13,11 @@
 #define OPENAFS_WINNT_AFSD_BUF_H 1
 
 #include <osi.h>
+#include <opr/jhash.h>
+
 #ifdef DISKCACHE95
 #include "cm_diskcache.h"
 #endif /* DISKCACHE95 */
-
-/* default # of buffers if not changed */
-#define CM_BUF_BUFFERS	100
 
 /* default buffer size */
 #define CM_BUF_BLOCKSIZE CM_CONFIGDEFAULT_BLOCKSIZE
@@ -28,13 +27,10 @@
 #define CM_BUF_CACHETYPE_VIRTUAL 2
 extern int buf_cacheType;
 
-/* force it to be signed so that mod comes out positive or 0 */
-#define BUF_HASH(fidp,offsetp) ((((fidp)->hash \
-				+(offsetp)->LowPart) / cm_data.buf_blockSize)	\
-				   % cm_data.buf_hashSize)
+#define BUF_HASH(fidp, offsetp) \
+    (opr_jhash_int2((offsetp)->LowPart, (offsetp)->HighPart, (fidp)->hash) & (cm_data.buf_hashSize - 1))
 
-/* another hash fn */
-#define BUF_FILEHASH(fidp) ((fidp)->hash % cm_data.buf_hashSize)
+#define BUF_FILEHASH(fidp) ((fidp)->hash & (cm_data.buf_hashSize - 1))
 
 #define CM_BUF_MAGIC    ('B' | 'U' <<8 | 'F'<<16 | 'F'<<24)
 
@@ -42,8 +38,8 @@ extern int buf_cacheType;
 
 /* represents a single buffer */
 typedef struct cm_buf {
-    osi_queue_t q;		/* queue of all zero-refcount buffers */
-    afs_uint32 qFlags;		/* queue/hash state flags - buf_globalLock */
+    osi_queue_t    q;		/* queue: buf_freeList and buf_redirList */
+    afs_uint32     qFlags;	/* queue/hash state flags - buf_globalLock */
     afs_uint32     magic;
     struct cm_buf *allp;	/* next in all list */
     struct cm_buf *hashp;	/* hash bucket pointer */
@@ -77,7 +73,7 @@ typedef struct cm_buf {
     afs_uint32 waitRequests;    /* num of thread wait requests */
 
     afs_uint32 dirty_offset;    /* offset from beginning of buffer containing dirty bytes */
-    afs_uint32 dirty_length;      /* number of dirty bytes within the buffer */
+    afs_uint32 dirty_length;    /* number of dirty bytes within the buffer */
 
 #ifdef DISKCACHE95
     cm_diskcache_t *dcp;        /* diskcache structure */
@@ -88,7 +84,16 @@ typedef struct cm_buf {
 #else
     void * dummy;
 #endif
+
+    /* redirector state - protected by buf_globalLock */
+    osi_queue_t redirq;         /* queue: cm_scache_t redirList */
+    time_t      redirLastAccess;/* last time redir accessed the buffer */
+    time_t      redirReleaseRequested;
+
+    unsigned char md5cksum[16]; /* md5 checksum of the block pointed to by datap */
 } cm_buf_t;
+
+#define redirq_to_cm_buf_t(q) ((q) ? (cm_buf_t *)((char *) (q) - offsetof(cm_buf_t, redirq)) : NULL)
 
 /* values for cmFlags */
 #define CM_BUF_CMFETCHING	1	/* fetching this buffer */
@@ -132,8 +137,6 @@ extern long buf_Init(int newFile, cm_buf_ops_t *, afs_uint64 nbuffers);
 
 extern void buf_Shutdown(void);
 
-extern long buf_CountFreeList(void);
-
 #ifdef DEBUG_REFCOUNT
 extern void buf_ReleaseDbg(cm_buf_t *, char *, long);
 
@@ -167,9 +170,11 @@ extern cm_buf_t *buf_FindAllLocked(struct cm_fid *, osi_hyper_t *, afs_uint32 fl
 
 extern cm_buf_t *buf_FindAll(struct cm_fid *, osi_hyper_t *, afs_uint32 flags);
 
-extern long buf_GetNewLocked(struct cm_scache *, osi_hyper_t *, cm_req_t *, cm_buf_t **);
+extern long buf_GetNewLocked(struct cm_scache *, osi_hyper_t *, cm_req_t *, afs_uint32, cm_buf_t **);
 
-extern long buf_Get(struct cm_scache *, osi_hyper_t *, cm_req_t *, cm_buf_t **);
+extern long buf_Get(struct cm_scache *, osi_hyper_t *, cm_req_t *, afs_uint32, cm_buf_t **);
+
+#define BUF_GET_FLAG_BUFCREATE_LOCKED   1
 
 extern afs_uint32 buf_CleanLocked(cm_scache_t *, cm_buf_t *, cm_req_t *, afs_uint32 flags, afs_uint32 *);
 
@@ -183,7 +188,7 @@ extern long buf_CleanAndReset(void);
 
 extern void buf_ReserveBuffers(afs_uint64);
 
-extern int buf_TryReserveBuffers(afs_uint64);
+extern afs_uint64 buf_TryReserveBuffers(afs_uint64);
 
 extern void buf_UnreserveBuffers(afs_uint64);
 
@@ -212,10 +217,57 @@ extern long buf_DirtyBuffersExist(cm_fid_t * fidp);
 
 extern long buf_CleanDirtyBuffers(cm_scache_t *scp);
 
+extern long buf_InvalidateBuffers(cm_scache_t * scp);
+
+extern long buf_RDRBuffersExist(cm_fid_t *fidp);
+
+extern long buf_ClearRDRFlag(cm_scache_t *scp, char * reason);
+
 extern long buf_ForceDataVersion(cm_scache_t * scp, afs_uint64 fromVersion, afs_uint64 toVersion);
 
 extern int cm_DumpBufHashTable(FILE *outputFile, char *cookie, int lock);
 
+extern void buf_ComputeCheckSum(cm_buf_t *bp);
+
+extern int  buf_ValidateCheckSum(cm_buf_t *bp);
+
+extern const char *buf_HexCheckSum(cm_buf_t * bp);
+
+extern afs_uint32
+buf_RDRShakeSomeExtentsFree(cm_req_t *reqp, afs_uint32 oneFid, afs_uint32 minage);
+
+extern afs_uint32
+buf_RDRShakeAnExtentFree(cm_buf_t *bufp, cm_req_t *reqp);
+
+extern afs_uint32
+buf_RDRShakeFileExtentsFree(cm_scache_t *scp, cm_req_t *reqp);
+
+extern void
+buf_InsertToRedirQueue(cm_scache_t *scp, cm_buf_t *bufp);
+
+extern void
+buf_RemoveFromRedirQueue(cm_scache_t *scp, cm_buf_t *bufp);
+
+extern void
+buf_MoveToHeadOfRedirQueue(cm_scache_t *scp, cm_buf_t *bufp);
+
+#ifdef _M_IX86
+#define buf_IncrementRedirCount()  InterlockedIncrement(&cm_data.buf_redirCount)
+#define buf_DecrementRedirCount()  InterlockedDecrement(&cm_data.buf_redirCount)
+#define buf_IncrementFreeCount()   InterlockedIncrement(&cm_data.buf_freeCount)
+#define buf_DecrementFreeCount()   InterlockedDecrement(&cm_data.buf_freeCount)
+#define buf_IncrementUsedCount()   InterlockedIncrement(&cm_data.buf_usedCount)
+#define buf_DecrementUsedCount()   InterlockedDecrement(&cm_data.buf_usedCount)
+#else
+#define buf_IncrementRedirCount()  InterlockedIncrement64(&cm_data.buf_redirCount)
+#define buf_DecrementRedirCount()  InterlockedDecrement64(&cm_data.buf_redirCount)
+#define buf_IncrementFreeCount()   InterlockedIncrement64(&cm_data.buf_freeCount)
+#define buf_DecrementFreeCount()   InterlockedDecrement64(&cm_data.buf_freeCount)
+#define buf_IncrementUsedCount()   InterlockedIncrement64(&cm_data.buf_usedCount)
+#define buf_DecrementUsedCount()   InterlockedDecrement64(&cm_data.buf_usedCount)
+#endif
+
 /* error codes */
 #define CM_BUF_EXISTS	1	/* buffer exists, and shouldn't */
+
 #endif /* OPENAFS_WINNT_AFSD_BUF_H */

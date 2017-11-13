@@ -22,6 +22,11 @@
  * SOFTWARE.
  */
 
+
+#include <afsconfig.h>
+#include <afs/param.h>
+#include <roken.h>
+
 #include<windows.h>
 #include <wchar.h>
 #define _CRT_RAND_S
@@ -623,7 +628,7 @@ NET_API_STATUS NetrShareEnum(
             continue;
         }
 
-        cm_GetSCache(&entryp->fid, &scp, userp, &req);
+        cm_GetSCache(&entryp->fid, NULL, &scp, userp, &req);
 
         switch (InfoStruct->Level) {
         case 2:
@@ -730,22 +735,7 @@ NET_API_STATUS NetrShareGetInfo(
 
     dscp = cm_RootSCachep(userp, &req);
 
-    /* Allocate the memory for the response */
-    switch (Level) {
-    case 2:
-        InfoStruct->ShareInfo2 = MIDL_user_allocate(sizeof(SHARE_INFO_2));
-        break;
-    case 1:
-        InfoStruct->ShareInfo1 = MIDL_user_allocate(sizeof(SHARE_INFO_1));
-        break;
-    case 0:
-        InfoStruct->ShareInfo0 = MIDL_user_allocate(sizeof(SHARE_INFO_0));
-        break;
-    }
-
-    if (InfoStruct->ShareInfo0 == NULL) {
-        return ERROR_NOT_ENOUGH_MEMORY;
-    }
+    InfoStruct->ShareInfo0 = NULL;
 
     /*
      * NetName will be:
@@ -805,7 +795,10 @@ NET_API_STATUS NetrShareGetInfo(
         if (allSubmount) {
             scp = dscp;
             cm_HoldSCache(scp);
-        }
+	    code = 0;
+	} else {
+	    code = CM_ERROR_NOSUCHPATH;
+	}
     } else {
         /*
          * Could be a Submount, a directory entry, or a cell name we
@@ -840,11 +833,40 @@ NET_API_STATUS NetrShareGetInfo(
                     code == CM_ERROR_BPLUS_NOMATCH)
                     code = cm_NameI(dscp, pathstr, CM_FLAG_CASEFOLD | CM_FLAG_FOLLOW,
                                     userp, NULL, &req, &scp);
-            }
+	    } else {
+		code = CM_ERROR_NOSUCHPATH;
+	    }
         }
     }
 
     if (scp) {
+	/* Allocate the memory for the response */
+	switch (Level) {
+	case 2:
+	    InfoStruct->ShareInfo2 = MIDL_user_allocate(sizeof(SHARE_INFO_2));
+	    break;
+	case 1:
+	    InfoStruct->ShareInfo1 = MIDL_user_allocate(sizeof(SHARE_INFO_1));
+	    break;
+	case 0:
+	    InfoStruct->ShareInfo0 = MIDL_user_allocate(sizeof(SHARE_INFO_0));
+	    break;
+	case 501:
+	case 502:
+	case 503:
+	case 1004:
+	case 1005:
+	case 1006:
+	default:
+	    cm_ReleaseSCache(scp);
+	    return HRESULT_FROM_WIN32(ERROR_INVALID_LEVEL);
+	}
+
+	if (InfoStruct->ShareInfo0 == NULL) {
+	    cm_ReleaseSCache(scp);
+	    return HRESULT_FROM_WIN32(ERROR_NOT_ENOUGH_MEMORY);
+	}
+
         switch (Level) {
         case 2:
             /* for share level security */

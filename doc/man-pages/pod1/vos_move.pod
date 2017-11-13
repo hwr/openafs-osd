@@ -13,7 +13,9 @@ B<vos move> S<<< B<-id> <I<volume name or ID>> >>>
     S<<< B<-toserver> <I<machine name on destination>> >>>
     S<<< B<-topartition> <I<partition name on destination>> >>>
     [B<-live>] S<<< [B<-cell> <I<cell name>>] >>> [B<-noauth>] [B<-localauth>]
-    [B<-verbose>] [B<-encrypt>] [B<-noresolve>] [B<-help>]
+    [B<-verbose>] [B<-encrypt>] [B<-noresolve>]
+    S<<< [B<-config> <I<config directory>>] >>>
+    [B<-help>]
 
 B<vos m> S<<< B<-i> <I<volume name or ID>> >>>
     S<<< B<-froms> <I<machine name on source>> >>>
@@ -21,7 +23,9 @@ B<vos m> S<<< B<-i> <I<volume name or ID>> >>>
     S<<< B<-tos> <I<machine name on destination>> >>>
     S<<< B<-top> <I<partition name on destination>> >>>
     [B<-li>] S<<< [B<-c> <I<cell name>>] >>> [B<-noa>]
-    [B<-lo>] [B<-v>] [B<-e>] [B<-nor>] [B<-h>]
+    [B<-lo>] [B<-v>] [B<-e>] [B<-nor>]
+    S<<< [B<-co> <I<config directory>>] >>>
+    [B<-h>]
 
 =for html
 </div>
@@ -173,6 +177,13 @@ useful when the server address is registered as 127.0.0.1 or when dealing
 with multi-homed servers. This option is available in OpenAFS
 versions 1.4.8 or later and 1.5.35 or later.
 
+=item B<-config> <I<configuration directory>>
+
+Set the location of the configuration directory to be used. This defaults to
+F</usr/vice/etc>, except if B<-localauth> is specified, in which case the
+default is F</usr/afs/etc>. This option allows the use of alternative
+configuration locations for testing purposes.
+
 =item B<-help>
 
 Prints the online help for this command. All other valid options are
@@ -183,11 +194,11 @@ ignored.
 =head1 EXAMPLES
 
 The following example moves the volume C<user.smith> from the F</vicepb>
-partition on the file server machine C<fs3.abc.com> to the F</vicepg>
-partition on the file server machine C<fs7.abc.com>.
+partition on the file server machine C<fs3.example.com> to the F</vicepg>
+partition on the file server machine C<fs7.example.com>.
 
-   % vos move -id user.smith -fromserver fs3.abc.com -frompartition b \
-       -toserver fs7.abc.com -topartition g
+   % vos move -id user.smith -fromserver fs3.example.com -frompartition b \
+       -toserver fs7.example.com -topartition g
 
 =head1 PRIVILEGE REQUIRED
 

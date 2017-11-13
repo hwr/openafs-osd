@@ -14,11 +14,7 @@
 extern "C" {
 #endif
 
-#if (SYS_V > 3) || defined(BERK4_2) || defined(SUN4)
-#include <sys/time.h>
-#else
 #include <time.h>
-#endif
 
 #ifdef bool_t
 #undef bool_t
@@ -73,7 +69,6 @@ typedef struct {        /* defined as two unsigned 32-bit integers*/
 #define ADSM_ENV_STRS               3       /* number of env strings          */
 #define ObjectDescriptorVersion     1       /* ver for ObjectDescriptor       */
 #define UserDescriptorVersion       1       /* ver for UserDescriptor         */
-#define BSAObjectType_DATABASE      4       /*  ObjectType for Databases      */
 
 /* Return Codes Used
  */
@@ -331,7 +326,8 @@ typedef enum {
 typedef enum {
     BSAObjectType_ANY  = 1,
     BSAObjectType_FILE    = 2,
-    BSAObjectType_DIRECTORY = 3
+    BSAObjectType_DIRECTORY = 3,
+    BSAObjectType_DATABASE = 4,
  } ObjectType;
 
 /* Operation

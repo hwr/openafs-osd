@@ -30,8 +30,6 @@ afs_int32 afs_oddZaps = 0;	/*Dir cache entries deleted */
 afs_int32 afs_evenZaps = 0;	/*File cache entries deleted */
 afs_int32 afs_connectBacks = 0;
 
-afs_int32 afs_cmHideInfo = 0;
-
 /*
  * Some debugging aids.
  */
@@ -67,6 +65,8 @@ static struct ltable {
     { "afs_discon_lock", (char *)&afs_discon_lock},
     { "afs_disconDirtyLock", (char *)&afs_disconDirtyLock},
     { "afs_discon_vc_dirty", (char *)&afs_xvcdirty},
+    { "afs_dynrootDirLock", (char *)&afs_dynrootDirLock},
+    { "afs_dynSymlinkLock", (char *)&afs_dynSymlinkLock},
 };
 unsigned long lastCallBack_vnode;
 unsigned int lastCallBack_dv;
@@ -107,9 +107,6 @@ SRXAFSCB_GetCE(struct rx_call *a_call, afs_int32 a_index,
     struct vcache *tvc;	/*Ptr to current cache entry */
     int code;			/*Return code */
     XSTATS_DECLS;
-
-    if (afs_cmHideInfo & HIDE_STATCACHE)
-	return RXGEN_OPCODE;
 
     RX_AFS_GLOCK();
 
@@ -197,9 +194,6 @@ SRXAFSCB_GetCE64(struct rx_call *a_call, afs_int32 a_index,
     int code;			/*Return code */
     XSTATS_DECLS;
 
-    if (afs_cmHideInfo & HIDE_STATCACHE)
-	return RXGEN_OPCODE;
-
     RX_AFS_GLOCK();
 
     XSTATS_START_CMTIME(AFS_STATS_CM_RPCIDX_GETCE);
@@ -242,12 +236,7 @@ SRXAFSCB_GetCE64(struct rx_call *a_call, afs_int32 a_index,
     a_result->lock.pid_writer = 0;
     a_result->lock.src_indicator = 0;
 #endif /* INSTRUMENT_LOCKS */
-#if !defined(AFS_64BIT_ENV)
-    a_result->Length.high = 0;
-    a_result->Length.low = tvc->f.m.Length;
-#else
     a_result->Length = tvc->f.m.Length;
-#endif
     a_result->DataVersion = hgetlo(tvc->f.m.DataVersion);
     a_result->callback = afs_data_pointer_to_int32(tvc->callback);	/* XXXX Now a pointer; change it XXXX */
     a_result->cbExpires = tvc->cbExpires;
@@ -263,9 +252,6 @@ SRXAFSCB_GetCE64(struct rx_call *a_call, afs_int32 a_index,
     a_result->opens = tvc->opens;
     a_result->writers = tvc->execsOrWriters;
     a_result->mvstat = tvc->mvstat;
-#if defined(AFS_CACHE_BYPASS) && defined(AFS_LINUX24_ENV)
-    a_result->mvstat |= tvc->cachingStates << 8;
-#endif
     a_result->states = tvc->f.states;
     code = 0;
 
@@ -281,193 +267,6 @@ SRXAFSCB_GetCE64(struct rx_call *a_call, afs_int32 a_index,
 
 }				/*SRXAFSCB_GetCE64 */
 
-
-/*------------------------------------------------------------------------
- * EXPORTED SRXAFSCB_GetDCacheEntry
- *
- * Description:
- *	Routine called by the server-side callback RPC interface to
- *	implement pulling out the contents of a dcache entry.
- *
- * Arguments:
- *	a_call   : Ptr to Rx call on which this request came in.
- *	a_index  : Index of desired entry
- *	a_result : Ptr to a buffer for the given dcache entry.
- *
- * Returns:
- *	0 if everything went fine,
- *	1 if we were given a bad index.
- *
- * Environment:
- *	Nothing interesting.
- *
- * Side Effects:
- *	As advertised.
- *------------------------------------------------------------------------*/
-
-int
-SRXAFSCB_GetDCacheEntry(struct rx_call *a_call, afs_int32 index,
-		 struct AFSDCacheEntry *a_result)
-{
-    struct dcache *tdc;	/*Ptr to current cache entry */
-    int code = 0;			/*Return code */
-    XSTATS_DECLS;
-
-    if (afs_cmHideInfo & HIDE_DCACHE)
-	return RXGEN_OPCODE;
-
-    if (index < 0 || index >= afs_cacheFiles)
-	return EINVAL;
-
-    RX_AFS_GLOCK();
-
-    XSTATS_START_CMTIME(AFS_STATS_CM_RPCIDX_GETDCACHE);
-
-    AFS_STATCNT(SRXAFSCB_GetDCacheEntry);
-
-    tdc = afs_indexTable[index];
-    for (; index<afs_cacheFiles; index++) {
-	tdc = afs_indexTable[index];
-	if (tdc && tdc->f.fid.Fid.Volume)
-	    break;
-	tdc = NULL;
-    }
-    if (tdc) {
-        a_result->cell = tdc->f.fid.Cell;
-        a_result->netFid.Volume = tdc->f.fid.Fid.Volume;
-        a_result->netFid.Vnode = tdc->f.fid.Fid.Vnode;
-        a_result->netFid.Unique = tdc->f.fid.Fid.Unique;
-        a_result->validPos = tdc->validPos;
-	FillInt64(a_result->versionNo, tdc->f.versionNo.high, tdc->f.versionNo.low);
-        a_result->modTime = tdc->f.modTime;
-        a_result->states = tdc->f.states;
-        a_result->chunk = tdc->f.chunk;
-        a_result->chunkBytes = tdc->f.chunkBytes;
-        a_result->index = tdc->index;
-	a_result->refcntFlags =
-		 (tdc->refCount << 16) | (tdc->dflags << 8) | tdc->mflags;
-    } else
-	code = ENOENT;
-    
-    RX_AFS_GUNLOCK();
-
-    XSTATS_END_TIME;
-
-    return code;
-}
-
-/*------------------------------------------------------------------------
- * EXPORTED SRXAFSCB_GetDCacheEntryL
- *
- * Description:
- *	Routine called by the server-side callback RPC interface to
- *	implement pulling out the contents of a dcache entry.
- *
- * Arguments:
- *	a_call   : Ptr to Rx call on which this request came in.
- *	a_index  : Index of desired entry
- *	a_result : Ptr to a buffer for the given dcache entry.
- *
- * Returns:
- *	0 if everything went fine,
- *	1 if we were given a bad index.
- *
- * Environment:
- *	Nothing interesting.
- *
- * Side Effects:
- *	As advertised.
- *------------------------------------------------------------------------*/
-
-int
-SRXAFSCB_GetDCacheEntryL(struct rx_call *a_call, afs_int32 index,
-		 struct AFSDCacheEntryL *a_result)
-{
-    struct dcache *tdc;	/*Ptr to current cache entry */
-    int code = 0;			/*Return code */
-    XSTATS_DECLS;
-
-    if (afs_cmHideInfo & HIDE_DCACHE)
-	return RXGEN_OPCODE;
-
-    if (index < 0 || index >= afs_cacheFiles)
-	return EINVAL;
-
-    RX_AFS_GLOCK();
-
-    XSTATS_START_CMTIME(AFS_STATS_CM_RPCIDX_GETDCACHE);
-
-    AFS_STATCNT(SRXAFSCB_GetDCacheEntry);
-
-    tdc = afs_indexTable[index];
-    for (; index<afs_cacheFiles; index++) {
-	tdc = afs_indexTable[index];
-	if (tdc && tdc->f.fid.Fid.Volume)
-	    break;
-	tdc = NULL;
-    }
-    if (tdc) {
-        a_result->cell = tdc->f.fid.Cell;
-        a_result->netFid.Volume = tdc->f.fid.Fid.Volume;
-        a_result->netFid.Vnode = tdc->f.fid.Fid.Vnode;
-        a_result->netFid.Unique = tdc->f.fid.Fid.Unique;
-        a_result->validPos = tdc->validPos;
-	FillInt64(a_result->versionNo, tdc->f.versionNo.high, tdc->f.versionNo.low);
-        a_result->modTime = tdc->f.modTime;
-        a_result->states = tdc->f.states;
-        a_result->chunk = tdc->f.chunk;
-        a_result->chunkBytes = tdc->f.chunkBytes;
-        a_result->index = tdc->index;
-	a_result->refcntFlags =
-		 (tdc->refCount << 16) | (tdc->dflags << 8) | tdc->mflags;
-        a_result->lock.waitStates = tdc->lock.wait_states;
-        a_result->lock.exclLocked = tdc->lock.excl_locked;
-        a_result->lock.readersReading = tdc->lock.readers_reading;
-        a_result->lock.numWaiting = tdc->lock.num_waiting;
-#if defined(INSTRUMENT_LOCKS)
-        a_result->lock.pid_last_reader = MyPidxx2Pid(tdc->lock.pid_last_reader);
-        a_result->lock.pid_writer = MyPidxx2Pid(tdc->lock.pid_writer);
-        a_result->lock.src_indicator = tdc->lock.src_indicator;
-#else
-        a_result->lock.pid_last_reader = 0;
-        a_result->lock.pid_writer = 0;
-        a_result->lock.src_indicator = 0;
-#endif /* INSTRUMENT_LOCKS */
-        a_result->tlock.waitStates = tdc->tlock.wait_states;
-        a_result->tlock.exclLocked = tdc->tlock.excl_locked;
-        a_result->tlock.readersReading = tdc->tlock.readers_reading;
-        a_result->tlock.numWaiting = tdc->tlock.num_waiting;
-#if defined(INSTRUMENT_LOCKS)
-        a_result->tlock.pid_last_reader = MyPidxx2Pid(tdc->tlock.pid_last_reader);
-        a_result->tlock.pid_writer = MyPidxx2Pid(tdc->tlock.pid_writer);
-        a_result->tlock.src_indicator = tdc->tlock.src_indicator;
-#else
-        a_result->tlock.pid_last_reader = 0;
-        a_result->tlock.pid_writer = 0;
-        a_result->tlock.src_indicator = 0;
-#endif /* INSTRUMENT_LOCKS */
-        a_result->mflock.waitStates = tdc->mflock.wait_states;
-        a_result->mflock.exclLocked = tdc->mflock.excl_locked;
-        a_result->mflock.readersReading = tdc->mflock.readers_reading;
-        a_result->mflock.numWaiting = tdc->mflock.num_waiting;
-#if defined(INSTRUMENT_LOCKS)
-        a_result->mflock.pid_last_reader = MyPidxx2Pid(tdc->mflock.pid_last_reader);
-        a_result->mflock.pid_writer = MyPidxx2Pid(tdc->mflock.pid_writer);
-        a_result->mflock.src_indicator = tdc->mflock.src_indicator;
-#else
-        a_result->mflock.pid_last_reader = 0;
-        a_result->mflock.pid_writer = 0;
-        a_result->mflock.src_indicator = 0;
-#endif /* INSTRUMENT_LOCKS */
-    } else
-	code = ENOENT;
-    
-    RX_AFS_GUNLOCK();
-
-    XSTATS_END_TIME;
-
-    return code;
-}
 
 /*------------------------------------------------------------------------
  * EXPORTED SRXAFSCB_GetLock
@@ -674,17 +473,12 @@ loop1:
 #endif
 #endif
 			ReleaseReadLock(&afs_xvcache);
-			ObtainWriteLock(&afs_xcbhash, 449);
-			afs_DequeueCallback(tvc);
-			tvc->f.states &= ~(CStatd | CUnique | CBulkFetching);
+			afs_StaleVCacheFlags(tvc, 0, CUnique | CBulkFetching);
 			afs_allCBs++;
 			if (tvc->f.fid.Fid.Vnode & 1)
 			    afs_oddCBs++;
 			else
 			    afs_evenCBs++;
-			ReleaseWriteLock(&afs_xcbhash);
-			if ((tvc->f.fid.Fid.Vnode & 1 || (vType(tvc) == VDIR)))
-			    osi_dnlc_purgedp(tvc);
 			afs_Trace3(afs_iclSetp, CM_TRACE_CALLBACK,
 				   ICL_TYPE_POINTER, tvc, ICL_TYPE_INT32,
 				   tvc->f.states, ICL_TYPE_INT32,
@@ -696,10 +490,10 @@ loop1:
 			uq = QPrev(tq);
 			AFS_FAST_RELE(tvc);
 		    } else if ((tvc->f.states & CMValid)
-			       && (tvc->mvid->Fid.Volume == a_fid->Volume)) {
+			       && (tvc->mvid.target_root->Fid.Volume == a_fid->Volume)) {
 			tvc->f.states &= ~CMValid;
 			if (!localFid.Cell)
-			    localFid.Cell = tvc->mvid->Cell;
+			    localFid.Cell = tvc->mvid.target_root->Cell;
 		    }
 		}
 		ReleaseReadLock(&afs_xvcache);
@@ -762,17 +556,7 @@ loop2:
 #endif
 #endif
 		    ReleaseReadLock(&afs_xvcache);
-		    ObtainWriteLock(&afs_xcbhash, 450);
-		    afs_DequeueCallback(tvc);
-		    tvc->f.states &= ~(CStatd | CUnique | CBulkFetching);
-		    ReleaseWriteLock(&afs_xcbhash);
-		    if ((tvc->f.fid.Fid.Vnode & 1 || (vType(tvc) == VDIR)))
-			osi_dnlc_purgedp(tvc);
-		    /* wake up who waits for this file to come back from tape */
-		    if (tvc->protocol & RX_OSD_TAPE_FETCH) {
-			tvc->protocol &= ~RX_OSD_TAPE_FETCH;
-		        afs_osi_Wakeup(&tvc->protocol);
-		    }
+		    afs_StaleVCacheFlags(tvc, 0, CUnique | CBulkFetching);
 		    afs_Trace3(afs_iclSetp, CM_TRACE_CALLBACK,
 			       ICL_TYPE_POINTER, tvc, ICL_TYPE_INT32,
 			       tvc->f.states, ICL_TYPE_LONG, 0);
@@ -951,11 +735,9 @@ SRXAFSCB_InitCallBackState(struct rx_call *a_call)
 	    for (i = 0; i < VCSIZE; i++)
 		for (tvc = afs_vhashT[i]; tvc; tvc = tvc->hnext) {
 		    if (tvc->callback == ts) {
-			ObtainWriteLock(&afs_xcbhash, 451);
-			afs_DequeueCallback(tvc);
-			tvc->callback = NULL;
-			tvc->f.states &= ~(CStatd | CUnique | CBulkFetching);
-			ReleaseWriteLock(&afs_xcbhash);
+			afs_StaleVCacheFlags(tvc, AFS_STALEVC_NODNLC |
+						  AFS_STALEVC_CLEARCB,
+					     CUnique | CBulkFetching);
 		    }
 		}
 
@@ -1488,9 +1270,6 @@ SRXAFSCB_GetCellServDB(struct rx_call *a_call, afs_int32 a_index,
     struct cell *tcell;
     char *t_name, *p_name = NULL;
 
-    if (afs_cmHideInfo & HIDE_CELLINFO)
-	return RXGEN_OPCODE;
-
     RX_AFS_GLOCK();
     AFS_STATCNT(SRXAFSCB_GetCellServDB);
 
@@ -1515,7 +1294,8 @@ SRXAFSCB_GetCellServDB(struct rx_call *a_call, afs_int32 a_index,
 
     t_name = afs_osi_Alloc(i + 1);
     if (t_name == NULL) {
-	afs_osi_Free(a_hosts->serverList_val, (j * sizeof(afs_int32)));
+	if (tcell != NULL)
+	    afs_osi_Free(a_hosts->serverList_val, (j * sizeof(afs_int32)));
 	RX_AFS_GUNLOCK();
 	return ENOMEM;
     }
@@ -1557,9 +1337,6 @@ SRXAFSCB_GetLocalCell(struct rx_call *a_call, char **a_name)
     int plen;
     struct cell *tcell;
     char *t_name, *p_name = NULL;
-
-    if (afs_cmHideInfo & HIDE_CELLINFO)
-	return RXGEN_OPCODE;
 
     RX_AFS_GLOCK();
     AFS_STATCNT(SRXAFSCB_GetLocalCell);
@@ -1793,9 +1570,6 @@ SRXAFSCB_GetCellByNum(struct rx_call *a_call, afs_int32 a_cellnum,
 {
     afs_int32 i, sn;
     struct cell *tcell;
-
-    if (afs_cmHideInfo & HIDE_CELLINFO)
-	return RXGEN_OPCODE;
 
     RX_AFS_GLOCK();
     AFS_STATCNT(SRXAFSCB_GetCellByNum);

@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -21,10 +21,6 @@
 
 #include <afs/param.h>		/*System configuration info */
 
-/*
- * Decide if we're keeping detailed File Server stats.
- */
-#define FS_STATS_DETAILED 1
 
 /*
  * Performance numbers.
@@ -126,7 +122,7 @@ struct afs_PerfStats {
     afs_int32 rx_nBusies;	/*Ttl VBUSYs sent to shed load */
     afs_int32 fs_nBusies;	/*Ttl VBUSYs sent during restart/vol clone */
 
-    /* 
+    /*
      * Can't count this as an RPC because it breaks the data structure
      */
     afs_int32 fs_nGetCaps;	/* Number of GetCapabilities calls */
@@ -136,7 +132,6 @@ struct afs_PerfStats {
     afs_int32 spare[28];
 };
 
-#if FS_STATS_DETAILED
 /*
  * Assign each of the File Server's RPC interface routines an index.
  */
@@ -321,7 +316,6 @@ struct fs_stats_FullPerfStats {
  * AFS_XSTATSCOLL_FULL_PERF_INFO collection to the xstat package.
  */
 extern struct fs_stats_FullPerfStats afs_FullPerfStats;
-#endif /* FS_STATS_DETAILED */
 
 
 /*
@@ -337,5 +331,19 @@ extern struct afs_PerfStats afs_perfstats;
 extern char FS_HostName[];
 extern afs_uint32 FS_HostAddr_NBO;
 extern afs_uint32 FS_HostAddr_HBO;
+
+/* Logging helper functions */
+struct fsstats {
+    struct fs_stats_opTimingData *opP;
+    struct fs_stats_xferData *xferP;
+    struct timeval opStartTime;
+    struct timeval xferStartTime;
+};
+
+extern void fsstats_StartOp(struct fsstats *stats, int index);
+extern void fsstats_FinishOp(struct fsstats *stats, int code);
+extern void fsstats_StartXfer(struct fsstats *stats, int index);
+extern void fsstats_FinishXfer(struct fsstats *, int, afs_sfsize_t,
+			       afs_sfsize_t, int *);
 
 #endif /* __fs_stats_h */

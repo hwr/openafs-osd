@@ -37,6 +37,7 @@ typedef struct cm_racingRevokes {
 #define CM_CALLBACK_MAINTAINCOUNT	1	/* don't decrement count of
 						 * callback-granting calls.
                                                  */
+#define CM_CALLBACK_BULKSTAT            2       /* volSync may not be trustworthy */
 
 /* Combinations of change notification filters to make sure callback loss
  * gets noticed
@@ -56,7 +57,7 @@ extern int cm_HaveCallback(struct cm_scache *);
 
 extern void cm_StartCallbackGrantingCall(struct cm_scache *, cm_callbackRequest_t *);
 
-extern void cm_EndCallbackGrantingCall(struct cm_scache *, cm_callbackRequest_t *,
+extern int cm_EndCallbackGrantingCall(struct cm_scache *, cm_callbackRequest_t *,
 	struct AFSCallBack *, struct AFSVolSync *, long);
 
 extern long cm_GetCallback(struct cm_scache *, struct cm_user *,
@@ -79,4 +80,5 @@ extern afs_int32 cm_OfflineROIsValid;
 extern afs_int32 cm_giveUpAllCBs;
 
 extern afs_int32 cm_shutdown;
+
 #endif /*  OPENAFS_WINNT_AFSD_CM_CALLBACK_H */

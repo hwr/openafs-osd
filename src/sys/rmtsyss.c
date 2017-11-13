@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -15,21 +15,11 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
+#include <roken.h>
 
-#include <sys/types.h>
-#include <sys/ioctl.h>
 #include <afs/vice.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <sys/stat.h>
-#include <sys/file.h>
-#include <stdio.h>
-#include <errno.h>
 #include <rx/xdr.h>
-#include <errno.h>
-#include <signal.h>
-#include <string.h>
-#include <stdarg.h>
+
 /*#include <afs/cellconfig.h>*/
 #include "rmtsys.h"
 #include "sys_prototypes.h"
@@ -60,17 +50,17 @@ rmtsysd(void)
     struct rx_securityClass *(securityObjects[N_SECURITY_OBJECTS]);
     struct rx_service *service;
 
-    /* 
+    /*
      * Ignore SIGHUP signal since apparently is sent to the processes that
-     * start up from /etc/rc for some systems like hpux and aix3.1... 
+     * start up from /etc/rc for some systems like hpux and aix3.1...
      */
     signal(SIGHUP, SIG_IGN);
 
     /* Initialize the rx-based RMTSYS server */
     if (rx_Init(htons(AFSCONF_RMTSYSPORT)) < 0)
 	rmt_Quit("rx_init");
-    securityObjects[0] = rxnull_NewServerSecurityObject();
-    if (securityObjects[0] == (struct rx_securityClass *)0)
+    securityObjects[RX_SECIDX_NULL] = rxnull_NewServerSecurityObject();
+    if (securityObjects[RX_SECIDX_NULL] == (struct rx_securityClass *)0)
 	rmt_Quit("rxnull_NewServerSecurityObject");
     service =
 	rx_NewService(0, RMTSYS_SERVICEID, AFSCONF_RMTSYSSERVICE,
@@ -89,7 +79,7 @@ rmtsysd(void)
  * here we also get back the new pag value; we need this so that the caller
  * can add it to its group list via setgroups() */
 afs_int32
-SRMTSYS_SetPag(struct rx_call *call, clientcred *creds, afs_int32 *newpag, 
+SRMTSYS_SetPag(struct rx_call *call, clientcred *creds, afs_int32 *newpag,
 	       afs_int32 *errornumber)
 {
     afs_uint32 blob[PIOCTL_HEADER];
@@ -97,7 +87,7 @@ SRMTSYS_SetPag(struct rx_call *call, clientcred *creds, afs_int32 *newpag,
     afs_int32 error;
 
     *errornumber = 0;
-    SETCLIENTCONTEXT(blob, rx_HostOf(call->conn->peer), creds->uid,
+    SETCLIENTCONTEXT(blob, rx_HostOf(rx_PeerOf(rx_ConnectionOf(call))), creds->uid,
 		     creds->group0, creds->group1, PSETPAG, NFS_EXPORTER);
     data.in = (caddr_t) blob;
     data.in_size = sizeof(blob);
@@ -117,8 +107,8 @@ SRMTSYS_SetPag(struct rx_call *call, clientcred *creds, afs_int32 *newpag,
 
 /* Implements the remote pioctl(2) call */
 afs_int32
-SRMTSYS_Pioctl(struct rx_call *call, clientcred *creds, char *path, 
-	       afs_int32 cmd, afs_int32 follow, rmtbulk *InData, 
+SRMTSYS_Pioctl(struct rx_call *call, clientcred *creds, char *path,
+	       afs_int32 cmd, afs_int32 follow, rmtbulk *InData,
 	       rmtbulk *OutData, afs_int32 *errornumber)
 {
     afs_int32 error;
@@ -127,11 +117,9 @@ SRMTSYS_Pioctl(struct rx_call *call, clientcred *creds, char *path,
     afs_uint32 blob[PIOCTL_HEADER];
 
     *errornumber = 0;
-    SETCLIENTCONTEXT(blob, rx_HostOf(call->conn->peer), creds->uid,
+    SETCLIENTCONTEXT(blob, rx_HostOf(rx_PeerOf(rx_ConnectionOf(call))), creds->uid,
 		     creds->group0, creds->group1, cmd, NFS_EXPORTER);
-    data.in =
-	(char *)malloc(InData->rmtbulk_len +
-		       PIOCTL_HEADER * sizeof(afs_int32));
+    data.in = malloc(InData->rmtbulk_len + PIOCTL_HEADER * sizeof(afs_int32));
     if (!data.in)
 	return (-1);		/* helpless here */
     if (!strcmp(path, NIL_PATHP))
@@ -162,7 +150,7 @@ void
 rmt_Quit(char *msg, ...)
 {
     va_list ap;
-    
+
     va_start(ap, msg);
     vfprintf(stderr, msg, ap);
     va_end(ap);

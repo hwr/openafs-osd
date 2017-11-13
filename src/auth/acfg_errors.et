@@ -1,6 +1,6 @@
 # Copyright 2000, International Business Machines Corporation and others.
 # All Rights Reserved.
-# 
+#
 # This software has been released under the terms of the IBM Public
 # License.  For details, see the LICENSE file in the top-level source
 # directory or online at http://www.openafs.org/dl/license10.html
@@ -19,4 +19,6 @@ error_table ACFG
   ec AFSCONF_FULL, "no more entries"
   ec AFSCONF_NOCELLDB, "unable to open cell database"
   ec AFSCONF_NO_SECURITY_CLASS, "unable to build security class"
+  ec AFSCONF_BADKEY, "key doesn't meet requirements"
+  ec AFSCONF_NOCELLNAME, "cannot determine local cell name"
 end

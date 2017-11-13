@@ -18,6 +18,8 @@
 #include <assert.h>
 #include <stdio.h>
 
+#include "osi_internal.h"
+
 /* atomicity-providing critical sections */
 CRITICAL_SECTION osi_baseAtomicCS[OSI_MUTEXHASHSIZE];
 static long     atomicIndexCounter = 0;
@@ -35,7 +37,7 @@ void osi_BaseInit(void)
     int i;
 
     for(i=0; i<OSI_MUTEXHASHSIZE; i++)
-        InitializeCriticalSection(&osi_baseAtomicCS[i]);
+        InitializeCriticalSectionAndSpinCount(&osi_baseAtomicCS[i], 4000);
 
     if ((tls_LockRefH = TlsAlloc()) == TLS_OUT_OF_INDEXES)
         osi_panic("TlsAlloc(tls_LockRefH) failure", __FILE__, __LINE__);
@@ -43,7 +45,7 @@ void osi_BaseInit(void)
     if ((tls_LockRefT = TlsAlloc()) == TLS_OUT_OF_INDEXES)
         osi_panic("TlsAlloc(tls_LockRefT) failure", __FILE__, __LINE__);
 
-    InitializeCriticalSection(&lock_ref_CS);
+    InitializeCriticalSectionAndSpinCount(&lock_ref_CS, 4000);
 }
 
 void
@@ -154,6 +156,7 @@ void lock_ObtainWrite(osi_rwlock_t *lockp)
     CRITICAL_SECTION *csp;
     osi_queue_t * lockRefH, *lockRefT;
     osi_lock_ref_t *lockRefp;
+    DWORD tid = thrd_Current();
 
     if ((i=lockp->type) != 0) {
         if (i >= 0 && i < OSI_NLOCKTYPES)
@@ -173,18 +176,32 @@ void lock_ObtainWrite(osi_rwlock_t *lockp)
     csp = &osi_baseAtomicCS[lockp->atomicIndex];
     EnterCriticalSection(csp);
 
+    if (lockp->flags & OSI_LOCKFLAG_EXCL) {
+        osi_assertx(lockp->tid[0] != tid, "OSI_RWLOCK_WRITEHELD");
+    }
+#ifdef DEBUG
+    else {
+        for ( i=0; i < lockp->readers && i < OSI_RWLOCK_THREADS; i++ ) {
+            osi_assertx(lockp->tid[i] != tid, "OSI_RWLOCK_READHELD");
+        }
+    }
+#endif
+
     /* here we have the fast lock, so see if we can obtain the real lock */
     if (lockp->waiters > 0 || (lockp->flags & OSI_LOCKFLAG_EXCL) ||
         (lockp->readers > 0)) {
         lockp->waiters++;
         osi_TWait(&lockp->d.turn, OSI_SLEEPINFO_W4WRITE, &lockp->flags, lockp->tid, csp);
         lockp->waiters--;
+        osi_assertx(lockp->waiters >= 0, "waiters underflow");
         osi_assert(lockp->readers == 0 && (lockp->flags & OSI_LOCKFLAG_EXCL));
     } else {
         /* if we're here, all clear to set the lock */
-        lockp->flags |= OSI_LOCKFLAG_EXCL;
-        lockp->tid[0] = thrd_Current();
+        _InterlockedOr(&lockp->flags, OSI_LOCKFLAG_EXCL);
+        lockp->tid[0] = tid;
     }
+    osi_assertx(lockp->readers == 0, "write lock readers present");
+
     LeaveCriticalSection(csp);
 
     if (lockOrderValidation) {
@@ -221,20 +238,31 @@ void lock_ObtainRead(osi_rwlock_t *lockp)
     csp = &osi_baseAtomicCS[lockp->atomicIndex];
     EnterCriticalSection(csp);
 
-    for ( i=0; i < lockp->readers; i++ ) {
-        osi_assertx(lockp->tid[i] != tid, "OSI_RWLOCK_READHELD");
+    if (lockp->flags & OSI_LOCKFLAG_EXCL) {
+        osi_assertx(lockp->tid[0] != tid, "OSI_RWLOCK_WRITEHELD");
     }
+#ifdef DEBUG
+    else {
+        for ( i=0; i < lockp->readers && i < OSI_RWLOCK_THREADS; i++ ) {
+            osi_assertx(lockp->tid[i] != tid, "OSI_RWLOCK_READHELD");
+        }
+    }
+#endif
 
     /* here we have the fast lock, so see if we can obtain the real lock */
     if (lockp->waiters > 0 || (lockp->flags & OSI_LOCKFLAG_EXCL)) {
         lockp->waiters++;
         osi_TWait(&lockp->d.turn, OSI_SLEEPINFO_W4READ, &lockp->readers, lockp->tid, csp);
         lockp->waiters--;
+        osi_assertx(lockp->waiters >= 0, "waiters underflow");
         osi_assert(!(lockp->flags & OSI_LOCKFLAG_EXCL) && lockp->readers > 0);
     } else {
         /* if we're here, all clear to set the lock */
-        if (++lockp->readers <= OSI_RWLOCK_THREADS)
+        lockp->readers++;
+#ifdef DEBUG
+        if (lockp->readers <= OSI_RWLOCK_THREADS)
             lockp->tid[lockp->readers-1] = tid;
+#endif
     }
     LeaveCriticalSection(csp);
 
@@ -260,6 +288,10 @@ void lock_ReleaseRead(osi_rwlock_t *lockp)
         return;
     }
 
+    /* otherwise we're the fast base type */
+    csp = &osi_baseAtomicCS[lockp->atomicIndex];
+    EnterCriticalSection(csp);
+
     if (lockOrderValidation && lockp->level != 0) {
         int found = 0;
         lockRefH = (osi_queue_t *)TlsGetValue(tls_LockRefH);
@@ -279,26 +311,28 @@ void lock_ReleaseRead(osi_rwlock_t *lockp)
         TlsSetValue(tls_LockRefT, lockRefT);
     }
 
-    /* otherwise we're the fast base type */
-    csp = &osi_baseAtomicCS[lockp->atomicIndex];
-    EnterCriticalSection(csp);
-
     osi_assertx(lockp->readers > 0, "read lock not held");
 
-    for ( i=0; i < lockp->readers; i++) {
+#ifdef DEBUG
+    for ( i=0; i < lockp->readers && i < OSI_RWLOCK_THREADS; i++) {
         if ( lockp->tid[i] == tid ) {
-            for ( ; i < lockp->readers - 1; i++)
+            for ( ; i < (lockp->readers - 1) && i < (OSI_RWLOCK_THREADS - 1); i++)
                 lockp->tid[i] = lockp->tid[i+1];
             lockp->tid[i] = 0;
             break;
         }
     }
+#endif
 
-    /* releasing a read lock can allow readers or writers */
-    if (--lockp->readers == 0 && !osi_TEmpty(&lockp->d.turn)) {
+	lockp->readers--;
+
+    /* releasing a read lock can allow writers */
+    if (lockp->readers == 0 && lockp->waiters) {
         osi_TSignalForMLs(&lockp->d.turn, 0, csp);
     }
     else {
+        osi_assertx(lockp->readers >= 0, "read lock underflow");
+
         /* and finally release the big lock */
         LeaveCriticalSection(csp);
     }
@@ -316,6 +350,10 @@ void lock_ReleaseWrite(osi_rwlock_t *lockp)
             (osi_lockOps[i]->ReleaseWriteProc)(lockp);
         return;
     }
+
+    /* otherwise we're the fast base type */
+    csp = &osi_baseAtomicCS[lockp->atomicIndex];
+    EnterCriticalSection(csp);
 
     if (lockOrderValidation && lockp->level != 0) {
         int found = 0;
@@ -336,17 +374,12 @@ void lock_ReleaseWrite(osi_rwlock_t *lockp)
         TlsSetValue(tls_LockRefT, lockRefT);
     }
 
-    /* otherwise we're the fast base type */
-    csp = &osi_baseAtomicCS[lockp->atomicIndex];
-    EnterCriticalSection(csp);
-
     osi_assertx(lockp->flags & OSI_LOCKFLAG_EXCL, "write lock not held");
     osi_assertx(lockp->tid[0] == thrd_Current(), "write lock not held by current thread");
-
     lockp->tid[0] = 0;
 
-    lockp->flags &= ~OSI_LOCKFLAG_EXCL;
-    if (!osi_TEmpty(&lockp->d.turn)) {
+    _InterlockedAnd( &lockp->flags, ~OSI_LOCKFLAG_EXCL);
+    if (lockp->waiters) {
         osi_TSignalForMLs(&lockp->d.turn, 0, csp);
     }
     else {
@@ -374,10 +407,13 @@ void lock_ConvertWToR(osi_rwlock_t *lockp)
     osi_assertx(lockp->tid[0] == thrd_Current(), "write lock not held by current thread");
 
     /* convert write lock to read lock */
-    lockp->flags &= ~OSI_LOCKFLAG_EXCL;
+    _InterlockedAnd(&lockp->flags, ~OSI_LOCKFLAG_EXCL);
+    lockp->tid[0] = 0;
     lockp->readers++;
 
-    if (!osi_TEmpty(&lockp->d.turn)) {
+    osi_assertx(lockp->readers == 1, "read lock not one");
+
+    if (lockp->waiters) {
         osi_TSignalForMLs(&lockp->d.turn, /* still have readers */ 1, csp);
     }
     else {
@@ -405,23 +441,28 @@ void lock_ConvertRToW(osi_rwlock_t *lockp)
     osi_assertx(!(lockp->flags & OSI_LOCKFLAG_EXCL), "write lock held");
     osi_assertx(lockp->readers > 0, "read lock not held");
 
-    for ( i=0; i < lockp->readers; i++) {
+#ifdef DEBUG
+    for ( i=0; i < lockp->readers && i < OSI_RWLOCK_THREADS; i++) {
         if ( lockp->tid[i] == tid ) {
-            for ( ; i < lockp->readers - 1; i++)
+            for ( ; i < (lockp->readers - 1) && i < (OSI_RWLOCK_THREADS - 1); i++)
                 lockp->tid[i] = lockp->tid[i+1];
             lockp->tid[i] = 0;
             break;
         }
     }
+#endif
 
-    if (--lockp->readers == 0) {
+    if (--(lockp->readers) == 0) {
         /* convert read lock to write lock */
-        lockp->flags |= OSI_LOCKFLAG_EXCL;
+        _InterlockedOr(&lockp->flags, OSI_LOCKFLAG_EXCL);
         lockp->tid[0] = tid;
     } else {
+        osi_assertx(lockp->readers > 0, "read lock underflow");
+
         lockp->waiters++;
-        osi_TWait(&lockp->d.turn, OSI_SLEEPINFO_W4WRITE, &lockp->flags, lockp->tid, csp);
+        osi_TWaitExt(&lockp->d.turn, OSI_SLEEPINFO_W4WRITE, &lockp->flags, lockp->tid, csp, FALSE);
         lockp->waiters--;
+        osi_assertx(lockp->waiters >= 0, "waiters underflow");
         osi_assert(lockp->readers == 0 && (lockp->flags & OSI_LOCKFLAG_EXCL));
     }
 
@@ -441,6 +482,10 @@ void lock_ObtainMutex(struct osi_mutex *lockp)
         return;
     }
 
+    /* otherwise we're the fast base type */
+    csp = &osi_baseAtomicCS[lockp->atomicIndex];
+    EnterCriticalSection(csp);
+
     if (lockOrderValidation) {
         lockRefH = (osi_queue_t *)TlsGetValue(tls_LockRefH);
         lockRefT = (osi_queue_t *)TlsGetValue(tls_LockRefT);
@@ -449,21 +494,19 @@ void lock_ObtainMutex(struct osi_mutex *lockp)
             lock_VerifyOrderMX(lockRefH, lockRefT, lockp);
     }
 
-    /* otherwise we're the fast base type */
-    csp = &osi_baseAtomicCS[lockp->atomicIndex];
-    EnterCriticalSection(csp);
-
     /* here we have the fast lock, so see if we can obtain the real lock */
     if (lockp->waiters > 0 || (lockp->flags & OSI_LOCKFLAG_EXCL)) {
         lockp->waiters++;
         osi_TWait(&lockp->d.turn, OSI_SLEEPINFO_W4WRITE, &lockp->flags, &lockp->tid, csp);
         lockp->waiters--;
+        osi_assertx(lockp->waiters >= 0, "waiters underflow");
         osi_assert(lockp->flags & OSI_LOCKFLAG_EXCL);
     } else {
         /* if we're here, all clear to set the lock */
-        lockp->flags |= OSI_LOCKFLAG_EXCL;
+        _InterlockedOr(&lockp->flags, OSI_LOCKFLAG_EXCL);
         lockp->tid = thrd_Current();
     }
+
     LeaveCriticalSection(csp);
 
     if (lockOrderValidation) {
@@ -487,6 +530,10 @@ void lock_ReleaseMutex(struct osi_mutex *lockp)
         return;
     }
 
+    /* otherwise we're the fast base type */
+    csp = &osi_baseAtomicCS[lockp->atomicIndex];
+    EnterCriticalSection(csp);
+
     if (lockOrderValidation && lockp->level != 0) {
         int found = 0;
         lockRefH = (osi_queue_t *)TlsGetValue(tls_LockRefH);
@@ -506,16 +553,12 @@ void lock_ReleaseMutex(struct osi_mutex *lockp)
         TlsSetValue(tls_LockRefT, lockRefT);
     }
 
-    /* otherwise we're the fast base type */
-    csp = &osi_baseAtomicCS[lockp->atomicIndex];
-    EnterCriticalSection(csp);
-
     osi_assertx(lockp->flags & OSI_LOCKFLAG_EXCL, "mutex not held");
     osi_assertx(lockp->tid == thrd_Current(), "mutex not held by current thread");
 
-    lockp->flags &= ~OSI_LOCKFLAG_EXCL;
+    _InterlockedAnd(&lockp->flags, ~OSI_LOCKFLAG_EXCL);
     lockp->tid = 0;
-    if (!osi_TEmpty(&lockp->d.turn)) {
+    if (lockp->waiters) {
         osi_TSignalForMLs(&lockp->d.turn, 0, csp);
     }
     else {
@@ -535,6 +578,10 @@ int lock_TryRead(struct osi_rwlock *lockp)
         if (i >= 0 && i < OSI_NLOCKTYPES)
             return (osi_lockOps[i]->TryReadProc)(lockp);
 
+    /* otherwise we're the fast base type */
+    csp = &osi_baseAtomicCS[lockp->atomicIndex];
+    EnterCriticalSection(csp);
+
     if (lockOrderValidation) {
         lockRefH = (osi_queue_t *)TlsGetValue(tls_LockRefH);
         lockRefT = (osi_queue_t *)TlsGetValue(tls_LockRefT);
@@ -548,18 +595,17 @@ int lock_TryRead(struct osi_rwlock *lockp)
         }
     }
 
-    /* otherwise we're the fast base type */
-    csp = &osi_baseAtomicCS[lockp->atomicIndex];
-    EnterCriticalSection(csp);
-
     /* here we have the fast lock, so see if we can obtain the real lock */
     if (lockp->waiters > 0 || (lockp->flags & OSI_LOCKFLAG_EXCL)) {
         i = 0;
     }
     else {
         /* if we're here, all clear to set the lock */
-        if (++lockp->readers < OSI_RWLOCK_THREADS)
+        lockp->readers++;
+#ifdef DEBUG
+        if (lockp->readers < OSI_RWLOCK_THREADS)
             lockp->tid[lockp->readers-1] = thrd_Current();
+#endif
         i = 1;
     }
 
@@ -587,6 +633,10 @@ int lock_TryWrite(struct osi_rwlock *lockp)
         if (i >= 0 && i < OSI_NLOCKTYPES)
             return (osi_lockOps[i]->TryWriteProc)(lockp);
 
+    /* otherwise we're the fast base type */
+    csp = &osi_baseAtomicCS[lockp->atomicIndex];
+    EnterCriticalSection(csp);
+
     if (lockOrderValidation) {
         lockRefH = (osi_queue_t *)TlsGetValue(tls_LockRefH);
         lockRefT = (osi_queue_t *)TlsGetValue(tls_LockRefT);
@@ -600,10 +650,6 @@ int lock_TryWrite(struct osi_rwlock *lockp)
         }
     }
 
-    /* otherwise we're the fast base type */
-    csp = &osi_baseAtomicCS[lockp->atomicIndex];
-    EnterCriticalSection(csp);
-
     /* here we have the fast lock, so see if we can obtain the real lock */
     if (lockp->waiters > 0 || (lockp->flags & OSI_LOCKFLAG_EXCL)
          || (lockp->readers > 0)) {
@@ -611,7 +657,7 @@ int lock_TryWrite(struct osi_rwlock *lockp)
     }
     else {
         /* if we're here, all clear to set the lock */
-        lockp->flags |= OSI_LOCKFLAG_EXCL;
+        _InterlockedOr(&lockp->flags, OSI_LOCKFLAG_EXCL);
         lockp->tid[0] = thrd_Current();
         i = 1;
     }
@@ -639,6 +685,10 @@ int lock_TryMutex(struct osi_mutex *lockp) {
         if (i >= 0 && i < OSI_NLOCKTYPES)
             return (osi_lockOps[i]->TryMutexProc)(lockp);
 
+    /* otherwise we're the fast base type */
+    csp = &osi_baseAtomicCS[lockp->atomicIndex];
+    EnterCriticalSection(csp);
+
     if (lockOrderValidation) {
         lockRefH = (osi_queue_t *)TlsGetValue(tls_LockRefH);
         lockRefT = (osi_queue_t *)TlsGetValue(tls_LockRefT);
@@ -652,17 +702,13 @@ int lock_TryMutex(struct osi_mutex *lockp) {
         }
     }
 
-    /* otherwise we're the fast base type */
-    csp = &osi_baseAtomicCS[lockp->atomicIndex];
-    EnterCriticalSection(csp);
-
     /* here we have the fast lock, so see if we can obtain the real lock */
     if (lockp->waiters > 0 || (lockp->flags & OSI_LOCKFLAG_EXCL)) {
         i = 0;
     }
     else {
         /* if we're here, all clear to set the lock */
-        lockp->flags |= OSI_LOCKFLAG_EXCL;
+        _InterlockedOr(&lockp->flags, OSI_LOCKFLAG_EXCL);
         lockp->tid = thrd_Current();
         i = 1;
     }
@@ -675,6 +721,7 @@ int lock_TryMutex(struct osi_mutex *lockp) {
         TlsSetValue(tls_LockRefH, lockRefH);
         TlsSetValue(tls_LockRefT, lockRefT);
     }
+
     return i;
 }
 
@@ -692,6 +739,10 @@ void osi_SleepR(LONG_PTR sleepVal, struct osi_rwlock *lockp)
         return;
     }
 
+    /* otherwise we're the fast base type */
+    csp = &osi_baseAtomicCS[lockp->atomicIndex];
+    EnterCriticalSection(csp);
+
     if (lockOrderValidation && lockp->level != 0) {
         lockRefH = (osi_queue_t *)TlsGetValue(tls_LockRefH);
         lockRefT = (osi_queue_t *)TlsGetValue(tls_LockRefT);
@@ -708,25 +759,23 @@ void osi_SleepR(LONG_PTR sleepVal, struct osi_rwlock *lockp)
         TlsSetValue(tls_LockRefT, lockRefT);
     }
 
-    /* otherwise we're the fast base type */
-    csp = &osi_baseAtomicCS[lockp->atomicIndex];
-    EnterCriticalSection(csp);
-
     osi_assertx(lockp->readers > 0, "osi_SleepR: not held");
 
-    for ( i=0; i < lockp->readers; i++) {
+#ifdef DEBUG
+    for ( i=0; i < lockp->readers && i < OSI_RWLOCK_THREADS; i++) {
         if ( lockp->tid[i] == tid ) {
-            for ( ; i < lockp->readers - 1; i++)
+            for ( ; i < (lockp->readers - 1) && i < (OSI_RWLOCK_THREADS - 1); i++)
                 lockp->tid[i] = lockp->tid[i+1];
             lockp->tid[i] = 0;
             break;
         }
     }
+#endif
 
     /* XXX better to get the list of things to wakeup from TSignalForMLs, and
      * then do the wakeup after SleepSpin releases the low-level mutex.
      */
-    if (--lockp->readers == 0 && !osi_TEmpty(&lockp->d.turn)) {
+    if (--(lockp->readers) == 0 && lockp->waiters) {
         osi_TSignalForMLs(&lockp->d.turn, 0, NULL);
     }
 
@@ -748,6 +797,10 @@ void osi_SleepW(LONG_PTR sleepVal, struct osi_rwlock *lockp)
         return;
     }
 
+    /* otherwise we're the fast base type */
+    csp = &osi_baseAtomicCS[lockp->atomicIndex];
+    EnterCriticalSection(csp);
+
     if (lockOrderValidation && lockp->level != 0) {
         lockRefH = (osi_queue_t *)TlsGetValue(tls_LockRefH);
         lockRefT = (osi_queue_t *)TlsGetValue(tls_LockRefT);
@@ -764,15 +817,11 @@ void osi_SleepW(LONG_PTR sleepVal, struct osi_rwlock *lockp)
         TlsSetValue(tls_LockRefT, lockRefT);
     }
 
-    /* otherwise we're the fast base type */
-    csp = &osi_baseAtomicCS[lockp->atomicIndex];
-    EnterCriticalSection(csp);
-
     osi_assertx(lockp->flags & OSI_LOCKFLAG_EXCL, "osi_SleepW: not held");
 
-    lockp->flags &= ~OSI_LOCKFLAG_EXCL;
+    _InterlockedAnd(&lockp->flags, ~OSI_LOCKFLAG_EXCL);
     lockp->tid[0] = 0;
-    if (!osi_TEmpty(&lockp->d.turn)) {
+    if (lockp->waiters) {
         osi_TSignalForMLs(&lockp->d.turn, 0, NULL);
     }
 
@@ -793,6 +842,10 @@ void osi_SleepM(LONG_PTR sleepVal, struct osi_mutex *lockp)
         return;
     }
 
+    /* otherwise we're the fast base type */
+    csp = &osi_baseAtomicCS[lockp->atomicIndex];
+    EnterCriticalSection(csp);
+
     if (lockOrderValidation && lockp->level != 0) {
         lockRefH = (osi_queue_t *)TlsGetValue(tls_LockRefH);
         lockRefT = (osi_queue_t *)TlsGetValue(tls_LockRefT);
@@ -809,15 +862,11 @@ void osi_SleepM(LONG_PTR sleepVal, struct osi_mutex *lockp)
         TlsSetValue(tls_LockRefT, lockRefT);
     }
 
-    /* otherwise we're the fast base type */
-    csp = &osi_baseAtomicCS[lockp->atomicIndex];
-    EnterCriticalSection(csp);
-
     osi_assertx(lockp->flags & OSI_LOCKFLAG_EXCL, "osi_SleepM not held");
 
-    lockp->flags &= ~OSI_LOCKFLAG_EXCL;
+    _InterlockedAnd(&lockp->flags, ~OSI_LOCKFLAG_EXCL);
     lockp->tid = 0;
-    if (!osi_TEmpty(&lockp->d.turn)) {
+    if (lockp->waiters) {
         osi_TSignalForMLs(&lockp->d.turn, 0, NULL);
     }
 
@@ -853,12 +902,11 @@ void lock_InitializeMutex(osi_mutex_t *mp, char *namep, unsigned short level)
         return;
     }
 
-    /* otherwise we have the base case, which requires no special
+    /*
+     * otherwise we have the base case, which requires no special
      * initialization.
      */
-    mp->type = 0;
-    mp->flags = 0;
-    mp->tid = 0;
+    memset(mp, 0, sizeof(osi_mutex_t));
     mp->atomicIndex = (unsigned short)(InterlockedIncrement(&atomicIndexCounter) % OSI_MUTEXHASHSIZE);
     mp->level = level;
     osi_TInit(&mp->d.turn);

@@ -79,6 +79,9 @@ extern void cm_Gen8Dot3NameInt(const fschar_t * longname, cm_dirFid_t * pfid,
 extern void cm_Gen8Dot3NameIntW(const clientchar_t* longname, cm_dirFid_t * pfid,
                                 clientchar_t *shortName, clientchar_t **shortNameEndp);
 
+extern void cm_Gen8Dot3VolNameW(afs_uint32 cell, afs_uint32 volume,
+                                clientchar_t *shortName, clientchar_t **shortNameEndp);
+
 extern int cm_MatchMask(clientchar_t *namep, clientchar_t *maskp, int flags);
 
 extern BOOL cm_TargetPerceivedAsDirectory(const fschar_t *target);
@@ -146,5 +149,8 @@ cm_InterlockedOr(LONG * pdest, LONG value)
 #define _InterlockedAnd  cm_InterlockedAnd
 #endif
 #endif
+
+extern afs_uint32
+cm_NextHighestPowerOf2(afs_uint32 n);
 
 #endif /*  OPENAFS_WINNT_AFSD_CM_UTILS_H */

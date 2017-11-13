@@ -10,11 +10,15 @@ vos_status - Reports a Volume Server's status
 B<vos status> S<<< B<-server> <I<machine name>> >>>
     S<<< [B<-cell> <I<cell name>>] >>>
     [B<-noauth>] [B<-localauth>]
-    [B<-verbose>] [B<-encrypt>] [B<-noresolve>] [B<-help>]
+    [B<-verbose>] [B<-encrypt>] [B<-noresolve>]
+    S<<< [B<-config> <I<config directory>>] >>>
+    [B<-help>]
 
 B<vos st> S<<< B<-s> <I<machine name>> >>>
     S<<< [B<-c> <I<cell name>>] >>>
-    [B<-noa>] [B<-l>] [B<-v>] [B<-e>] [B<-nor>] [B<-h>]
+    [B<-noa>] [B<-l>] [B<-v>] [B<-e>] [B<-nor>]
+    S<<< [B<-co> <I<config directory>>] >>>
+    [B<-h>]
 
 =for html
 </div>
@@ -78,6 +82,13 @@ Shows all servers as IP addresses instead of the DNS name. This is very
 useful when the server address is registered as 127.0.0.1 or when dealing
 with multi-homed servers. This option is available in OpenAFS
 versions 1.4.8 or later and 1.5.35 or later.
+
+=item B<-config> <I<configuration directory>>
+
+Set the location of the configuration directory to be used. This defaults to
+F</usr/vice/etc>, except if B<-localauth> is specified, in which case the
+default is F</usr/afs/etc>. This option allows the use of alternative
+configuration locations for testing purposes.
 
 =item B<-help>
 
@@ -168,10 +179,10 @@ The C<lastReceiveTime> and C<lastSendTime> are for internal use.
 =head1 EXAMPLES
 
 The following example illustrates the kind of output that sometimes
-appears when the Volume Server on C<fs1.abc.com> is executing a dump at
+appears when the Volume Server on C<fs1.example.com> is executing a dump at
 the time this command is issued.
 
-   % vos status fs1.abc.com
+   % vos status fs1.example.com
    --------------------------------------------
    transaction: 575  created: Tue Jan 2 8:34:56 1990
    attachFlags: offline

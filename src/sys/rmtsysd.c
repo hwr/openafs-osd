@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -16,20 +16,11 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
+#include <roken.h>
 
-#ifdef	AFS_AIX32_ENV
-#include <signal.h>
-#endif
-#include <sys/types.h>
-#include <sys/ioctl.h>
 #include <afs/vice.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <sys/stat.h>
-#include <sys/file.h>
-#include <errno.h>
-#include <stdio.h>
 #include <rx/xdr.h>
+
 #include "rmtsys.h"
 #include "sys_prototypes.h"
 
@@ -45,8 +36,8 @@ main(int argc, char *argv[])
 
 #ifdef	AFS_AIX32_ENV
     /*
-     * The following signal action for AIX is necessary so that in case of a 
-     * crash (i.e. core is generated) we can include the user's data section 
+     * The following signal action for AIX is necessary so that in case of a
+     * crash (i.e. core is generated) we can include the user's data section
      * in the core dump. Unfortunately, by default, only a partial core is
      * generated which, in many cases, isn't too useful.
      */
@@ -61,8 +52,8 @@ main(int argc, char *argv[])
     /* Initialize the rx-based RMTSYS server */
     if (rx_Init(htons(AFSCONF_RMTSYSPORT)) < 0)
 	rmt_Quit("rx_init");
-    securityObjects[0] = rxnull_NewServerSecurityObject();
-    if (securityObjects[0] == (struct rx_securityClass *)0)
+    securityObjects[RX_SECIDX_NULL] = rxnull_NewServerSecurityObject();
+    if (securityObjects[RX_SECIDX_NULL] == (struct rx_securityClass *)0)
 	rmt_Quit("rxnull_NewServerSecurityObject");
     service =
 	rx_NewService(0, RMTSYS_SERVICEID, AFSCONF_RMTSYSSERVICE,

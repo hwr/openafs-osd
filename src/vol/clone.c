@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -18,38 +18,27 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
+#include <roken.h>
 
-#include <sys/types.h>
-#include <stdio.h>
-#include <afs/afs_assert.h>
 #ifdef AFS_NT40_ENV
-#include <fcntl.h>
 #include <windows.h>
 #include <winbase.h>
-#include <io.h>
-#include <time.h>
-#else
-#include <sys/file.h>
-#include <sys/time.h>
-#include <unistd.h>
 #endif
-#include <string.h>
-#include <errno.h>
-#include <sys/stat.h>
 
 #include <rx/xdr.h>
 #include <afs/afsint.h>
+#include <afs/afssyscalls.h>
+#include <rx/rx_queue.h>
+
 #include "nfs.h"
 #include "lwp.h"
 #include "lock.h"
-#include <afs/afssyscalls.h>
 #include "ihandle.h"
 #include "vnode.h"
 #include "volume.h"
 #include "partition.h"
 #include "viceinode.h"
 #include "vol_prototypes.h"
-#include "../rxosd/afsosd.h"
 #include "common.h"
 
 int (*vol_PollProc) (void) = 0;	/* someone must init this */
@@ -88,7 +77,7 @@ ci_AddItem(struct clone_head *ah, Inode aino)
 
     /* if no last elt (first call) or last item full, get a new one */
     if ((!ah->last) || ah->last->nitems >= CLONE_MAXITEMS) {
-	ti = (struct clone_items *)malloc(sizeof(struct clone_items));
+	ti = malloc(sizeof(struct clone_items));
 	if (!ti) {
 	    Log("ci_AddItem: malloc failed\n");
 	    osi_Panic("ci_AddItem: malloc failed\n");
@@ -175,7 +164,6 @@ DoCloneIndex(Volume * rwvp, Volume * clvp, VnodeClass class, int reclone)
     afs_int32 dircloned, inodeinced;
     afs_int32 filecount = 0, diskused = 0;
     afs_ino_str_t stmp;
-    void *afsosdrock = NULL;
 
     struct VnodeClassInfo *vcp = &VnodeClassInfo[class];
     /*
@@ -185,13 +173,11 @@ DoCloneIndex(Volume * rwvp, Volume * clvp, VnodeClass class, int reclone)
      */
     int ReadWriteOriginal = 1;
 
-    /* Correct number of files and blocks in volume: 
-       this assumes indexes are always cloned starting with vSmall. 
-       With OSD support we do 1st the more critical part because if OSDs 
-       are down increment of the linkcount will fail */
-    if (ReadWriteOriginal && class != vSmall) {
-       filecount = V_filecount(rwvp);
-       diskused = V_diskused(rwvp);
+    /* Correct number of files in volume: this assumes indexes are always
+       cloned starting with vLarge */
+    if (ReadWriteOriginal && class != vLarge) {
+	filecount = V_filecount(rwvp);
+	diskused = V_diskused(rwvp);
     }
 
     /* Initialize list of inodes to nuke - must do this before any calls
@@ -238,18 +224,6 @@ DoCloneIndex(Volume * rwvp, Volume * clvp, VnodeClass class, int reclone)
 	STREAM_ASEEK(clfilein, vcp->diskSize);	/* Will fail if no vnodes */
     }
 
-    /* We need to increment/decrement the link counts of the objects
-     * pointed to by the OSD metadata stored in the osd metadata special file.
-     * 1st loop just to handle osd-files 
-     */
-    if (class == vSmall && osdvol) { 	
-	code = (osdvol->op_clone_pre_loop)(rwvp, clvp, rwvnode, clvnode,
- 					   rwfile, clfilein, vcp, reclone,
- 					   &afsosdrock);
-	if (code)
-	    ERROR_EXIT(code); 
-    }
-
     /* Read each vnode in the old volume's index file */
     for (offset = vcp->diskSize;
 	 STREAM_READ(rwvnode, vcp->diskSize, 1, rwfile) == 1;
@@ -269,12 +243,12 @@ DoCloneIndex(Volume * rwvp, Volume * clvp, VnodeClass class, int reclone)
 	if (rwvnode->type != vNull) {
 	    afs_fsize_t ll;
 
-	    if (!rwvp->osdMetadataHandle && rwvnode->vnodeMagic != vcp->magic)
+	    if (rwvnode->vnodeMagic != vcp->magic)
 		ERROR_EXIT(-1);
 	    rwinode = VNDISK_GET_INO(rwvnode);
-            filecount++;
-            VNDISK_GET_LEN(ll, rwvnode);
-            diskused += nBlocks(ll);
+	    filecount++;
+	    VNDISK_GET_LEN(ll, rwvnode);
+	    diskused += nBlocks(ll);
 
 	    /* Increment the inode if not already */
 	    if (clinode && (clinode == rwinode)) {
@@ -282,11 +256,11 @@ DoCloneIndex(Volume * rwvp, Volume * clvp, VnodeClass class, int reclone)
 	    } else if (rwinode) {
 		if (IH_INC(V_linkHandle(rwvp), rwinode, V_parentId(rwvp)) ==
 		    -1) {
-		    Log("IH_INC failed: %"AFS_PTR_FMT", %s, %u errno %d\n",
+		    Log("IH_INC failed: %"AFS_PTR_FMT", %s, %" AFS_VOLID_FMT " errno %d\n",
 			V_linkHandle(rwvp), PrintInode(stmp, rwinode),
-			V_parentId(rwvp), errno);
+			afs_printable_VolumeId_lu(V_parentId(rwvp)), errno);
 		    VForceOffline(rwvp);
-		    goto clonefailed;
+		    ERROR_EXIT(EIO);
 		}
 		inodeinced = 1;
 	    }
@@ -294,7 +268,7 @@ DoCloneIndex(Volume * rwvp, Volume * clvp, VnodeClass class, int reclone)
 	    /* If a directory, mark vnode in old volume as cloned */
 	    if ((rwvnode->type == vDirectory) && ReadWriteOriginal) {
 #ifdef DVINC
-		/* 
+		/*
 		 * It is my firmly held belief that immediately after
 		 * copy-on-write, the two directories can be identical.
 		 * If the new copy is changed (presumably, that is the very
@@ -328,37 +302,18 @@ DoCloneIndex(Volume * rwvp, Volume * clvp, VnodeClass class, int reclone)
 
 	/* Overwrite the vnode entry in the clone volume */
 	rwvnode->cloned = 0;
-	/*
-	 *  After we had incremented the link counts of the objects
-	 *  in (osdvol->op_clone_pre_loop)
-	 *  we now can safely copy the osd metadata to the clone volume.
-	 */
-        if (class == vSmall && osdvol) { 	
-	    struct VnodeDiskObject *tclvnode = NULL;
-	    if (reclone && !STREAM_EOF(clfilein)) 
-		tclvnode = clvnode;
-	    code = (osdvol->op_clone_metadata)(rwvp, clvp, offset, &afsosdrock,
-					       vcp, rwvnode, tclvnode);
-	    if (code)
-	        ERROR_EXIT(code); 
-        } 
-	if (!clvp->osdMetadataHandle && rwvnode->vnodeMagic != vcp->magic)
-	    rwvnode->vnodeMagic = vcp->magic;
 	code = STREAM_WRITE(rwvnode, vcp->diskSize, 1, clfileout);
 	if (code != 1) {
-clonefailed:
+	  clonefailed:
 	    /* Couldn't clone, go back and decrement the inode's link count */
-	    if (osdvol)
-		(osdvol->op_clone_undo_increments)(&afsosdrock, 
-						   (offset >> vcp->logSize) + vSmall);	
 	    if (inodeinced) {
 		if (IH_DEC(V_linkHandle(rwvp), rwinode, V_parentId(rwvp)) ==
 		    -1) {
-		    Log("IH_DEC failed: %"AFS_PTR_FMT", %s, %u errno %d\n",
+		    Log("IH_DEC failed: %"AFS_PTR_FMT", %s, %" AFS_VOLID_FMT " errno %d\n",
 			V_linkHandle(rwvp), PrintInode(stmp, rwinode),
-			V_parentId(rwvp), errno);
+			afs_printable_VolumeId_lu(V_parentId(rwvp)), errno);
 		    VForceOffline(rwvp);
-	    	    ERROR_EXIT(EIO);
+		    ERROR_EXIT(EIO);
 		}
 	    }
 	    /* And if the directory was marked clone, unmark it */
@@ -374,14 +329,7 @@ clonefailed:
 	if (clinode) {
 	    ci_AddItem(&decHead, clinode);	/* just queue it */
 	}
-        if (class == vSmall && osdvol) { 	
-	    afs_uint32 vnodeNumber = offset >> (vcp->logSize -1);
-	    struct VnodeDiskObject *tclvnode = NULL;
-	    if (reclone && !STREAM_EOF(clfilein)) 
-		tclvnode = clvnode;
-	    if (tclvnode)
-	        (osdvol->op_clone_free_metadata)(clvp, tclvnode, vnodeNumber);
-        } 
+
 	DOPOLL;
     }
     if (STREAM_ERROR(clfileout))
@@ -389,16 +337,11 @@ clonefailed:
 
     /* Clean out any junk at end of clone file */
     if (reclone) {
-	afs_uint32 vnodeNumber = offset >> (vcp->logSize -1);
 	STREAM_ASEEK(clfilein, offset);
 	while (STREAM_READ(clvnode, vcp->diskSize, 1, clfilein) == 1) {
 	    if (clvnode->type != vNull && VNDISK_GET_INO(clvnode) != 0) {
 		ci_AddItem(&decHead, VNDISK_GET_INO(clvnode));
 	    }
-            if (class == vSmall && osdvol)
-	        (osdvol->op_clone_free_metadata)(clvp, clvnode, vnodeNumber);
-	    vnodeNumber++;
-	    vnodeNumber++;
 	    DOPOLL;
 	}
     }
@@ -445,7 +388,7 @@ clonefailed:
 		error = FDH_TRUNC(rwFd, offset);
 	    }
 	}
-	FDH_SYNC(rwFd);
+	(void)FDH_SYNC(rwFd);
 	FDH_CLOSE(rwFd);
     }
 
@@ -459,13 +402,10 @@ clonefailed:
 	error = code;
     ci_Destroy(&decHead);
 
-    if (osdvol) /* do the linkcount decrements and free memory */
-	(osdvol->op_clone_clean_up) (&afsosdrock);
-
     if (ReadWriteOriginal && filecount > 0)
-       V_filecount(rwvp) = filecount;
+	V_filecount(rwvp) = filecount;
     if (ReadWriteOriginal && diskused > 0)
-       V_diskused(rwvp) = diskused;
+	V_diskused(rwvp) = diskused;
     return error;
 }
 
@@ -479,19 +419,16 @@ CloneVolume(Error * rerror, Volume * original, Volume * new, Volume * old)
     *rerror = 0;
     reclone = ((new == old) ? 1 : 0);
 
-    /*
-     * We do the files first because they could be on object storage and 
-     * therefore it's more likely to have problems. 
-     */
+    code = DoCloneIndex(original, new, vLarge, reclone);
+    if (code)
+	ERROR_EXIT(code);
     code = DoCloneIndex(original, new, vSmall, reclone);
     if (code)
 	ERROR_EXIT(code);
     if (filecount != V_filecount(original) || diskused != V_diskused(original))
-       Log("Clone %u: filecount %d -> %d diskused %d -> %d\n",
-           V_id(original), filecount, V_filecount(original), diskused, V_diskused(original));
-    code = DoCloneIndex(original, new, vLarge, reclone);
-    if (code)
-	ERROR_EXIT(code);
+	Log("Clone %" AFS_VOLID_FMT ": filecount %d -> %d diskused %d -> %d\n",
+	    afs_printable_VolumeId_lu(V_id(original)), filecount,
+	    V_filecount(original), diskused, V_diskused(original));
 
     code = CopyVolumeHeader(&V_disk(original), &V_disk(new));
     if (code)

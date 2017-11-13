@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -19,7 +19,6 @@
 #if	defined(AFS_SUN5_ENV) && defined(KERNEL)
 
 #define RX_ENABLE_LOCKS 1
-#define AFS_GLOBAL_RXLOCK_KERNEL 1
 
 #include <sys/tiuser.h>
 #include <sys/t_lock.h>
@@ -28,12 +27,9 @@
 typedef kmutex_t afs_kmutex_t;
 typedef kcondvar_t afs_kcondvar_t;
 
-#undef osirx_AssertMine
-extern void osirx_AssertMine(afs_kmutex_t * lockaddr, char *msg);
-
 #define MUTEX_DESTROY(a)	mutex_destroy(a)
 #define MUTEX_INIT(a,b,c,d)	mutex_init(a, b, c, d)
-#define MUTEX_ISMINE(a)		mutex_owned((afs_kmutex_t *)(a))
+#define MUTEX_ASSERT(a)		osi_Assert(mutex_owned((afs_kmutex_t *)(a)))
 #define CV_INIT(a,b,c,d)	cv_init(a, b, c, d)
 #define CV_DESTROY(a)		cv_destroy(a)
 #define CV_SIGNAL(a)		cv_signal(a)

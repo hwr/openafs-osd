@@ -6,44 +6,37 @@
  * may copy or modify Sun RPC without charge, but are not authorized
  * to license or distribute it to anyone else except as part of a product or
  * program developed by the user.
- * 
+ *
  * SUN RPC IS PROVIDED AS IS WITH NO WARRANTIES OF ANY KIND INCLUDING THE
  * WARRANTIES OF DESIGN, MERCHANTIBILITY AND FITNESS FOR A PARTICULAR
  * PURPOSE, OR ARISING FROM A COURSE OF DEALING, USAGE OR TRADE PRACTICE.
- * 
+ *
  * Sun RPC is provided with no support and without any obligation on the
  * part of Sun Microsystems, Inc. to assist in its use, correction,
  * modification or enhancement.
- * 
+ *
  * SUN MICROSYSTEMS, INC. SHALL HAVE NO LIABILITY WITH RESPECT TO THE
  * INFRINGEMENT OF COPYRIGHTS, TRADE SECRETS OR ANY PATENTS BY SUN RPC
  * OR ANY PART THEREOF.
- * 
+ *
  * In no event will Sun Microsystems, Inc. be liable for any lost revenue
  * or profits or other special, indirect and consequential damages, even if
  * Sun has been advised of the possibility of such damages.
- * 
+ *
  * Sun Microsystems, Inc.
  * 2550 Garcia Avenue
  * Mountain View, California  94043
  */
 
 /*
- * rpc_util.c, Utility routines for the RPC protocol compiler 
- * Copyright (C) 1987, Sun Microsystems, Inc. 
+ * rpc_util.c, Utility routines for the RPC protocol compiler
+ * Copyright (C) 1987, Sun Microsystems, Inc.
  */
 #include <afsconfig.h>
 #include <afs/param.h>
 
+#include <roken.h>
 
-#include <stdio.h>
-#include <string.h>
-#ifdef HAVE_UNISTD_H
-#include <unistd.h>
-#endif
-#ifdef HAVE_STDLIB_H
-#include <stdlib.h>
-#endif
 #include "rpc_scan.h"
 #include "rpc_parse.h"
 #include "rpc_util.h"
@@ -66,7 +59,6 @@ list *defined;			/* list of defined things */
 /* static prototypes */
 static int findit(definition * def, char *type);
 static char *fixit(char *type, char *orig);
-static int typedefed(definition * def, char *type);
 static char *locase(char *str);
 static char *toktostr(tok_kind kind);
 static void printbuf(void);
@@ -74,7 +66,7 @@ static void printwhere(void);
 
 
 /*
- * Reinitialize the world 
+ * Reinitialize the world
  */
 void
 reinitialize(void)
@@ -95,7 +87,7 @@ reinitialize(void)
 }
 
 /*
- * string equality 
+ * string equality
  */
 int
 streq(char *a, char *b)
@@ -104,7 +96,7 @@ streq(char *a, char *b)
 }
 
 /*
- * find a value in a list 
+ * find a value in a list
  */
 char *
 findval(list * lst, char *val, int (*cmp) (definition * def, char *type))
@@ -118,7 +110,7 @@ findval(list * lst, char *val, int (*cmp) (definition * def, char *type))
 }
 
 /*
- * store a value in a list 
+ * store a value in a list
  */
 void
 storeval(list ** lstp, char *val)
@@ -196,21 +188,9 @@ ptype(char *prefix, char *type, int follow)
 }
 
 
-static int
-typedefed(definition * def, char *type)
-{
-    if (def->def_kind != DEF_TYPEDEF || def->def.ty.old_prefix != NULL) {
-	return (0);
-    } else {
-	return (streq(def->def_name, type));
-    }
-}
-
 int
 isvectordef(char *type, relation rel)
 {
-    definition *def;
-
     for (;;) {
 	switch (rel) {
 	case REL_VECTOR:
@@ -220,12 +200,7 @@ isvectordef(char *type, relation rel)
 	case REL_POINTER:
 	    return (0);
 	case REL_ALIAS:
-	    def = (definition *) FINDVAL(defined, type, typedefed);
-	    if (def == NULL) {
-		return (0);
-	    }
-	    type = def->def.ty.old_type;
-	    rel = def->def.ty.rel;
+	    return (0);
 	}
     }
 }
@@ -254,7 +229,7 @@ pvname(char *pname, char *vnum)
 
 
 /*
- * print a useful (?) error message, and then die 
+ * print a useful (?) error message, and then die
  */
 void
 error(char *msg)
@@ -267,7 +242,7 @@ error(char *msg)
 
 /*
  * Something went wrong, unlink any files that we may have created and then
- * die. 
+ * die.
  */
 void
 crash(void)
@@ -296,7 +271,7 @@ record_open(char *file)
 static char expectbuf[100];
 
 /*
- * error, token encountered was not the expected one 
+ * error, token encountered was not the expected one
  */
 void
 expected1(tok_kind exp1)
@@ -306,7 +281,7 @@ expected1(tok_kind exp1)
 }
 
 /*
- * error, token encountered was not one of two expected ones 
+ * error, token encountered was not one of two expected ones
  */
 void
 expected2(tok_kind exp1, tok_kind exp2)
@@ -317,7 +292,7 @@ expected2(tok_kind exp1, tok_kind exp2)
 }
 
 /*
- * error, token encountered was not one of 3 expected ones 
+ * error, token encountered was not one of 3 expected ones
  */
 void
 expected3(tok_kind exp1, tok_kind exp2, tok_kind exp3)
@@ -331,14 +306,6 @@ expected3(tok_kind exp1, tok_kind exp2, tok_kind exp3)
 /*
  * error, token encountered was not one of 4 expected ones
  */
-void
-expected5(tok_kind exp1, tok_kind exp2, tok_kind exp3, tok_kind exp4, tok_kind exp5)
-{
-    sprintf(expectbuf, "expected '%s', '%s', '%s', '%s', or '%s'", toktostr(exp1),
-	    toktostr(exp2), toktostr(exp3), toktostr(exp4), toktostr(exp5));
-    error(expectbuf);
-}
-
 void
 expected4(tok_kind exp1, tok_kind exp2, tok_kind exp3, tok_kind exp4)
 {
@@ -388,8 +355,6 @@ static token tokstrings[] = {
     {TOK_OPAQUE, "opaque"},
     {TOK_BOOL, "bool"},
     {TOK_VOID, "void"},
-    {TOK_PROGRAM, "program"},
-    {TOK_VERSION, "version"},
     {TOK_PACKAGE, "package"},
     {TOK_PREFIX, "prefix"},
     {TOK_STATINDEX, "statindex"},

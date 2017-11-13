@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -17,17 +17,20 @@
  */
 #include <afsconfig.h>
 #include <afs/param.h>
-#ifndef MAXINT
-#define MAXINT     (~(1<<((sizeof(int)*8)-1)))
+
+#include <roken.h>
+
+#include <limits.h>
+
+#ifdef HAVE_SYS_FILE_H
+#include <sys/file.h>
 #endif
 
-#include <errno.h>
-#include <stdio.h>
-#include <string.h>
-#include <stdarg.h>
-#include <afs/afs_assert.h>
-
-#include <rx/xdr.h>
+#include <afs/opr.h>
+#ifdef AFS_PTHREAD_ENV
+#include <opr/lock.h>
+#endif
+#include <opr/jhash.h>
 #include "rx/rx_queue.h"
 #include <afs/afsint.h>
 #include "nfs.h"
@@ -43,62 +46,13 @@
 #include "partition.h"
 #include "salvsync.h"
 #include "common.h"
-#if defined(AFS_SGI_ENV)
-#include "sys/types.h"
-#include "fcntl.h"
-#undef min
-#undef max
-#include "stdlib.h"
-#endif
 #ifdef AFS_NT40_ENV
-#include <fcntl.h>
 #include "ntops.h"
-#else
-#include <sys/file.h>
-#ifdef	AFS_SUN5_ENV
-#include <sys/fcntl.h>
 #endif
-#include <unistd.h>
-#endif /* AFS_NT40_ENV */
-#include <sys/stat.h>
-
-#ifdef HAVE_STDINT_H
-# include <stdint.h>
-#endif
-#include "../rxosd/afsosd.h"
 
 struct VnodeClassInfo VnodeClassInfo[nVNODECLASSES];
 
 void VNLog(afs_int32 aop, afs_int32 anparms, ... );
-
-extern int LogLevel;
-
-
-
-
-#define BAD_IGET	-1000
-
-/* There are two separate vnode queue types defined here:
- * Each hash conflict chain -- is singly linked, with a single head
- * pointer. New entries are added at the beginning. Old
- * entries are removed by linear search, which generally
- * only occurs after a disk read).
- * LRU chain -- is doubly linked, single head pointer.
- * Entries are added at the head, reclaimed from the tail,
- * or removed from anywhere in the queue.
- */
-
-
-/* Vnode hash table.  Find hash chain by taking lower bits of
- * (volume_hash_offset + vnode).
- * This distributes the root inodes of the volumes over the
- * hash table entries and also distributes the vnodes of
- * volumes reasonably fairly.  The volume_hash_offset field
- * for each volume is established as the volume comes on line
- * by using the VOLUME_HASH_OFFSET macro.  This distributes the
- * volumes fairly among the cache entries, both when servicing
- * a small number of volumes and when servicing a large number.
- */
 
 /* logging stuff for finding bugs */
 #define	THELOGSIZE	5120
@@ -127,37 +81,33 @@ VNLog(afs_int32 aop, afs_int32 anparms, ... )
     va_end(ap);
 }
 
-/* VolumeHashOffset -- returns a new value to be stored in the
- * volumeHashOffset of a Volume structure.  Called when a
- * volume is initialized.  Sets the volumeHashOffset so that
- * vnode cache entries are distributed reasonably between
- * volumes (the root vnodes of the volumes will hash to
- * different values, and spacing is maintained between volumes
- * when there are not many volumes represented), and spread
- * equally amongst vnodes within a single volume.
- */
-int
-VolumeHashOffset_r(void)
-{
-    static int nextVolumeHashOffset = 0;
-    /* hashindex Must be power of two in size */
-#   define hashShift 3
-#   define hashMask ((1<<hashShift)-1)
-    static byte hashindex[1 << hashShift] =
-	{ 0, 128, 64, 192, 32, 160, 96, 224 };
-    int offset;
-    offset = hashindex[nextVolumeHashOffset & hashMask]
-	+ (nextVolumeHashOffset >> hashShift);
-    nextVolumeHashOffset++;
-    return offset;
-}
 
-/* Change hashindex (above) if you change this constant */
-#define VNODE_HASH_TABLE_SIZE 256
+/* Vnode hash table.  Just use the Jenkins hash of the vnode number,
+ * with the volume ID as an initval because it's there.  (That will
+ * make the same vnode number in different volumes hash to a different
+ * value, which would probably not even be a big deal anyway.)
+ */
+
+#define VNODE_HASH_TABLE_BITS 11
+#define VNODE_HASH_TABLE_SIZE opr_jhash_size(VNODE_HASH_TABLE_BITS)
+#define VNODE_HASH_TABLE_MASK opr_jhash_mask(VNODE_HASH_TABLE_BITS)
 private Vnode *VnodeHashTable[VNODE_HASH_TABLE_SIZE];
 #define VNODE_HASH(volumeptr,vnodenumber)\
-    ((volumeptr->vnodeHashOffset + vnodenumber)&(VNODE_HASH_TABLE_SIZE-1))
+    (opr_jhash_int((vnodenumber), V_id((volumeptr))) & VNODE_HASH_TABLE_MASK)
 
+
+
+#define BAD_IGET	-1000
+
+/* There are two separate vnode queue types defined here:
+ * Each hash conflict chain -- is singly linked, with a single head
+ * pointer. New entries are added at the beginning. Old
+ * entries are removed by linear search, which generally
+ * only occurs after a disk read).
+ * LRU chain -- is doubly linked, single head pointer.
+ * Entries are added at the head, reclaimed from the tail,
+ * or removed from anywhere in the queue.
+ */
 
 /**
  * add a vnode to the volume's vnode list.
@@ -257,7 +207,7 @@ DeleteFromVnLRU(struct VnodeClassInfo * vcp, Vnode * vnp)
     if (vnp == vcp->lruHead)
 	vcp->lruHead = vcp->lruHead->lruNext;
 
-    if ((vnp == vcp->lruHead) || 
+    if ((vnp == vcp->lruHead) ||
 	(vcp->lruHead == NULL))
 	Abort("DeleteFromVnLRU: lru chain addled!\n");
 
@@ -379,7 +329,7 @@ VInitVnodes(VnodeClass class, int nVnodes)
     vcp->cacheSize = nVnodes;
     switch (class) {
     case vSmall:
-	osi_Assert(CHECKSIZE_SMALLVNODE);
+	opr_Assert(CHECKSIZE_SMALLVNODE);
 	vcp->lruHead = NULL;
 	vcp->residentSize = SIZEOF_SMALLVNODE;
 	vcp->diskSize = SIZEOF_SMALLDISKVNODE;
@@ -404,7 +354,7 @@ VInitVnodes(VnodeClass class, int nVnodes)
 	return 0;
 
     va = (byte *) calloc(nVnodes, vcp->residentSize);
-    osi_Assert(va != NULL);
+    opr_Assert(va != NULL);
     while (nVnodes--) {
 	Vnode *vnp = (Vnode *) va;
 	Vn_refcount(vnp) = 0;	/* no context switches */
@@ -462,9 +412,9 @@ VInitVnodes(VnodeClass class, int nVnodes)
  *       inode handle is released.
  *       a reservation is held on the vnode object
  *
- * @note we traverse backwards along the lru circlist.  It shouldn't 
- *       be necessary to specify that nUsers == 0 since if it is in the list, 
- *       nUsers should be 0.  Things shouldn't be in lruq unless no one is 
+ * @note we traverse backwards along the lru circlist.  It shouldn't
+ *       be necessary to specify that nUsers == 0 since if it is in the list,
+ *       nUsers should be 0.  Things shouldn't be in lruq unless no one is
  *       using them.
  *
  * @warning DAFS: VOL_LOCK is dropped while doing inode handle release
@@ -476,7 +426,7 @@ VInitVnodes(VnodeClass class, int nVnodes)
  */
 Vnode *
 VGetFreeVnode_r(struct VnodeClassInfo * vcp, struct Volume *vp,
-		VnodeId vnodeNumber)
+                VnodeId vnodeNumber)
 {
     Vnode *vnp;
 
@@ -491,9 +441,9 @@ VGetFreeVnode_r(struct VnodeClassInfo * vcp, struct Volume *vp,
 #endif
     VNLog(1, 2, Vn_id(vnp), (intptr_t)vnp, 0, 0);
 
-    /* 
+    /*
      * it's going to be overwritten soon enough.
-     * remove from LRU, delete hash entry, and 
+     * remove from LRU, delete hash entry, and
      * disassociate from old parent volume before
      * we have a chance to drop the vol glock
      */
@@ -524,7 +474,7 @@ VGetFreeVnode_r(struct VnodeClassInfo * vcp, struct Volume *vp,
 	 *   - ihandle package lock contention
 	 *   - closing file descriptor(s) associated with ih
 	 *
-	 * Hance, we perform outside of the volume package lock in order to 
+	 * Hance, we perform outside of the volume package lock in order to
 	 * reduce the probability of contention.
 	 */
 	IH_RELEASE(vnp->handle);
@@ -566,8 +516,8 @@ VLookupVnode(Volume * vp, VnodeId vnodeId)
 
     newHash = VNODE_HASH(vp, vnodeId);
     for (vnp = VnodeHashTable[newHash];
-	 (vnp && 
-	  ((Vn_id(vnp) != vnodeId) || 
+	 (vnp &&
+	  ((Vn_id(vnp) != vnodeId) ||
 	   (Vn_volume(vnp) != vp) ||
 	   (vp->cacheCheck != Vn_cacheCheck(vnp))));
 	 vnp = vnp->hashNext);
@@ -577,11 +527,11 @@ VLookupVnode(Volume * vp, VnodeId vnodeId)
 
 
 Vnode *
-VAllocVnode(Error * ec, Volume * vp, VnodeType type)
+VAllocVnode(Error * ec, Volume * vp, VnodeType type, VnodeId in_vnode, Unique in_unique)
 {
     Vnode *retVal;
     VOL_LOCK;
-    retVal = VAllocVnode_r(ec, vp, type);
+    retVal = VAllocVnode_r(ec, vp, type, in_vnode, in_unique);
     VOL_UNLOCK;
     return retVal;
 }
@@ -592,6 +542,8 @@ VAllocVnode(Error * ec, Volume * vp, VnodeType type)
  * @param[out] ec    error code return
  * @param[in]  vp    volume object pointer
  * @param[in]  type  desired vnode type
+ * @param[in]  type  desired vnode ID (optional)
+ * @param[in]  type  desired vnode Unique (optional)
  *
  * @return vnode object pointer
  *
@@ -601,7 +553,7 @@ VAllocVnode(Error * ec, Volume * vp, VnodeType type)
  * @post vnode allocated and returned
  */
 Vnode *
-VAllocVnode_r(Error * ec, Volume * vp, VnodeType type)
+VAllocVnode_r(Error * ec, Volume * vp, VnodeType type, VnodeId in_vnode, Unique in_unique)
 {
     Vnode *vnp;
     VnodeId vnodeNumber;
@@ -609,10 +561,12 @@ VAllocVnode_r(Error * ec, Volume * vp, VnodeType type)
     struct VnodeClassInfo *vcp;
     VnodeClass class;
     Unique unique;
+    struct vnodeIndex *index;
+    unsigned int offset;
+
 #ifdef AFS_DEMAND_ATTACH_FS
     VolState vol_state_save;
 #endif
-    int rollover = 0;
 
     *ec = 0;
 
@@ -646,22 +600,7 @@ VAllocVnode_r(Error * ec, Volume * vp, VnodeType type)
 	return NULL;
     }
 
-    if (V_osdPolicy(vp)) {
-        if (vp->nextVnodeUnique++ & ~UNIQUEMASK) {
-            vp->nextVnodeUnique = 1;
-            VUpdateVolume_r(ec,vp, 0);
-            if (*ec)
-                return NULL;
-        }
-    }
-    unique = vp->nextVnodeUnique++;
-    if (unique == 0) {
-	rollover = 1;	/* nextVnodeUnique rolled over */
-	vp->nextVnodeUnique = 2;	/* 1 is reserved for the root vnode */
-	unique = vp->nextVnodeUnique++;
-    }
-
-    if (vp->nextVnodeUnique > V_uniquifier(vp) || rollover) {
+    if (vp->nextVnodeUnique > V_uniquifier(vp)) {
 	VUpdateVolume_r(ec, vp, 0);
 	if (*ec)
 	    return NULL;
@@ -673,12 +612,68 @@ VAllocVnode_r(Error * ec, Volume * vp, VnodeType type)
 	    return NULL;
     }
 
-    /* Find a slot in the bit map */
-    bitNumber = VAllocBitmapEntry_r(ec, vp, &vp->vnodeIndex[class],
-				    VOL_ALLOC_BITMAP_WAIT);
-    if (*ec)
-	return NULL;
-    vnodeNumber = bitNumberToVnodeNumber(bitNumber, class);
+    /*
+     * If in_vnode and in_unique are specified, we are asked to
+     * allocate a specifc vnode slot.  Used by RW replication to
+     * keep vnode IDs consistent with the master.
+     */
+
+    if (!in_vnode) {
+	int rollover = 0;
+
+	unique = vp->nextVnodeUnique++;
+	if (unique == 0) {
+	    rollover = 1;	/* nextVnodeUnique rolled over */
+	    vp->nextVnodeUnique = 2;	/* 1 is reserved for the root vnode */
+	    unique = vp->nextVnodeUnique++;
+	}
+
+	if (vp->nextVnodeUnique > V_uniquifier(vp) || rollover) {
+	    VUpdateVolume_r(ec, vp, 0);
+	    if (*ec)
+		return NULL;
+	}
+
+	/* Find a slot in the bit map */
+	bitNumber = VAllocBitmapEntry_r(ec, vp, &vp->vnodeIndex[class],
+		VOL_ALLOC_BITMAP_WAIT);
+
+	if (*ec)
+	    return NULL;
+	vnodeNumber = bitNumberToVnodeNumber(bitNumber, class);
+    } else {
+	index = &vp->vnodeIndex[class];
+	if (!in_unique) {
+	    *ec = VNOVNODE;
+	    return NULL;
+	}
+	/* Catch us up to where the master is */
+	if (in_unique > vp->nextVnodeUnique)
+	    vp->nextVnodeUnique = in_unique+1;
+
+	if (vp->nextVnodeUnique > V_uniquifier(vp)) {
+	    VUpdateVolume_r(ec, vp, 0);
+	    if (*ec)
+		return NULL;
+	}
+
+	unique = in_unique;
+	bitNumber = vnodeIdToBitNumber(in_vnode);
+	offset = bitNumber >> 3;
+
+	/* Mark vnode in use. Grow bitmap if needed. */
+	if ((offset >= index->bitmapSize)
+		|| ((*(index->bitmap + offset) & (1 << (bitNumber & 0x7))) == 0))
+	    VGrowBitmap(index);
+	/* Should not happen */
+	if (*(index->bitmap + offset) & (1 << (bitNumber & 0x7))) {
+	    *ec = VNOVNODE;
+	    return NULL;
+	}
+
+	*(index->bitmap + offset) |= (1 << (bitNumber & 0x7));
+	vnodeNumber = in_vnode;
+    }
 
     /*
      * DAFS:
@@ -734,27 +729,28 @@ VAllocVnode_r(Error * ec, Volume * vp, VnodeType type)
 	    }
 	}
 
-       /* sanity check: vnode should be blank if it was deleted. If it's                
-        * not blank, it is still in use somewhere; but the bitmap told us               
-        * this vnode number was free, so something is wrong. */                         
-       if (vnp->disk.type != vNull) {                                                   
-           Error tmp;                                                                   
-           Log("VAllocVnode:  addled bitmap or vnode object! (vol %ld, "                
-               "vnode %p, number %ld, type %ld)\n", (long)vp->hashid, vnp,              
-               (long)Vn_id(vnp), (long)vnp->disk.type);                                 
-           *ec = EIO;                                                                   
-           VFreeBitMapEntry_r(&tmp, vp, &vp->vnodeIndex[class], bitNumber,              
-                              VOL_FREE_BITMAP_WAIT);                                    
-           VInvalidateVnode_r(vnp);                                                     
-           VnUnlock(vnp, WRITE_LOCK);                                                   
-           VnCancelReservation_r(vnp);                                                  
-#ifdef AFS_DEMAND_ATTACH_FS                                                             
-           VRequestSalvage_r(ec, vp, SALVSYNC_ERROR, 0);                                
-#else                                                                                   
-           VForceOffline_r(vp, 0);                                                      
+	/* sanity check: vnode should be blank if it was deleted. If it's
+	 * not blank, it is still in use somewhere; but the bitmap told us
+	 * this vnode number was free, so something is wrong. */
+	if (vnp->disk.type != vNull) {
+	    Error tmp;
+	    Log("VAllocVnode:  addled bitmap or vnode object! (vol %" AFS_VOLID_FMT ", "
+		"vnode %p, number %ld, type %ld)\n", afs_printable_VolumeId_lu(vp->hashid), vnp,
+		(long)Vn_id(vnp), (long)vnp->disk.type);
+	    *ec = EIO;
+	    VFreeBitMapEntry_r(&tmp, vp, &vp->vnodeIndex[class], bitNumber,
+		               VOL_FREE_BITMAP_WAIT);
+	    VInvalidateVnode_r(vnp);
+	    VnUnlock(vnp, WRITE_LOCK);
+	    VnCancelReservation_r(vnp);
+#ifdef AFS_DEMAND_ATTACH_FS
+	    VRequestSalvage_r(ec, vp, SALVSYNC_ERROR, 0);
+#else
+	    VForceOffline_r(vp, 0);
 #endif
-           return NULL;                                                                 
-       }
+	    return NULL;
+	}
+
     } else {
 	/* no such vnode in the cache */
 
@@ -787,7 +783,7 @@ VAllocVnode_r(Error * ec, Volume * vp, VnodeType type)
 	     *
 	     * if this becomes a bottleneck, there are ways to
 	     * improve parallelism for this code path
-	     *   -- tkeiser 11/28/2007 
+	     *   -- tkeiser 11/28/2007
 	     */
 	    VCreateReservation_r(vp);
 	    VWaitExclusiveState_r(vp);
@@ -807,7 +803,7 @@ VAllocVnode_r(Error * ec, Volume * vp, VnodeType type)
 		goto error_encountered;
 	    }
 	    if (off + vcp->diskSize <= size) {
-		if (FDH_PREAD(fdP, &vnp->disk, vcp->diskSize, off) != vcp->diskSize) {
+	      if (FDH_PREAD(fdP, &vnp->disk, vcp->diskSize, off) != vcp->diskSize) {
 		    Log("VAllocVnode: can't read index file!\n");
 		    *ec = EIO;
 		    goto error_encountered;
@@ -819,7 +815,7 @@ VAllocVnode_r(Error * ec, Volume * vp, VnodeType type)
 		}
 	    } else {
 		/* growing file - grow in a reasonable increment */
-		char *buf = (char *)malloc(16 * 1024);
+		char *buf = malloc(16 * 1024);
 		if (!buf) {
 		    Log("VAllocVnode: can't grow vnode index: out of memory\n");
 		    *ec = ENOMEM;
@@ -845,7 +841,7 @@ VAllocVnode_r(Error * ec, Volume * vp, VnodeType type)
 
 
 	error_encountered:
-	    /* 
+	    /*
 	     * close the file handle
 	     * acquire VOL_LOCK
 	     * invalidate the vnode
@@ -880,22 +876,12 @@ VAllocVnode_r(Error * ec, Volume * vp, VnodeType type)
     vnp->changed_newTime = 0;	/* set this bit when vnode is updated */
     vnp->changed_oldTime = 0;	/* set this on CopyOnWrite. */
     vnp->delete = 0;
-    /*
-     * The integer which used to be vnodeMagic now is a union which either
-     * may contain the magic or the osdMetadataIndex and osdOnline.
-     * On 1.4 (and before) AFS/OSD fileservers this field was always used
-     * as osdMetadataIndex even in non-OSD volumes. To be more compatible
-     * with OpenAFS 1.6 we now set the magic only if no osdMetadata special
-     * file is present. Ths is also for the salvager the criterium to require
-     * a magic or not. 
-     */
-    if (!vp->osdMetadataHandle)
-        vnp->disk.vnodeMagic = vcp->magic;
+    vnp->disk.vnodeMagic = vcp->magic;
     vnp->disk.type = type;
     vnp->disk.uniquifier = unique;
     vnp->handle = NULL;
     vcp->allocs++;
-    vp->header->diskstuff.filecount++;
+    V_filecount(vp)++;
 #ifdef AFS_DEMAND_ATTACH_FS
     VnChangeState_r(vnp, VN_STATE_EXCLUSIVE);
 #endif
@@ -921,7 +907,7 @@ VAllocVnode_r(Error * ec, Volume * vp, VnodeType type)
  * @internal vnode package internal use only
  */
 static void
-VnLoad(Error * ec, Volume * vp, Vnode * vnp, 
+VnLoad(Error * ec, Volume * vp, Vnode * vnp,
        struct VnodeClassInfo * vcp, VnodeClass class)
 {
     /* vnode not cached */
@@ -960,13 +946,13 @@ VnLoad(Error * ec, Volume * vp, Vnode * vnp,
 	    dosalv = 0;
 	} else if (nBytes == -1 && errno == EIO) {
 	    /* disk error; salvage */
-	    Log("VnLoad: Couldn't read vnode %u, volume %u (%s); volume needs salvage\n", Vn_id(vnp), V_id(vp), V_name(vp));
+	    Log("VnLoad: Couldn't read vnode %u, volume %" AFS_VOLID_FMT " (%s); volume needs salvage\n", Vn_id(vnp), afs_printable_VolumeId_lu(V_id(vp)), V_name(vp));
 	} else {
 	    /* vnode is not allocated */
-	    if (LogLevel >= 5) 
-		Log("VnLoad: Couldn't read vnode %u, volume %u (%s); read %d bytes, errno %d\n", 
-		    Vn_id(vnp), V_id(vp), V_name(vp), (int)nBytes, errno);
-	    *ec = VIO;
+	    if (GetLogLevel() >= 5)
+		Log("VnLoad: Couldn't read vnode %u, volume %" AFS_VOLID_FMT " (%s); read %d bytes, errno %d\n",
+		    Vn_id(vnp), afs_printable_VolumeId_lu(V_id(vp)), V_name(vp), (int)nBytes, errno);
+	    *ec = VNOVNODE;
 	    dosalv = 0;
 	}
 	goto error_encountered_nolock;
@@ -975,8 +961,7 @@ VnLoad(Error * ec, Volume * vp, Vnode * vnp,
     VOL_LOCK;
 
     /* Quick check to see that the data is reasonable */
-    if (vnp->disk.type == vNull || 
-      (!vp->osdMetadataHandle && vnp->disk.vnodeMagic != vcp->magic)) {
+    if (vnp->disk.vnodeMagic != vcp->magic || vnp->disk.type == vNull) {
 	if (vnp->disk.type == vNull) {
 	    *ec = VNOVNODE;
 	    dosalv = 0;
@@ -985,27 +970,27 @@ VnLoad(Error * ec, Volume * vp, Vnode * vnp,
 	    unsigned int bitNumber = vnodeIdToBitNumber(Vn_id(vnp));
 	    unsigned int offset = bitNumber >> 3;
 
-#ifdef AFS_DEMAND_ATTACH_FS                                                             
-           /* Make sure the volume bitmap isn't getting updated while we are
-            * checking it */
-           VWaitExclusiveState_r(vp);
+#ifdef AFS_DEMAND_ATTACH_FS
+	    /* Make sure the volume bitmap isn't getting updated while we are
+	     * checking it */
+	    VWaitExclusiveState_r(vp);
 #endif
 
 	    /* Test to see if vnode number is valid. */
 	    if ((offset >= index->bitmapSize)
 		|| ((*(index->bitmap + offset) & (1 << (bitNumber & 0x7)))
 		    == 0)) {
-		Log("VnLoad: Request for unallocated vnode %u, volume %u (%s) denied.\n", Vn_id(vnp), V_id(vp), V_name(vp));
+		Log("VnLoad: Request for unallocated vnode %u, volume %" AFS_VOLID_FMT " (%s) denied.\n", Vn_id(vnp), afs_printable_VolumeId_lu(V_id(vp)), V_name(vp));
 		*ec = VNOVNODE;
 		dosalv = 0;
 	    } else {
-		Log("VnLoad: Bad magic number, vnode %u, volume %u (%s); volume needs salvage\n", Vn_id(vnp), V_id(vp), V_name(vp));
+		Log("VnLoad: Bad magic number, vnode %u, volume %" AFS_VOLID_FMT " (%s); volume needs salvage\n", Vn_id(vnp), afs_printable_VolumeId_lu(V_id(vp)), V_name(vp));
 	    }
 	}
 	goto error_encountered;
     }
 
-    IH_INIT(vnp->handle, V_device(vp), V_parentId(vp), VN_GET_INO(vnp));
+    IH_INIT(vnp->handle, V_device(vp), afs_printable_VolumeId_lu(V_parentId(vp)), VN_GET_INO(vnp));
     VnUnlock(vnp, WRITE_LOCK);
 #ifdef AFS_DEMAND_ATTACH_FS
     VnChangeState_r(vnp, VN_STATE_ONLINE);
@@ -1053,7 +1038,7 @@ VnLoad(Error * ec, Volume * vp, Vnode * vnp,
  * @internal vnode package internal use only
  */
 static void
-VnStore(Error * ec, Volume * vp, Vnode * vnp, 
+VnStore(Error * ec, Volume * vp, Vnode * vnp,
 	struct VnodeClassInfo * vcp, VnodeClass class)
 {
     ssize_t nBytes;
@@ -1094,7 +1079,7 @@ VnStore(Error * ec, Volume * vp, Vnode * vnp,
 	    VnChangeState_r(vnp, VN_STATE_ERROR);
 #endif
 	} else {
-	    Log("VnStore: Couldn't write vnode %u, volume %u (%s) (error %d)\n", Vn_id(vnp), V_id(Vn_volume(vnp)), V_name(Vn_volume(vnp)), (int)nBytes);
+	    Log("VnStore: Couldn't write vnode %u, volume %" AFS_VOLID_FMT " (%s) (error %d)\n", Vn_id(vnp), afs_printable_VolumeId_lu(V_id(Vn_volume(vnp))), V_name(Vn_volume(vnp)), (int)nBytes);
 #ifdef AFS_DEMAND_ATTACH_FS
 	    goto error_encountered;
 #else
@@ -1113,7 +1098,7 @@ VnStore(Error * ec, Volume * vp, Vnode * vnp,
     VnChangeState_r(vnp, vn_state_save);
 #endif
     return;
-    
+
  error_encountered:
 #ifdef AFS_DEMAND_ATTACH_FS
     /* XXX instead of dumping core, let's try to request a salvage
@@ -1124,7 +1109,7 @@ VnStore(Error * ec, Volume * vp, Vnode * vnp,
     VnChangeState_r(vnp, VN_STATE_ERROR);
     VRequestSalvage_r(ec, vp, SALVSYNC_ERROR, 0);
 #else
-    osi_Assert(1 == 2);
+    opr_abort();
 #endif
 }
 
@@ -1142,7 +1127,7 @@ VnStore(Error * ec, Volume * vp, Vnode * vnp,
  */
 Vnode *
 VGetVnode(Error * ec, Volume * vp, VnodeId vnodeNumber, int locktype)
-{		/* READ_LOCK or SHARED_LOCK or WRITE_LOCK, as defined in lock.h */
+{				/* READ_LOCK or WRITE_LOCK, as defined in lock.h */
     Vnode *retVal;
     VOL_LOCK;
     retVal = VGetVnode_r(ec, vp, vnodeNumber, locktype);
@@ -1167,7 +1152,7 @@ VGetVnode(Error * ec, Volume * vp, VnodeId vnodeNumber, int locktype)
  */
 Vnode *
 VGetVnode_r(Error * ec, Volume * vp, VnodeId vnodeNumber, int locktype)
-{		/* READ_LOCK or SHARED_LOCK or WRITE_LOCK, as defined in lock.h */
+{				/* READ_LOCK or WRITE_LOCK, as defined in lock.h */
     Vnode *vnp;
     VnodeClass class;
     struct VnodeClassInfo *vcp;
@@ -1208,14 +1193,12 @@ VGetVnode_r(Error * ec, Volume * vp, VnodeId vnodeNumber, int locktype)
     }
     class = vnodeIdToClass(vnodeNumber);
     vcp = &VnodeClassInfo[class];
-    if ((locktype == WRITE_LOCK || locktype == SHARED_LOCK) 
-      && !VolumeWriteable(vp)) {
+    if (locktype == WRITE_LOCK && !VolumeWriteable(vp)) {
 	*ec = (bit32) VREADONLY;
 	return NULL;
     }
 
-    if ((locktype == WRITE_LOCK || locktype == SHARED_LOCK) 
-      && programType == fileServer) {
+    if (locktype == WRITE_LOCK && programType == fileServer) {
 	VAddToVolumeUpdateList_r(ec, vp);
 	if (*ec) {
 	    return NULL;
@@ -1249,9 +1232,7 @@ VGetVnode_r(Error * ec, Volume * vp, VnodeId vnodeNumber, int locktype)
 	 */
 	if (locktype == READ_LOCK) {
 	    VnWaitExclusiveState_r(vnp);
-	} else if (locktype == SHARED_LOCK){
-	    VnWaitOtherWriter_r(vnp);
-	} else 	/* if (locktype == WRITE_LOCK) */ {
+	} else {
 	    VnWaitQuiescent_r(vnp);
 	}
 
@@ -1335,59 +1316,6 @@ VGetVnode_r(Error * ec, Volume * vp, VnodeId vnodeNumber, int locktype)
     return vnp;
 }
 
-/*
- * When the OSD-metadata-Index in the vnode changes because an update in place
- * was not possible it is necessary to make sure the changed vnode is on disk
- * before we free the old metadata chain. Otherwise a crash could let us with
- * a wrong pointer. This routine is called only in FlushMetadataHandle().
- */
-afs_int32
-VSyncVnode_r(Volume *vp, VnodeDiskObject *vd, afs_uint32 vN, int newtime)
-{
-    IHandle_t *ihP;
-    FdHandle_t *fdP;
-    struct VnodeClassInfo *vcp;
-    VnodeClass class;
-    afs_int32 offset, bytes;
-    afs_int32 code = 0;
-
-    if (newtime) {
-        afs_uint32 now = FT_ApproxTime();
-        V_updateDate(vp) = vp->updateTime = now;
-        vd->serverModifyTime = now;
-    }
-    class = vnodeIdToClass(vN);
-    vcp = &VnodeClassInfo[class];
-    ihP = vp->vnodeIndex[class].handle;
-    VOL_UNLOCK;
-    fdP = IH_OPEN(ihP);
-    if (fdP == NULL) {
-        Log("VSyncVnode %u.%u.%u failed. Couldn't open index file!\n",
-                V_id(vp), vN, vd->uniquifier);
-        code = EIO;
-    } else {
-        offset = vnodeIndexOffset(vcp, vN);
-        bytes = FDH_PWRITE(fdP, vd, vcp->diskSize, offset);
-        if (bytes != vcp->diskSize) {
-            Log("VSyncVnode %u.%u.%u failed. Write failed!\n",
-                    V_id(vp), vN, vd->uniquifier);
-            code = EIO;
-        }
-        FDH_CLOSE(fdP);
-    }
-    VOL_LOCK;
-    return code;
-}
-
-afs_int32 VSyncVnode(Volume *vp, VnodeDiskObject *vd, afs_uint32 vN, int newtime)
-{
-    afs_int32 code;
-
-    VOL_LOCK;
-    code = VSyncVnode_r(vp, vd, vN, newtime);
-    VOL_UNLOCK;
-    return code;
-}
 
 int TrustVnodeCacheEntry = 1;
 /* This variable is bogus--when it's set to 0, the hash chains fill
@@ -1418,58 +1346,44 @@ VPutVnode(Error * ec, Vnode * vnp)
 void
 VPutVnode_r(Error * ec, Vnode * vnp)
 {
-    int writeLocked = 0, sharedLocked = 0, sharedLockWriter = 0;
+    int writeLocked;
     VnodeClass class;
     struct VnodeClassInfo *vcp;
-#ifdef AFS_PTHREAD_ENV
-    pthread_t thisProcess = pthread_self();
-#else /* AFS_PTHREAD_ENV */
-    PROCESS thisProcess;
-    LWP_CurrentProcess(&thisProcess);
-#endif /* AFS_PTHREAD_ENV */
 
     *ec = 0;
-    osi_Assert(Vn_refcount(vnp) != 0);
+    opr_Assert(Vn_refcount(vnp) != 0);
     class = vnodeIdToClass(Vn_id(vnp));
     vcp = &VnodeClassInfo[class];
-    /*
-     * The integer which used to be vnodeMagic now is a union which either
-     * may contain the magic or the osdMetadataIndex and osdOnline.
-     * On 1.4 (and before) AFS/OSD fileservers this field was always used
-     * as osdMetadataIndex even in non-OSD volumes. To be more compatible
-     * with OpenAFS 1.6 we now set the magic only if no osdMetadata special
-     * file is present. Ths is also for the salvager the criterium to require
-     * a magic or not. 
-     */
-    if (!vnp->volumePtr->osdMetadataHandle)
-        osi_Assert(vnp->disk.vnodeMagic == vcp->magic);
+    opr_Assert(vnp->disk.vnodeMagic == vcp->magic);
     VNLog(200, 2, Vn_id(vnp), (intptr_t) vnp, 0, 0);
 
 #ifdef AFS_DEMAND_ATTACH_FS
     writeLocked = (Vn_state(vnp) == VN_STATE_EXCLUSIVE);
-    if (!writeLocked)
-	sharedLocked = (Vn_state(vnp) == VN_STATE_SHARED);
 #else
     writeLocked = WriteLocked(&vnp->lock);
-    if (!writeLocked)
-	sharedLocked = SharedLocked(&vnp->lock);
 #endif
-    if (sharedLocked && vnp->writer == thisProcess)
-        sharedLockWriter = 1;
 
-    if (writeLocked || sharedLockWriter) {
+    if (writeLocked) {
+	/* sanity checks */
+#ifdef AFS_PTHREAD_ENV
+	pthread_t thisProcess = pthread_self();
+#else /* AFS_PTHREAD_ENV */
+	PROCESS thisProcess;
+	LWP_CurrentProcess(&thisProcess);
+#endif /* AFS_PTHREAD_ENV */
 	VNLog(201, 2, (intptr_t) vnp,
 	      ((vnp->changed_newTime) << 1) | ((vnp->
 						changed_oldTime) << 1) | vnp->
 	      delete, 0, 0);
-	/* sanity checks */
 	if (thisProcess != vnp->writer)
 	    Abort("VPutVnode: Vnode at %"AFS_PTR_FMT" locked by another process!\n",
 		  vnp);
+
+
 	if (vnp->changed_oldTime || vnp->changed_newTime || vnp->delete) {
 	    Volume *vp = Vn_volume(vnp);
 	    afs_uint32 now = FT_ApproxTime();
-	    osi_Assert(Vn_cacheCheck(vnp) == vp->cacheCheck);
+	    opr_Assert(Vn_cacheCheck(vnp) == vp->cacheCheck);
 
 	    if (vnp->delete) {
 		/* No longer any directory entries for this vnode. Free the Vnode */
@@ -1482,8 +1396,8 @@ VPutVnode_r(Error * ec, Vnode * vnp)
 	    if (vnp->changed_newTime)
 	    {
 		V_updateDate(vp) = vp->updateTime = now;
-		if(V_volUpCounter(vp)<MAXINT)
-			V_volUpCounter(vp)++;
+		if(V_volUpdateCounter(vp)< UINT_MAX)
+			V_volUpdateCounter(vp)++;
 	    }
 
 	    /* The vnode has been changed. Write it out to disk */
@@ -1491,7 +1405,7 @@ VPutVnode_r(Error * ec, Vnode * vnp)
 #ifdef AFS_DEMAND_ATTACH_FS
 		VRequestSalvage_r(ec, vp, SALVSYNC_ERROR, 0);
 #else
-		osi_Assert(V_needsSalvaged(vp));
+		opr_Assert(V_needsSalvaged(vp));
 		*ec = VSALVAGE;
 #endif
 	    } else {
@@ -1503,8 +1417,8 @@ VPutVnode_r(Error * ec, Vnode * vnp)
 		 * (doing so could cause a "addled bitmap" message).
 		 */
 		if (vnp->delete && !*ec) {
-		    if (Vn_volume(vnp)->header->diskstuff.filecount-- < 1)
-			Vn_volume(vnp)->header->diskstuff.filecount = 0;
+		  if (V_filecount(Vn_volume(vnp))-- < 1)
+		      V_filecount(Vn_volume(vnp)) = 0;
 		    VFreeBitMapEntry_r(ec, vp, &vp->vnodeIndex[class],
 				       vnodeIdToBitNumber(Vn_id(vnp)),
 				       VOL_FREE_BITMAP_WAIT);
@@ -1516,7 +1430,7 @@ VPutVnode_r(Error * ec, Vnode * vnp)
 #ifdef AFS_DEMAND_ATTACH_FS
 	VnChangeState_r(vnp, VN_STATE_ONLINE);
 #endif
-    } else if (!sharedLocked) {		/* just read locked */
+    } else {			/* Not write locked */
 	if (vnp->changed_newTime || vnp->changed_oldTime || vnp->delete)
 	    Abort
 		("VPutVnode: Change or delete flag for vnode "
@@ -1530,12 +1444,7 @@ VPutVnode_r(Error * ec, Vnode * vnp)
     /* Do not look at disk portion of vnode after this point; it may
      * have been deleted above */
     vnp->delete = 0;
-    if (writeLocked)
-	VnUnlock(vnp, WRITE_LOCK);
-    else if (sharedLockWriter)
-	VnUnlock(vnp, SHARED_LOCK);
-    else
-	VnUnlock(vnp, READ_LOCK);
+    VnUnlock(vnp, ((writeLocked) ? WRITE_LOCK : READ_LOCK));
     VnCancelReservation_r(vnp);
 }
 
@@ -1584,20 +1493,10 @@ VVnodeWriteToRead_r(Error * ec, Vnode * vnp)
 #endif /* AFS_PTHREAD_ENV */
 
     *ec = 0;
-    osi_Assert(Vn_refcount(vnp) != 0);
+    opr_Assert(Vn_refcount(vnp) != 0);
     class = vnodeIdToClass(Vn_id(vnp));
     vcp = &VnodeClassInfo[class];
-    /*
-     * The integer which used to be vnodeMagic now is a union which either
-     * may contain the magic or the osdMetadataIndex and osdOnline.
-     * On 1.4 (and before) AFS/OSD fileservers this field was always used
-     * as osdMetadataIndex even in non-OSD volumes. To be more compatible
-     * with OpenAFS 1.6 we now set the magic only if no osdMetadata special
-     * file is present. Ths is also for the salvager the criterium to require
-     * a magic or not. 
-     */
-    if (!vnp->volumePtr->osdMetadataHandle)
-        osi_Assert(vnp->disk.vnodeMagic == vcp->magic);
+    opr_Assert(vnp->disk.vnodeMagic == vcp->magic);
     VNLog(300, 2, Vn_id(vnp), (intptr_t) vnp, 0, 0);
 
 #ifdef AFS_DEMAND_ATTACH_FS
@@ -1631,7 +1530,7 @@ VVnodeWriteToRead_r(Error * ec, Vnode * vnp)
     if (vnp->changed_oldTime || vnp->changed_newTime) {
 	Volume *vp = Vn_volume(vnp);
 	afs_uint32 now = FT_ApproxTime();
-	osi_Assert(Vn_cacheCheck(vnp) == vp->cacheCheck);
+	opr_Assert(Vn_cacheCheck(vnp) == vp->cacheCheck);
 	if (vnp->changed_newTime)
 	    vnp->disk.serverModifyTime = now;
 	if (vnp->changed_newTime)
@@ -1642,7 +1541,7 @@ VVnodeWriteToRead_r(Error * ec, Vnode * vnp)
 #ifdef AFS_DEMAND_ATTACH_FS
 	    VRequestSalvage_r(ec, vp, SALVSYNC_ERROR, 0);
 #else
-	    osi_Assert(V_needsSalvaged(vp));
+	    opr_Assert(V_needsSalvaged(vp));
 	    *ec = VSALVAGE;
 #endif
 	} else {
@@ -1662,7 +1561,7 @@ VVnodeWriteToRead_r(Error * ec, Vnode * vnp)
     return 0;
 }
 
-/** 
+/**
  * initial size of ihandle pointer vector.
  *
  * @see VInvalidateVnodesByVolume_r
@@ -1720,8 +1619,8 @@ VInvalidateVnodesByVolume_r(Volume * vp,
     if (ih_vec == NULL)
 	return ENOMEM;
 
-    /* 
-     * Traverse the volume's vnode list.  Pull all the ihandles out into a 
+    /*
+     * Traverse the volume's vnode list.  Pull all the ihandles out into a
      * thread-private array for later asynchronous processing.
      */
 #ifdef AFS_DEMAND_ATTACH_FS
@@ -1745,7 +1644,7 @@ restart_traversal:
 		ih_vec = ih_vec_new;
 #ifdef AFS_DEMAND_ATTACH_FS
 		/*
-		 * Theoretically, the volume's VVn list should not change 
+		 * Theoretically, the volume's VVn list should not change
 		 * because the volume is in an exclusive state.  For the
 		 * sake of safety, we will restart the traversal from the
 		 * the beginning (which is not expensive because we're
@@ -1786,9 +1685,8 @@ VCloseVnodeFiles_r(Volume * vp)
 #endif /* AFS_DEMAND_ATTACH_FS */
 
     /* XXX need better error handling here */
-    osi_Assert(VInvalidateVnodesByVolume_r(vp,
-				       &ih_vec,
-				       &vec_len) == 0);
+    opr_Verify(VInvalidateVnodesByVolume_r(vp, &ih_vec,
+					   &vec_len) == 0);
 
     /*
      * DAFS:
@@ -1801,7 +1699,7 @@ VCloseVnodeFiles_r(Volume * vp)
 
     for (i = 0; i < vec_len; i++) {
 	IH_REALLYCLOSE(ih_vec[i]);
-	IH_RELEASE(ih_vec[i]);
+        IH_RELEASE(ih_vec[i]);
     }
 
     free(ih_vec);
@@ -1830,7 +1728,7 @@ VCloseVnodeFiles_r(Volume * vp)
  *       during this exclusive operation.  This is due to the fact that we are
  *       generally called during the refcount 1->0 transition.
  *
- * @todo we should handle failures in VInvalidateVnodesByVolume_r more 
+ * @todo we should handle failures in VInvalidateVnodesByVolume_r more
  *       gracefully.
  *
  * @see VInvalidateVnodesByVolume_r
@@ -1851,9 +1749,8 @@ VReleaseVnodeFiles_r(Volume * vp)
 #endif /* AFS_DEMAND_ATTACH_FS */
 
     /* XXX need better error handling here */
-    osi_Assert(VInvalidateVnodesByVolume_r(vp,
-				       &ih_vec,
-				       &vec_len) == 0);
+    opr_Verify(VInvalidateVnodesByVolume_r(vp, &ih_vec,
+					   &vec_len) == 0);
 
     /*
      * DAFS:
@@ -1874,213 +1771,4 @@ VReleaseVnodeFiles_r(Volume * vp)
     VOL_LOCK;
     VChangeState_r(vp, vol_state_save);
 #endif /* AFS_DEMAND_ATTACH_FS */
-}
-
-#if 0
-int DumpLockedVnodes()
-{
-    struct tm *times;
-    int         currenttime;
-    char *timeStamp;
-    struct Vnode *vnp;
-    afs_int32 i;
-    char buf[256];
-#ifdef AFS_PTHREAD_ENV
-    pid_t process;
-#else /* AFS_PTHREAD_ENV */
-    PROCESS process;
-#endif /* AFS_PTHREAD_ENV */
-
-    currenttime = time(0);
-    timeStamp = (char *) ctime((time_t *)&currenttime);
-    timeStamp[24] = 0;  /* ts[24] is the newline, 25 is the null */
-#ifdef AFS_PTHREAD_ENV
-    process = pthread_self();
-    sprintf (buf,"%s [%x] Locked Vnodes:\n", timeStamp, process);
-#else /* AFS_PTHREAD_ENV */
-    LWP_CurrentProcess(&process);
-    sprintf (buf,"%s [%s] Locked Vnodes:\n", timeStamp, process->name);
-#endif /* AFS_PTHREAD_ENV */
-    WriteLogBuffer(buf, strlen(buf));
-    for (i=0; i<VNODE_HASH_TABLE_SIZE; i++) {
-        for (vnp = VnodeHashTable[i]; vnp; vnp = vnp->hashNext) {
-            if (vnp->nUsers >= 1) {
-                if (vnp->writer)
-#ifdef AFS_DEMAND_ATTACH_FS
-#ifdef AFS_PTHREAD_ENV
-                   sprintf(buf," -vnode (%u.%u.%u): nUsers=%d, nReadersk=%d, writer=%x.\n",
-                        vnp->volumePtr->hashid,
-                        vnp->vnodeNumber,
-                        vnp->disk.uniquifier,
-                        vnp->nUsers,
-			vnp->nReaders,
-                        vnp->writer);
-#else /* AFS_PTHREAD_ENV */
-                   sprintf(buf," -vnode (%u.%u.%u): nUsers=%d, nReadersk=%d, writer=%s.\n",
-                        vnp->volumePtr->hashid,
-                        vnp->vnodeNumber,
-                        vnp->disk.uniquifier,
-                        vnp->nUsers,
-			vnp->nReaders,
-                        vnp->writer->name);
-#endif /* AFS_PTHREAD_ENV */
-#else /* AFS_DEMAND_ATTACH_FS */
-#ifdef AFS_PTHREAD_ENV
-                   sprintf(buf," -vnode (%u.%u.%u): nUsers=%d, lock=(%d.%d.%d.%d) %x.\n",
-                        vnp->volumePtr->hashid,
-                        vnp->vnodeNumber,
-                        vnp->disk.uniquifier,
-                        vnp->nUsers,
-                        vnp->lock.wait_states,
-                        vnp->lock.excl_locked,
-                        vnp->lock.readers_reading,
-                        vnp->lock.num_waiting,
-                        vnp->writer);
-#else /* AFS_PTHREAD_ENV */
-                   sprintf(buf," -vnode (%u.%u.%u): nUsers=%d, lock=(%d.%d.%d.%d) %s.\n",
-                        vnp->volumePtr->hashid,
-                        vnp->vnodeNumber,
-                        vnp->disk.uniquifier,
-                        vnp->nUsers,
-                        vnp->lock.wait_states,
-                        vnp->lock.excl_locked,
-                        vnp->lock.readers_reading,
-                        vnp->lock.num_waiting,
-                        vnp->writer->name);
-#endif /* AFS_PTHREAD_ENV */
-#endif /* AFS_DEMAND_ATTACH_FS */
-                else
-                   sprintf(buf," -vnode (%u.%u.%u): nUsers=%d, lock=(%d.%d.%d.%d).\n",
-                        vnp->volumePtr->hashid,
-                        vnp->vnodeNumber,
-                        vnp->disk.uniquifier,
-                        vnp->nUsers,
-                        vnp->lock.wait_states,
-                        vnp->lock.excl_locked,
-                        vnp->lock.readers_reading,
-                        vnp->lock.num_waiting);
-                switch (vnp->disk.type) {
-                case vDirectory:
-                    buf[0]= 'D';
-                    break;
-                case vFile:
-                    buf[0]= 'F';
-                    if (osdvol && vnp->disk.osdMetadataIndex)
-                        buf[0]= 'O';
-                    break;
-                case vSymlink:
-                    buf[0]= 'S';
-                    break;
-                default:
-                    buf[0]= 'U';
-                    break;
-                }
-                WriteLogBuffer(buf, strlen(buf));
-            }
-        }
-    }
-}
-#endif
-
-int ListLockedVnodes(afs_uint32 *count, afs_uint32 maxcount, afs_uint32 **ptr)
-{
-    struct Vnode *vnp;
-    afs_int32 i, n=0;
-
-    for (i=0; i<VNODE_HASH_TABLE_SIZE; i++) {
-        for (vnp = VnodeHashTable[i]; vnp; vnp = vnp->hashNext) {
-            if (vnp->nUsers >= 1) {
-                n++;
-                if (n <= maxcount) {
-                    *((*ptr)++) = vnp->volumePtr->hashid,
-                    *((*ptr)++) = vnp->vnodeNumber,
-                    *((*ptr)++) = vnp->disk.uniquifier,
-#ifdef AFS_DEMAND_ATTACH_FS
-		    *((*ptr)++) = ((vnp->writer ? 1 :0) << 16) +
-			(vnp->nReaders << 8);
-#else
-                    *((*ptr)++) = (vnp->lock.wait_states << 24) +
-                        (vnp->lock.excl_locked << 16) +
-                        (vnp->lock.readers_reading << 8) +
-                        vnp->lock.num_waiting;
-#endif
-                }
-            }
-        }
-    }
-    *count = n;
-    if (n >= maxcount)
-        return E2BIG;
-    return 0;
-}
-
-afs_int32 
-ListDiskVnode(struct Volume *vp,  afs_uint32 vnodeNumber, afs_uint32 **ptr,
-                afs_uint32 length, char *aclbuf)
-{
-    struct Vnode *vnp;
-    Error code, code2;
-    afs_int32 hash, dontPutVnode;
-    afs_uint32 v = vnodeNumber;
-    afs_int32 l = length;
-
-    while (v && l>20) {
-        dontPutVnode = 0;
-        vnp = VGetVnode(&code, vp, v, READ_LOCK);
-        if (code == EWOULDBLOCK) {
-            /* See whether the vnode is in the cache. */
-            hash = VNODE_HASH(vp, v);
-            for (vnp = VnodeHashTable[hash];
-             vnp && (vnp->vnodeNumber!=v || vnp->volumePtr!=vp
-                     || vnp->volumePtr->cacheCheck!=vnp->cacheCheck);
-             vnp = vnp->hashNext
-            );
-            if (vnp) {
-                dontPutVnode = 1;
-                code = 0;
-            }
-        }
-        if (code == 0) {
-            *((*ptr)++) = vnp->volumePtr->hashid;
-            *((*ptr)++) = vnp->vnodeNumber;
-            *((*ptr)++) = vnp->disk.uniquifier;
-
-            *((*ptr)++) = vnp->disk.type;
-            *((*ptr)++) = vnp->disk.cloned;
-            *((*ptr)++) = vnp->disk.modeBits;
-            *((*ptr)++) = vnp->disk.linkCount;
-            *((*ptr)++) = vnp->disk.author;
-            *((*ptr)++) = vnp->disk.owner;
-            *((*ptr)++) = vnp->disk.group;
-	    if (osdvol && vp->osdMetadataHandle)
-                *((*ptr)++) = vnp->disk.osdFileOnline;
-	    else
-                (*ptr)++;
-            *((*ptr)++) = vnp->disk.vn_length_hi;
-            *((*ptr)++) = vnp->disk.length;
-            *((*ptr)++) = vnp->disk.dataVersion;
-            *((*ptr)++) = vnp->disk.unixModifyTime;
-            *((*ptr)++) = vnp->disk.serverModifyTime;
-            *((*ptr)++) = vnp->disk.vn_ino_lo;
-#if 0
-            *((*ptr)++) = vnp->disk.lastUsageTime;
-#else
-            *((*ptr)++) = vnp->disk.vn_ino_hi;
-#endif
-            *((*ptr)++) = vnp->disk.parent;
-	    if (osdvol && vp->osdMetadataHandle)
-                *((*ptr)++) = vnp->disk.osdMetadataIndex;
-	    else
-                (*ptr)++;
-            if (v & 1)  /* Large vnode, copy ACL if buffer supplied */
-                memcpy(aclbuf, ((byte *)&vnp->disk)+SIZEOF_SMALLDISKVNODE,
-                                                                VAclSize(vnp));
-            v = 0;
-            if (!dontPutVnode)
-                VPutVnode(&code2, vnp);
-            l -= 20;
-        } else
-            v = 0;
-    }
-    return (afs_int32)code;
 }

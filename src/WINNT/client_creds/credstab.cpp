@@ -11,8 +11,9 @@
 #include <ws2tcpip.h>
 
 extern "C" {
+#include <afsconfig.h>
 #include <afs/param.h>
-#include <afs/stds.h>
+#include <roken.h>
 }
 
 #include "afscreds.h"
@@ -73,15 +74,6 @@ BOOL CALLBACK Creds_DlgProc (HWND hDlg, UINT msg, WPARAM wp, LPARAM lp)
                Creds_DlgProc (hDlg, WM_HELP, 0, 0);
                break;
             }
-         break;
-
-      case WM_HELP:
-         if (IsWindow (GetDlgItem (hDlg, IDC_CREDS_REMIND)))
-            WinHelp (hDlg, g.szHelpFile, HELP_CONTEXT, IDH_AFSCREDS_TAB_TOKENS);
-         else if (IsServiceRunning())
-            WinHelp (hDlg, g.szHelpFile, HELP_CONTEXT, IDH_AFSCREDS_TAB_NOTOKENS_RUNNING);
-         else // (!IsServiceRunning())
-            WinHelp (hDlg, g.szHelpFile, HELP_CONTEXT, IDH_AFSCREDS_TAB_NOTOKENS_STOPPED);
          break;
       }
 
@@ -239,7 +231,7 @@ void ShowObtainCreds (BOOL fExpiring, LPTSTR pszCell)
         return;
     oc->parent = (IsWindowVisible (g.hMain)) ? g.hMain : NULL;
     oc->type = fExpiring ? IDD_NEWCREDS_EXPIRE : IDD_NEWCREDS;
-    oc->cell = _strdup(pszCell);
+    oc->cell = strdup(pszCell);
 
     HANDLE thread = 0;
     ULONG  threadID = 123;
@@ -290,10 +282,6 @@ BOOL CALLBACK NewCreds_DlgProc (HWND hDlg, UINT msg, WPARAM wp, LPARAM lp)
                NewCreds_DlgProc (hDlg, WM_HELP, 0, 0);
                break;
             }
-         break;
-
-      case WM_HELP:
-         WinHelp (hDlg, g.szHelpFile, HELP_CONTEXT, IDH_AFSCREDS_NEWTOKENS);
          break;
       }
    return FALSE;

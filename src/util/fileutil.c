@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -11,56 +11,20 @@
 
 #include <afsconfig.h>
 #include <afs/param.h>
-
-
 #include <afs/stds.h>
+
+#include <roken.h>
+
 #include <stddef.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <errno.h>
-#include <string.h>
 
 #ifdef AFS_NT40_ENV
-#include <windows.h>
-#include <io.h>
 #include "errmap_nt.h"
 #endif
 
-#ifdef HAVE_UNISTD_H
-#include <unistd.h>
-#endif
-#include <sys/types.h>
-#include <dirent.h>
-#include <sys/stat.h>
-#ifdef HAVE_FCNTL_H
-#include <fcntl.h>
-#endif
 #include "fileutil.h"
 
-
 /*
- * renamefile() -- rename a file (Unix rename() semantics)
- */
-int
-renamefile(const char *oldname, const char *newname)
-{
-    int rc = 0;
-
-#ifdef AFS_NT40_ENV
-    if (!MoveFileEx(oldname, newname, MOVEFILE_REPLACE_EXISTING)) {
-	/* rename failed */
-	errno = nterr_nt2unix(GetLastError(), EIO);
-	rc = -1;
-    }
-#else
-    rc = rename(oldname, newname);
-#endif
-    return rc;
-}
-
-
-/*
- * FilepathNormalizeEx() -- normalize file path; i.e., use only forward (or only 
+ * FilepathNormalizeEx() -- normalize file path; i.e., use only forward (or only
  *     backward) slashes, remove multiple and trailing slashes.
  */
 void
@@ -116,7 +80,7 @@ BufioOpen(char *path, int oflag, int mode)
 {
     bufio_p bp;
 
-    bp = (bufio_p) malloc(sizeof(bufio_t));
+    bp = malloc(sizeof(bufio_t));
     if (bp == NULL) {
 	return NULL;
     }

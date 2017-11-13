@@ -1,8 +1,8 @@
 /******************************************************************************
  * skip_cas_func.c
- * 
- * Skip lists, allowing concurrent update by use of CAS primitives. 
- * 
+ *
+ * Skip lists, allowing concurrent update by use of CAS primitives.
+ *
  * Matt Benjamin <matt@linuxbox.com>
  *
  * Adapts MCAS skip list to use a pointer-key and typed comparison
@@ -78,7 +78,7 @@ static int gc_id[NUM_LEVELS];
  * PRIVATE FUNCTIONS
  */
 
-#define compare_keys(s, k1, k2) (s->cmpf(k1, k2));
+#define compare_keys(s, k1, k2) (s->cmpf(k1, k2))
 
 /*
  * Random level generator. Drop-off rate is 0.5 per level.

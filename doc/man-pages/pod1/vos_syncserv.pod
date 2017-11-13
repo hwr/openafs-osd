@@ -12,12 +12,16 @@ B<vos syncserv> S<<< B<-server> <I<machine name>> >>>
     S<<< [B<-cell> <I<cell name>>] >>>
     [B<-dryrun>]
     [B<-noauth>] [B<-localauth>]
-    [B<-verbose>] [B<-encrypt>] [B<-noresolve>] [B<-help>]
+    [B<-verbose>] [B<-encrypt>] [B<-noresolve>]
+    S<<< [B<-config> <I<config directory>>] >>>
+    [B<-help>]
 
 B<vos syncs> S<<< B<-s> <I<machine name>> >>>
     S<<< [B<-p> <I<partition name>>] >>>
     S<<< [B<-c> <I<cell name>>] >>> [B<-d>]
-    [B<-noa>] [B<-l>] [B<-v>] [B<-e>] [B<-nor>] [B<-h>]
+    [B<-noa>] [B<-l>] [B<-v>] [B<-e>] [B<-nor>]
+    S<<< [B<-co> <I<config directory>>] >>>
+    [B<-h>]
 
 =for html
 </div>
@@ -60,14 +64,14 @@ the partition's complete name with preceding slash (for example,
 C</vicepa>) or use one of the three acceptable abbreviated forms. For
 details, see L<vos(1)>.
 
+=item B<-dryrun>
+
+Show the actions which would be taken, but do not make changes.
+
 =item B<-cell> <I<cell name>>
 
 Names the cell in which to run the command. Do not combine this argument
 with the B<-localauth> flag. For more details, see L<vos(1)>.
-
-=item B<-dryrun>
-
-Show the actions which would be taken, but do not make changes.
 
 =item B<-noauth>
 
@@ -102,6 +106,13 @@ useful when the server address is registered as 127.0.0.1 or when dealing
 with multi-homed servers. This option is available in OpenAFS
 versions 1.4.8 or later and 1.5.35 or later.
 
+=item B<-config> <I<configuration directory>>
+
+Set the location of the configuration directory to be used. This defaults to
+F</usr/vice/etc>, except if B<-localauth> is specified, in which case the
+default is F</usr/afs/etc>. This option allows the use of alternative
+configuration locations for testing purposes.
+
 =item B<-help>
 
 Prints the online help for this command. All other valid options are
@@ -112,9 +123,9 @@ ignored.
 =head1 EXAMPLES
 
 The following example verifies the VLDB entries in which a site definition
-mentions the file server machine C<fs3.abc.com>.
+mentions the file server machine C<fs3.example.com>.
 
-   % vos syncserv -server fs3.abc.com
+   % vos syncserv -server fs3.example.com
 
 =head1 PRIVILEGE REQUIRED
 

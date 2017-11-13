@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -13,9 +13,6 @@
  */
 
 #include "common.xg"			/*Common structures & definitions*/
-
-/* prototype for pseudo-RPC call */
-%char *RXAFS_TranslateOpCode(afs_int32 code);
 
 %#define VICECONNBAD	1234
 %#define VICETOKENDEAD	1235
@@ -41,9 +38,9 @@ customized struct AFSAccessList {
 typedef afs_int32 ViceDataType;
 
 %#define Invalid 0
-%#define File 1 
-%#define Directory 2 
-%#define SymbolicLink 3 
+%#define File 1
+%#define Directory 2
+%#define SymbolicLink 3
 
 %#ifdef       KERNEL
 %#define      afs_xdr_array(a,b,c,d,e,f)  afs_xdr_arrayN(a,b,c,d,e,f)
@@ -96,8 +93,7 @@ struct AFSFetchStatus {
     afs_uint32 UnixModeBits;
     afs_uint32 ParentVnode;
     afs_uint32 ParentUnique;
-    afs_uint32 ResidencyMask;	/* obsolete, was used once by MR-AFS */
-%#define FetchStatusProtocol ResidencyMask /* 1 == rx fileserver, 2 == rxosd ... */
+    afs_uint32 ResidencyMask;
     afs_uint32 ClientModTime;
     afs_uint32 ServerModTime;
     afs_uint32 Group;
@@ -108,25 +104,14 @@ struct AFSFetchStatus {
     afs_uint32 errorCode;
 };
 
-/* bits of Protocol */
-%#define RX_FILESERVER	1		/* file in fileserver's /vicep partition */
-%#define RX_OSD		2		/* file in object storage */
-%#define VICEP_ACCESS	4		/* file's partition visible on client */
-%#define PROTOCOL_MASK  0xffff
-%#define POSSIBLY_OSD	0x10000		/* file location may change to OSD */
-%#define RX_OSD_NOT_ONLINE 0x1000000	/* file in OSD, but on tape */
-
 struct AFSStoreStatus {
-    afs_uint32 Mask;	
+    afs_uint32 Mask;
     afs_uint32 ClientModTime;
     afs_uint32 Owner;
     afs_uint32 Group;
     afs_uint32 UnixModeBits;
     afs_uint32 SegSize;
 };
-
-%#define MAXAFSPATHLENGTH 1024
-typedef opaque afs_filename<MAXAFSPATHLENGTH>;
 
 %#define	AFS_SETMODTIME	1
 %#define	AFS_SETOWNER	2
@@ -142,8 +127,8 @@ typedef afs_int32 ViceVolumeType;
 
 
 struct ViceDisk {
-    afs_uint32	BlocksAvailable;
-    afs_uint32	TotalBlocks;
+    afs_int32	BlocksAvailable;
+    afs_int32	TotalBlocks;
     DiskName	Name;
 };
 
@@ -215,9 +200,9 @@ struct VolumeStatus {
     afs_int32 Type;
     afs_int32 MinQuota;
     afs_int32 MaxQuota;
-    afs_uint32 BlocksInUse;
-    afs_uint32 PartBlocksAvail;
-    afs_uint32 PartMaxBlocks;
+    afs_int32 BlocksInUse;
+    afs_int32 PartBlocksAvail;
+    afs_int32 PartMaxBlocks;
 };
 
 struct AFSFetchVolumeStatus {
@@ -230,9 +215,9 @@ struct AFSFetchVolumeStatus {
     afs_int32 Type;
     afs_int32 MinQuota;
     afs_int32 MaxQuota;
-    afs_uint32 BlocksInUse;
-    afs_uint32 PartBlocksAvail;
-    afs_uint32 PartMaxBlocks;
+    afs_int32 BlocksInUse;
+    afs_int32 PartBlocksAvail;
+    afs_int32 PartMaxBlocks;
 };
 
 struct AFSStoreVolumeStatus {
@@ -306,29 +291,101 @@ typedef afs_int32 ViceOfflineType;
 %#define MAXCMDINT64S   			3
 %#define MAXCMDINT32S   			200
 %#define MAXCMDCHARS    			256
-%#define OSD_WRITING				1
-%#define OSD_WAIT   				2
-%#define FS_OSD_COMMAND				4
-
-%#define CMD_WIPEFILE  		 		7
+%#define CMD_GETRESIDENCIES			1
+%#define CMD_CHANGERESIDENCIES			2
+%#define CMD_IMPORTRESIDENCIES			3
+%#define CMD_GETEXTVOLATTR     		 	4
+%#define CMD_SETEXTVOLATTR     		 	5
+%#define CMD_GETACCESSHISTORY  		 	6
+%#define CMD_MIGRATEFILE  		 	7
+%#define CMD_CHECKHSMMETADATA  		 	8
 %#define CMD_FETCHSTATUS  		 	9
-%#define CMD_SERVERPATH   		 	10
-%#define CMD_LISTOFFLINEVOLUMES                 11
-%#define CMD_LISTLOCKEDVNODES                   12
-%#define CMD_LISTDISKVNODE                      13
-%#define CMD_LISTFSYNCTRACE                     14
-%#define CMD_SHOWTHREADS                        15
-%#define CMD_INVERSELOOKUP                      16
-%#define CMD_OSD_ARCHIVE			17
-%#define CMD_OSD_MD5SUM 			18
-%#define CMD_SET_OSD_MD5SUM 			19
-%#define CMD_STRIPED_OSD_FILE			20
-%#define CMD_REPLACE_OSD			21
-%#define CMD_GET_ARCH_OSDS			22
-%#define CMD_LIST_OSDS    	 		23
-%#define CMD_SET_POLICY    	 		24
-%#define CMD_GET_POLICIES  	 		25
-%#define CMD_LIST_VARIABLES			26
+
+%#define VOLATTR_DESIREDRESIDENCYMASK		1
+%#define VOLATTR_UNDESIREDRESIDENCYMASK		2
+%#define VOLATTR_SETSPECIALACCESSFLAG 		4
+struct ExtendedVolAttrInputs {
+    afs_uint32 Mask;
+    afs_uint32 Volume;
+    afs_uint32 DesiredResidencyMask;
+    afs_uint32 Spare1[10];
+    afs_uint32 UnDesiredResidencyMask;
+    afs_uint32 Spare2[9];
+    afs_uint32 SpecialAccessFlag;
+};
+
+struct ExtendedVolAttrOutputs {
+    afs_uint32 DesiredResidencyMask;
+    afs_uint32 Spare1[10];
+    afs_uint32 UnDesiredResidencyMask;
+    afs_uint32 Spare2[9];
+    afs_uint32 SpecialAccessFlag;
+};
+
+struct TagsArray {
+    afs_uint32 TagsArray_len;
+    afs_uint32 TagsArray_val[184];
+};
+
+struct AccessHistory {
+    afs_uint64 Size;
+    afs_uint32 ModTime;
+    afs_uint32 NonSpoolingFetches;
+    afs_uint32 UserSpoolingFetches;
+    afs_uint32 MigratorSpoolingFetches;
+    afs_uint32 LastUserMigrationEvent;
+    afs_uint32 MigrateMe;
+    afs_uint32 Time0;
+    afs_uint32 Type0;
+    afs_uint32 LocalAccess0;
+    afs_uint32 Residency0;
+    afs_uint32 Time1;
+    afs_uint32 Type1;
+    afs_uint32 LocalAccess1;
+    afs_uint32 Residency1;
+    afs_uint32 Time2;
+    afs_uint32 Type2;
+    afs_uint32 LocalAccess2;
+    afs_uint32 Residency2;
+    afs_uint32 Time3;
+    afs_uint32 Type3;
+    afs_uint32 LocalAccess3;
+    afs_uint32 Residency3;
+    afs_uint32 Time4;
+    afs_uint32 Type4;
+    afs_uint32 LocalAccess4;
+    afs_uint32 Residency4;
+};
+
+struct AccessHistoryOld {
+    afs_uint32 Size;
+    afs_uint32 ModTime;
+    afs_uint32 NonSpoolingFetches;
+    afs_uint32 UserSpoolingFetches;
+    afs_uint32 MigratorSpoolingFetches;
+    afs_uint32 LastUserMigrationEvent;
+    afs_uint32 MigrateMe;
+    afs_uint32 Time0;
+    afs_uint32 Type0;
+    afs_uint32 LocalAccess0;
+    afs_uint32 Residency0;
+    afs_uint32 Time1;
+    afs_uint32 Type1;
+    afs_uint32 LocalAccess1;
+    afs_uint32 Residency1;
+    afs_uint32 Time2;
+    afs_uint32 Type2;
+    afs_uint32 LocalAccess2;
+    afs_uint32 Residency2;
+    afs_uint32 Time3;
+    afs_uint32 Type3;
+    afs_uint32 LocalAccess3;
+    afs_uint32 Residency3;
+    afs_uint32 Time4;
+    afs_uint32 Type4;
+    afs_uint32 LocalAccess4;
+    afs_uint32 Residency4;
+};
 
 struct FsCmdInputs {
     afs_int32  command;
@@ -346,183 +403,8 @@ struct FsCmdOutputs {
     char       chars[MAXCMDCHARS];
 };
 
-struct activecall {
-        afs_uint32 num;
-        afs_uint32 volume;
-        afs_uint32 vnode;
-        afs_uint32 unique;
-        afs_uint32 ip;
-        afs_uint32 timeStamp;
-        afs_uint32 flag;
-};
-typedef activecall activecallList<>;
-
 %#define ResidencyCmdInputs FsCmdInputs
 %#define ResidencyCmdOutputs FsCmdOutputs
-
-#include "../rxosd/fs_rxosd_common.xg"
-
-struct osd_obj0 {
-    afs_uint64 obj_id;
-    afs_uint64 part_id;
-    afs_uint32 osd_id;
-    afs_uint32 osd_ip;
-    afs_uint32 osd_flag;
-    afs_uint32 stripe;
-    char rock[200];
-};
-typedef struct osd_obj0 osd_obj0List <>;
-
-struct osd_segm0 {
-    afs_uint64 length;
-    afs_uint64 offset;
-    afs_uint32 raid_level;
-    afs_uint32 nstripes;
-    afs_uint32 stripe_size;
-    afs_uint32 copies;
-    struct osd_obj0List objList;
-};
-typedef struct osd_segm0 osd_segm0List <>;
-
-struct osd_file0 {
-    afs_uint64 part_id;
-    afs_uint64 length;
-    struct osd_segm0List segmList;
-};
-typedef struct osd_file0 osd_file0List <>;
-
-struct osd_obj1 {
-    struct ometa m;
-    afs_uint32 osd_id;
-    struct rx_endp addr;
-    afs_uint32 osd_flag;
-    afs_uint32 stripe;
-    afs_uint32 osd_type;
-    t10rock rock;
-};
-
-typedef struct osd_obj1 osd_obj1List <>;
-
-struct osd_segm1 {
-    afs_uint64 length;
-    afs_uint64 offset;
-    afs_uint32 raid_level;
-    afs_uint32 nstripes;
-    afs_uint32 stripe_size;
-    afs_uint32 copies;
-    struct osd_obj1List objList;
-};
-
-typedef struct osd_segm1 osd_segm1List <>;
-
-struct osd_file1 {
-    afs_uint64 length;
-    struct osd_segm1List segmList;
-};
-
-typedef struct osd_file1 osd_file1List <>;
-
-/*  */
-
-struct osd_obj2 {
-    afs_uint64 obj_id;
-    afs_uint64 part_id;
-    afs_uint32 osd_id;
-    afs_uint32 osd_ip;
-    afs_uint32 osd_flag;
-    afs_uint32 stripe;
-    afs_uint32 osd_type;
-    t10rock rock;
-};
-
-typedef struct osd_obj2 osd_obj2List <>;
-
-%#define MAXOBJPERSEGM 8
-
-struct osd_segm2 {
-    afs_uint64 length;
-    afs_uint64 offset;
-    afs_uint32 raid_level;
-    afs_uint32 nstripes;
-    afs_uint32 stripe_size;
-    afs_uint32 copies;
-    struct osd_obj2List objList;
-};
-
-typedef struct osd_segm2 osd_segm2List <>;
-
-%#define PSEODO_STRIPED 9
-%#define MAXOSDSTRIPES  8
-%#define OSD_WAIT_FOR_TAPE 1096
-
-struct osd_file2 {
-    afs_uint64 part_id;
-    afs_uint64 length;
-    struct osd_segm2List segmList;
-};
-
-typedef struct osd_file2 osd_file2List <>;
-
-struct viced_stat {
-        afs_uint32 rpc;
-        afs_uint64 cnt;
-};
-typedef viced_stat viced_statList<>;
-
-struct viced_kbps {
-	afs_uint32 val[96];
-};
-
-struct viced_md5 {
-	afs_uint32 md5[4];
-};
-
-struct vicepinfo {
-    afs_uint64 ino;
-    afs_uint32 lun;
-    afs_uint32 algorithm;
-    afs_uint32 rwvol;
-};
-
-struct vicep_path_info {
-    afs_uint64 ino;
-    afs_uint32 lun;
-    afsUUID uuid;
-    path_info path;
-};
-
-union async switch(afs_int32 type) {
-case 0:
-	osd_file0List l0;
-case 1:
-	osd_file1List l1;
-case 2:
-	osd_file2List l2;
-case 3:
-	struct vicep_path_info p3;
-case 4:
-	struct vicepinfo p4;
-};
-
-struct store_recovery {
-    afs_uint64 offset;
-    afs_uint64 resid;
-    afs_uint32 osd;
-    afs_int32 retcd;
-};
-typedef store_recovery store_recoveryList<>;
-
-
-union asyncError switch(afs_int32 error) {
-case 0:
-	afs_int32 no_new_version;
-case 1:
-	store_recoveryList recovList;
-};
-
-#define MAXASYNCPARAMLNG 4096
-%#define MAXASYNCPARAMLEN 4096
-typedef opaque AsyncParams<MAXASYNCPARAMLNG>;
 
 const FLUSHMAX = 10;
 typedef afs_int32 ViceIds<FLUSHMAX>;
@@ -695,7 +577,7 @@ GetRootVolume(
 ) = 151;
 
 CheckToken(
-  IN  afs_int32 ViceId, 
+  IN  afs_int32 ViceId,
   AFSOpaque *token
 ) = 152;
 
@@ -779,11 +661,10 @@ FsCmd(
   IN AFSFid *Fid,
   IN struct FsCmdInputs *Inputs,
   OUT struct FsCmdOutputs *Outputs
-) slow = 220;
+) = 220;
 
-/* RXAFS_ResidencyCmd is required for backwards compatibility on Windows */
 #ifdef RPC_CLIENT
-%int RXAFS_ResidencyCmd(struct rx_connection *z_conn, AFSFid *Fid, struct FsCmdInputs*Inputs, struct FsCmdOutputs *Outputs)
+%int RXAFS_ResidencyCmd(struct rx_connection *z_conn, AFSFid *Fid, struct FsCmdInputs *Inputs, struct FsCmdOutputs *Outputs)
 %{
 %  return RXAFS_FsCmd(z_conn, Fid, Inputs, Outputs);
 %}
@@ -797,21 +678,21 @@ InlineBulkStatus(
 ) = 65536;
 
 FetchData64(
-  IN  AFSFid *Fid, 
-  afs_int64 Pos, 
-  afs_int64 Length, 
-  OUT AFSFetchStatus *OutStatus, 
-  AFSCallBack *CallBack, 
+  IN  AFSFid *Fid,
+  afs_int64 Pos,
+  afs_int64 Length,
+  OUT AFSFetchStatus *OutStatus,
+  AFSCallBack *CallBack,
   AFSVolSync *Sync
 ) split = 65537;
 
 StoreData64(
-  IN  AFSFid *Fid, 
-  AFSStoreStatus *InStatus, 
-  afs_uint64 Pos, 
-  afs_uint64 Length, 
-  afs_uint64 FileLength, 
-  OUT AFSFetchStatus *OutStatus, 
+  IN  AFSFid *Fid,
+  AFSStoreStatus *InStatus,
+  afs_uint64 Pos,
+  afs_uint64 Length,
+  afs_uint64 FileLength,
+  OUT AFSFetchStatus *OutStatus,
   AFSVolSync *Sync
 ) split = 65538;
 
@@ -854,428 +735,51 @@ GetStatistics64(
     OUT ViceStatistics64 *Statistics
 ) = 65542;
 
-/*
- * The following RPC number's shouldn't be used for new RPCs because
- * they were already used in older versions of AFS-OSD or are currently in use:
- *      65550   Threads			future use
- *      65551   ServerPath0             still used by some clients
- *      65552   PerfTest                not used anymore
- *      65553   RqOdToken               not used anymore
- *      65554   UpOdToken               not used anymore
- *      65555   GetFileCapXML		not used anymore
- *      65556   LockVnode               not used anymore
- *      65557   GetOSDlocation0         still used by some clients
- *      65558   InverseLookup           currently used
- *      65559   CheckOSDconns           currently used
- *      65560   ApplyOsdPolicy          currently used
- *      65561   GetPath1                still used by some clients (same number as SetOSdFileReady0 in 1.4-osd)
- *      65562   GetOsdMetadata          currently used
- *      65563   GetOSDlocation1         still used by some clients
- *      65564   ServerPath1             still used by some clients
- *      65565   GetOSDlocation2         still used by some clients
- *      65566   Statistic               currently used
- *      65567   Variable0               still used by some clients
- *      65568   SetOsdFileReady0        currently used
- *      65569   GetOSDlocation3         still used by some clients
- *      65570   ServerPath              currently used
- *      65571   StartAsyncFetch0        still used by some clients
- *      65572   ExtendAsyncFetch1       still used by many clients
- *      65573   EndAsyncFetch0          still used by some clients
- *      65574   StartAsyncStore0        still used by some clients
- *      65575   ExtendAsyncStore        currently used
- *      65576   EndAsyncStore0          still used by some clients
- *      65577   GetPath0                currently used
- *      65578   EndAsyncStore1          currently used
- *      65579   StartAsyncFetch1        currently used
- *      65580   GetOSDlocation          still used by many clients
- *      65581   StartAsyncStore1        still used by many clients
- *      65582   EndAsyncFetch1          currently used
- *      65583   announceBlock           implemented, but not yet used
- *      65584   StartAsyncFetch2	currently used
- *      65585   StartAsyncStore2	currently used
- *      65586   UpdateOSDmetadata	currently used
- *      65587   Variable                currently used
- *      65588   SetOsdFileReady0        currently used
- *      65589   GetPath                 currently used
- *      65590   StartAsyncFetch		future use
- *	65591   StartAsyncStore		future use
- *	65592   EndAsyncFetch		future use
- *	65593   EndAsyncStore		future use
- */
+/* rx osd. put here now to hold version numbers.
+ServerPath(
+  IN  AFSFid *Fid,
+  afs_int32 writing,
+  OUT FilePath *NameiInfo,
+  AFSFetchStatus *OutStatus,
+  AFSCallBack *CallBack
+) = 65551;
 
-/* Now first the actual RPCs which will go into git */
+PerfTest(
+  IN  afs_int32 type,
+  afs_int64 bytes,
+  afs_int32 bufsize
+) split = 65552;
 
-%#define AFSOSD_BACKEND		1
-%#define VICEPACCESS_BACKEND	2
- 
-StartAsyncFetch(
+GetOSDlocation(
   IN AFSFid *Fid,
-  IN afs_uint64 offset,
-  IN afs_uint64 length,
-  IN afs_int32 backend,
-  IN AsyncParams *Inputs,
-  OUT AsyncParams *Outputs,
-  OUT afs_uint64 *transId,
-  OUT afs_uint32 *expires,
+  afs_uint64 offset,
+  afs_uint64 length,
+  afs_int32 flag,
+  afsUUID uuid,
   OUT AFSFetchStatus *OutStatus,
-  OUT AFSCallBack *CallBack
-) = 65590;
-
-ExtendAsyncFetch(
-  IN AFSFid *fid,
-  IN afs_uint64 transId,
-  OUT afs_uint32 *expires
-) = 65572;
-
-EndAsyncFetch(
-  IN AFSFid *fid,
-  IN afs_uint64 transId,
-  IN afs_int32 backend,
-  IN AsyncParams *Inputs
-) = 65592;
-  
-StartAsyncStore(
-  IN AFSFid *Fid,
-  IN afs_uint64 offset,
-  IN afs_uint64 length,
-  IN afs_uint64 fileLength,
-  IN afs_int32 backend,
-  IN AsyncParams *Inputs,
-  OUT AsyncParams *Outputs,
-  OUT afs_uint64 *maxlength,
-  OUT afs_uint64 *transid,
-  OUT afs_uint32 *expires,
-  OUT AFSFetchStatus *OutStatus
-) = 65591;
-
-ExtendAsyncStore(
-  IN AFSFid *Fid,
-  IN afs_uint64 transid,
-  OUT afs_uint32 *expires
-) = 65575;
-
-EndAsyncStore(
-  IN AFSFid *Fid,
-  IN afs_uint64 transid,
-  IN afs_uint64 filelength,
-  IN afs_int32 backend,
-  IN AsyncParams *Inputs,
-  IN struct AFSStoreStatus *InStatus,
-  OUT struct AFSFetchStatus *OutStatus
-) = 65593;
-
-Threads(
-  OUT struct activecallList *list
-) = 65550;
+  AFSCallBack *CallBack,
+  struct osd_file *osd
+) = 65557;
 
 InverseLookup(
   IN AFSFid *Fid,
-  IN afs_uint32 parent,
+  afs_uint32 parent,
   OUT struct afs_filename *file,
   afs_uint32 *nextparent
 ) = 65558;
 
-/***************************************************************
- * Used by the cache manager it suspects that the OSD couldnt decrypt 
- * the osdRock because the rx-connection between FS and rxosd had been reaped */
-
 CheckOSDconns() = 65559;
 
-/***************************************************************
- * Used by the cache manager before storing a file when the fileserver
- * had indicated the file could possibly be stored in object storage. */
-
-ApplyOsdPolicy(
-  IN AFSFid *Fid,
-  IN afs_uint64 length,
+OsdPolicy(IN AFSFid *Fid,
+  afs_uint64 length,
   OUT afs_uint32 *protocol
 ) = 65560;
 
-/***************************************************************
- * Called by 'fs osd' or 'fs fidosd' to get see the osd metadata 
- * stored in the volume for a file in object storage. */
+SetOsdFileReady(
+  IN AFSFid *Fid
+) = 65561;
 
 GetOsdMetadata(
   IN AFSFid *Fid
 ) split = 65562;
-
-/***************************************************************
- * Called by 'fs statistic' to get a statistic about RPC usage and
- * data transfer to and from the fileserver. */
-
-Statistic(
-  IN afs_int32 reset,
-  OUT afs_uint32 *since, 
-  OUT afs_uint64 *rcvd,
-  OUT afs_uint64 *sent,
-  OUT viced_statList *l,
-  OUT struct viced_kbps *kbpsrcvd,
-  OUT struct viced_kbps *kbpssent
-) = 65566;
-
-/***************************************************************
- * Called by cache mamager on clients with visible fileserver partitions
- * and enabled vicep-access to get the path of a file inside the partition. */
-
-GetPath(
-  IN  AFSFid *Fid,
-  INOUT struct async *a
-) = 65589;
-
-/***************************************************************
- * Called by rxosd after copy on write to inform fileserver about
- * new tag of an object */
-
-UpdateOSDmetadata(
-  IN struct ometa *old,
-  IN struct ometa *new
-) = 65586;
-
-/***************************************************************
- * Called by 'fs getvariable' and 'fs setvariable' to inspect ore change
- * the contents of certain variables inside the fileserver. */
-
-Variable(
-  IN afs_int32 cmd,
-  IN var_info *name,
-  IN afs_int64 value,
-  OUT afs_int64 *result,
-  OUT var_info *str
-) = 65587;
-
-/***************************************************************
- * Called by archival rxosds after restore of a file from HSM to 
- * object storage to update the metadata and to check the md5-checksum. */
-
-SetOsdFileReady(
-  IN AFSFid *Fid,
-  IN struct cksum *checksum
-) = 65588;
-
-/* Now the RPCs we need to support for backwords compatibility */
-
-StartAsyncFetch2(
-  IN AFSFid *Fid,
-  IN struct RWparm *p,
-  INOUT struct async *a,
-  OUT afs_uint64 *transId,
-  OUT afs_uint32 *expires,
-  OUT AFSFetchStatus *OutStatus,
-  OUT AFSCallBack *CallBack
-) = 65584;
-
-EndAsyncFetch1(
-  IN AFSFid *fid,
-  IN afs_uint64 transId,
-  IN afs_uint64 bytes_sent,
-  IN afs_uint32 osd
-) = 65582;
-  
-StartAsyncStore2(
-  IN AFSFid *Fid,
-  IN struct RWparm *p,
-  INOUT struct async *a,
-  OUT afs_uint64 *maxlength,
-  OUT afs_uint64 *transid,
-  OUT afs_uint32 *expires,
-  OUT AFSFetchStatus *OutStatus
-) = 65585;
-
-EndAsyncStore1(
-  IN AFSFid *Fid,
-  IN afs_uint64 transid,
-  IN afs_uint64 filelength,
-  IN afs_uint64 bytes_rcvd,
-  IN afs_uint64 bytes_sent,
-  IN afs_uint32 osd,
-  IN afs_int32 error,
-  IN struct asyncError *ae,
-  IN struct AFSStoreStatus *Instatus,
-  OUT struct AFSFetchStatus *OutStatus
-) = 65578;
-
-GetOSDlocation0(
-  IN AFSFid *Fid,
-  IN afs_uint64 offset,
-  IN afs_uint64 length,
-  IN afs_int32 flag,
-  IN afsUUID uuid,
-  OUT AFSFetchStatus *OutStatus,
-  OUT AFSCallBack *CallBack,
-  OUT struct osd_file0 *osd
-) = 65557;
-
-GetOSDlocation1(
-  IN AFSFid *Fid,
-  IN afs_uint64 offset,
-  IN afs_uint64 length,
-  IN afs_int32 flag,
-  IN afsUUID uuid,
-  OUT AFSFetchStatus *OutStatus,
-  OUT AFSCallBack *CallBack,
-  OUT struct osd_file0List *list
-) = 65563;
-
-GetOSDlocation2(
-  IN AFSFid *Fid,
-  IN afs_uint64 offset,
-  IN afs_uint64 length,
-  IN afs_int32 flag,
-  IN afsUUID uuid,
-  OUT AFSFetchStatus *OutStatus,
-  OUT struct osd_file2List *list
-) = 65565;
-
-GetOSDlocation3(
-  IN AFSFid *Fid,
-  IN afs_uint64 offset,
-  IN afs_uint64 length,
-  IN afs_uint64 filelength,
-  IN afs_int32 flag,
-  IN afsUUID uuid,
-  OUT AFSFetchStatus *OutStatus,
-  OUT struct osd_file2List *list
-) = 65569;
-
-GetOSDlocation(
-  IN AFSFid *Fid,
-  IN afs_uint64 offset,
-  IN afs_uint64 length,
-  IN afs_uint64 filelength,
-  IN afs_int32 flag,
-  OUT AFSFetchStatus *OutStatus,
-  OUT struct osd_file2List *list
-) = 65580;
-
-StartAsyncFetch0(
-  IN AFSFid *Fid,
-  IN afs_uint64 offset,
-  IN afs_uint64 length,
-  IN afsUUID uuid,
-  IN afs_int32 flag,
-  INOUT struct async *a,
-  OUT afs_uint64 *transId,
-  OUT afs_uint32 *expires,
-  OUT AFSFetchStatus *OutStatus,
-  OUT AFSCallBack *CallBack
-) = 65571;
-
-StartAsyncFetch1(
-  IN AFSFid *Fid,
-  IN afs_uint64 offset,
-  IN afs_uint64 length,
-  IN afs_int32 flag,
-  INOUT struct async *a,
-  OUT afs_uint64 *transId,
-  OUT afs_uint32 *expires,
-  OUT AFSFetchStatus *OutStatus,
-  OUT AFSCallBack *CallBack
-) = 65579;
-
-EndAsyncFetch0(
-  IN AFSFid *fid,
-  IN afs_uint64 transId
-) = 65573;
-
-StartAsyncStore0(
-  IN AFSFid *Fid,
-  IN afs_uint64 offset,
-  IN afs_uint64 length,
-  IN afs_uint64 filelength,
-  IN afsUUID uuid,
-  IN afs_int32 flag,
-  INOUT struct async *a,
-  OUT afs_uint64 *maxlength,
-  OUT afs_uint64 *transid,
-  OUT afs_uint32 *expires,
-  OUT AFSFetchStatus *OutStatus
-) = 65574;
-
-StartAsyncStore1(
-  IN AFSFid *Fid,
-  IN afs_uint64 offset,
-  IN afs_uint64 length,
-  IN afs_uint64 filelength,
-  IN afs_int32 flag,
-  INOUT struct async *a,
-  OUT afs_uint64 *maxlength,
-  OUT afs_uint64 *transid,
-  OUT afs_uint32 *expires,
-  OUT AFSFetchStatus *OutStatus
-) = 65581;
-
-EndAsyncStore0(
-  IN AFSFid *Fid,
-  IN afs_uint64 transid,
-  IN afs_uint64 filelength,
-  IN afs_int32 error,
-  IN struct AFSStoreStatus *Instatus,
-  OUT struct AFSFetchStatus *OutStatus
-) = 65576;
-
-GetPath0(
-  IN  AFSFid *Fid,
-  OUT afs_uint64 *ino,
-  OUT afs_uint32 *lun, 		/* device number /vicepa == 0 ... */
-  OUT afs_uint32 *RWvol,
-  OUT afs_int32 *algorithm,		/* in case new algorithms will be implemnted */
-  OUT afsUUID *uuid
-) = 65577;
-
-Variable0(
-  IN afs_int32 cmd,
-  IN string name<256>,
-  IN afs_int64 value,
-  OUT afs_int64 *result
-) = 65567;
-
-ServerPath0(
-  IN  AFSFid *Fid,
-  afs_int32 writing,
-  OUT afs_uint64 *ino,
-  afs_uint32 *lun,              /* device number /vicepa == 0 ... */
-  afs_uint32 *RWvol,
-  afs_int32 *algorithm,         /* in case new algorithms will be implemnted */
-  OUT afs_uint64 *maxSize,
-  AFSFetchStatus *OutStatus
-) = 65551;
-
-ServerPath1(
-  IN  AFSFid *Fid,
-  afs_int32 writing,
-  afs_uint64 offset,
-  afs_uint64 length,
-  afs_uint64 filelength,
-  OUT afs_uint64 *ino,
-  afs_uint32 *lun,              /* device number /vicepa == 0 ... */
-  afs_uint32 *RWvol,
-  afs_int32 *algorithm,         /* in case new algorithms will be implemnted */
-  afs_uint64 *maxSize,
-  AFSFetchStatus *OutStatus
-) = 65564;
-
-ServerPath(
-  IN  AFSFid *Fid,
-  afs_int32 writing,
-  afs_uint64 offset,
-  afs_uint64 length,
-  afs_uint64 filelength,
-  OUT afs_uint64 *ino,
-  afs_uint32 *lun,              /* device number /vicepa == 0 ... */
-  afs_uint32 *RWvol,
-  afs_int32 *algorithm,         /* in case new algorithms will be implemnted */
-  afs_uint64 *maxSize,
-  afs_uint64 *fileSize,
-  AFSFetchStatus *OutStatus
-) = 65570;
-
-SetOsdFileReady0(
-  IN AFSFid *Fid,
-  IN struct viced_md5 *md5
-) = 65568;
-
-GetPath1(
-  IN  AFSFid *Fid,
-  INOUT struct async *a
-) = 65561;
-
+*/

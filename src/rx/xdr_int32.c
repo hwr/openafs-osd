@@ -28,11 +28,7 @@
  */
 
 #include <afsconfig.h>
-#ifdef KERNEL
-#include "afs/param.h"
-#else
 #include <afs/param.h>
-#endif
 
 
 #ifndef	NeXT
@@ -42,7 +38,7 @@
 #  include <sys/param.h>
 # endif
 #else
-# include <stdio.h>
+# include <roken.h>
 #endif
 #include "xdr.h"
 
@@ -80,30 +76,6 @@ xdr_afs_uint32(XDR * xdrs, afs_uint32 * ulp)
 	return (XDR_PUTINT32(xdrs, (afs_int32 *)ulp));
     if (xdrs->x_op == XDR_FREE)
 	return (TRUE);
-    return (FALSE);
-}
-
-struct NBOint32 {
-    afs_int32 v;
-};
-
-/*
- * XDR afs_int32 NBO integers
- */
-bool_t
-xdr_afs_NBOint32(XDR * xdrs, void * lp)
-{
-    struct NBOint32 *p = (struct NBOint32 *)lp;
-
-    if (xdrs->x_op == XDR_ENCODE)
-	return (XDR_PUTNBOINT32(xdrs, &p->v));
-
-    if (xdrs->x_op == XDR_DECODE)
-	return (XDR_GETNBOINT32(xdrs, &p->v));
-
-    if (xdrs->x_op == XDR_FREE)
-	return (TRUE);
-
     return (FALSE);
 }
 

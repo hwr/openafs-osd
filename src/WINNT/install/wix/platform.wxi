@@ -28,6 +28,9 @@
 	<?define cmf_afsvosadmin_DLL_guid="8955900E-E743-41A9-9C54-FCEB91A72ADE"?>
 	<?define cmf_afsadminutil_DLL_guid="72495728-0024-4AAC-81F6-6E826BFFED86"?>
 	<?define cmf_afsrpc_DLL_guid="AE9350B3-21AA-4204-A0A8-3D58C57EB178"?>
+	<?define cmf_afsrfc3961_DLL_guid="FBC41858-4EB1-4EAA-9FD7-AB1029602A70"?>
+        <?define cmf_afshcrypto_DLL_guid="4C35B73D-7477-44AA-8763-8C09F570C7BD"?>
+        <?define cmf_afsroken_DLL_guid="A9BB2D83-26A4-44BF-8235-F305E59393EA"?>
 	<?define cmf_afsauthent2_DLL_guid="7BD58D90-B600-44B7-BBCB-545861E878EB"?>
 	<?define cmf_afspthread_DLL_guid="8D29CD5A-DC32-4C2A-BD07-D7578FD649B4"?>
 	<?define cmf_TaAfsAppLib_DLL_guid="84C6E322-0490-4EE5-8972-553DBE905D8A"?>
@@ -46,6 +49,8 @@
 	<?define cmf_afs_config_1033_DLL_guid="D8A8C1AB-C47E-4208-B1F6-33A9526806E9"?>
 	<?define cmf_afs_cpa_1033_DLL_guid="08B5C87E-E4E0-4886-99FA-FB266BDCABF5"?>
 	<?define cmf_afs_shl_ext_1033_DLL_guid="5CA0BB73-35E2-4244-8891-DDD261244E06"?>
+        <?define cmf_afs_mount_ICO_guid="78420061-9042-40B5-A1AE-A6E9EA5CE88C"?>
+        <?define cmf_afs_link_ICO_guid="950BDA4E-6210-4925-A9E4-B70A937BD9A7"?>
 	<?define cmf_TaAfsServerManager_EXE_guid="D63E9DC0-4998-444F-A6BE-0B974FA718ED"?>
 	<?define cmf_TaAfsAdmSvr_EXE_guid="6E8C0D1B-D07D-467C-9829-5C4556CB062A"?>
 	<?define cmf_TaAfsAccountManager_EXE_guid="D8C0005E-A7A9-4B50-A28E-2C1429E8B805"?>
@@ -108,6 +113,12 @@
         <?define _afscreds_debugsym_guid="38DC7EA0-3130-4C27-8FD5-442660197208"?>
         <?define _afscreds_chm_guid="24A87704-5F47-43Af-9F2B-568AB103ADAF"?>
         <?define clsid_afs_shl_ext="5F820CA1-3DDE-11DB-B2CE-001558092DB5"?>
+        <?define clsid_afs_shl_ext2="5F820CA1-3DDE-11DB-B2CE-001558092DB6"?>
+        <?define DrvFSRDR_guid="6E8F93A9-5F72-42BA-BDD6-F01BC2A49EF3"?>
+        <?define DrvFSRDRDebug_guid="664E3C2B-8C9A-4BA8-ABE7-764ABCC4D472"?>
+        <?define DrvFSRDR_NP_guid="0EBA5BB2-9C55-41D7-9960-2781E9DEFE32"?>
+        <?define DrvFSRDRDebug_NP_guid="D22607A3-FC17-48C5-87C1-8E010E9D28B3"?>
+        <?define cmp_AfsCredsDebug_guid="C27FC522-CEFF-4B67-A148-57960CF5756D"?>
 
 <?elseif $(var.Platform) = "Intel"?>
 	<?define PISystemFolder="SystemFolder"?>
@@ -136,6 +147,9 @@
 	<?define cmf_afsvosadmin_DLL_guid="A97E0801-06A5-465C-99E1-E5F0E07166F0"?>
 	<?define cmf_afsadminutil_DLL_guid="A9782D0F-768F-40F4-A600-A7240EFBEC8C"?>
 	<?define cmf_afsrpc_DLL_guid="E75E2FC0-D011-494A-8142-670B3286C5C2"?>
+	<?define cmf_afsrfc3961_DLL_guid="8504A69A-84A1-47BB-9D3C-4A35592BB4CA"?>
+        <?define cmf_afshcrypto_DLL_guid="5FB93926-07D4-4BFB-9532-726233D256CA"?>
+        <?define cmf_afsroken_DLL_guid="9586EDB5-C1DE-4666-994C-5D2F4FC4D55E"?>
 	<?define cmf_afsauthent2_DLL_guid="7B806F96-0542-4BCC-865B-E126CE3BCDA6"?>
 	<?define cmf_afspthread_DLL_guid="77650315-9F19-47BF-A923-54B77DA5EA5C"?>
 	<?define cmf_TaAfsAppLib_DLL_guid="D6D8A744-2352-477D-9ECD-4859C475162B"?>
@@ -154,6 +168,8 @@
 	<?define cmf_afs_config_1033_DLL_guid="6DE08ED9-2B64-4D39-A50E-62FEAC91DF88"?>
 	<?define cmf_afs_cpa_1033_DLL_guid="12EE2B31-4320-4A6B-90F7-7A03ECF5A0DA"?>
 	<?define cmf_afs_shl_ext_1033_DLL_guid="9FF6C6CA-C731-4319-8777-E6DBAEFC3A4B"?>
+        <?define cmf_afs_mount_ICO_guid="681552AD-7671-470D-B4CE-26290AC95AC7"?>
+        <?define cmf_afs_link_ICO_guid="66E7BD99-114B-46E8-830B-73FA17C043FB"?>
 	<?define cmf_TaAfsServerManager_EXE_guid="B890FB93-2EFD-44B6-8CB3-7A6AFABFF029"?>
 	<?define cmf_TaAfsAdmSvr_EXE_guid="99E23413-8261-4007-9DC9-B2C7453EF1EE"?>
 	<?define cmf_TaAfsAccountManager_EXE_guid="BDFA5B64-2A69-41D5-8260-3DAB3CE9A10B"?>
@@ -212,10 +228,16 @@
 	<?define cmp_Server_Program_Debug_guid="5F7BA9F7-E9BD-4AC3-9232-5EFBF6B740F8"?>
         <?define rcm_binsonly_parm_guid="4DFE834A-F129-4FDD-91AD-8A31A849AF0B"?>
         <?define clsid_afs_shl_ext="DC515C27-6CAC-11D1-BAE7-00C04FD140D2"?>
+        <?define clsid_afs_shl_ext2="DC515C27-6CAC-11D1-BAE7-00C04FD140D3"?>
         <?define _afscreds_en_us_guid="B7F72D5F-B8A2-4FE8-B675-71BA4D04FA5C"?>
         <?define _afscreds_plugin_guid="3477A7C4-9BC9-4AF9-B97D-C96455CC3AF6"?>
         <?define _afscreds_debugsym_guid="DCBE9170-746F-4894-96FA-B8441A133133"?>
         <?define _afscreds_chm_guid="11657F75-67AD-4DBA-8344-BF65B7CCAAD2"?>
+        <?define DrvFSRDR_guid="CAD135D7-A1C6-40CE-9673-03CC36C710A3"?>
+        <?define DrvFSRDRDebug_guid="96B1084E-BA69-4014-9FB8-DAA3F4774BAD"?>
+        <?define DrvFSRDR_NP_guid="0472798F-AE1D-4108-84D8-6657D2DA0AA3"?>
+        <?define DrvFSRDRDebug_NP_guid="2D534142-DFBE-4578-8F3B-C6BC87F7BDCC"?>
+        <?define cmp_AfsCredsDebug_guid="4DD44B24-044F-4D6B-B8ED-AF950E6CA39C"?>
 <?else?>
 	<?error Unknown platform?>
 <?endif?>

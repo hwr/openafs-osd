@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -16,22 +16,16 @@
 #include <afs/param.h>
 #ifdef AFS_NAMEI_ENV
 #include <sys/types.h>
-#if AFS_64BIT_ENV
+
 typedef afs_uint64 Inode;
-#else
-typedef u_int64_t Inode;
-#endif
+
 #else /* AFS_NAMEI_ENV */
 #ifdef AFS_64BIT_IOPS_ENV
 #ifdef AFS_SGI62_ENV
 typedef uint64_t Inode;
 #else
 #include <sys/types.h>
-#if AFS_64BIT_ENV
 typedef afs_uint64 Inode;
-#else
-error Need 64 bit Inode defined.
-#endif
 #endif				/* AFS_SGI62_ENV */
 #else /* AFS_64BIT_IOPS_ENV */
 typedef unsigned int Inode;
@@ -46,7 +40,7 @@ extern FILE *inode_debug_log;
 
 /* Glue layer. */
 #ifdef AFS_LINUX20_ENV
-int proc_afs_syscall(long syscall, long param1, long param2, long param3, 
+int proc_afs_syscall(long syscall, long param1, long param2, long param3,
 		     long param4, int *rval);
 #endif
 

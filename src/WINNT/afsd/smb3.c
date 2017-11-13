@@ -8,7 +8,10 @@
  * directory or online at http://www.openafs.org/dl/license10.html
  */
 
+#include <afsconfig.h>
 #include <afs/param.h>
+#include <roken.h>
+
 #include <afs/stds.h>
 
 #include <windows.h>
@@ -1084,6 +1087,8 @@ long smb_ReceiveV3SessionSetupX(smb_vc_t *vcp, smb_packet_t *inp, smb_packet_t *
  	     * be freed when the refCount returns to zero.
  	     */
  	    unp->flags &= ~SMB_USERNAMEFLAG_AFSLOGON;
+            if (usernIsSID)
+                unp->flags |= SMB_USERNAMEFLAG_SID;
  	}
     if (usernIsSID)
         unp->flags |= SMB_USERNAMEFLAG_SID;
@@ -1496,7 +1501,7 @@ void smb_SendTran2Error(smb_vc_t *vcp, smb_tran2Packet_t *t2p,
     unsigned long NTStatus;
 
     if (vcp->flags & SMB_VCFLAG_STATUS32)
-        smb_MapNTError(code, &NTStatus);
+        smb_MapNTError(code, &NTStatus, FALSE);
     else
         smb_MapCoreError(code, vcp, &errCode, &errClass);
 
@@ -1559,7 +1564,7 @@ void smb_SendTran2Packet(smb_vc_t *vcp, smb_tran2Packet_t *t2p, smb_packet_t *tp
 	if (vcp->flags & SMB_VCFLAG_STATUS32) {
 	    unsigned long NTStatus;
 
-	    smb_MapNTError(t2p->error_code, &NTStatus);
+	    smb_MapNTError(t2p->error_code, &NTStatus, FALSE);
 
 	    smbp->rcls = (unsigned char) (NTStatus & 0xff);
 	    smbp->reh = (unsigned char) ((NTStatus >> 8) & 0xff);
@@ -4661,6 +4666,7 @@ smb_ApplyV3DirListPatches(cm_scache_t *dscp, smb_dirListPatch_t **dirPatchespp,
     smb_dirListPatch_t *npatchp;
     afs_uint32 rights;
     afs_int32 mustFake = 0;
+    afs_int32 nobulkstat = 0;
     clientchar_t path[AFSPATHMAX];
 
     lock_ObtainWrite(&dscp->rw);
@@ -4684,7 +4690,9 @@ smb_ApplyV3DirListPatches(cm_scache_t *dscp, smb_dirListPatch_t **dirPatchespp,
         cm_bulkStat_t *bsp = malloc(sizeof(cm_bulkStat_t));
 
         memset(bsp, 0, sizeof(cm_bulkStat_t));
+        bsp->userp = userp;
 
+      restart_patchset:
         for (patchp = *dirPatchespp, count=0;
              patchp;
              patchp = (smb_dirListPatch_t *) osi_QNext(&patchp->q)) {
@@ -4695,7 +4703,7 @@ smb_ApplyV3DirListPatches(cm_scache_t *dscp, smb_dirListPatch_t **dirPatchespp,
             if (patchp->flags & SMB_DIRLISTPATCH_IOCTL)
                 continue;
 
-            code = cm_GetSCache(&patchp->fid, &tscp, userp, reqp);
+            code = cm_GetSCache(&patchp->fid, &dscp->fid, &tscp, userp, reqp);
             if (code == 0) {
                 if (lock_TryWrite(&tscp->rw)) {
                     /* we have an entry that we can look at */
@@ -4711,7 +4719,7 @@ smb_ApplyV3DirListPatches(cm_scache_t *dscp, smb_dirListPatch_t **dirPatchespp,
                         continue;
                     }
 #endif /* AFS_FREELANCE_CLIENT */
-                    if (!(tscp->flags & CM_SCACHEFLAG_EACCESS) && cm_HaveCallback(tscp)) {
+                    if (!cm_EAccesFindEntry(userp, &tscp->fid) && cm_HaveCallback(tscp)) {
                         /* we have a callback on it.  Don't bother
                         * fetching this stat entry, since we're happy
                         * with the info we have.
@@ -4720,6 +4728,15 @@ smb_ApplyV3DirListPatches(cm_scache_t *dscp, smb_dirListPatch_t **dirPatchespp,
                         cm_ReleaseSCache(tscp);
                         continue;
                     }
+
+                    if (nobulkstat) {
+                        code = cm_SyncOp(tscp, NULL, userp, reqp, 0,
+                                          CM_SCACHESYNC_NEEDCALLBACK | CM_SCACHESYNC_GETSTATUS);
+                        lock_ReleaseWrite(&tscp->rw);
+                        cm_ReleaseSCache(tscp);
+                        continue;
+                    }
+
                     lock_ReleaseWrite(&tscp->rw);
                 } /* got lock */
                 cm_ReleaseSCache(tscp);
@@ -4733,6 +4750,17 @@ smb_ApplyV3DirListPatches(cm_scache_t *dscp, smb_dirListPatch_t **dirPatchespp,
             if (bsp->counter == AFSCBMAX) {
                 code = cm_TryBulkStatRPC(dscp, bsp, userp, reqp);
                 memset(bsp, 0, sizeof(cm_bulkStat_t));
+                bsp->userp = userp;
+
+                if (code == CM_ERROR_BULKSTAT_FAILURE) {
+                    /*
+                    * If bulk stat cannot be used for this directory
+                    * we must perform individual fetch status calls.
+                    * Restart from the beginning of the patch series.
+                    */
+                    nobulkstat = 1;
+                    goto restart_patchset;
+                }
             }
         }
 
@@ -4780,13 +4808,13 @@ smb_ApplyV3DirListPatches(cm_scache_t *dscp, smb_dirListPatch_t **dirPatchespp,
             continue;
         }
 
-        code = cm_GetSCache(&patchp->fid, &scp, userp, reqp);
+        code = cm_GetSCache(&patchp->fid, &dscp->fid, &scp, userp, reqp);
         reqp->relPathp = reqp->tidPathp = NULL;
         if (code)
             continue;
 
         lock_ObtainWrite(&scp->rw);
-        if (mustFake || (scp->flags & CM_SCACHEFLAG_EACCESS) || !cm_HaveCallback(scp)) {
+        if (mustFake || cm_EAccesFindEntry(userp, &scp->fid) || !cm_HaveCallback(scp)) {
             lock_ReleaseWrite(&scp->rw);
 
             /* Plug in fake timestamps. A time stamp of 0 causes 'invalid parameter'
@@ -5246,8 +5274,8 @@ long smb_T2SearchDirSingle(smb_vc_t *vcp, smb_tran2Packet_t *p, smb_packet_t *op
 
     fp = (smb_tran2Find_t *) op;
 
-    if (infoLevel == SMB_FIND_FILE_BOTH_DIRECTORY_INFO
-        && !cm_Is8Dot3(maskp)) {
+    if (infoLevel == SMB_FIND_FILE_BOTH_DIRECTORY_INFO &&
+        cm_shortNames && !cm_Is8Dot3(maskp)) {
 
         /*
          * Since the _._AFS_IOCTL_._ file does not actually exist
@@ -5875,7 +5903,7 @@ long smb_ReceiveTran2SearchDir(smb_vc_t *vcp, smb_tran2Packet_t *p, smb_packet_t
                 bufferp = NULL;
             }
             lock_ReleaseWrite(&scp->rw);
-            code = buf_Get(scp, &thyper, &req, &bufferp);
+            code = buf_Get(scp, &thyper, &req, 0, &bufferp);
             lock_ObtainWrite(&scp->rw);
             if (code) {
                 osi_Log2(smb_logp, "T2 search dir buf_Get scp %x failed %d", scp, code);
@@ -5974,6 +6002,7 @@ long smb_ReceiveTran2SearchDir(smb_vc_t *vcp, smb_tran2Packet_t *p, smb_packet_t
         /* Need 8.3 name? */
         NeedShortName = 0;
         if (infoLevel == SMB_FIND_FILE_BOTH_DIRECTORY_INFO &&
+            cm_shortNames &&
             !cm_Is8Dot3(cfileName)) {
             cm_Gen8Dot3Name(dep, shortName, &shortNameEnd);
             NeedShortName = 1;
@@ -7946,7 +7975,7 @@ long smb_ReceiveNTCreateX(smb_vc_t *vcp, smb_packet_t *inp, smb_packet_t *outp)
     fidp->userp = userp;
 
     if (code == 0 && !treeCreate) {
-        code = cm_CheckNTOpen(scp, desiredAccess, createDisp, userp, &req, &ldp);
+        code = cm_CheckNTOpen(scp, desiredAccess, shareAccess, createDisp, 0, fidp->fid, userp, &req, &ldp);
         if (code) {
             cm_CheckNTOpenDone(scp, userp, &req, &ldp);
             if (dscp)
@@ -7997,7 +8026,7 @@ long smb_ReceiveNTCreateX(smb_vc_t *vcp, smb_packet_t *inp, smb_packet_t *outp)
 		    cm_CheckNTOpenDone(scp, userp, &req, &ldp);
                     cm_ReleaseSCache(scp);
                     scp = targetScp;
-		    code = cm_CheckNTOpen(scp, desiredAccess, createDisp, userp, &req, &ldp);
+		    code = cm_CheckNTOpen(scp, desiredAccess, shareAccess, createDisp, 0, fidp->fid, userp, &req, &ldp);
 		    if (code) {
                         cm_CheckNTOpenDone(scp, userp, &req, &ldp);
 			if (dscp)
@@ -8393,11 +8422,19 @@ long smb_ReceiveNTCreateX(smb_vc_t *vcp, smb_packet_t *inp, smb_packet_t *outp)
     }
     lock_ReleaseRead(&scp->rw);
 
-    if (prefetch)
-        cm_QueueBKGRequest(scp, cm_BkgPrefetch, 0, 0,
-                           scp->length.LowPart, scp->length.HighPart,
-                           userp, &req);
+    if (prefetch) {
+        rock_BkgFetch_t *rockp = malloc(sizeof(*rockp));
 
+        if (rockp) {
+            rockp->base.LowPart = 0;
+            rockp->base.HighPart = 0;
+            rockp->length = scp->length;
+
+            cm_QueueBKGRequest(scp, cm_BkgPrefetch, rockp, userp, &req);
+
+            /* rock is freed by cm_BkgDaemon */
+        }
+    }
 
     osi_Log2(smb_logp, "SMB NT CreateX opening fid %d path %S", fidp->fid,
               osi_LogSaveClientString(smb_logp, realPathp));
@@ -8753,7 +8790,7 @@ long smb_ReceiveNTTranCreate(smb_vc_t *vcp, smb_packet_t *inp, smb_packet_t *out
      * scp is NULL.
      */
     if (code == 0) {
-        code = cm_CheckNTOpen(scp, desiredAccess, createDisp, userp, &req, &ldp);
+        code = cm_CheckNTOpen(scp, desiredAccess, shareAccess, createDisp, 0, fidp->fid, userp, &req, &ldp);
         if (code) {
             cm_CheckNTOpenDone(scp, userp, &req, &ldp);
             cm_ReleaseSCache(dscp);
@@ -8799,7 +8836,7 @@ long smb_ReceiveNTTranCreate(smb_vc_t *vcp, smb_packet_t *inp, smb_packet_t *out
 		    cm_CheckNTOpenDone(scp, userp, &req, &ldp);
                     cm_ReleaseSCache(scp);
                     scp = targetScp;
-		    code = cm_CheckNTOpen(scp, desiredAccess, createDisp, userp, &req, &ldp);
+		    code = cm_CheckNTOpen(scp, desiredAccess, shareAccess, createDisp, 0, fidp->fid, userp, &req, &ldp);
 		    if (code) {
                         cm_CheckNTOpenDone(scp, userp, &req, &ldp);
                         cm_ReleaseSCache(dscp);
@@ -9161,10 +9198,19 @@ long smb_ReceiveNTTranCreate(smb_vc_t *vcp, smb_packet_t *inp, smb_packet_t *out
     }
     lock_ReleaseRead(&scp->rw);
 
-    if (prefetch)
-        cm_QueueBKGRequest(scp, cm_BkgPrefetch, 0, 0,
-                           scp->length.LowPart, scp->length.HighPart,
-                           userp, &req);
+    if (prefetch) {
+        rock_BkgFetch_t *rockp = malloc(sizeof(*rockp));
+
+        if (rockp) {
+            rockp->base.LowPart = 0;
+            rockp->base.HighPart = 0;
+            rockp->length = scp->length;
+
+            cm_QueueBKGRequest(scp, cm_BkgPrefetch, rockp, userp, &req);
+
+            /* rock is freed by cm_BkgDaemon */
+        }
+    }
 
     osi_Log1(smb_logp, "SMB NTTranCreate opening fid %d", fidp->fid);
 

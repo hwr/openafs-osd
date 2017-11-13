@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -47,7 +47,6 @@ typedef int VnodeClass;
 #define VNODECLASSWIDTH 1
 #define VNODECLASSMASK	((1<<VNODECLASSWIDTH)-1)
 #define nVNODECLASSES	(VNODECLASSMASK+1)
-#define UNIQUEMASK 0xffffff
 
 struct VnodeClassInfo {
     struct Vnode *lruHead;	/* Head of list of vnodes of this class */
@@ -78,11 +77,6 @@ extern struct VnodeClassInfo VnodeClassInfo[nVNODECLASSES];
 #define bitNumberToVnodeNumber(b,class) ((VnodeId)(((b)<<VNODECLASSWIDTH)+(class)+1))
 #define vnodeIsDirectory(vnodeNumber) (vnodeIdToClass(vnodeNumber) == vLarge)
 
-struct OsdMetadata {
-    unsigned int    osdOnline:1;
-    unsigned int    osdIndex:31;
-};
-
 typedef struct VnodeDiskObject {
     unsigned int type:3;	/* Vnode is file, directory, symbolic link
 				 * or not allocated */
@@ -103,15 +97,8 @@ typedef struct VnodeDiskObject {
     UserId author;		/* Userid of the last user storing the file */
     UserId owner;		/* Userid of the user who created the file */
     VnodeId parent;		/* Parent directory vnode */
-    union {
-	struct OsdMetadata o;
-	bit32 vnodemagic;	/* Magic number--mainly for file server
+    bit32 vnodeMagic;		/* Magic number--mainly for file server
 				 * paranoia checks */
-    } u;
-#define osdMetadataIndex u.o.osdIndex
-#define osdFileOnline u.o.osdOnline
-#define vnodeMagic u.vnodemagic
-#define osdPolicyIndex osdMetadataIndex
 #   define	  SMALLVNODEMAGIC	0xda8c041F
 #   define	  LARGEVNODEMAGIC	0xad8765fe
     /* Vnode magic can be removed, someday, if we run need the room.  Simply
@@ -129,7 +116,6 @@ typedef struct VnodeDiskObject {
      * encryption key
      */
 } VnodeDiskObject;
-
 
 #define SIZEOF_SMALLDISKVNODE	64
 #define CHECKSIZE_SMALLVNODE\
@@ -157,9 +143,6 @@ typedef enum {
     VN_STATE_READ               = 8,    /**< a non-zero number of threads are executing
 					 *   code external to the vnode package which
 					 *   requires shared access */
-    VN_STATE_SHARED             = 9,    /**< something external to the vnode package
-					 *   has write access to this vnode while 
-					 *   other threads may get read access */
     VN_STATE_ERROR              = 10,   /**< vnode hard error state */
     VN_STATE_COUNT
 } VnState;
@@ -244,36 +227,27 @@ typedef struct Vnode {
 #define VNDISK_SET_LEN(V, N) SplitInt64(N, (V)->vn_length_hi, (V)->length)
 
 #ifdef AFS_64BIT_IOPS_ENV
-#ifdef AFS_NAMEI_ENV
-#define VN_GET_INO(V) ((Inode)(V)->disk.vn_ino_lo ? ((V)->disk.vn_ino_lo | \
-				(((Inode)(V)->disk.uniquifier)<<32)) : 0)
-
-#define VNDISK_GET_INO(V) ((Inode)(V)->vn_ino_lo ? ((V)->vn_ino_lo | \
-				(((Inode)(V)->uniquifier)<<32)) : 0)
-
-#else /* AFS_NAMEI_ENV */
 #define VN_GET_INO(V) ((Inode)((V)->disk.vn_ino_lo | \
 			       ((V)->disk.vn_ino_hi ? \
 				(((Inode)(V)->disk.vn_ino_hi)<<32) : 0)))
+
+#define VN_SET_INO(V, I) ((V)->disk.vn_ino_lo = (int)((I)&0xffffffff), \
+			   ((V)->disk.vn_ino_hi = (I) ? \
+			    (int)(((I)>>32)&0xffffffff) : 0))
 
 #define VNDISK_GET_INO(V) ((Inode)((V)->vn_ino_lo | \
 				   ((V)->vn_ino_hi ? \
 				    (((Inode)(V)->vn_ino_hi)<<32) : 0)))
 
-#endif /* AFS_NAMEI_ENV */
-#define VN_SET_INO(V, I) ((V)->disk.vn_ino_lo = (int)((I)&0xffffffff), \
-			   ((V)->disk.vn_ino_hi = (I) ? \
-			    (int)(((I)>>32)&0xffffffff) : 0))
-
 #define VNDISK_SET_INO(V, I) ((V)->vn_ino_lo = (int)(I&0xffffffff), \
 			      ((V)->vn_ino_hi = (I) ? \
 			       (int)(((I)>>32)&0xffffffff) : 0))
-#else /* AFS_64BIT_IOPS_ENV */
+#else
 #define VN_GET_INO(V) ((V)->disk.vn_ino_lo)
 #define VN_SET_INO(V, I) ((V)->disk.vn_ino_lo = (I))
 #define VNDISK_GET_INO(V) ((V)->vn_ino_lo)
 #define VNDISK_SET_INO(V, I) ((V)->vn_ino_lo = (I))
-#endif /* AFS_64BIT_IOPS_ENV */
+#endif
 
 #define VVnodeDiskACL(v)     /* Only call this with large (dir) vnode!! */ \
 	((AL_AccessList *) (((byte *)(v))+SIZEOF_SMALLDISKVNODE))
@@ -297,14 +271,15 @@ extern void VPutVnode(Error * ec, Vnode * vnp);
 extern void VPutVnode_r(Error * ec, Vnode * vnp);
 extern int VVnodeWriteToRead(Error * ec, Vnode * vnp);
 extern int VVnodeWriteToRead_r(Error * ec, Vnode * vnp);
-extern Vnode *VAllocVnode(Error * ec, struct Volume *vp, VnodeType type);
-extern Vnode *VAllocVnode_r(Error * ec, struct Volume *vp, VnodeType type);
+extern Vnode *VAllocVnode(Error * ec, struct Volume *vp, VnodeType type,
+	VnodeId in_vnode, Unique in_unique);
+extern Vnode *VAllocVnode_r(Error * ec, struct Volume *vp, VnodeType type,
+	VnodeId in_vnode, Unique in_unique);
+
 /*extern VFreeVnode();*/
 extern Vnode *VGetFreeVnode_r(struct VnodeClassInfo *vcp, struct Volume *vp,
-			      VnodeId vnodeNumber);
+                              VnodeId vnodeNumber);
 extern Vnode *VLookupVnode(struct Volume * vp, VnodeId vnodeId);
-extern int VSyncVnode(struct Volume *vp, VnodeDiskObject *vd, afs_uint32 vN,
-		      int newtime);
 
 extern void AddToVVnList(struct Volume * vp, Vnode * vnp);
 extern void DeleteFromVVnList(Vnode * vnp);
@@ -312,8 +287,5 @@ extern void AddToVnLRU(struct VnodeClassInfo * vcp, Vnode * vnp);
 extern void DeleteFromVnLRU(struct VnodeClassInfo * vcp, Vnode * vnp);
 extern void AddToVnHash(Vnode * vnp);
 extern void DeleteFromVnHash(Vnode * vnp);
-extern afs_int32 ListDiskVnode(struct Volume *vp, afs_uint32 vnodeNumber,
-			afs_uint32 **ptr, afs_uint32 length, char *aclbuf);
-extern int ListLockedVnodes(afs_uint32 *count, afs_uint32 maxcount, afs_uint32 **ptr);
 
 #endif /* _AFS_VOL_VNODE_H */

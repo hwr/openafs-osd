@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -35,6 +35,7 @@
 #define volser_RW	0
 #define volser_RO	1
 #define	volser_BACK	2
+#define	volser_RWREPL	3
 
 #define	THOLD(tt)	((tt)->refCount++)
 
@@ -45,7 +46,7 @@ struct volser_trans {
     afs_int32 creationTime;	/* time the transaction started */
     afs_int32 returnCode;	/* transaction error code */
     struct Volume *volume;	/* pointer to open volume */
-    afs_uint32 volid;		/* open volume's id */
+    VolumeId volid;		/* open volume's id */
     afs_int32 partition;	/* open volume's partition */
     afs_int32 dumpTransId;	/* other side's trans id during a dump */
     afs_int32 dumpSeq;		/* next sequence number to use during a dump */
@@ -63,20 +64,20 @@ struct volser_trans {
 
 };
 
-/* This is how often the garbage collection thread wakes up and 
+/* This is how often the garbage collection thread wakes up and
  * checks for transactions that have timed out: BKGLoop()
  */
 #define GCWAKEUP            30
 
 #ifdef AFS_PTHREAD_ENV
 #define VTRANS_OBJ_LOCK_INIT(tt) \
-  MUTEX_INIT(&((tt)->lock), "vtrans obj", MUTEX_DEFAULT, 0);
+  opr_mutex_init(&((tt)->lock));
 #define VTRANS_OBJ_LOCK_DESTROY(tt) \
-  MUTEX_DESTROY(&((tt)->lock))
+  opr_mutex_destroy(&((tt)->lock))
 #define VTRANS_OBJ_LOCK(tt) \
-  MUTEX_ENTER(&((tt)->lock))
+  opr_mutex_enter(&((tt)->lock))
 #define VTRANS_OBJ_UNLOCK(tt) \
-  MUTEX_EXIT(&((tt)->lock))
+  opr_mutex_exit(&((tt)->lock))
 #else
 #define VTRANS_OBJ_LOCK_INIT(tt)
 #define VTRANS_OBJ_LOCK_DESTROY(tt)
@@ -99,11 +100,14 @@ extern struct volser_trans *QI_GlobalWriteTrans;
 
 #define VSALVAGE	101	/* Volume needs salvage */
 #define VNOVNODE	102	/* Bad vnode number quoted */
-#define VNOVOL		103	/* Volume not attached, doesn't exist, 
+#define VNOVOL		103	/* Volume not attached, doesn't exist,
 				 * not created or not online */
 #define VVOLEXISTS	104	/* Volume already exists */
 #define VNOSERVICE	105	/* Volume is not in service (i.e. it's
-				 * is out of funds, is obsolete, or somesuch) */
+				 * is out of funds, is obsolete, or somesuch). This
+				 * error code is no longer used, but was previously
+				 * used by the OpenAFS fileserver to kill "idle" calls,
+				 * and OpenAFS clients may interpret it that way. */
 #define VOFFLINE	106	/* Volume is off line, for the reason
 				 * given in the offline message */
 #define VONLINE		107	/* Volume is already on line */
@@ -117,8 +121,6 @@ extern struct volser_trans *QI_GlobalWriteTrans;
 #define VMOVED		111	/* Volume has moved to another server; do a VGetVolumeInfo
 				 * to THIS server to find out where */
 
-#define MyPort 5003
-#define NameLen 80
 #define VLDB_MAXSERVERS 10
 #define VOLSERVICE_ID 4
 #define INVALID_BID 0
@@ -144,20 +146,6 @@ struct partList {		/*used by the backup system */
 
 #define ISNAMEVALID(name) (strlen(name) < (VOLSER_OLDMAXVOLNAME - 9))
 
-/* values for flags in struct nvldbEntry */
-#define RW_EXISTS 0x1000
-#define RO_EXISTS 0x2000
-#define BACK_EXISTS 0x4000
-
-/* values for serverFlags in struct nvldbEntry */
-#define NEW_REPSITE 0x01
-#define ITSROVOL    0x02
-#define ITSRWVOL    0x04
-#define ITSBACKVOL  0x08
-#define RO_DONTUSE  0x20
-
-#define VLOP_RESTORE 0x100	/*this is bogus, clashes with VLOP_DUMP */
-#define VLOP_ADDSITE 0x80	/*this is bogus, clashes with VLOP_DELETE */
 #define PARTVALID 0x01
 #define CLONEVALID 0x02
 #define CLONEZAPPED 0x04
@@ -185,20 +173,23 @@ struct partList {		/*used by the backup system */
 #define RV_NODEL        0x100000
 #define RV_RWONLY	0x200000
 
-/* Values for DumpVolume flag */
-#define FORCEDUMP               1
-#define TARGETHASOSDSUPPORT     2
-#define FORCEMETADATA           4
-#define METADATADUMP            8
-#define INITIAL                 0x8000
+/* Values for the UV_ReleaseVolume flags parameters */
+#define REL_COMPLETE    0x000001  /* force a complete release */
+#define REL_FULLDUMPS   0x000002  /* force full dumps */
+#define REL_STAYUP      0x000004  /* dump to clones to avoid offline time */
 
 struct ubik_client;
 extern afs_uint32 vsu_GetVolumeID(char *astring, struct ubik_client *acstruct, afs_int32 *errp);
 extern int vsu_ExtractName(char rname[], char name[]);
-extern afs_int32 vsu_ClientInit(int noAuthFlag, const char *confDir,
-				char *cellName, afs_int32 sauth,
-				struct ubik_client **uclientp,
-				int (*secproc)(struct rx_securityClass *, afs_int32));
-extern void vsu_SetCrypt(int cryptflag);
+extern afs_int32 vsu_ClientInit(const char *confDir, char *cellName,
+				int secFlags,
+				int (*secproc)(struct rx_securityClass *,
+					       afs_int32),
+				struct ubik_client **uclientp);
+enum vol_s2s_crypt {
+    VS2SC_NEVER = 0,
+    VS2SC_INHERIT,
+    VS2SC_ALWAYS
+};
 
 #endif /* _VOLSER_ */

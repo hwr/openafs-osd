@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -34,7 +34,7 @@
   * up 2 bytes
   */
 
-#if defined(AFS_SUN57_64BIT_ENV) || (defined(AFS_SGI61_ENV) && (_MIPS_SZPTR==64)) || defined(AFS_LINUX_64BIT_KERNEL)
+#if defined(AFS_SUN5_64BIT_ENV) || (defined(AFS_SGI61_ENV) && (_MIPS_SZPTR==64)) || defined(AFS_LINUX_64BIT_KERNEL)
 #define	AFS_XLATOR_MAGIC	0x8765	/* XXX */
 #else
 #define	AFS_XLATOR_MAGIC	0x87654321

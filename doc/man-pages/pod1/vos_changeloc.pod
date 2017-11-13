@@ -11,13 +11,17 @@ B<vos changeloc> S<<< [B<-server>] <I<new server name>> >>>
    S<<< [B<-partition>] <I<new partition location>> >>>
    S<<< [B<-id>] <I<volume name or ID>> >>>
    S<<< [B<-cell> <I<cell name>>] >>> [B<-noauth>] [B<-localauth>]
-   [B<-verbose>] [B<-encrypt>] [B<-noresolve>] [B<-help>]
+   [B<-verbose>] [B<-encrypt>] [B<-noresolve>]
+   S<<< [B<-config> <I<config directory>>] >>>
+   [B<-help>]
 
 B<vos changel> S<<< [B<-s>] <I<new server name>> >>>
    S<<< [B<-p>] <I<new partition location>> >>>
    S<<< [B<-i>] <I<volume name or ID>> >>>
    S<<< [B<-c> <I<cell name>>] >>>
-   [B<-noa>] [B<-l>] [B<-v>] [B<-e>] [B<-nor>] [B<-h>]
+   [B<-noa>] [B<-l>] [B<-v>] [B<-e>] [B<-nor>]
+   S<<< [B<-co> <I<config directory>>] >>>
+   [B<-h>]
 
 =for html
 </div>
@@ -109,6 +113,13 @@ Shows all servers as IP addresses instead of the DNS name. This is very
 useful when the server address is registered as 127.0.0.1 or when dealing
 with multi-homed servers. This option is available in OpenAFS
 versions 1.4.8 or later and 1.5.35 or later.
+
+=item B<-config> <I<configuration directory>>
+
+Set the location of the configuration directory to be used. This defaults to
+F</usr/vice/etc>, except if B<-localauth> is specified, in which case the
+default is F</usr/afs/etc>. This option allows the use of alternative
+configuration locations for testing purposes.
 
 =item B<-help>
 

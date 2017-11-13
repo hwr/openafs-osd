@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -10,24 +10,13 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
+#include <roken.h>
 
-#include <signal.h>
-#include <sys/errno.h>
 #include <afs/afs_args.h>
-#include <sys/file.h>
-#include <sys/ioctl.h>
-#if defined(AFS_SUN_ENV) && !defined(AFS_SUN5_ENV)
-#include <unistd.h>
-#else
-#include <stdio.h>
-#endif
-#ifdef AFS_SUN5_ENV
-#include <fcntl.h>
-#endif
+
 #ifdef AFS_SGI_XFS_IOPS_ENV
-#include "xfsattrs.h"
+# include "xfsattrs.h"
 #endif
-#include <errno.h>
 #include "afssyscalls.h"
 
 #ifdef AFS_DEBUG_IOPS
@@ -49,9 +38,6 @@ static void check_iops(int index, char *fun, char *file, int line);
 
 #else
 #if defined(AFS_SGI_ENV)
-#ifdef AFS_SGI61_ENV
-#include <sys/types.h>
-#endif /* AFS_SGI61_ENV */
 
 #pragma weak xicreate = icreate
 #pragma weak xiinc = iinc
@@ -388,7 +374,7 @@ iops_debug_t *iops_debug[MAX_I + 1];
 #define IOPS_DEBUG_MALLOC_STEP 64
 
 /* check_iops
- * Returns 1 if first time we've seen this file/line. 
+ * Returns 1 if first time we've seen this file/line.
  * Puts file/line in array so we only print the first time we encounter
  * this entry.
  */
@@ -421,11 +407,9 @@ check_iops(int index, char *fun, char *file, int line)
 	int avail = *availp;
 	avail += IOPS_DEBUG_MALLOC_STEP;
 	if (avail == IOPS_DEBUG_MALLOC_STEP)
-	    iops_debug[index] =
-		(iops_debug_t *) malloc(avail * sizeof(iops_debug_t));
+	    iops_debug[index] = malloc(avail * sizeof(iops_debug_t));
 	else
-	    iops_debug[index] =
-		(iops_debug_t *) realloc(*iops, avail * sizeof(iops_debug_t));
+	    iops_debug[index] = realloc(*iops, avail * sizeof(iops_debug_t));
 	if (!iops_debug[index]) {
 	    printf("check_iops: Can't %salloc %lu bytes for index %d\n",
 		   (avail == IOPS_DEBUG_MALLOC_STEP) ? "m" : "re",

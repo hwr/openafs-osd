@@ -7,7 +7,11 @@
  * directory or online at http://www.openafs.org/dl/license10.html
  */
 
+#include <afsconfig.h>
 #include <afs/param.h>
+
+#include <roken.h>
+
 #include <afs/stds.h>
 
 #include <windows.h>
@@ -40,7 +44,7 @@ void main (argc, argv)
     /* Start up sockets */
     WSAStartup(0x0101, &WSAjunk);
 
-    ts = cmd_CreateSyntax(NULL, CommandProc, NULL, "obtain Kerberos authentication");
+    ts = cmd_CreateSyntax(NULL, CommandProc, NULL, 0, "obtain Kerberos authentication");
 
 #define aXFLAG 0
 #define aPRINCIPAL 1

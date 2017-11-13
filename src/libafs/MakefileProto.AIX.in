@@ -103,9 +103,6 @@ setup:
 		ln -fs ../Makefile $${KDIR}/Makefile ; \
 		ln -fs ../Makefile.common $${KDIR}/Makefile.common ; \
 		ln -fs ../config $${KDIR}/config ; \
-		ln -fs @TOP_OBJDIR@/src/rxosd/rxosd.h $${KDIR}/rxosd.h; \
-		ln -fs @TOP_OBJDIR@/src/rxosd/Krxosd.cs.c $${KDIR}/Krxosd.cs.c; \
-		ln -fs @TOP_OBJDIR@/src/rxosd/Krxosd.xdr.c $${KDIR}/Krxosd.xdr.c; \
 	done
 
 ${COMPDIRS} ${INSTDIRS} ${DESTDIRS}:
@@ -186,16 +183,16 @@ $(LIBAFSIAUTH): $(AFSAOBJS) $(AFSIAUTHOBJS)
 		-bmap:afs.ext.iauth.map -o afs.ext.iauth \
 		${AFSAOBJS} ${AFSIAUTHOBJS} ${LIBS} ${LDFLAGS} ${IMPORTS32}
 
-afs.ext.32: $(AFSAOBJS) $(AFSNOIAUTHOBJS) ${AFSRXOSDOBJS}
+afs.ext.32: $(AFSAOBJS) $(AFSNOIAUTHOBJS)
 	${LD} ${LDSTUFF} -bloadmap:afs.ext.32.loadmap \
 	 	-bmap:afs.ext.32.map -o afs.ext.32 \
-		${AFSAOBJS} ${AFSNOIAUTHOBJS} ${AFSRXOSDOBJS} ${LIBS} \
+		${AFSAOBJS} ${AFSNOIAUTHOBJS} ${LIBS} \
 		${LDFLAGS} ${IMPORTS32}
 
-afs.ext.64: $(AFSAOBJS) $(AFSNOIAUTHOBJS) ${AFSRXOSDOBJS}
+afs.ext.64: $(AFSAOBJS) $(AFSNOIAUTHOBJS)
 	${LD} ${LDSTUFF64} -b64 -bloadmap:afs.ext.64.loadmap \
 	 	-bmap:afs.ext.64.map -o afs.ext.64 \
-		${AFSAOBJS} ${AFSNOIAUTHOBJS} ${AFSRXOSDOBJS} ${LIBS} \
+		${AFSAOBJS} ${AFSNOIAUTHOBJS} ${LIBS} \
 		${LDFLAGS} ${IMPORTS64}
 
 libafs: $(LIBAFS) $(LIBAFS64) $(LIBAFSIAUTH)

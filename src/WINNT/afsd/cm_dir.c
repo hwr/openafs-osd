@@ -7,7 +7,10 @@
  * directory or online at http://www.openafs.org/dl/license10.html
  */
 
+#include <afsconfig.h>
 #include <afs/param.h>
+#include <roken.h>
+
 #include <afs/stds.h>
 
 #include <windows.h>
@@ -1151,7 +1154,7 @@ cm_BeginDirOp(cm_scache_t * scp, cm_user_t * userp, cm_req_t * reqp,
 }
 
 /* Check if it is safe for us to perform local directory updates.
-   Called with op->scp->rw unlocked. */
+   Called with op->scp->rw write-locked. */
 int
 cm_CheckDirOpForSingleChange(cm_dirOp_t * op)
 {
@@ -1161,7 +1164,8 @@ cm_CheckDirOpForSingleChange(cm_dirOp_t * op)
     if (op->scp == NULL)
         return 0;
 
-    lock_ObtainWrite(&op->scp->rw);
+    lock_AssertWrite(&op->scp->rw);
+
     code = cm_DirCheckStatus(op, 1);
 
     if (code == 0 &&
@@ -1181,7 +1185,6 @@ cm_CheckDirOpForSingleChange(cm_dirOp_t * op)
          */
         rc = 0;
     }
-    lock_ReleaseWrite(&op->scp->rw);
 
     if (rc)
         osi_Log0(afsd_logp, "cm_CheckDirOpForSingleChange succeeded");
@@ -1535,7 +1538,7 @@ cm_DirPrefetchBuffers(cm_dirOp_t * op)
                  offset.HighPart, offset.LowPart);
         lock_ReleaseWrite(&op->scp->rw);
 
-        code = buf_Get(op->scp, &offset, &op->req, &bufferp);
+        code = buf_Get(op->scp, &offset, &op->req, 0, &bufferp);
 
         lock_ObtainWrite(&op->scp->rw);
 
@@ -1682,7 +1685,7 @@ cm_DirGetPage(cm_dirOp_t * op,
             goto _has_buffer;
         }
 
-        code = buf_Get(op->scp, &bufferOffset, &op->req, &bufferp);
+        code = buf_Get(op->scp, &bufferOffset, &op->req, 0, &bufferp);
         if (code) {
             osi_Log1(afsd_logp, "    buf_Get returned code 0x%x", code);
             bufferp = NULL;

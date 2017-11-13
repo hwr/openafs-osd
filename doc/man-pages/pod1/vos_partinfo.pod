@@ -11,12 +11,16 @@ B<vos partinfo> S<<< B<-server> <I<machine name>> >>>
     S<<< [B<-partition> <I<partition name>>] >>> [B<-summary>]
     S<<< [B<-cell> <I<cell name>>] >>>
     [B<-noauth>] [B<-localauth>]
-    [B<-verbose>] [B<-encrypt>] [B<-noresolve>] [B<-help>]
+    [B<-verbose>] [B<-encrypt>] [B<-noresolve>]
+    S<<< [B<-config> <I<config directory>>] >>>
+    [B<-help>]
 
 B<vos p> S<<< B<-se> <I<machine name>> >>>
     S<<< [B<-p> <I<partition name>>] >>> [B<-su>]
     S<<< [B<-c> <I<cell name>>] >>>
-    [B<-noa>] [B<-l>] [B<-v>] [B<-e>] [B<-nor>] [B<-h>]
+    [B<-noa>] [B<-l>] [B<-v>] [B<-e>] [B<-nor>]
+    S<<< [B<-co> <I<config directory>>] >>>
+    [B<-h>]
 
 =for html
 </div>
@@ -98,6 +102,13 @@ useful when the server address is registered as 127.0.0.1 or when dealing
 with multi-homed servers. This option is available in OpenAFS
 versions 1.4.8 or later and 1.5.35 or later.
 
+=item B<-config> <I<configuration directory>>
+
+Set the location of the configuration directory to be used. This defaults to
+F</usr/vice/etc>, except if B<-localauth> is specified, in which case the
+default is F</usr/afs/etc>. This option allows the use of alternative
+configuration locations for testing purposes.
+
 =item B<-help>
 
 Prints the online help for this command. All other valid options are
@@ -123,9 +134,9 @@ specified partition.
 =head1 EXAMPLES
 
 The following command displays all partitions on the file server machine
-C<fs2.abc.com>.
+C<fs2.example.com>.
 
-   % vos partinfo fs2.abc.com
+   % vos partinfo fs2.example.com
    Free space on partition /vicepa: 27301 K blocks out of total 549197
    Free space on partition /vicepb: 13646 K blocks out of total 69194
    Free space on partition /vicepc: 31798 K blocks out of total 320315

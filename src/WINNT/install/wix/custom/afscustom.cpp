@@ -172,14 +172,22 @@ _cleanup:
 provider */
 
 MSIDLLEXPORT InstallNetProvider( MSIHANDLE hInstall ) {
-    return InstNetProvider( hInstall, 1 );
+    return InstNetProvider( hInstall, STR_SERVICE, 1 );
 }
 
 MSIDLLEXPORT UninstallNetProvider( MSIHANDLE hInstall) {
-    return InstNetProvider( hInstall, 0 );
+    return InstNetProvider( hInstall, STR_SERVICE, 0 );
 }
 
-DWORD InstNetProvider(MSIHANDLE hInstall, int bInst) {
+MSIDLLEXPORT InstallRedirNetProvider( MSIHANDLE hInstall ) {
+    return InstNetProvider( hInstall, STR_RDRSVC, 1, STR_LANMAN );
+}
+
+MSIDLLEXPORT UninstallRedirNetProvider( MSIHANDLE hInstall) {
+    return InstNetProvider( hInstall, STR_RDRSVC, 0 );
+}
+
+DWORD InstNetProvider(MSIHANDLE hInstall, LPTSTR svcname, int bInst, LPTSTR before) {
     LPTSTR strOrder;
     HKEY hkOrder;
     LONG rv;
@@ -193,11 +201,11 @@ DWORD InstNetProvider(MSIHANDLE hInstall, int bInst) {
     dwSize = 0;
     CHECK(rv = RegQueryValueEx( hkOrder, STR_VAL_ORDER, NULL, NULL, NULL, &dwSize ) );
 
-    strOrder = new TCHAR[ (dwSize + STR_SERVICE_LEN) * sizeof(TCHAR) ];
+    strOrder = new TCHAR[ dwSize / sizeof(TCHAR) + 2 + _tcslen(svcname) ];
 
     CHECK(rv = RegQueryValueEx( hkOrder, STR_VAL_ORDER, NULL, NULL, (LPBYTE) strOrder, &dwSize));
 
-    npi_CheckAndAddRemove( strOrder, STR_SERVICE , bInst);
+    npi_CheckAndAddRemove( strOrder, svcname , bInst, before);
 
     dwSize = (lstrlen( strOrder ) + 1) * sizeof(TCHAR);
 
@@ -220,10 +228,11 @@ _cleanup:
 	str : target string
 	str2: string to add/remove
 	bInst: == 1 if string should be added to target if not already there, otherwise remove string from target if present.
+        if before != NULL, add string before
     */
-int npi_CheckAndAddRemove( LPTSTR str, LPTSTR str2, int bInst ) {
+int npi_CheckAndAddRemove( LPTSTR str, LPTSTR str2, int bInst, LPTSTR before ) {
 
-    LPTSTR target, charset, match;
+    LPTSTR target, charset, btarget, match, bmatch;
     int ret=0;
 
     target = new TCHAR[lstrlen(str)+3];
@@ -238,8 +247,21 @@ int npi_CheckAndAddRemove( LPTSTR str, LPTSTR str2, int bInst ) {
     match = _tcsstr(target, charset);
 
     if ((match) && (bInst)) {
+        if (before != NULL) {
+            bmatch = _tcsstr(target, before);
+            if (bmatch == NULL || bmatch > match) {
         ret = INP_ERR_PRESENT;
         goto cleanup;
+    }
+
+            lstrcpy(str+(match-target), match+lstrlen(str2)+2);
+            str[lstrlen(str)-1]=_T('\0');
+            match = NULL;
+
+        } else {
+            ret = INP_ERR_PRESENT;
+            goto cleanup;
+        }
     }
 
     if ((!match) && (!bInst)) {
@@ -249,8 +271,15 @@ int npi_CheckAndAddRemove( LPTSTR str, LPTSTR str2, int bInst ) {
 
     if (bInst) // && !match
     {
+        if (before == NULL || (bmatch = _tcsstr(str, before)) == NULL) {
        lstrcat(str, _T(","));
        lstrcat(str, str2);
+        } else {
+            size_t s2len = lstrlen(str2);
+            memmove(bmatch + s2len + 1, bmatch, (lstrlen(bmatch) + 1) * sizeof(TCHAR));
+            memcpy(bmatch, str2, s2len * sizeof(TCHAR));
+            bmatch[s2len] = _T(',');
+        }
        ret = INP_ERR_ADDED;
        goto cleanup;
     }
@@ -490,21 +519,28 @@ UINT removeAfsAdminGroup(void) {
     return status;
 }
 
-const TCHAR * reg_NP = _T("SYSTEM\\CurrentControlSet\\Services\\TransarcAFSDaemon\\NetworkProvider");
-const TCHAR * reg_NP_Backup = _T("SOFTWARE\\OpenAFS\\Client\\BackupSettings\\NetworkProvider");
+const TCHAR * reg_AFSD_NP = _T("SYSTEM\\CurrentControlSet\\Services\\TransarcAFSDaemon\\NetworkProvider");
+const TCHAR * reg_AFSD_NP_Backup = _T("SOFTWARE\\OpenAFS\\BackupSettings\\TransarcAFSDaemon\\NetworkProvider");
 
-const TCHAR * reg_NP_Domains = _T("SYSTEM\\CurrentControlSet\\Services\\TransarcAFSDaemon\\NetworkProvider\\Domain");
-const TCHAR * reg_NP_Domains_Backup = _T("SOFTWARE\\OpenAFS\\Client\\BackupSettings\\NetworkProvider\\Domain");
+const TCHAR * reg_AFSD_NP_Domains = _T("SYSTEM\\CurrentControlSet\\Services\\TransarcAFSDaemon\\NetworkProvider\\Domain");
+const TCHAR * reg_AFSD_NP_Domains_Backup = _T("SOFTWARE\\OpenAFS\\BackupSettings\\TransarcAFSDaemon\\NetworkProvider\\Domain");
 
-const TCHAR * reg_Param = _T("SYSTEM\\CurrentControlSet\\Services\\TransarcAFSDaemon\\Parameters");
-const TCHAR * reg_Param_Backup = _T("SOFTWARE\\OpenAFS\\Client\\BackupSettings\\Parameters");
+const TCHAR * reg_AFSD_Param = _T("SYSTEM\\CurrentControlSet\\Services\\TransarcAFSDaemon\\Parameters");
+const TCHAR * reg_AFSD_Param_Backup = _T("SOFTWARE\\OpenAFS\\BackupSettings\\TransarcAFSDaemon\\Parameters");
+
+const TCHAR * reg_RDR_NP = _T("SYSTEM\\CurrentControlSet\\Services\\AFSRedirector\\NetworkProvider");
+const TCHAR * reg_RDR_NP_Backup = _T("SOFTWARE\\OpenAFS\\BackupSettings\\AFSRedirector\\NetworkProvider");
+
+const TCHAR * reg_RDR_Param = _T("SYSTEM\\CurrentControlSet\\Services\\AFSRedirector\\Parameters");
+const TCHAR * reg_RDR_Param_Backup = _T("SOFTWARE\\OpenAFS\\BackupSettings\\AFSRedirector\\Parameters");
 
 const TCHAR * reg_Client = _T("SOFTWARE\\OpenAFS\\Client");
-const TCHAR * reg_Client_Backup = _T("SOFTWARE\\OpenAFS\\Client\\BackupSettings\\Client");
+const TCHAR * reg_Client_Backup = _T("SOFTWARE\\OpenAFS\\BackupSettings\\Client");
 
-const TCHAR * reg_Backup = _T("SOFTWARE\\OpenAFS\\Client\\BackupSettings");
+const TCHAR * reg_Backup = _T("SOFTWARE\\OpenAFS\\BackupSettings");
 
-const TCHAR * reg_NP_values[] = {
+const TCHAR * reg_AFSD_NP_values[] = {
+    _T("Debug"),
     _T("LogonOptions"),
     _T("VerboseLogging"),
     _T("LogonScript"),
@@ -513,6 +549,12 @@ const TCHAR * reg_NP_values[] = {
     _T("LoginSleepInterval"),
     _T("Realm"),
     _T("TheseCells"),
+    NULL
+};
+
+const TCHAR * reg_RDR_NP_values[] = {
+    _T("Name"),
+    _T("Debug"),
     NULL
 };
 
@@ -541,9 +583,11 @@ struct registry_backup {
 
     // Subkeys must be specified before parent keys.
 
-    { reg_NP_Domains, reg_Everything, reg_NP_Domains_Backup },
-    { reg_NP, reg_NP_values, reg_NP_Backup },
-    { reg_Param, reg_Everything, reg_Param_Backup },
+    { reg_AFSD_NP_Domains, reg_Everything, reg_AFSD_NP_Domains_Backup },
+    { reg_AFSD_NP, reg_AFSD_NP_values, reg_AFSD_NP_Backup },
+    { reg_AFSD_Param, reg_Everything, reg_AFSD_Param_Backup },
+    { reg_RDR_NP, reg_RDR_NP_values, reg_RDR_NP_Backup },
+    { reg_RDR_Param, reg_Everything, reg_RDR_Param_Backup },
     { reg_Client, reg_Client_values, reg_Client_Backup },
     { NULL, NULL, NULL }
 };
@@ -848,7 +892,7 @@ MSIDLLEXPORT DetectSavedConfiguration( MSIHANDLE hInstall )
     LONG rv;
     BOOL found = FALSE;
 
-    rv = RegOpenKeyEx(HKEY_LOCAL_MACHINE, reg_Param_Backup, 0, KEY_READ, &hk_param);
+    rv = RegOpenKeyEx(HKEY_LOCAL_MACHINE, reg_AFSD_Param_Backup, 0, KEY_READ, &hk_param);
     if (rv == ERROR_SUCCESS) {
         SetMsiPropertyFromRegValue(hInstall, hk_param, _T("AFSCELLNAME"), _T("Cell"));
         SetMsiPropertyFromRegValue(hInstall, hk_param, _T("FREELANCEMODE"), _T("FreelanceClient"));
@@ -866,7 +910,7 @@ MSIDLLEXPORT DetectSavedConfiguration( MSIHANDLE hInstall )
         found = TRUE;
     }
 
-    rv = RegOpenKeyEx(HKEY_LOCAL_MACHINE, reg_NP_Backup, 0, KEY_READ, &hk_np);
+    rv = RegOpenKeyEx(HKEY_LOCAL_MACHINE, reg_AFSD_NP_Backup, 0, KEY_READ, &hk_np);
     if (rv == ERROR_SUCCESS) {
         SetMsiPropertyFromRegValue(hInstall, hk_np, _T("LOGONOPTIONS"), _T("LogonOptions"));
         RegCloseKey(hk_np);

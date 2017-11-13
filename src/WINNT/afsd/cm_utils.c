@@ -7,7 +7,10 @@
  * directory or online at http://www.openafs.org/dl/license10.html
  */
 
+#include <afsconfig.h>
 #include <afs/param.h>
+#include <roken.h>
+
 #include <afs/stds.h>
 
 #include <errno.h>
@@ -210,12 +213,11 @@ long cm_MapRPCError(long error, cm_req_t *reqp)
 
     if (error == RX_CALL_DEAD ||
         error == RX_CALL_TIMEOUT ||
-        error == RX_CALL_BUSY ||
         error == RX_MSGSIZE ||
         error == VNOSERVICE)
-        error = CM_ERROR_RETRY;
-    else if (error == RX_CALL_IDLE)
-        error = EIO;
+	error = CM_ERROR_TIMEDOUT;
+    else if (error == RX_INVALID_OPERATION)
+        error = CM_ERROR_INVAL_NET_RESP;
     else if (error < 0)
         error = CM_ERROR_UNKNOWN;
     else if (error == EINVAL)
@@ -278,17 +280,17 @@ long cm_MapRPCErrorRmdir(long error, cm_req_t *reqp)
 
     if (error == RX_CALL_DEAD ||
         error == RX_CALL_TIMEOUT ||
-        error == RX_CALL_BUSY ||
-        error == RX_CALL_IDLE ||
         error == RX_MSGSIZE ||
         error == VNOSERVICE)
-        error = CM_ERROR_RETRY;
+	error = CM_ERROR_TIMEDOUT;
     else if (error == VNOVNODE)
         error = CM_ERROR_BADFD;
     else if (error == VSALVAGE || error == VOFFLINE)
         error = CM_ERROR_ALLOFFLINE;
     else if (error == VBUSY || error == VRESTARTING)
         error = CM_ERROR_ALLBUSY;
+    else if (error == RX_INVALID_OPERATION)
+        error = CM_ERROR_INVAL_NET_RESP;
     else if (error < 0)
         error = CM_ERROR_UNKNOWN;
     else if (error == EROFS)
@@ -302,6 +304,7 @@ long cm_MapRPCErrorRmdir(long error, cm_req_t *reqp)
     else if (error == EINVAL)
         error = CM_ERROR_INVAL;
     else if (error == ENOTEMPTY
+              || error == EEXIST
               || error == 17		/* AIX */
               || error == 66		/* SunOS 4, Digital UNIX */
               || error == 93		/* Solaris 2, IRIX */
@@ -329,11 +332,11 @@ long cm_MapVLRPCError(long error, cm_req_t *reqp)
 
     if (error == RX_CALL_DEAD ||
         error == RX_CALL_TIMEOUT ||
-        error == RX_CALL_BUSY ||
-        error == RX_CALL_IDLE ||
         error == RX_MSGSIZE ||
         error == VNOSERVICE)
-        error = CM_ERROR_RETRY;
+	error = CM_ERROR_TIMEDOUT;
+    else if (error == RX_INVALID_OPERATION)
+        error = CM_ERROR_INVAL_NET_RESP;
     else if (error == RX_RESTARTING)
         error = CM_ERROR_ALLBUSY;
     else if (error < 0)
@@ -592,6 +595,43 @@ void cm_Gen8Dot3NameIntW(const clientchar_t * longname, cm_dirFid_t * pfid,
             }
         }
     }
+
+    /* Trailing null */
+    *shortName = 0;
+
+    if (shortNameEndp)
+        *shortNameEndp = shortName;
+}
+
+void cm_Gen8Dot3VolNameW(afs_uint32 cell, afs_uint32 volume,
+                         clientchar_t *shortName, clientchar_t **shortNameEndp)
+{
+    clientchar_t number[12];
+    int i, nsize = 0;
+    int validExtension = 0;
+
+    /* Unparse the file's cell and volume numbers */
+    do {
+        number[nsize] = cm_8Dot3Mapping[cell % cm_8Dot3MapSize];
+        nsize++;
+        cell /= cm_8Dot3MapSize;
+    } while (cell);
+    do {
+        number[nsize] = cm_8Dot3Mapping[volume % cm_8Dot3MapSize];
+        nsize++;
+        volume /= cm_8Dot3MapSize;
+    } while (volume && nsize < 8);
+
+    /* Copy uniquifier characters */
+    for (i=0; i < nsize; i++) {
+        *shortName++ = number[i];
+    }
+
+    /* Add extension characters */
+    *shortName++ = '.';	/* copy dot */
+    *shortName++ = 'v';
+    *shortName++ = 'o';
+    *shortName++ = 'l';
 
     /* Trailing null */
     *shortName = 0;
@@ -1006,26 +1046,29 @@ void cm_UpdateServerPriority()
 void cm_LargeSearchTimeFromUnixTime(FILETIME *largeTimep, time_t unixTime)
 {
     // Note that LONGLONG is a 64-bit value
-    LONGLONG ll;
+    LARGE_INTEGER ll;
 
-    ll = Int32x32To64(unixTime, 10000000) + 116444736000000000;
-    largeTimep->dwLowDateTime = (DWORD)(ll & 0xFFFFFFFF);
-    largeTimep->dwHighDateTime = (DWORD)(ll >> 32);
+#ifdef _USE_32BIT_TIME_T
+    ll.QuadPart = UInt32x32To64(unixTime, 10000000) + 116444736000000000;
+#else
+    ll.QuadPart = unixTime * 10000000 + 116444736000000000;
+#endif
+    largeTimep->dwLowDateTime = ll.LowPart;
+    largeTimep->dwHighDateTime = ll.HighPart;
 }
 
 void cm_UnixTimeFromLargeSearchTime(time_t *unixTimep, FILETIME *largeTimep)
 {
     // Note that LONGLONG is a 64-bit value
-    LONGLONG ll;
+    LARGE_INTEGER ll;
 
-    ll = largeTimep->dwHighDateTime;
-    ll <<= 32;
-    ll += largeTimep->dwLowDateTime;
+    ll.HighPart = largeTimep->dwHighDateTime;
+    ll.LowPart  = largeTimep->dwLowDateTime;
 
-    ll -= 116444736000000000;
-    ll /= 10000000;
+    ll.QuadPart -= 116444736000000000;
+    ll.QuadPart /= 10000000;
 
-    *unixTimep = (DWORD)ll;
+    *unixTimep = (time_t)ll.QuadPart;
 }
 
 void cm_SearchTimeFromUnixTime(afs_uint32 *searchTimep, time_t unixTime)
@@ -1072,4 +1115,17 @@ void cm_UnixTimeFromSearchTime(time_t *unixTimep, afs_uint32 searchTime)
     localTm.tm_isdst = -1;				/* compute whether DST in effect */
 
     *unixTimep = mktime(&localTm);
+}
+
+afs_uint32
+cm_NextHighestPowerOf2(afs_uint32 n)
+{
+    n--;
+    n |= n >> 1;
+    n |= n >> 2;
+    n |= n >> 4;
+    n |= n >> 8;
+    n |= n >> 16;
+    n++;
+    return n;
 }

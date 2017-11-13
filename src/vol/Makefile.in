@@ -9,19 +9,18 @@
 
 srcdir=@srcdir@
 include @TOP_OBJDIR@/src/config/Makefile.config
-INSTALL = @INSTALL@
-INSTALL_DATA = @INSTALL_DATA@
-INSTALL_PROGRAM = @INSTALL_PROGRAM@
-INSTALL_SCRIPT = @INSTALL_SCRIPT@
-HELPER_SPLINT=@HELPER_SPLINT@
+include @TOP_OBJDIR@/src/config/Makefile.lwp
 
+HELPER_SPLINT=@HELPER_SPLINT@
 
 LIBS=${TOP_LIBDIR}/libcmd.a vlib.a ${TOP_LIBDIR}/util.a \
 	${TOP_LIBDIR}/libdir.a ${TOP_LIBDIR}/librx.a \
+	${TOP_LIBDIR}/libafshcrypto_lwp.a \
 	${TOP_LIBDIR}/liblwp.a ${TOP_LIBDIR}/libsys.a \
-	${TOP_LIBDIR}/libacl.a ${TOP_LIBDIR}/libauth.a
+	${TOP_LIBDIR}/libacl.a ${TOP_LIBDIR}/libopr.a
 
-CFLAGS = ${COMMON_CFLAGS} -D${SYS_NAME} ${FSINCLUDES} ${XCFLAGS} ${ARCHFLAGS} -DFSSYNC_BUILD_SERVER -DFSSYNC_BUILD_CLIENT
+MODULE_CFLAGS= -D${SYS_NAME} ${FSINCLUDES} \
+	       -DFSSYNC_BUILD_SERVER -DFSSYNC_BUILD_CLIENT
 
 PUBLICHEADERS=nfs.h vnode.h viceinode.h volume.h volume_inline.h voldefs.h partition.h \
 	fssync.h ihandle.h namei_ops.h salvsync.h daemon_com.h vnode_inline.h
@@ -30,17 +29,10 @@ VLIBOBJS=vnode.o volume.o vutil.o partition.o fssync-server.o fssync-client.o \
 	 clone.o nuke.o devname.o listinodes.o common.o ihandle.o purge.o \
 	 namei_ops.o salvsync-server.o salvsync-client.o daemon_com.o
 
-SALVOBJS=vnode.o volume.o vutil.o partition.o fssync.o  \
-	nuke.o devname.o listinodes.o ihandle.o namei_ops.o
-
-OBJECTS=${VLIBOBJS} physio.o vol-salvage.o vol-info.o vol-dump.o vol-bless.o \
-	fssync-debug.o volinfo-main.o volscan-main.o
+OBJECTS=${VLIBOBJS} physio.o vol-salvage.o vol-info.o vol-dump.o vol-bless.o fssync-debug.o \
+	volinfo-main.o volscan-main.o
 
 all: gi \
-	${TOP_INCDIR}/afs/ihandle.h \
-	${TOP_INCDIR}/afs/volume.h \
-	${TOP_INCDIR}/afs/vnode.h \
-	${TOP_INCDIR}/afs/partition.h \
 	${TOP_LIBDIR}/vlib.a \
 	${TOP_LIBDIR}/libvlib.a \
 	salvager \
@@ -59,6 +51,7 @@ all: gi \
 	${TOP_INCDIR}/afs/fssync.h \
 	${TOP_INCDIR}/afs/salvsync.h \
 	${TOP_INCDIR}/afs/daemon_com.h \
+	${TOP_INCDIR}/afs/ihandle.h \
 	${TOP_INCDIR}/afs/namei_ops.h \
 	${TOP_INCDIR}/afs/vol_prototypes.h
 
@@ -171,10 +164,6 @@ dest: vlib.a salvager volinfo volscan fssync-debug
 	${INSTALL_DATA} ${srcdir}/daemon_com.h ${DEST}/include/afs/daemon_com.h
 	${INSTALL_DATA} ${srcdir}/ihandle.h ${DEST}/include/afs/ihandle.h
 	${INSTALL_DATA} ${srcdir}/namei_ops.h ${DEST}/include/afs/namei_ops.h
-	set -x; if test "@DEMAND_ATTACH@" = "no" ; then \
-		${INSTALL_PROGRAM} fssync-debug \
-			${DEST}/root.server/usr/afs/bin/fssync-debug ; \
-	fi
 	set -x; if test x"$(install_XFS_SIZE_CHECK)" != x"" ; then \
 		${INSTALL_PROGRAM} xfs_size_check \
 			$(DEST)/root.server/usr/afs/bin/xfs_size_check ; \
@@ -183,19 +172,11 @@ dest: vlib.a salvager volinfo volscan fssync-debug
 #
 # Build targets
 #
-${OBJECTS}: ${PUBLICHEADERS} ${TOP_INCDIR}/lwp.h ${TOP_INCDIR}/lock.h \
-	${TOP_INCDIR}/afs/afsint.h \
-	vutils.h salvage.h \
-	AFS_component_version_number.c
-
-clone.o: 
+${OBJECTS}: ${PUBLICHEADERS} ${TOP_INCDIR}/lwp.h ${TOP_INCDIR}/lock.h ${TOP_INCDIR}/afs/afsint.h vutils.h salvage.h AFS_component_version_number.c
 
 vol-salvage.o vutil.o: volinodes.h
 vol-salvage.o salvager.o: vol-salvage.h
 vol-salvage.o: salvsync.h daemon_com.h
-
-salvager.o: salvager.c
-	$(CC) $(CFLAGS) -c ${srcdir}/salvager.c
 
 vlib.a:	${VLIBOBJS} AFS_component_version_number.o
 	$(RM) -f $@
@@ -204,55 +185,58 @@ vlib.a:	${VLIBOBJS} AFS_component_version_number.o
 
 # new salvager:  remove references to /vice by linking with novice.o
 salvager: vol-salvage.o physio.o vlib.a salvager.o ${LIBS}
-	${CC} ${LDFLAGS} -o salvager vol-salvage.o physio.o salvager.o \
-			-ldl ${LIBS} ${XLIBS}
+	$(AFS_LDRULE) vol-salvage.o physio.o salvager.o \
+		${LIBS} $(LIB_roken) ${XLIBS}
 
-salvager.o: AFS_component_version_number.c
+salvager.o: salvager.c AFS_component_version_number.c
 
 vol-salvage: vol-salvage.o
-vol-info: vol-info.o physio.o ihandle.o vlib.a
+vol-info: vol-info.o physio.o ihandle.o
 
 listinodes.o: listinodes.c AFS_component_version_number.c
 	case ${SYS_NAME} in				\
 		hp?00_ux101 | hp_ux10? )		\
-			${CC} ${CFLAGS} -D_FILE64 -c ${srcdir}/listinodes.c \
+			${CC} ${AFS_CFLAGS} -D_FILE64 -c ${srcdir}/listinodes.c \
 				;;			\
 		hp_ux11* )		\
-			${CC} ${CFLAGS} -D_FILE_OFFSET_BITS=64 -c ${srcdir}/listinodes.c \
+			${CC} ${AFS_CFLAGS} -D_FILE_OFFSET_BITS=64 -c ${srcdir}/listinodes.c \
 				;;			\
-		* )	${CC} ${CFLAGS} -c ${srcdir}/listinodes.c \
+		* )	${CC} ${AFS_CFLAGS} -c ${srcdir}/listinodes.c \
 				;;			\
 	esac
 
-gi: ${TOP_LIBDIR}/libsys.a 
-	case ${SYS_NAME} in \
-                *linux* | sgi_* | *fbsd* ) \
+gi: ${TOP_LIBDIR}/libsys.a
+	$(Q)case ${SYS_NAME} in \
+	        *linux* | sgi_* | *fbsd* ) \
 			echo "Don't build gi on ${SYS_NAME}";; \
-                *) \
-			${CC} ${CFLAGS} -c ${srcdir}/gi.c ; \
-			${CC} ${LDFLAGS} -o gi gi.o ${TOP_LIBDIR}/libsys.a;; \
-        esac
+	        *) \
+			${CC} $(AFS_CPPFLAGS) $(AFS_CFLAGS) \
+				-c ${srcdir}/gi.c ; \
+			$(AFS_LDRULE_NOQ) gi.o ${TOP_LIBDIR}/libsys.a;; \
+	esac
 
 namei_map: ${TOP_LIBDIR}/libsys.a namei_map.o
-	${CC} ${CFLAGS} -o namei_map namei_map.o ${TOP_LIBDIR}/libafsutil.a ${LIBS} ${XLIBS}
+	$(AFS_LDRULE) namei_map.o ${TOP_LIBDIR}/libafsutil.a \
+		${LIBS} $(LIB_roken) ${XLIBS}
 
 volinfo: volinfo-main.o vol-info.o physio.o ihandle.o ${LIBS}
-	${CC} ${CFLAGS} -o volinfo volinfo-main.o vol-info.o physio.o \
-		ihandle.o vlib.a ${LIBS} ${XLIBS}
+	$(AFS_LDRULE) volinfo-main.o vol-info.o physio.o ihandle.o \
+		${LIBS} $(LIB_roken) ${XLIBS}
 
 volscan: volscan-main.o vol-info.o physio.o ihandle.o ${LIBS}
-	${CC} ${CFLAGS} -o volscan volscan-main.o vol-info.o physio.o \
-		ihandle.o vlib.a ${LIBS} ${XLIBS}
+	$(AFS_LDRULE) volscan-main.o vol-info.o physio.o ihandle.o \
+		${LIBS} $(LIB_roken) ${XLIBS}
 
 fssync-debug: fssync-debug.o physio.o AFS_component_version_number.c ${LIBS}
-	${CC} ${LDFLAGS} -o fssync-debug fssync-debug.o physio.o ${LIBS} ${XLIBS}
+	$(AFS_LDRULE) fssync-debug.o physio.o \
+		${LIBS} $(LIB_roken) ${XLIBS}
 
 vol-bless: vol-bless.o physio.o ihandle.o ${LIBS}
-	${CC} ${CFLAGS} -o vol-bless vol-bless.o physio.o ${LIBS} ${XLIBS}
+	$(AFS_LDRULE) vol-bless.o physio.o \
+		${LIBS} $(LIB_roken) ${XLIBS}
 
-xfs_size_check: xfs_size_check.c
-	${CC} ${CFLAGS} -o xfs_size_check ${srcdir}/xfs_size_check.c
-
+xfs_size_check: xfs_size_check.o
+	$(AFS_LDRULE) xfs_size_check.o
 
 #
 # Misc. targets

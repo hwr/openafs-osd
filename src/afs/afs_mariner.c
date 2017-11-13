@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -88,7 +88,7 @@ afs_MarinerLog(char *astring, struct vcache *avc)
 #ifdef  STRUCT_SOCKADDR_HAS_SA_LEN
     taddr.sin_len = sizeof(taddr);
 #endif
-    tp = buf = (char *)osi_AllocSmallSpace(AFS_SMALLOCSIZ);
+    tp = buf = osi_AllocSmallSpace(AFS_SMALLOCSIZ);
 
     strcpy(tp, astring);
     tp += strlen(astring);

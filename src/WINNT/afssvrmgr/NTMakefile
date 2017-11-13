@@ -7,7 +7,7 @@
 
 # make compiler warnings fatal
 
-AFSDEV_AUXCDEFINES = $(AFSDEV_AUXCDEFINES) -WX -I..\afsd -I..\client_config -I..\kfw\inc\krb5
+AFSDEV_AUXCDEFINES = $(AFSDEV_AUXCDEFINES) -WX -I..\afsd -I..\client_config
 
 # allow the resource compiler to search the dest\include tree
 
@@ -97,17 +97,19 @@ EXELIBS = \
 	$(DESTDIR)\lib\afsauthent.lib \
 	$(DESTDIR)\lib\libafsconf.lib \
         $(DESTDIR)\lib\afsrxkad.lib \
-        $(DESTDIR)\lib\afsdes.lib \
         $(DESTDIR)\lib\afskfw.lib \
         $(DESTDIR)\lib\afs\afscom_err.lib \
 	$(DESTDIR)\lib\afs\AfsClass.lib \
 	$(DESTDIR)\lib\afs\TaAfsAppLib.lib \
-        $(DESTDIR)\lib\afs\afsutil.lib
+        $(DESTDIR)\lib\afs\afsutil.lib \
+	$(DESTDIR)\lib\opr.lib \
+	$(DESTDIR)\lib\afsroken.lib \
+	$(DESTDIR)\lib\afsrpc.lib
 
 ############################################################################
 
-$(EXEFILE) : $(EXEOBJS) $(EXELIBS)
-	$(EXEGUILINK) $(VCLIBS)
+$(EXEFILE) : $(EXEOBJS) $(EXELIBS) $(HEIMDEPS)
+	$(EXEGUILINK) $(VCLIBS) $(HEIMLINKOPTS)
         $(_VC_MANIFEST_EMBED_EXE)
 	$(EXEPREP)
         $(CODESIGN_USERLAND)

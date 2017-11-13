@@ -12,12 +12,12 @@ B<rxdebug> S<<< B<-servers> <I<server machine>> >>> S<<< [B<-port> <I<IP port>>]
     [B<-onlyclient>] S<<< [B<-onlyport> <I<show only port>>] >>>
     S<<< [B<-onlyhost> <I<show only host>>] >>>
     S<<< [B<-onlyauth> <I<show only auth level>>] >>> [B<-version>]
-    [B<-noconns>] [B<-peers>] [B<-help>]
+    [B<-noconns>] [B<-peers>] [B<-long>] [B<-help>]
 
 B<rxdebug> S<<< B<-s> <I<server machine>> >>> S<<< [B<-po> <I<IP port>>] >>> [B<-nod>]
     [B<-a>] [B<-r>] [B<-onlys>] [B<-onlyc>] S<<< [B<-onlyp> <I<show only port>>] >>>
     S<<< [B<-onlyh> <I<show only host>>] >>> S<<< [B<-onlya> <I<show only auth level>>] >>>
-    [B<-v>] [B<-noc>] [B<-pe>] [B<-h>]
+    [B<-v>] [B<-noc>] [B<-pe>] [B<-l>] [B<-h>]
 
 =for html
 </div>
@@ -40,7 +40,7 @@ and one or more processes on other machines.
 Specifies the machine that is running the Cache Manager or server process
 for which to trace Rx activity. Provide the machine's IP address in dotted
 decimal format, its fully qualified host name (for example,
-C<fs1.abc.com>), or the shortest abbreviated form of its host name that
+C<fs1.example.com>), or the shortest abbreviated form of its host name that
 distinguishes it from other machines. Successful use of an abbreviated
 form depends on the availability of a name resolution service (such as the
 Domain Name Service or a local host table) at the time the command is
@@ -165,6 +165,12 @@ another machine to which the process designated by the B<-port> argument
 has a connection. There is information about roundtrip time and numbers of
 packets sent and received, for example.
 
+=item B<-long>
+
+When combined with B<-peers>, show more information about each peer. This
+includes information about the packet skew, congestion window, MTU, and
+allowable jumbogram size.
+
 =item B<-help>
 
 Prints the online help for this command. All other valid options are
@@ -179,7 +185,7 @@ written to the standard output stream begins with basic statistics about
 packet usage and availability, how many calls are waiting for a thread,
 how many threads are free, and so on (this is the only information
 provided by the B<-noconns> flag). Adding other options produces
-additional information as described in L<OPTIONS>. The output is intended
+additional information as described in L</OPTIONS>. The output is intended
 for debugging purposes and is meaningful to someone familiar with the
 implementation of Rx.
 

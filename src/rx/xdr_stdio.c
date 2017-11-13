@@ -5,23 +5,23 @@
  * may copy or modify Sun RPC without charge, but are not authorized
  * to license or distribute it to anyone else except as part of a product or
  * program developed by the user.
- * 
+ *
  * SUN RPC IS PROVIDED AS IS WITH NO WARRANTIES OF ANY KIND INCLUDING THE
  * WARRANTIES OF DESIGN, MERCHANTIBILITY AND FITNESS FOR A PARTICULAR
  * PURPOSE, OR ARISING FROM A COURSE OF DEALING, USAGE OR TRADE PRACTICE.
- * 
+ *
  * Sun RPC is provided with no support and without any obligation on the
  * part of Sun Microsystems, Inc. to assist in its use, correction,
  * modification or enhancement.
- * 
+ *
  * SUN MICROSYSTEMS, INC. SHALL HAVE NO LIABILITY WITH RESPECT TO THE
  * INFRINGEMENT OF COPYRIGHTS, TRADE SECRETS OR ANY PATENTS BY SUN RPC
  * OR ANY PART THEREOF.
- * 
+ *
  * In no event will Sun Microsystems, Inc. be liable for any lost revenue
  * or profits or other special, indirect and consequential damages, even if
  * Sun has been advised of the possibility of such damages.
- * 
+ *
  * Sun Microsystems, Inc.
  * 2550 Garcia Avenue
  * Mountain View, California  94043
@@ -59,12 +59,8 @@ static void xdrstdio_destroy();
  */
 static struct xdr_ops xdrstdio_ops = {
 #ifdef AFS_NT40_ENV
-#ifdef AFS_XDR_64BITOPS
-    NULL,
-    NULL,
-#endif
     /* Windows does not support labeled assignments */
-#if !(defined(KERNEL) && defined(AFS_SUN57_ENV))
+#if !(defined(KERNEL) && defined(AFS_SUN5_ENV))
     xdrstdio_getint32,	        /* deserialize an afs_int32 */
     xdrstdio_putint32,	        /* serialize an afs_int32 */
 #endif
@@ -74,16 +70,12 @@ static struct xdr_ops xdrstdio_ops = {
     xdrstdio_setpos,	        /* set offset in the stream */
     xdrstdio_inline,	        /* prime stream for inline macros */
     xdrstdio_destroy,	        /* destroy stream */
-#if (defined(KERNEL) && defined(AFS_SUN57_ENV))
+#if (defined(KERNEL) && defined(AFS_SUN5_ENV))
     NULL,
     xdrstdio_getint32,    /* deserialize an afs_int32 */
     xdrstdio_putint32,    /* serialize an afs_int32 */
 #endif
 #else
-#ifdef AFS_XDR_64BITOPS
-    .x_getint64 = NULL,
-    .x_putint64 = NULL,
-#endif
     .x_getint32 = xdrstdio_getint32,	/* deserialize an afs_int32 */
     .x_putint32 = xdrstdio_putint32,	/* serialize an afs_int32 */
     .x_getbytes = xdrstdio_getbytes,	/* deserialize counted bytes */

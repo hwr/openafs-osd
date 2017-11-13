@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -71,7 +71,7 @@ Vnodes with 0 inode pointers in RW volumes are now deleted.
 	Logs missing inode numbers.
 
     2.3 features:
-	    Increments directory version number by 200 (rather than by 1) when it is salvaged, in order to prevent problems due to the fact that a version number can be promised to a workstation before it is written to disk.  If the server crashes, it may have an older version.  Salvaging it could bring the version number up to the same version the workstation believed it already had a call back on. 
+	    Increments directory version number by 200 (rather than by 1) when it is salvaged, in order to prevent problems due to the fact that a version number can be promised to a workstation before it is written to disk.  If the server crashes, it may have an older version.  Salvaging it could bring the version number up to the same version the workstation believed it already had a call back on.
 
     2.4 features:
 	    Locks the file /vice/vol/salvage.lock before starting.  Aborts if it can't acquire the lock.
@@ -86,31 +86,25 @@ Vnodes with 0 inode pointers in RW volumes are now deleted.
 #include <afsconfig.h>
 #include <afs/param.h>
 
+#include <afs/procmgmt.h>
+#include <roken.h>
 
-#ifndef AFS_NT40_ENV
-#include <sys/param.h>
-#include <sys/file.h>
-#ifndef ITIMER_REAL
-#include <sys/time.h>
-#endif /* ITIMER_REAL */
+#ifdef HAVE_SYS_FILE_H
+# include <sys/file.h>
 #endif
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <dirent.h>
-#include <sys/stat.h>
-#include <time.h>
-#include <errno.h>
+
 #ifdef AFS_NT40_ENV
-#include <io.h>
 #include <WINNT/afsevent.h>
 #endif
 #ifndef WCOREDUMP
 #define WCOREDUMP(x)	((x) & 0200)
 #endif
-#include <rx/xdr.h>
+#include <afs/opr.h>
+#ifdef AFS_PTHREAD_ENV
+# include <opr/lock.h>
+#endif
+
 #include <afs/afsint.h>
-#include <afs/afs_assert.h>
 #if !defined(AFS_SGI_ENV) && !defined(AFS_NT40_ENV)
 #if defined(AFS_VFSINCL_ENV)
 #include <sys/vnode.h>
@@ -139,17 +133,13 @@ Vnodes with 0 inode pointers in RW volumes are now deleted.
 #include <sys/lockf.h>
 #else
 #ifdef	AFS_HPUX_ENV
-#include <unistd.h>
 #include <checklist.h>
 #else
 #if defined(AFS_SGI_ENV)
-#include <unistd.h>
-#include <fcntl.h>
 #include <mntent.h>
 #else
 #if	defined(AFS_SUN_ENV) || defined(AFS_SUN5_ENV)
 #ifdef	  AFS_SUN5_ENV
-#include <unistd.h>
 #include <sys/mnttab.h>
 #include <sys/mntent.h>
 #else
@@ -160,7 +150,6 @@ Vnodes with 0 inode pointers in RW volumes are now deleted.
 #endif /* AFS_HPUX_ENV */
 #endif
 #endif
-#include <fcntl.h>
 #ifndef AFS_NT40_ENV
 #include <afs/osi_inode.h>
 #endif
@@ -168,10 +157,7 @@ Vnodes with 0 inode pointers in RW volumes are now deleted.
 #include <afs/dir.h>
 #include <afs/afsutil.h>
 #include <afs/fileutil.h>
-#include <afs/procmgmt.h>	/* signal(), kill(), wait(), etc. */
-#ifndef AFS_NT40_ENV
-#include <syslog.h>
-#endif
+#include <rx/rx_queue.h>
 
 #include "nfs.h"
 #include "lwp.h"
@@ -203,52 +189,13 @@ Vnodes with 0 inode pointers in RW volumes are now deleted.
 #ifdef AFS_NT40_ENV
 #include <pthread.h>
 #endif
-#include "../rxosd/afsosd.h"
 
-struct vol_data_v0 vol_data_v0 = {
-    NULL,
-    &LogLevel,
-    NULL,
-    VnodeClassInfo,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    NULL
-};
-
-struct osd_vol_ops_v0 *osdvolsave = NULL;
-
-/*@+fcnmacros +macrofcndecl@*/
-#ifdef O_LARGEFILE
-#ifdef S_SPLINT_S
-extern off64_t afs_lseek(int FD, off64_t O, int F);
-#endif /*S_SPLINT_S */
-#define afs_lseek(FD, O, F)	lseek64(FD, (off64_t) (O), F)
-#define afs_stat	stat64
-#define afs_fstat	fstat64
-#define afs_open	open64
-#define afs_fopen	fopen64
-#else /* !O_LARGEFILE */
-#ifdef S_SPLINT_S
-extern off_t afs_lseek(int FD, off_t O, int F);
-#endif /*S_SPLINT_S */
-#define afs_lseek(FD, O, F)	lseek(FD, (off_t) (O), F)
-#define afs_stat	stat
-#define afs_fstat	fstat
-#define afs_open	open
-#define afs_fopen	fopen
-#endif /* !O_LARGEFILE */
-/*@=fcnmacros =macrofcndecl@*/
+#define SALV_BUFFER_SIZE 1024
 
 #ifdef	AFS_OSF_ENV
 extern void *calloc();
 #endif
-static char *TimeStamp(time_t clock, int precision);
+static char *TimeStamp(char *buffer, size_t size, time_t clock, int precision);
 
 
 int debug;			/* -d flag */
@@ -260,16 +207,12 @@ int Parallel = 4;		/* -para X flag */
 int PartsPerDisk = 8;		/* Salvage up to 8 partitions on same disk sequentially */
 int forceR = 0;			/* -b flag */
 int ShowLog = 0;		/* -showlog flag */
+char *ShowLogFilename = NULL;    /* log file name for -showlog */
 int ShowSuid = 0;		/* -showsuid flag */
 int ShowMounts = 0;		/* -showmounts flag */
 int orphans = ORPH_IGNORE;	/* -orphans option */
 int Showmode = 0;
-
-
-#ifndef AFS_NT40_ENV
-int useSyslog = 0;		/* -syslog flag */
-int useSyslogFacility = LOG_DAEMON;	/* -syslogfacility option */
-#endif
+int ClientMode = 0;		/* running as salvager server client */
 
 #ifdef AFS_NT40_ENV
 int canfork = 0;
@@ -283,8 +226,6 @@ int OKToZap;			/* -o flag */
 int ForceSalvage;		/* If salvage should occur despite the DONT_SALVAGE flag
 				 * in the volume header */
 
-FILE *logFile = 0;	/* one of {/usr/afs/logs,/vice/file}/SalvageLog */
-
 #define ROOTINODE	2	/* Root inode of a 4.2 Unix file system
 				 * partition */
 /**
@@ -292,7 +233,7 @@ FILE *logFile = 0;	/* one of {/usr/afs/logs,/vice/file}/SalvageLog */
  */
 struct SalvInfo {
     Device fileSysDevice;    /**< The device number of the current partition
-                              *   being salvaged */
+			      *   being salvaged */
     char fileSysPath[9];     /**< The path of the mounted partition currently
                               *   being salvaged, i.e. the directory containing
                               *   the volume headers */
@@ -315,7 +256,7 @@ struct SalvInfo {
                               *   header dealt with */
 
     int nVolumesInInodeFile; /**< Number of read-write volumes summarized */
-    int inodeFd;             /**< File descriptor for inode file */
+    FD_t inodeFd;             /**< File descriptor for inode file */
 
     struct VolumeSummary *volumeSummaryp; /**< Holds all the volumes in a part */
     int nVolumes;            /**< Number of volumes (read-write and read-only)
@@ -336,9 +277,11 @@ char *tmpdir = NULL;
 
 
 /* Forward declarations */
+static void QuietExit(int) AFS_NORETURN;
+static void SalvageShowLog(void);
 static int IsVnodeOrphaned(struct SalvInfo *salvinfo, VnodeId vnode);
 static int AskVolumeSummary(struct SalvInfo *salvinfo,
-			    VolumeId singleVolumeNumber);
+                            VolumeId singleVolumeNumber);
 static void MaybeAskOnline(struct SalvInfo *salvinfo, VolumeId volumeId);
 static void AskError(struct SalvInfo *salvinfo, VolumeId volumeId);
 
@@ -427,7 +370,7 @@ IsPartitionMounted(char *part)
     FILE *mntfp;
     struct mntent *mntent;
 
-    osi_Assert(mntfp = setmntent(MOUNTED, "r"));
+    opr_Verify(mntfp = setmntent(MOUNTED, "r"));
     while (mntent = getmntent(mntfp)) {
 	if (!strcmp(part, mntent->mnt_dir))
 	    break;
@@ -440,11 +383,11 @@ IsPartitionMounted(char *part)
 /* Check if the given inode is the root of the filesystem. */
 #ifndef AFS_SGI_XFS_IOPS_ENV
 int
-IsRootInode(struct afs_stat *status)
+IsRootInode(struct afs_stat_st *status)
 {
     /*
      * The root inode is not a fixed value in XFS partitions. So we need to
-     * see if the partition is in the list of mounted partitions. This only 
+     * see if the partition is in the list of mounted partitions. This only
      * affects the SalvageFileSys path, so we check there.
      */
     return (status->st_ino == ROOTINODE);
@@ -536,22 +479,19 @@ SalvageFileSysParallel(struct DiskPartition64 *partP)
     struct job *thisjob = 0;
     static int numjobs = 0;
     static int jobcount = 0;
-    char buf[1024];
     int wstatus;
     struct job *oldjob;
     int startjob;
     FILE *passLog;
-    char logFileName[256];
     int i, j, pid;
 
     if (partP) {
 	/* We have a partition to salvage. Copy it into thisjob */
-	thisjob = (struct job *)malloc(sizeof(struct job));
+	thisjob = calloc(1, sizeof(struct job));
 	if (!thisjob) {
 	    Log("Can't salvage '%s'. Not enough memory\n", partP->name);
 	    return;
 	}
-	memset(thisjob, 0, sizeof(struct job));
 	thisjob->partP = partP;
 	thisjob->jobnumb = jobcount;
 	jobcount++;
@@ -573,12 +513,12 @@ SalvageFileSysParallel(struct DiskPartition64 *partP)
     }
 
     if (thisjob) {
-	/* Check to see if thisjob is for a disk that we are already 
+	/* Check to see if thisjob is for a disk that we are already
 	 * salvaging. If it is, link it in as the next job to do. The
-	 * jobs array has 1 entry per disk being salvages. numjobs is 
-	 * the total number of disks currently being salvaged. In 
+	 * jobs array has 1 entry per disk being salvages. numjobs is
+	 * the total number of disks currently being salvaged. In
 	 * order to keep thejobs array compact, when a disk is
-	 * completed, the hightest element in the jobs array is moved 
+	 * completed, the hightest element in the jobs array is moved
 	 * down to now open slot.
 	 */
 	for (j = 0; j < numjobs; j++) {
@@ -602,12 +542,12 @@ SalvageFileSysParallel(struct DiskPartition64 *partP)
 	     * job to finish. When it's done, clean up after it.
 	     */
 	    pid = wait(&wstatus);
-	    osi_Assert(pid != -1);
+	    opr_Assert(pid != -1);
 	    for (j = 0; j < numjobs; j++) {	/* Find which job it is */
 		if (pid == jobs[j]->pid)
 		    break;
 	    }
-	    osi_Assert(j < numjobs);
+	    opr_Assert(j < numjobs);
 	    if (WCOREDUMP(wstatus)) {	/* Say if the job core dumped */
 		Log("Salvage of %s core dumped!\n", jobs[j]->partP->name);
 	    }
@@ -617,7 +557,7 @@ SalvageFileSysParallel(struct DiskPartition64 *partP)
 	    jobs[j] = jobs[j]->nextjob;	/* Step to next part on same disk */
 	    free(oldjob);	/* free the old job */
 
-	    /* If there is another partition on the disk to salvage, then 
+	    /* If there is another partition on the disk to salvage, then
 	     * say we will start it (startjob). If not, then put thisjob there
 	     * and say we will start it.
 	     */
@@ -663,27 +603,26 @@ SalvageFileSysParallel(struct DiskPartition64 *partP)
 		numjobs++;
 	    } else {
 		int fd;
+		char *filename;
+		struct logOptions logopts;
 
-		ShowLog = 0;
+		memset(&logopts, 0, sizeof(logopts));
+		logopts.lopt_dest = logDest_file;
+
 		for (fd = 0; fd < 16; fd++)
 		    close(fd);
 		open(OS_DIRSEP, 0);
 		dup2(0, 1);
 		dup2(0, 2);
-#ifndef AFS_NT40_ENV
-		if (useSyslog) {
-		    openlog("salvager", LOG_PID, useSyslogFacility);
-		} else
-#endif
-		{
-		    (void)afs_snprintf(logFileName, sizeof logFileName,
-				       "%s.%d",
-				       AFSDIR_SERVER_SLVGLOG_FILEPATH,
-				       jobs[startjob]->jobnumb);
-		    logFile = afs_fopen(logFileName, "w");
+
+		ShowLog = 0; /* Child processes do not display. */
+		if (asprintf(&filename, "%s.%d",
+			     AFSDIR_SERVER_SLVGLOG_FILEPATH,
+			     jobs[startjob]->jobnumb) >= 0) {
+		    logopts.lopt_filename = filename;
+		    OpenLog(&logopts);
+		    free(filename);
 		}
-		if (!logFile)
-		    logFile = stdout;
 
 		SalvageFileSys1(jobs[startjob]->partP, 0);
 		Exit(0);
@@ -692,24 +631,37 @@ SalvageFileSysParallel(struct DiskPartition64 *partP)
 	}
     }				/* while ( thisjob || (!partP && numjobs > 0) ) */
 
-    /* If waited for all jobs to complete, now collect log files and return */
-#ifndef AFS_NT40_ENV
-    if (!useSyslog)		/* if syslogging - no need to collect */
-#endif
+    /*
+     * If waited for all jobs to complete, now collect log files and return.
+     * No files can be collected when logging to the system log (syslog).
+     */
+    if (GetLogDest() == logDest_file) {
 	if (!partP) {
-	    for (i = 0; i < jobcount; i++) {
-		(void)afs_snprintf(logFileName, sizeof logFileName, "%s.%d",
-				   AFSDIR_SERVER_SLVGLOG_FILEPATH, i);
-		if ((passLog = afs_fopen(logFileName, "r"))) {
-		    while (fgets(buf, sizeof(buf), passLog)) {
-			fputs(buf, logFile);
+	    char *buf = calloc(1, SALV_BUFFER_SIZE);
+	    char *logFileName;
+
+	    if (buf == NULL) {
+		Log("out of memory");
+	    } else {
+		for (i = 0; i < jobcount; i++) {
+		    if (asprintf(&logFileName, "%s.%d",
+				 AFSDIR_SERVER_SLVGLOG_FILEPATH, i) < 0) {
+			Log("out of memory");
+			break;
 		    }
-		    fclose(passLog);
+		    if ((passLog = afs_fopen(logFileName, "r"))) {
+			while (fgets(buf, SALV_BUFFER_SIZE, passLog)) {
+			    WriteLogBuffer(buf, strlen(buf));
+			}
+			fclose(passLog);
+		    }
+		    (void)unlink(logFileName);
+		    free(logFileName);
 		}
-		(void)unlink(logFileName);
+		free(buf);
 	    }
-	    fflush(logFile);
 	}
+    }
     return;
 }
 
@@ -720,8 +672,7 @@ SalvageFileSys(struct DiskPartition64 *partP, VolumeId singleVolumeNumber)
     if (!canfork || debug || Fork() == 0) {
 	SalvageFileSys1(partP, singleVolumeNumber);
 	if (canfork && !debug) {
-	    ShowLog = 0;
-	    Exit(0);
+	    QuietExit(0);
 	}
     } else
 	Wait("SalvageFileSys");
@@ -751,7 +702,7 @@ SalvageFileSys1(struct DiskPartition64 *partP, VolumeId singleVolumeNumber)
 {
     char *name, *tdir;
     char inodeListPath[256];
-    FILE *inodeFile = NULL;
+    FD_t inodeFile = INVALID_FD;
     static char tmpDevName[100];
     static char wpath[100];
     struct VolumeSummary *vsp, *esp;
@@ -765,9 +716,9 @@ SalvageFileSys1(struct DiskPartition64 *partP, VolumeId singleVolumeNumber)
     memset(salvinfo, 0, sizeof(*salvinfo));
 
     tries++;
-    if (inodeFile) {
-	fclose(inodeFile);
-	inodeFile = NULL;
+    if (inodeFile != INVALID_FD) {
+	OS_CLOSE(inodeFile);
+	inodeFile = INVALID_FD;
     }
     if (tries > VOL_MAX_CHECKOUT_RETRIES) {
 	Abort("Raced too many times with fileserver restarts while trying to "
@@ -802,7 +753,7 @@ SalvageFileSys1(struct DiskPartition64 *partP, VolumeId singleVolumeNumber)
 	/* only non-DAFS locks the partition when salvaging a single volume;
 	 * DAFS will lock the individual volumes in the VG */
 	VLockPartition(partP->name);
-#endif /* !(AFS_DEMAND_ATTACH_FS */
+#endif /* !AFS_DEMAND_ATTACH_FS */
 
 	ForceSalvage = 1;
 
@@ -836,14 +787,14 @@ SalvageFileSys1(struct DiskPartition64 *partP, VolumeId singleVolumeNumber)
 
 
     /*
-     * Remove any leftover /vicepa/salvage.inodes.* or /vicepa/salvage.temp.* 
-     * files 
+     * Remove any leftover /vicepa/salvage.inodes.* or /vicepa/salvage.temp.*
+     * files
      */
     {
 	DIR *dirp;
 	struct dirent *dp;
 
-	osi_Assert((dirp = opendir(salvinfo->fileSysPath)) != NULL);
+	opr_Verify((dirp = opendir(salvinfo->fileSysPath)) != NULL);
 	while ((dp = readdir(dirp))) {
 	    if (!strncmp(dp->d_name, "salvage.inodes.", 15)
 		|| !strncmp(dp->d_name, "salvage.temp.", 13)) {
@@ -866,8 +817,8 @@ SalvageFileSys1(struct DiskPartition64 *partP, VolumeId singleVolumeNumber)
 	     getpid());
 #endif
 
-    inodeFile = fopen(inodeListPath, "w+b");
-    if (!inodeFile) {
+    inodeFile = OS_OPEN(inodeListPath, O_RDWR|O_TRUNC|O_CREAT, 0666);
+    if (inodeFile == INVALID_FD) {
 	Abort("Error %d when creating inode description file %s; not salvaged\n", errno, inodeListPath);
     }
 #ifdef AFS_NT40_ENV
@@ -891,28 +842,23 @@ SalvageFileSys1(struct DiskPartition64 *partP, VolumeId singleVolumeNumber)
     }
 
     if (GetInodeSummary(salvinfo, inodeFile, singleVolumeNumber) < 0) {
-	fclose(inodeFile);
-        if (singleVolumeNumber) {
-            /* the volume group -- let alone the volume -- does not exist,
-             * but we checked it out, so give it back to the fileserver */
-            AskDelete(salvinfo, singleVolumeNumber);
-        }
+	OS_CLOSE(inodeFile);
 	return;
     }
-    salvinfo->inodeFd = fileno(inodeFile);
-    if (salvinfo->inodeFd == -1)
+    salvinfo->inodeFd = inodeFile;
+    if (salvinfo->inodeFd == INVALID_FD)
 	Abort("Temporary file %s is missing...\n", inodeListPath);
-    afs_lseek(salvinfo->inodeFd, 0L, SEEK_SET);
+    OS_SEEK(salvinfo->inodeFd, 0L, SEEK_SET);
     if (ListInodeOption) {
 	PrintInodeList(salvinfo);
-        if (singleVolumeNumber) {
-            /* We've checked out the volume from the fileserver, and we need
-             * to give it back. We don't know if the volume exists or not,
-             * so we don't know whether to AskOnline or not. Try to determine
-             * if the volume exists by trying to read the volume header, and
-             * AskOnline if it is readable. */
-            MaybeAskOnline(salvinfo, singleVolumeNumber);
-        }
+	if (singleVolumeNumber) {
+	    /* We've checked out the volume from the fileserver, and we need
+	     * to give it back. We don't know if the volume exists or not,
+	     * so we don't know whether to AskOnline or not. Try to determine
+	     * if the volume exists by trying to read the volume header, and
+	     * AskOnline if it is readable. */
+	    MaybeAskOnline(salvinfo, singleVolumeNumber);
+	}
 	return;
     }
     /* enumerate volumes in the partition.
@@ -926,13 +872,13 @@ SalvageFileSys1(struct DiskPartition64 *partP, VolumeId singleVolumeNumber)
     }
 
     if (singleVolumeNumber) {
-        /* If we delete a volume during the salvage, we indicate as such by
-         * setting the volsummary->deleted field. We need to know if we
-         * deleted a volume or not in order to know which volumes to bring
-         * back online after the salvage. If we fork, we will lose this
-         * information, since volsummary->deleted will not get set in the
-         * parent. So, don't fork. */
-        canfork = 0;
+	/* If we delete a volume during the salvage, we indicate as such by
+	 * setting the volsummary->deleted field. We need to know if we
+	 * deleted a volume or not in order to know which volumes to bring
+	 * back online after the salvage. If we fork, we will lose this
+	 * information, since volsummary->deleted will not get set in the
+	 * parent. So, don't fork. */
+	canfork = 0;
     }
 
     for (i = j = 0, vsp = salvinfo->volumeSummaryp, esp = vsp + salvinfo->nVolumes;
@@ -965,7 +911,12 @@ SalvageFileSys1(struct DiskPartition64 *partP, VolumeId singleVolumeNumber)
 	/* Salvage the group of volumes (several read-only + 1 read/write)
 	 * starting with the current read-only volume we're looking at.
 	 */
-	SalvageVolumeGroup(salvinfo, &salvinfo->inodeSummary[i], j - i);
+#ifdef AFS_NT40_ENV
+	nt_SalvageVolumeGroup(salvinfo, &salvinfo->inodeSummary[i], j - i);
+#else
+	DoSalvageVolumeGroup(salvinfo, &salvinfo->inodeSummary[i], j - i);
+#endif /* AFS_NT40_ENV */
+
     }
 
     /* Delete any additional volumes that were listed in the partition but which didn't have any corresponding inodes */
@@ -985,44 +936,44 @@ SalvageFileSys1(struct DiskPartition64 *partP, VolumeId singleVolumeNumber)
 #endif /* AFS_DEMAND_ATTACH_FS */
 
 	/* Step through the volumeSummary list and set all volumes on-line.
-         * Most volumes were taken off-line in GetVolumeSummary.
-         * If a volume was deleted, don't tell the fileserver anything, since
-         * we already told the fileserver the volume was deleted back when we
-         * we destroyed the volume header.
-         * Also, make sure we bring the singleVolumeNumber back online first.
+	 * Most volumes were taken off-line in GetVolumeSummary.
+	 * If a volume was deleted, don't tell the fileserver anything, since
+	 * we already told the fileserver the volume was deleted back when we
+	 * we destroyed the volume header.
+	 * Also, make sure we bring the singleVolumeNumber back online first.
 	 */
 
-        for (j = 0; j < salvinfo->nVolumes; j++) {
-            if (salvinfo->volumeSummaryp[j].header.id == singleVolumeNumber) {
-                foundSVN = 1;
-                if (!salvinfo->volumeSummaryp[j].deleted) {
-                    AskOnline(salvinfo, singleVolumeNumber);
-                }
-            }
+	for (j = 0; j < salvinfo->nVolumes; j++) {
+	    if (salvinfo->volumeSummaryp[j].header.id == singleVolumeNumber) {
+		foundSVN = 1;
+		if (!salvinfo->volumeSummaryp[j].deleted) {
+		    AskOnline(salvinfo, singleVolumeNumber);
+		}
+	    }
 	}
 
-        if (!foundSVN) {
-            /* If singleVolumeNumber is not in our volumeSummary, it means that
-             * at least one other volume in the VG is on the partition, but the
-             * RW volume is not. We've already AskOffline'd it by now, though,
-             * so make sure we don't still have the volume checked out. */
-            AskDelete(salvinfo, singleVolumeNumber);
-        }
+	if (!foundSVN) {
+	    /* If singleVolumeNumber is not in our volumeSummary, it means that
+	     * at least one other volume in the VG is on the partition, but the
+	     * RW volume is not. We've already AskOffline'd it by now, though,
+	     * so make sure we don't still have the volume checked out. */
+	    AskDelete(salvinfo, singleVolumeNumber);
+	}
 
-        for (j = 0; j < salvinfo->nVolumes; j++) {
-            if (salvinfo->volumeSummaryp[j].header.id != singleVolumeNumber) {
-                if (!salvinfo->volumeSummaryp[j].deleted) {
-                    AskOnline(salvinfo, salvinfo->volumeSummaryp[j].header.id);
-                }
-            }
-        }
+	for (j = 0; j < salvinfo->nVolumes; j++) {
+	    if (salvinfo->volumeSummaryp[j].header.id != singleVolumeNumber) {
+		if (!salvinfo->volumeSummaryp[j].deleted) {
+		    AskOnline(salvinfo, salvinfo->volumeSummaryp[j].header.id);
+		}
+	    }
+	}
     } else {
 	if (!Showmode)
 	    Log("SALVAGING OF PARTITION %s%s COMPLETED\n",
 		salvinfo->fileSysPartition->name, (Testing ? " (READONLY mode)" : ""));
     }
 
-    fclose(inodeFile);		/* SalvageVolumeGroup was the last which needed it. */
+    OS_CLOSE(inodeFile);		/* SalvageVolumeGroup was the last which needed it. */
 }
 
 void
@@ -1032,7 +983,7 @@ DeleteExtraVolumeHeaderFile(struct SalvInfo *salvinfo, struct VolumeSummary *vsp
     char filename[VMAXPATHLEN];
 
     if (vsp->deleted) {
-        return;
+	return;
     }
 
     VolumeExternalName_r(vsp->header.id, filename, sizeof(filename));
@@ -1044,9 +995,9 @@ DeleteExtraVolumeHeaderFile(struct SalvInfo *salvinfo, struct VolumeSummary *vsp
 	afs_int32 code;
 	code = VDestroyVolumeDiskHeader(salvinfo->fileSysPartition, vsp->header.id, vsp->header.parent);
 	if (code) {
-	    Log("Error %ld destroying volume disk header for volume %lu\n",
+	    Log("Error %ld destroying volume disk header for volume %" AFS_VOLID_FMT "\n",
 	        afs_printable_int32_ld(code),
-	        afs_printable_uint32_lu(vsp->header.id));
+	        afs_printable_VolumeId_lu(vsp->header.id));
 	}
 
 	/* make sure we actually delete the header file; ENOENT
@@ -1055,10 +1006,10 @@ DeleteExtraVolumeHeaderFile(struct SalvInfo *salvinfo, struct VolumeSummary *vsp
 	if (unlink(path) && errno != ENOENT) {
 	    Log("Unable to unlink %s (errno = %d)\n", path, errno);
 	}
-        if (salvinfo->useFSYNC) {
-            AskDelete(salvinfo, vsp->header.id);
-        }
-        vsp->deleted = 1;
+	if (salvinfo->useFSYNC) {
+	    AskDelete(salvinfo, vsp->header.id);
+	}
+	vsp->deleted = 1;
     }
 }
 
@@ -1190,7 +1141,7 @@ CountVolumeInodes(struct ViceInodeInfo *ip, int maxInodes,
 }
 
 int
-OnlyOneVolume(struct ViceInodeInfo *inodeinfo, afs_uint32 singleVolumeNumber, void *rock)
+OnlyOneVolume(struct ViceInodeInfo *inodeinfo, VolumeId singleVolumeNumber, void *rock)
 {
     if (inodeinfo->u.vnode.vnodeNumber == INODESPECIAL)
 	return (inodeinfo->u.special.parentId == singleVolumeNumber);
@@ -1204,15 +1155,14 @@ OnlyOneVolume(struct ViceInodeInfo *inodeinfo, afs_uint32 singleVolumeNumber, vo
  * be unlinked by the caller.
  */
 int
-GetInodeSummary(struct SalvInfo *salvinfo, FILE *inodeFile, VolumeId singleVolumeNumber)
+GetInodeSummary(struct SalvInfo *salvinfo, FD_t inodeFile, VolumeId singleVolumeNumber)
 {
-    struct afs_stat status;
     int forceSal, err;
     int code;
     struct ViceInodeInfo *ip, *ip_save;
     struct InodeSummary summary;
     char summaryFileName[50];
-    FILE *summaryFile;
+    FD_t summaryFile = INVALID_FD;
 #ifdef AFS_NT40_ENV
     char *dev = salvinfo->fileSysPath;
     char *wpath = salvinfo->fileSysPath;
@@ -1225,6 +1175,7 @@ GetInodeSummary(struct SalvInfo *salvinfo, FILE *inodeFile, VolumeId singleVolum
     int i;
     int retcode = 0;
     int deleted = 0;
+    afs_sfsize_t st_size;
 
     /* This file used to come from vfsck; cobble it up ourselves now... */
     if ((err =
@@ -1242,9 +1193,10 @@ GetInodeSummary(struct SalvInfo *salvinfo, FILE *inodeFile, VolumeId singleVolum
 	Log("***Forced salvage of all volumes on this partition***\n");
 	ForceSalvage = 1;
     }
-    fseek(inodeFile, 0L, SEEK_SET);
-    salvinfo->inodeFd = fileno(inodeFile);
-    if (salvinfo->inodeFd == -1 || afs_fstat(salvinfo->inodeFd, &status) == -1) {
+    OS_SEEK(inodeFile, 0L, SEEK_SET);
+    salvinfo->inodeFd = inodeFile;
+    if (salvinfo->inodeFd == INVALID_FD ||
+        (st_size = OS_SIZE(salvinfo->inodeFd)) == -1) {
 	Abort("No inode description file for \"%s\"; not salvaged\n", dev);
     }
     tdir = (tmpdir ? tmpdir : part);
@@ -1252,11 +1204,11 @@ GetInodeSummary(struct SalvInfo *salvinfo, FILE *inodeFile, VolumeId singleVolum
     (void)_putenv("TMP=");	/* If "TMP" is set, then that overrides tdir. */
     (void)strcpy(summaryFileName, _tempnam(tdir, "salvage.temp."));
 #else
-    (void)afs_snprintf(summaryFileName, sizeof summaryFileName,
-		       "%s" OS_DIRSEP "salvage.temp.%d", tdir, getpid());
+    snprintf(summaryFileName, sizeof summaryFileName,
+	     "%s" OS_DIRSEP "salvage.temp.%d", tdir, getpid());
 #endif
-    summaryFile = afs_fopen(summaryFileName, "a+");
-    if (summaryFile == NULL) {
+    summaryFile = OS_OPEN(summaryFileName, O_RDWR|O_APPEND|O_CREAT, 0666);
+    if (summaryFile == INVALID_FD) {
 	Abort("Unable to create inode summary file\n");
     }
 
@@ -1278,11 +1230,9 @@ GetInodeSummary(struct SalvInfo *salvinfo, FILE *inodeFile, VolumeId singleVolum
     }
 
     if (!canfork || debug || Fork() == 0) {
-	int nInodes;
-	unsigned long st_size=(unsigned long) status.st_size;
-	nInodes = st_size / sizeof(struct ViceInodeInfo);
+	int nInodes = st_size / sizeof(struct ViceInodeInfo);
 	if (nInodes == 0) {
-	    fclose(summaryFile);
+	    OS_CLOSE(summaryFile);
 	    if (!singleVolumeNumber)	/* Remove the FORCESALVAGE file */
 		RemoveTheForce(salvinfo->fileSysPath);
 	    else {
@@ -1301,19 +1251,19 @@ GetInodeSummary(struct SalvInfo *salvinfo, FILE *inodeFile, VolumeId singleVolum
 		    }
 		}
 
-	    	if (!foundSVN) {
+		if (!foundSVN) {
 		    if (Testing) {
-		        MaybeAskOnline(salvinfo, singleVolumeNumber);
+			MaybeAskOnline(salvinfo, singleVolumeNumber);
 		    } else {
-		        /* make sure we get rid of stray .vol headers, even if
-		         * they're not in our volume summary (might happen if
-		         * e.g. something else created them and they're not in the
-		         * fileserver VGC) */
-		        VDestroyVolumeDiskHeader(salvinfo->fileSysPartition,
-					         singleVolumeNumber, 0 /*parent*/);
-		        AskDelete(salvinfo, singleVolumeNumber);
+			/* make sure we get rid of stray .vol headers, even if
+			 * they're not in our volume summary (might happen if
+			 * e.g. something else created them and they're not in the
+			 * fileserver VGC) */
+			VDestroyVolumeDiskHeader(salvinfo->fileSysPartition,
+			                         singleVolumeNumber, 0 /*parent*/);
+			AskDelete(salvinfo, singleVolumeNumber);
 		    }
-	        }
+		}
 	    }
 	    Log("%s vice inodes on %s; not salvaged\n",
 		singleVolumeNumber ? "No applicable" : "No", dev);
@@ -1321,30 +1271,30 @@ GetInodeSummary(struct SalvInfo *salvinfo, FILE *inodeFile, VolumeId singleVolum
 	    deleted = 1;
 	    goto error;
 	}
-	ip = (struct ViceInodeInfo *)malloc(nInodes*sizeof(struct ViceInodeInfo));
+	ip = malloc(nInodes*sizeof(struct ViceInodeInfo));
 	if (ip == NULL) {
-	    fclose(summaryFile);
+	    OS_CLOSE(summaryFile);
 	    Abort
 		("Unable to allocate enough space to read inode table; %s not salvaged\n",
 		 dev);
 	}
-	if (read(salvinfo->inodeFd, ip, st_size) != st_size) {
-	    fclose(summaryFile);
+	if (OS_READ(salvinfo->inodeFd, ip, st_size) != st_size) {
+	    OS_CLOSE(summaryFile);
 	    Abort("Unable to read inode table; %s not salvaged\n", dev);
 	}
 	qsort(ip, nInodes, sizeof(struct ViceInodeInfo), CompareInodes);
-	if (afs_lseek(salvinfo->inodeFd, 0, SEEK_SET) == -1
-	    || write(salvinfo->inodeFd, ip, st_size) != st_size) {
-	    fclose(summaryFile);
+	if (OS_SEEK(salvinfo->inodeFd, 0, SEEK_SET) == -1
+	    || OS_WRITE(salvinfo->inodeFd, ip, st_size) != st_size) {
+	    OS_CLOSE(summaryFile);
 	    Abort("Unable to rewrite inode table; %s not salvaged\n", dev);
 	}
 	summary.index = 0;
 	ip_save = ip;
 	while (nInodes) {
 	    CountVolumeInodes(ip, nInodes, &summary);
-	    if (fwrite(&summary, sizeof(summary), 1, summaryFile) != 1) {
+	    if (OS_WRITE(summaryFile, &summary, sizeof(summary)) != sizeof(summary)) {
 		Log("Difficulty writing summary file (errno = %d); %s not salvaged\n", errno, dev);
-		fclose(summaryFile);
+		OS_CLOSE(summaryFile);
 		retcode = -1;
 		goto error;
 	    }
@@ -1355,39 +1305,39 @@ GetInodeSummary(struct SalvInfo *salvinfo, FILE *inodeFile, VolumeId singleVolum
 	free(ip_save);
 	ip = ip_save = NULL;
 	/* Following fflush is not fclose, because if it was debug mode would not work */
-	if (fflush(summaryFile) == EOF || fsync(fileno(summaryFile)) == -1) {
+	if (OS_SYNC(summaryFile) == -1) {
 	    Log("Unable to write summary file (errno = %d); %s not salvaged\n", errno, dev);
-	    fclose(summaryFile);
+	    OS_CLOSE(summaryFile);
 	    retcode = -1;
 	    goto error;
 	}
 	if (canfork && !debug) {
-	    ShowLog = 0;
-	    Exit(0);
+	    QuietExit(0);
 	}
     } else {
 	if (Wait("Inode summary") == -1) {
-	    fclose(summaryFile);
+	    OS_CLOSE(summaryFile);
 	    Exit(1);		/* salvage of this partition aborted */
 	}
     }
-    osi_Assert(afs_fstat(fileno(summaryFile), &status) != -1);
-    if (status.st_size != 0) {
+
+    st_size = OS_SIZE(summaryFile);
+    opr_Assert(st_size >= 0);
+    if (st_size != 0) {
 	int ret;
-	unsigned long st_status=(unsigned long)status.st_size;
-	salvinfo->inodeSummary = (struct InodeSummary *)malloc(st_status);
-	osi_Assert(salvinfo->inodeSummary != NULL);
+	salvinfo->inodeSummary = malloc(st_size);
+	opr_Assert(salvinfo->inodeSummary != NULL);
 	/* For GNU we need to do lseek to get the file pointer moved. */
-	osi_Assert(afs_lseek(fileno(summaryFile), 0, SEEK_SET) == 0);
-	ret = read(fileno(summaryFile), salvinfo->inodeSummary, st_status);
-	osi_Assert(ret == st_status);
+	opr_Assert(OS_SEEK(summaryFile, 0, SEEK_SET) == 0);
+	ret = OS_READ(summaryFile, salvinfo->inodeSummary, st_size);
+	opr_Assert(ret == st_size);
     }
-    salvinfo->nVolumesInInodeFile =(unsigned long)(status.st_size) / sizeof(struct InodeSummary);
+    salvinfo->nVolumesInInodeFile = st_size / sizeof(struct InodeSummary);
     for (i = 0; i < salvinfo->nVolumesInInodeFile; i++) {
 	salvinfo->inodeSummary[i].volSummary = NULL;
     }
-    Log("%d nVolumesInInodeFile %lu \n",salvinfo->nVolumesInInodeFile,(unsigned long)(status.st_size));
-    fclose(summaryFile);
+    Log("%d nVolumesInInodeFile %lu \n",salvinfo->nVolumesInInodeFile,(unsigned long)st_size);
+    OS_CLOSE(summaryFile);
 
  error:
     if (retcode && singleVolumeNumber && !deleted) {
@@ -1486,9 +1436,9 @@ AskVolumeSummary(struct SalvInfo *salvinfo, VolumeId singleVolumeNumber)
 	    }
 
 	    if (code) {
-		Log("fileserver refused VGCQuery request for volume %lu on "
+		Log("fileserver refused VGCQuery request for volume %" AFS_VOLID_FMT " on "
 		    "partition %s, code %ld reason %ld\n",
-		    afs_printable_uint32_lu(singleVolumeNumber),
+		    afs_printable_VolumeId_lu(singleVolumeNumber),
 		    salvinfo->fileSysPartition->name,
 		    afs_printable_int32_ld(code),
 		    afs_printable_int32_ld(res.hdr.reason));
@@ -1496,9 +1446,9 @@ AskVolumeSummary(struct SalvInfo *salvinfo, VolumeId singleVolumeNumber)
 	    }
 
 	    if (q_res.rw != singleVolumeNumber) {
-		Log("fileserver requested salvage of clone %lu; scheduling salvage of volume group %lu...\n",
-		    afs_printable_uint32_lu(singleVolumeNumber),
-		    afs_printable_uint32_lu(q_res.rw));
+		Log("fileserver requested salvage of clone %" AFS_VOLID_FMT "; scheduling salvage of volume group %" AFS_VOLID_FMT "...\n",
+		    afs_printable_VolumeId_lu(singleVolumeNumber),
+		    afs_printable_VolumeId_lu(q_res.rw));
 #ifdef SALVSYNC_BUILD_CLIENT
 		if (SALVSYNC_LinkVolume(q_res.rw,
 		                       singleVolumeNumber,
@@ -1511,7 +1461,7 @@ AskVolumeSummary(struct SalvInfo *salvinfo, VolumeId singleVolumeNumber)
 	    }
 
 	    salvinfo->volumeSummaryp = calloc(VOL_VG_MAX_VOLS, sizeof(struct VolumeSummary));
-	    osi_Assert(salvinfo->volumeSummaryp != NULL);
+	    opr_Assert(salvinfo->volumeSummaryp != NULL);
 
 	    salvinfo->nVolumes = 0;
 	    vsp = salvinfo->volumeSummaryp;
@@ -1640,8 +1590,9 @@ RecordHeader(struct DiskPartition64 *dp, const char *name,
 
 	if (programType == salvageServer) {
 #ifdef SALVSYNC_BUILD_CLIENT
-	    Log("fileserver requested salvage of clone %u; scheduling salvage of volume group %u...\n",
-	        summary.header.id, summary.header.parent);
+	    Log("fileserver requested salvage of clone %" AFS_VOLID_FMT "; scheduling salvage of volume group %" AFS_VOLID_FMT "...\n",
+	        afs_printable_VolumeId_lu(summary.header.id),
+		afs_printable_VolumeId_lu(summary.header.parent));
 	    if (SALVSYNC_LinkVolume(summary.header.parent,
 		                    summary.header.id,
 		                    dp->name,
@@ -1652,8 +1603,8 @@ RecordHeader(struct DiskPartition64 *dp, const char *name,
 	    Exit(SALSRV_EXIT_VOLGROUP_LINK);
 
 	} else {
-	    Log("%u is a read-only volume; not salvaged\n",
-	        singleVolumeNumber);
+	    Log("%" AFS_VOLID_FMT " is a read-only volume; not salvaged\n",
+	        afs_printable_VolumeId_lu(singleVolumeNumber));
 	    Exit(1);
 	}
     }
@@ -1670,8 +1621,8 @@ RecordHeader(struct DiskPartition64 *dp, const char *name,
 	    base = name;
 	}
 
-	(void)afs_snprintf(nameShouldBe, sizeof nameShouldBe,
-	                   VFORMAT, afs_printable_uint32_lu(summary.header.id));
+	snprintf(nameShouldBe, sizeof nameShouldBe,
+	         VFORMAT, afs_printable_VolumeId_lu(summary.header.id));
 
 
 	if (strcmp(nameShouldBe, base)) {
@@ -1684,7 +1635,7 @@ RecordHeader(struct DiskPartition64 *dp, const char *name,
 	     * the last try looking at it; avoid AskOffline'ing the same vol
 	     * multiple times */
 
-	    if (singleVolumeNumber 
+	    if (singleVolumeNumber
 	        && summary.header.id != singleVolumeNumber) {
 		/* don't offline singleVolumeNumber; we already did that
 		 * earlier */
@@ -1829,7 +1780,7 @@ GetVolumeSummary(struct SalvInfo *salvinfo, VolumeId singleVolumeNumber)
     }
 
     salvinfo->volumeSummaryp = calloc(nvols, sizeof(struct VolumeSummary));
-    osi_Assert(salvinfo->volumeSummaryp != NULL);
+    opr_Assert(salvinfo->volumeSummaryp != NULL);
 
     params.singleVolumeNumber = singleVolumeNumber;
     params.vsp = salvinfo->volumeSummaryp;
@@ -1857,10 +1808,11 @@ GetVolumeSummary(struct SalvInfo *salvinfo, VolumeId singleVolumeNumber)
     return 0;
 }
 
+#ifdef AFS_NAMEI_ENV
 /* Find the link table. This should be associated with the RW volume, even
  * if there is only an RO volume at this site.
  */
-Inode
+static Inode
 FindLinkHandle(struct InodeSummary *isp, int nVols,
 	       struct ViceInodeInfo *allInodes)
 {
@@ -1871,16 +1823,15 @@ FindLinkHandle(struct InodeSummary *isp, int nVols,
 	ip = allInodes + isp[i].index;
 	for (j = 0; j < isp[i].nSpecialInodes; j++) {
 	    if (ip[j].u.special.volumeId == isp->RWvolumeId &&
-		ip[j].u.special.parentId == isp->RWvolumeId &&
-		ip[j].u.special.type == VI_LINKTABLE) {
+	        ip[j].u.special.parentId == isp->RWvolumeId &&
+	        ip[j].u.special.type == VI_LINKTABLE) {
 		return ip[j].inodeNumber;
-	     }
+	    }
 	}
     }
     return (Inode) - 1;
 }
 
-#ifdef AFS_NAMEI_ENV
 static int
 CheckDupLinktable(struct SalvInfo *salvinfo, struct InodeSummary *isp, struct ViceInodeInfo *ip)
 {
@@ -1911,7 +1862,7 @@ CheckDupLinktable(struct SalvInfo *salvinfo, struct InodeSummary *isp, struct Vi
     }
 
     Log("Linktable %s appears to be invalid (parentid/volumeid mismatch: %u != %u)\n",
-	PrintInode(stmp, ip->inodeNumber), ip->u.special.parentId, ip->u.special.volumeId);
+        PrintInode(stmp, ip->inodeNumber), ip->u.special.parentId, ip->u.special.volumeId);
     if (Testing) {
 	Log("Would have deleted linktable inode %s\n", PrintInode(stmp, ip->inodeNumber));
     } else {
@@ -1942,25 +1893,25 @@ CreateLinkTable(struct SalvInfo *salvinfo, struct InodeSummary *isp, Inode ino)
 		      INODESPECIAL, VI_LINKTABLE, isp->RWvolumeId);
     if (!VALID_INO(ino))
 	Abort
-	    ("Unable to allocate link table inode for volume %u (error = %d)\n",
-	     isp->RWvolumeId, errno);
+	    ("Unable to allocate link table inode for volume %" AFS_VOLID_FMT " (error = %d)\n",
+	     afs_printable_VolumeId_lu(isp->RWvolumeId), errno);
     IH_INIT(salvinfo->VGLinkH, salvinfo->fileSysDevice, isp->RWvolumeId, ino);
     fdP = IH_OPEN(salvinfo->VGLinkH);
     if (fdP == NULL)
-	Abort("Can't open link table for volume %u (error = %d)\n",
-	      isp->RWvolumeId, errno);
+	Abort("Can't open link table for volume %" AFS_VOLID_FMT " (error = %d)\n",
+	      afs_printable_VolumeId_lu(isp->RWvolumeId), errno);
 
     if (FDH_TRUNC(fdP, sizeof(version) + sizeof(short)) < 0)
-	Abort("Can't truncate link table for volume %u (error = %d)\n",
-	      isp->RWvolumeId, errno);
+	Abort("Can't truncate link table for volume %" AFS_VOLID_FMT " (error = %d)\n",
+	      afs_printable_VolumeId_lu(isp->RWvolumeId), errno);
 
     version.magic = LINKTABLEMAGIC;
     version.version = LINKTABLEVERSION;
 
     if (FDH_PWRITE(fdP, (char *)&version, sizeof(version), 0)
 	!= sizeof(version))
-	Abort("Can't truncate link table for volume %u (error = %d)\n",
-	      isp->RWvolumeId, errno);
+	Abort("Can't truncate link table for volume %" AFS_VOLID_FMT " (error = %d)\n",
+	      afs_printable_VolumeId_lu(isp->RWvolumeId), errno);
 
     FDH_REALLYCLOSE(fdP);
 
@@ -1983,7 +1934,7 @@ nt_SVG(void *arg)
 }
 
 void
-SalvageVolumeGroup(struct SalvInfo *salvinfo, struct InodeSummary *isp, int nVols)
+nt_SalvageVolumeGroup(struct SalvInfo *salvinfo, struct InodeSummary *isp, int nVols)
 {
     pthread_t tid;
     pthread_attr_t tattr;
@@ -2048,14 +1999,14 @@ DoSalvageVolumeGroup(struct SalvInfo *salvinfo, struct InodeSummary *isp, int nV
     for (i = 0, totalInodes = 0; i < nVols; i++)
 	totalInodes += isp[i].nInodes;
     size = totalInodes * sizeof(struct ViceInodeInfo);
-    inodes = (struct ViceInodeInfo *)malloc(size);
+    inodes = malloc(size);
     allInodes = inodes - isp->index;	/* this would the base of all the inodes
 					 * for the partition, if all the inodes
 					 * had been read into memory */
-    osi_Assert(afs_lseek
+    opr_Verify(OS_SEEK
 	   (salvinfo->inodeFd, isp->index * sizeof(struct ViceInodeInfo),
 	    SEEK_SET) != -1);
-    osi_Assert(read(salvinfo->inodeFd, inodes, size) == size);
+    opr_Verify(OS_READ(salvinfo->inodeFd, inodes, size) == size);
 
     /* Don't try to salvage a read write volume if there isn't one on this
      * partition */
@@ -2068,36 +2019,36 @@ DoSalvageVolumeGroup(struct SalvInfo *salvinfo, struct InodeSummary *isp, int nV
 	fdP = IH_OPEN(salvinfo->VGLinkH);
     }
     if (VALID_INO(ino) && fdP != NULL) {
-        struct versionStamp header;
-        afs_sfsize_t nBytes;
- 
-        nBytes = FDH_PREAD(fdP, (char *)&header, sizeof(struct versionStamp), 0);
-        if (nBytes != sizeof(struct versionStamp)
-            || header.magic != LINKTABLEMAGIC) {
-             Log("Bad linktable header for volume %u.\n", isp->RWvolumeId);
-            FDH_REALLYCLOSE(fdP);
-            fdP = NULL;
-        }
+	struct versionStamp header;
+	afs_sfsize_t nBytes;
+
+	nBytes = FDH_PREAD(fdP, (char *)&header, sizeof(struct versionStamp), 0);
+	if (nBytes != sizeof(struct versionStamp)
+	    || header.magic != LINKTABLEMAGIC) {
+            Log("Bad linktable header for volume %" AFS_VOLID_FMT ".\n", afs_printable_VolumeId_lu(isp->RWvolumeId));
+	    FDH_REALLYCLOSE(fdP);
+	    fdP = NULL;
+	}
     }
     if (!VALID_INO(ino) || fdP == NULL) {
-	Log("%s link table for volume %u.\n",
-	    Testing ? "Would have recreated" : "Recreating", isp->RWvolumeId);
+	Log("%s link table for volume %" AFS_VOLID_FMT ".\n",
+	    Testing ? "Would have recreated" : "Recreating", afs_printable_VolumeId_lu(isp->RWvolumeId));
 	if (Testing) {
 	    IH_INIT(salvinfo->VGLinkH, salvinfo->fileSysDevice, -1, -1);
 	} else {
-            int i, j;
-            struct ViceInodeInfo *ip;
+	    int i, j;
+	    struct ViceInodeInfo *ip;
 	    CreateLinkTable(salvinfo, isp, ino);
 	    fdP = IH_OPEN(salvinfo->VGLinkH);
-            /* Sync fake 1 link counts to the link table, now that it exists */
-            if (fdP) {
-            	for (i = 0; i < nVols; i++) {
-            	    ip = allInodes + isp[i].index;
+	    /* Sync fake 1 link counts to the link table, now that it exists */
+	    if (fdP) {
+		for (i = 0; i < nVols; i++) {
+		    ip = allInodes + isp[i].index;
 		    for (j = isp[i].nSpecialInodes; j < isp[i].nInodes; j++) {
-			namei_SetLinkCount(fdP, ip[j].inodeNumber, 1, 1);
+			namei_SetLinkCount(fdP, ip[j].inodeNumber, 1, 0);
 			ip[j].linkCount = 1;
 		    }
-            	}
+		}
 	    }
 	}
     }
@@ -2140,14 +2091,14 @@ DoSalvageVolumeGroup(struct SalvInfo *salvinfo, struct InodeSummary *isp, int nV
 		 * this, we risk creating a new "phantom" RW that the VLDB
 		 * doesn't know about, which is confusing and can cause
 		 * problems. */
-		haveRWvolume = 0;
-		continue;
+		 haveRWvolume = 0;
+		 continue;
 	    }
 	}
 #endif
 	if (!Showmode)
-	    Log("%s VOLUME %u%s.\n", rw ? "SALVAGING" : "CHECKING CLONED",
-		lisp->volumeId, (Testing ? "(READONLY mode)" : ""));
+	    Log("%s VOLUME %" AFS_VOLID_FMT "%s.\n", rw ? "SALVAGING" : "CHECKING CLONED",
+		afs_printable_VolumeId_lu(lisp->volumeId), (Testing ? "(READONLY mode)" : ""));
 	/* Check inodes twice.  The second time do things seriously.  This
 	 * way the whole RO volume can be deleted, below, if anything goes wrong */
 	for (check = 1; check >= 0; check--) {
@@ -2190,10 +2141,22 @@ DoSalvageVolumeGroup(struct SalvInfo *salvinfo, struct InodeSummary *isp, int nV
 #endif
 	    if (ip->linkCount != 0 && TraceBadLinkCounts) {
 		TraceBadLinkCounts--;	/* Limit reports, per volume */
-		Log("#### DEBUG #### Link count incorrect by %d; inode %s, size %llu, p=(%u,%u,%u,%u)\n", ip->linkCount, PrintInode(stmp, ip->inodeNumber), (afs_uintmax_t) ip->byteCount, ip->u.param[0], ip->u.param[1], ip->u.param[2], ip->u.param[3]);
+		Log("#### DEBUG #### Link count incorrect by %d; inode %s, size %llu, p=(%u,%u,%u,%u)\n", ip->linkCount, PrintInode(stmp, ip->inodeNumber), (afs_uintmax_t) ip->byteCount, ip->u.param[0], ip->u.param[1], ip->u.param[2], ip->u.param[3]); /* VolumeId in param */
 	    }
+
+	    /* If ip->linkCount is non-zero at this point, then the linkcount
+	     * for the inode on disk is wrong. Initially linkCount is set to
+	     * the actual link count of the inode on disk, and then we (the
+	     * salvager) decrement it for every reference to that inode that we
+	     * find. So if linkCount is still positive by this point, it means
+	     * that the linkcount on disk is too high, so we should DEC the
+	     * inode. If linkCount is negative, it means the linkcount is too
+	     * low, so we should INC the inode.
+	     *
+	     * If we get an error while INC'ing or DEC'ing, that's a little
+	     * odd and indicates a bug, but try to continue anyway, so the
+	     * volume may still be made accessible. */
 	    while (ip->linkCount > 0) {
-		/* below used to assert, not break */
 		if (!Testing) {
 		    if (IH_DEC(salvinfo->VGLinkH, ip->inodeNumber, ip->u.param[0])) {
 			Log("idec failed. inode %s errno %d\n",
@@ -2204,7 +2167,6 @@ DoSalvageVolumeGroup(struct SalvInfo *salvinfo, struct InodeSummary *isp, int nV
 		ip->linkCount--;
 	    }
 	    while (ip->linkCount < 0) {
-		/* these used to be asserts */
 		if (!Testing) {
 		    if (IH_INC(salvinfo->VGLinkH, ip->inodeNumber, ip->u.param[0])) {
 			Log("iinc failed. inode %s errno %d\n",
@@ -2237,8 +2199,7 @@ DoSalvageVolumeGroup(struct SalvInfo *salvinfo, struct InodeSummary *isp, int nV
     IH_RELEASE(salvinfo->VGLinkH);
 
     if (canfork && !debug) {
-	ShowLog = 0;
-	Exit(0);
+	QuietExit(0);
     }
 }
 
@@ -2321,17 +2282,8 @@ SalvageVolumeHeaderFile(struct SalvInfo *salvinfo, struct InodeSummary *isp,
 
     memset(goodspecial, 0, sizeof(goodspecial));
 
-    /* fill osdvol only if the volume has an osdMetadata special file */
-    if (check) {
-        if (osdvol)
-            osdvolsave = osdvol;
-        osdvol = NULL;
-    }
-
-    skip = malloc(isp->nSpecialInodes * sizeof(*skip));
-    if (skip) {
-	memset(skip, 0, isp->nSpecialInodes * sizeof(*skip));
-    } else {
+    skip = calloc(isp->nSpecialInodes, sizeof(*skip));
+    if (skip == NULL) {
 	Log("cannot allocate memory for inode skip array when salvaging "
 	    "volume %lu; not performing duplicate special inode recovery\n",
 	    afs_printable_uint32_lu(isp->volumeId));
@@ -2382,8 +2334,8 @@ SalvageVolumeHeaderFile(struct SalvInfo *salvinfo, struct InodeSummary *isp,
 		continue;
 	    }
 	    if (!Showmode) {
-		Log("Duplicate special %d inodes for volume %u found (%s, %s);\n",
-		    ip->u.special.type, isp->volumeId,
+		Log("Duplicate special %d inodes for volume %" AFS_VOLID_FMT " found (%s, %s);\n",
+		    ip->u.special.type, afs_printable_VolumeId_lu(isp->volumeId),
 		    PrintInode(stmp1, ip->inodeNumber),
 		    PrintInode(stmp2, (ip+1)->inodeNumber));
 	    }
@@ -2406,7 +2358,7 @@ SalvageVolumeHeaderFile(struct SalvInfo *salvinfo, struct InodeSummary *isp,
 		}
 	    } else {
 		if (!Showmode)
-		    Log("cannot determine which is correct; salvage of volume %u aborted\n", isp->volumeId);
+		    Log("cannot determine which is correct; salvage of volume %" AFS_VOLID_FMT " aborted\n", afs_printable_VolumeId_lu(isp->volumeId));
 		if (skip) {
 		    free(skip);
 		}
@@ -2430,7 +2382,7 @@ SalvageVolumeHeaderFile(struct SalvInfo *salvinfo, struct InodeSummary *isp,
 	    Log("Rubbish header inode %s of type %d; deleted\n",
 	        PrintInode(stmp, ip->inodeNumber),
 	        ip->u.special.type);
-	} else if (stuff[ip->u.special.type - 1].obsolete != 1) {
+	} else if (!stuff[ip->u.special.type - 1].obsolete) {
 	    if (skip && skip[i]) {
 		if (orphans == ORPH_REMOVE) {
 		    Log("Removing orphan special inode %s of type %d\n",
@@ -2479,39 +2431,6 @@ SalvageVolumeHeaderFile(struct SalvInfo *salvinfo, struct InodeSummary *isp,
 	    }
 	    continue;
 	}
-	if (stuff[i].inodeType == VI_OSDMETADATA) {
-	    if (VALID_INO(*stuff[i].inode)) {
-		/* This seems to be an OSD volume */
-		if (!osdvol) {
-		    int code;
-		    if (osdvolsave) {
-			osdvol = osdvolsave;
-			code = 0;
-		    } else {
-#ifdef AFS_PTHREAD_ENV
-        	        struct init_salv_inputs input = {
-			    &vol_data_v0
-        	        };
-        	        struct init_salv_outputs output = {
-            		    &osdvol
-        	        };
-		        code = load_libafsosd("init_salv_afsosd", (void *)&input,
-			 		  (void *)&output);
-#else
-		        code = ENOENT;
-#endif
-		    }
-		    if (code) {
-	    		Log("Couldn't load libafsosd.so for OSD volume %u, code was %d, aborting\n",
-					 isp->volumeId, code);
-	    	    	return -1;
-		    } else
-	    		Log("libafsosd.so loaded for OSD volume %u\n",
-					     isp->volumeId);
-		}
-	    }
-	}
-			
 	if (SalvageHeader(salvinfo, &stuff[i], isp, check, deleteMe) == -1 && check)
 	    return -1;
     }
@@ -2519,15 +2438,17 @@ SalvageVolumeHeaderFile(struct SalvInfo *salvinfo, struct InodeSummary *isp,
     if (isp->volSummary == NULL) {
 	char path[64];
 	char headerName[64];
-	(void)afs_snprintf(headerName, sizeof headerName, VFORMAT, afs_printable_uint32_lu(isp->volumeId));
-	(void)afs_snprintf(path, sizeof path, "%s" OS_DIRSEP "%s", salvinfo->fileSysPath, headerName);
+	snprintf(headerName, sizeof headerName, VFORMAT,
+		 afs_printable_VolumeId_lu(isp->volumeId));
+	snprintf(path, sizeof path, "%s" OS_DIRSEP "%s",
+	         salvinfo->fileSysPath, headerName);
 	if (check) {
-	    Log("No header file for volume %u\n", isp->volumeId);
+	    Log("No header file for volume %" AFS_VOLID_FMT "\n", afs_printable_VolumeId_lu(isp->volumeId));
 	    return -1;
 	}
 	if (!Showmode)
-	    Log("No header file for volume %u; %screating %s\n",
-		isp->volumeId, (Testing ? "it would have been " : ""),
+	    Log("No header file for volume %" AFS_VOLID_FMT "; %screating %s\n",
+		afs_printable_VolumeId_lu(isp->volumeId), (Testing ? "it would have been " : ""),
 		path);
 	isp->volSummary = calloc(1, sizeof(struct VolumeSummary));
 
@@ -2537,12 +2458,14 @@ SalvageVolumeHeaderFile(struct SalvInfo *salvinfo, struct InodeSummary *isp,
 	char headerName[64];
 	/* hack: these two fields are obsolete... */
 	isp->volSummary->header.volumeAcl = 0;
+	isp->volSummary->header.volumeMountTable = 0;
 
 	if (memcmp
 	    (&isp->volSummary->header, &tempHeader,
 	     sizeof(struct VolumeHeader))) {
-            VolumeExternalName_r(isp->volumeId, headerName, sizeof(headerName));
-	    (void)afs_snprintf(path, sizeof path, "%s" OS_DIRSEP "%s", salvinfo->fileSysPath, headerName);
+	    VolumeExternalName_r(isp->volumeId, headerName, sizeof(headerName));
+	    snprintf(path, sizeof path, "%s" OS_DIRSEP "%s",
+		     salvinfo->fileSysPath, headerName);
 
 	    Log("Header file %s is damaged or no longer valid%s\n", path,
 		(check ? "" : "; repairing"));
@@ -2557,16 +2480,16 @@ SalvageVolumeHeaderFile(struct SalvInfo *salvinfo, struct InodeSummary *isp,
 	       sizeof(struct VolumeHeader));
 	if (Testing) {
 	    if (!Showmode)
-		Log("It would have written a new header file for volume %u\n",
-		    isp->volumeId);
+		Log("It would have written a new header file for volume %" AFS_VOLID_FMT "\n",
+		    afs_printable_VolumeId_lu(isp->volumeId));
 	} else {
 	    afs_int32 code;
 	    VolumeHeaderToDisk(&diskHeader, &tempHeader);
 	    code = (*writefunc)(&diskHeader, salvinfo->fileSysPartition);
 	    if (code) {
-		Log("Error %ld writing volume header file for volume %lu\n",
+		Log("Error %ld writing volume header file for volume %" AFS_VOLID_FMT "\n",
 		    afs_printable_int32_ld(code),
-		    afs_printable_uint32_lu(diskHeader.id));
+		    afs_printable_VolumeId_lu(diskHeader.id));
 		return -1;
 	    }
 	}
@@ -2588,17 +2511,14 @@ SalvageHeader(struct SalvInfo *salvinfo, struct afs_inode_info *sp,
     int recreate = 0;
     ssize_t nBytes;
     FdHandle_t *fdP;
-    static afs_int32 osdPolicy;
 
-    if (sp->obsolete == 1)
+    if (sp->obsolete)
 	return 0;
 #ifndef AFS_NAMEI_ENV
     if (sp->inodeType == VI_LINKTABLE)
 	return 0; /* header magic was already checked */
 #endif
     if (*(sp->inode) == 0) {
-	if (sp->inodeType == VI_OSDMETADATA && !osdPolicy) 
-	    return 0; /* non-osd-volumes do not need it */
 	if (check) {
 	    Log("Missing inode in volume header (%s)\n", sp->description);
 	    return -1;
@@ -2651,17 +2571,16 @@ SalvageHeader(struct SalvInfo *salvinfo, struct afs_inode_info *sp,
     }
 #ifdef AFS_NAMEI_ENV
     if (namei_FixSpecialOGM(fdP, check)) {
-        Log("Error with namei header OGM data (%s)\n", sp->description);
-        FDH_REALLYCLOSE(fdP);
-        IH_RELEASE(specH);
-        return -1;
+	Log("Error with namei header OGM data (%s)\n", sp->description);
+	FDH_REALLYCLOSE(fdP);
+	IH_RELEASE(specH);
+	return -1;
     }
 #endif
     if (sp->inodeType == VI_VOLINFO
 	&& header.volumeInfo.destroyMe == DESTROY_ME) {
 	if (deleteMe)
 	    *deleteMe = 1;
-	osdPolicy = header.volumeInfo.osdPolicy;
 	FDH_REALLYCLOSE(fdP);
 	IH_RELEASE(specH);
 	return -1;
@@ -2683,20 +2602,20 @@ SalvageHeader(struct SalvInfo *salvinfo, struct afs_inode_info *sp,
 	    header.volumeInfo.stamp = sp->stamp;
 	    header.volumeInfo.id = isp->volumeId;
 	    header.volumeInfo.parentId = isp->RWvolumeId;
-	    sprintf(header.volumeInfo.name, "bogus.%u", isp->volumeId);
-	    Log("Warning: the name of volume %u is now \"bogus.%u\"\n",
-		isp->volumeId, isp->volumeId);
+	    sprintf(header.volumeInfo.name, "bogus.%" AFS_VOLID_FMT, afs_printable_VolumeId_lu(isp->volumeId));
+	    Log("Warning: the name of volume %" AFS_VOLID_FMT " is now \"bogus.%" AFS_VOLID_FMT "\"\n",
+		afs_printable_VolumeId_lu(isp->volumeId), afs_printable_VolumeId_lu(isp->volumeId));
 	    header.volumeInfo.inService = 0;
 	    header.volumeInfo.blessed = 0;
 	    /* The + 1000 is a hack in case there are any files out in venus caches */
 	    header.volumeInfo.uniquifier = (isp->maxUniquifier + 1) + 1000;
 	    header.volumeInfo.type = (isp->volumeId == isp->RWvolumeId ? readwriteVolume : readonlyVolume);	/* XXXX */
 	    header.volumeInfo.needsCallback = 0;
-	    gettimeofday(&tp, 0);
+	    gettimeofday(&tp, NULL);
 	    header.volumeInfo.creationDate = tp.tv_sec;
 	    nBytes =
 		FDH_PWRITE(fdP, (char *)&header.volumeInfo,
-			  sizeof(header.volumeInfo), 0);
+			   sizeof(header.volumeInfo), 0);
 	    if (nBytes != sizeof(header.volumeInfo)) {
 		if (nBytes < 0)
 		    Abort
@@ -2723,19 +2642,20 @@ SalvageHeader(struct SalvInfo *salvinfo, struct afs_inode_info *sp,
     if (sp->inodeType == VI_VOLINFO) {
 	salvinfo->VolInfo = header.volumeInfo;
 	if (check) {
-	    char update[25];
+	    char update[64];
+	    char buffer[64];
 
 	    if (salvinfo->VolInfo.updateDate) {
-		strcpy(update, TimeStamp(salvinfo->VolInfo.updateDate, 0));
+		strcpy(update, TimeStamp(buffer, sizeof(buffer), salvinfo->VolInfo.updateDate, 0));
 		if (!Showmode)
-		    Log("%s (%u) %supdated %s\n", salvinfo->VolInfo.name,
-			salvinfo->VolInfo.id,
+		    Log("%s (%" AFS_VOLID_FMT ") %supdated %s\n", salvinfo->VolInfo.name,
+			afs_printable_VolumeId_lu(salvinfo->VolInfo.id),
 			(Testing ? "it would have been " : ""), update);
 	    } else {
-		strcpy(update, TimeStamp(salvinfo->VolInfo.creationDate, 0));
+		strcpy(update, TimeStamp(buffer, sizeof(buffer), salvinfo->VolInfo.creationDate, 0));
 		if (!Showmode)
-		    Log("%s (%u) not updated (created %s)\n",
-			salvinfo->VolInfo.name, salvinfo->VolInfo.id, update);
+		    Log("%s (%" AFS_VOLID_FMT ") not updated (created %s)\n",
+			salvinfo->VolInfo.name, afs_printable_VolumeId_lu(salvinfo->VolInfo.id), update);
 	    }
 
 	}
@@ -2746,7 +2666,7 @@ SalvageHeader(struct SalvInfo *salvinfo, struct afs_inode_info *sp,
 
 int
 SalvageVnodes(struct SalvInfo *salvinfo,
-	      struct InodeSummary *rwIsp,
+              struct InodeSummary *rwIsp,
 	      struct InodeSummary *thisIsp,
 	      struct ViceInodeInfo *inodes, int check)
 {
@@ -2758,24 +2678,20 @@ SalvageVnodes(struct SalvInfo *salvinfo,
     nInodes = (rwIsp->nInodes - rwIsp->nSpecialInodes);
     ismall =
 	SalvageIndex(salvinfo, thisIsp->volSummary->header.smallVnodeIndex, vSmall, RW,
-		     &inodes[ioffset], nInodes, thisIsp->volSummary, check,
-		     thisIsp->volSummary->header.OsdMetadata);
+		     &inodes[ioffset], nInodes, thisIsp->volSummary, check);
     if (check && ismall == -1)
 	return -1;
     ilarge =
 	SalvageIndex(salvinfo, thisIsp->volSummary->header.largeVnodeIndex, vLarge, RW,
-		     &inodes[ioffset], nInodes, thisIsp->volSummary, check,
-		     thisIsp->volSummary->header.OsdMetadata);
+		     &inodes[ioffset], nInodes, thisIsp->volSummary, check);
     return (ilarge == 0 && ismall == 0 ? 0 : -1);
 }
 
 int
 SalvageIndex(struct SalvInfo *salvinfo, Inode ino, VnodeClass class, int RW,
 	     struct ViceInodeInfo *ip, int nInodes,
-	     struct VolumeSummary *volSummary, int check,
-	     Inode osdMetadataInode)
+             struct VolumeSummary *volSummary, int check)
 {
-    VolumeId volumeNumber;
     char buf[SIZEOF_LARGEDISKVNODE];
     struct VnodeDiskObject *vnode = (struct VnodeDiskObject *)buf;
     int err = 0;
@@ -2788,49 +2704,19 @@ SalvageIndex(struct SalvInfo *salvinfo, Inode ino, VnodeClass class, int RW,
     afs_ino_str_t stmp1, stmp2;
     IHandle_t *handle;
     FdHandle_t *fdP;
-    IHandle_t *osdMetadataHandle = 0;
-    FdHandle_t *osdMetadataFd = 0;
-    afs_uint32 osdEntryLength = 0;
-    char *osdrock;
 
-    if (osdvol) {
-        if (osdMetadataInode) {
-            IH_INIT(osdMetadataHandle,
-		    salvinfo->fileSysDevice, volSummary->header.parent,
-                    osdMetadataInode);
-            osdMetadataFd = IH_OPEN(osdMetadataHandle);
-            if (!osdMetadataFd)
-                Log("SalvageIndex: couldn't open OSD metadata file for volume %u\n",
-                    volSummary->header.id);
-            else
-                osdEntryLength = (osdvol->op_salv_GetOsdEntryLength)(osdMetadataFd,
-								 (void**)&osdrock);
-	} else {
-	    Log("SalvageIndex: volume %u has no OSD metadata file, perhaps wrong salvageserver binary\n",
-                    volSummary->header.id);
-	    return EIO;
-	}
-    } else {
-        if (osdMetadataInode) {
-	    Log("SalvageIndex: volume %u has an OSD metadata file, perhaps wrong salvageserver binary\n",
-                    volSummary->header.id);
-	    return EIO;
-	}
-    }
-
-    volumeNumber = volSummary->header.id;
     IH_INIT(handle, salvinfo->fileSysDevice, volSummary->header.parent, ino);
     fdP = IH_OPEN(handle);
-    osi_Assert(fdP != NULL);
+    opr_Assert(fdP != NULL);
     file = FDH_FDOPEN(fdP, "r+");
-    osi_Assert(file != NULL);
+    opr_Assert(file != NULL);
     vcp = &VnodeClassInfo[class];
     size = OS_SIZE(fdP->fd_fd);
-    osi_Assert(size != -1);
+    opr_Assert(size != -1);
     nVnodes = (size / vcp->diskSize) - 1;
     if (nVnodes > 0) {
-	osi_Assert((nVnodes + 1) * vcp->diskSize == size);
-	osi_Assert(STREAM_ASEEK(file, vcp->diskSize) == 0);
+	opr_Assert((nVnodes + 1) * vcp->diskSize == size);
+	opr_Verify(STREAM_ASEEK(file, vcp->diskSize) == 0);
     } else {
 	nVnodes = 0;
     }
@@ -2840,40 +2726,23 @@ SalvageIndex(struct SalvInfo *salvinfo, Inode ino, VnodeClass class, int RW,
 	if (vnode->type != vNull) {
 	    int vnodeChanged = 0;
 	    int vnodeNumber = bitNumberToVnodeNumber(vnodeIndex, class);
-	    int osdFile = 0;
-	    /* Log programs that belong to root (potentially suid root);
-	     * don't bother for read-only or backup volumes */
-#ifdef	notdef			/* This is done elsewhere */
-	    if (ShowRootFiles && RW && vnode->owner == 0 && vnodeNumber != 1)
-		Log("OWNER IS ROOT %s %u dir %u vnode %u author %u owner %u mode %o\n", salvinfo->VolInfo.name, volumeNumber, vnode->parent, vnodeNumber, vnode->author, vnode->owner, vnode->modeBits);
-#endif
-            if (osdvol)
-		 osdFile = (osdvol->op_isOsdFile)(salvinfo->VolInfo.osdPolicy, 
-						  volumeNumber, vnode, vnodeNumber);
-            if (osdFile) { 
-                afs_int32 code;
-                code = (osdvol->op_salv_OsdMetadata)(osdMetadataFd, vnode,
-                            vnodeNumber, osdEntryLength, osdrock, Testing);
-                if (code && !Testing)
-                    vnodeChanged = 1;
-	    }
-            if (VNDISK_GET_INO(vnode) == 0 && !osdFile) {
+	    if (VNDISK_GET_INO(vnode) == 0) {
 		if (RW) {
 		    /* Log("### DEBUG ### Deleted Vnode with 0 inode (vnode %d)\n", vnodeNumber); */
 		    memset(vnode, 0, vcp->diskSize);
 		    vnodeChanged = 1;
 		}
 	    } else {
-		if (!osdvol && vcp->magic != vnode->vnodeMagic) {
+		if (vcp->magic != vnode->vnodeMagic) {
 		    /* bad magic #, probably partially created vnode */
-                    if (check) {
-                       Log("Partially allocated vnode %d: bad magic (is %lx should be %lx)\n",
-                           vnodeNumber, afs_printable_uint32_lu(vnode->vnodeMagic),
-                           afs_printable_uint32_lu(vcp->magic));
-                       memset(vnode, 0, vcp->diskSize);
-                       err = -1;
-                       goto zooks;
-                    }
+		    if (check) {
+		       Log("Partially allocated vnode %d: bad magic (is %lx should be %lx)\n",
+		           vnodeNumber, afs_printable_uint32_lu(vnode->vnodeMagic),
+		           afs_printable_uint32_lu(vcp->magic));
+		       memset(vnode, 0, vcp->diskSize);
+		       err = -1;
+		       goto zooks;
+		    }
 		    Log("Partially allocated vnode %d deleted.\n",
 			vnodeNumber);
 		    memset(vnode, 0, vcp->diskSize);
@@ -2932,10 +2801,10 @@ SalvageIndex(struct SalvInfo *salvinfo, Inode ino, VnodeClass class, int RW,
 			/*
 			 * Because of the possibility of the uniquifier overflows (> 4M)
 			 * we compare them modulo the low 22-bits; we shouldn't worry
-			 * about mismatching since they shouldn't be too many old 
+			 * about mismatching since they shouldn't to many old
 			 * uniquifiers of the same vnode...
 			 */
-                        if (!osdFile && IUnique(vu) != IUnique(iu)) {
+			if (IUnique(vu) != IUnique(iu)) {
 			    if (!Showmode) {
 				Log("Vnode %u: vnode.unique, %u, does not match inode unique, %u; fixed, but status will be wrong\n", vnodeNumber, IUnique(vu), IUnique(iu));
 			    }
@@ -2988,7 +2857,7 @@ SalvageIndex(struct SalvInfo *salvinfo, Inode ino, VnodeClass class, int RW,
 			    }
 			}
 		    }
-		    if (!osdFile && ip->inodeNumber != VNDISK_GET_INO(vnode)) {
+		    if (ip->inodeNumber != VNDISK_GET_INO(vnode)) {
 			if (check) {
 			    if (!Showmode) {
 				Log("Vnode %d:  inode number incorrect (is %s should be %s). FileSize=%llu\n", vnodeNumber, PrintInode(stmp1, VNDISK_GET_INO(vnode)), PrintInode(stmp2, ip->inodeNumber), (afs_uintmax_t) ip->byteCount);
@@ -3004,7 +2873,7 @@ SalvageIndex(struct SalvInfo *salvinfo, Inode ino, VnodeClass class, int RW,
 			vnodeChanged = 1;
 		    }
 		    VNDISK_GET_LEN(vnodeLength, vnode);
-		    if (!osdFile && ip->byteCount != vnodeLength) {
+		    if (ip->byteCount != vnodeLength) {
 			if (check) {
 			    if (!Showmode)
 				Log("Vnode %d: length incorrect; (is %llu should be %llu)\n", vnodeNumber, (afs_uintmax_t) vnodeLength, (afs_uintmax_t) ip->byteCount);
@@ -3051,8 +2920,7 @@ SalvageIndex(struct SalvInfo *salvinfo, Inode ino, VnodeClass class, int RW,
 			memset(vnode, 0, vcp->diskSize);
 			vnodeChanged = 1;
 		    } else {
-			/* RXOSD:
-		         * Should not reach here because we checked for 
+			/* Should not reach here becuase we checked for
 			 * (inodeNumber == 0) above. And where we zero the vnode,
 			 * we also goto vnodeDone.
 			 */
@@ -3064,12 +2932,12 @@ SalvageIndex(struct SalvInfo *salvinfo, Inode ino, VnodeClass class, int RW,
 		}
 	    }			/* VNDISK_GET_INO(vnode) != 0 */
 	  vnodeDone:
-	    osi_Assert(!(vnodeChanged && check));
+	    opr_Assert(!(vnodeChanged && check));
 	    if (vnodeChanged && !Testing) {
-		osi_Assert(IH_IWRITE
-		       (handle, vnodeIndexOffset(vcp, vnodeNumber),
-			(char *)vnode, vcp->diskSize)
-		       == vcp->diskSize);
+		opr_Verify(IH_IWRITE(handle,
+				     vnodeIndexOffset(vcp, vnodeNumber),
+				     (char *)vnode, vcp->diskSize)
+				== vcp->diskSize);
 		salvinfo->VolumeChanged = 1;	/* For break call back */
 	    }
 	}
@@ -3078,12 +2946,6 @@ SalvageIndex(struct SalvInfo *salvinfo, Inode ino, VnodeClass class, int RW,
     STREAM_CLOSE(file);
     FDH_CLOSE(fdP);
     IH_RELEASE(handle);
-    if (osdEntryLength)
-        free(osdrock);
-    if (osdMetadataFd)
-        FDH_CLOSE(osdMetadataFd);
-    if (osdMetadataHandle)
-        IH_RELEASE(osdMetadataHandle);
     return err;
 }
 
@@ -3119,7 +2981,7 @@ CopyOnWrite(struct SalvInfo *salvinfo, struct DirSummary *dir)
 	IH_IREAD(salvinfo->vnodeInfo[vLarge].handle,
 		 vnodeIndexOffset(vcp, dir->vnodeNumber), (char *)&vnode,
 		 sizeof(vnode));
-    osi_Assert(code == sizeof(vnode));
+    opr_Assert(code == sizeof(vnode));
     oldinode = VNDISK_GET_INO(&vnode);
     /* Increment the version number by a whole lot to avoid problems with
      * clients that were promised new version numbers--but the file server
@@ -3129,19 +2991,20 @@ CopyOnWrite(struct SalvInfo *salvinfo, struct DirSummary *dir)
 	IH_CREATE(dir->ds_linkH, salvinfo->fileSysDevice, salvinfo->fileSysPath, 0, dir->rwVid,
 		  dir->vnodeNumber, vnode.uniquifier, vnode.dataVersion +=
 		  200);
-    osi_Assert(VALID_INO(newinode));
-    osi_Assert(CopyInode(salvinfo->fileSysDevice, oldinode, newinode, dir->rwVid) == 0);
+    opr_Assert(VALID_INO(newinode));
+    opr_Verify(CopyInode(salvinfo->fileSysDevice, oldinode, newinode,
+			 dir->rwVid) == 0);
     vnode.cloned = 0;
     VNDISK_SET_INO(&vnode, newinode);
     code =
 	IH_IWRITE(salvinfo->vnodeInfo[vLarge].handle,
 		  vnodeIndexOffset(vcp, dir->vnodeNumber), (char *)&vnode,
 		  sizeof(vnode));
-    osi_Assert(code == sizeof(vnode));
+    opr_Assert(code == sizeof(vnode));
 
     SetSalvageDirHandle(&dir->dirHandle, dir->dirHandle.dirh_handle->ih_vid,
 			salvinfo->fileSysDevice, newinode,
-			&salvinfo->VolumeChanged);
+                        &salvinfo->VolumeChanged);
     /* Don't delete the original inode right away, because the directory is
      * still being scanned.
      */
@@ -3149,9 +3012,9 @@ CopyOnWrite(struct SalvInfo *salvinfo, struct DirSummary *dir)
 }
 
 /*
- * This function should either successfully create a new dir, or give up 
- * and leave things the way they were.  In particular, if it fails to write 
- * the new dir properly, it should return w/o changing the reference to the 
+ * This function should either successfully create a new dir, or give up
+ * and leave things the way they were.  In particular, if it fails to write
+ * the new dir properly, it should return w/o changing the reference to the
  * old dir.
  */
 void
@@ -3175,7 +3038,7 @@ CopyAndSalvage(struct SalvInfo *salvinfo, struct DirSummary *dir)
 	IH_IREAD(salvinfo->vnodeInfo[vLarge].handle,
 		 vnodeIndexOffset(vcp, dir->vnodeNumber), (char *)&vnode,
 		 sizeof(vnode));
-    osi_Assert(lcode == sizeof(vnode));
+    opr_Assert(lcode == sizeof(vnode));
     oldinode = VNDISK_GET_INO(&vnode);
     /* Increment the version number by a whole lot to avoid problems with
      * clients that were promised new version numbers--but the file server
@@ -3185,13 +3048,13 @@ CopyAndSalvage(struct SalvInfo *salvinfo, struct DirSummary *dir)
 	IH_CREATE(dir->ds_linkH, salvinfo->fileSysDevice, salvinfo->fileSysPath, 0, dir->rwVid,
 		  dir->vnodeNumber, vnode.uniquifier, vnode.dataVersion +=
 		  200);
-    osi_Assert(VALID_INO(newinode));
+    opr_Assert(VALID_INO(newinode));
     SetSalvageDirHandle(&newdir, dir->rwVid, salvinfo->fileSysDevice, newinode,
-			&salvinfo->VolumeChanged);
+                        &salvinfo->VolumeChanged);
 
-    /* Assign . and .. vnode numbers from dir and vnode.parent. 
+    /* Assign . and .. vnode numbers from dir and vnode.parent.
      * The uniquifier for . is in the vnode.
-     * The uniquifier for .. might be set to a bogus value of 1 and 
+     * The uniquifier for .. might be set to a bogus value of 1 and
      * the salvager will later clean it up.
      */
     if (vnode.parent && (vnodeEssence = CheckVnodeNumber(salvinfo, vnode.parent))) {
@@ -3211,32 +3074,32 @@ CopyAndSalvage(struct SalvInfo *salvinfo, struct DirSummary *dir)
 	if (code) {
 	    Log("also failed to decrement link count on new inode");
 	}
-	osi_Assert(1 == 2);
+	opr_Assert(0);
     }
     Log("Checking the results of the directory salvage...\n");
     if (!DirOK(&newdir)) {
 	Log("Directory salvage failed!!!; restoring old version of the directory.\n");
 	code = IH_DEC(dir->ds_linkH, newinode, dir->rwVid);
-	osi_Assert(code == 0);
-	osi_Assert(1 == 2);
+	opr_Assert(code == 0);
+	opr_Assert(0);
     }
     vnode.cloned = 0;
     VNDISK_SET_INO(&vnode, newinode);
-    length = Length(&newdir);
+    length = afs_dir_Length(&newdir);
     VNDISK_SET_LEN(&vnode, length);
     lcode =
 	IH_IWRITE(salvinfo->vnodeInfo[vLarge].handle,
 		  vnodeIndexOffset(vcp, dir->vnodeNumber), (char *)&vnode,
 		  sizeof(vnode));
-    osi_Assert(lcode == sizeof(vnode));
+    opr_Assert(lcode == sizeof(vnode));
     IH_CONDSYNC(salvinfo->vnodeInfo[vLarge].handle);
 
     /* make sure old directory file is really closed */
     fdP = IH_OPEN(dir->dirHandle.dirh_handle);
     FDH_REALLYCLOSE(fdP);
-    
+
     code = IH_DEC(dir->ds_linkH, oldinode, dir->rwVid);
-    osi_Assert(code == 0);
+    opr_Assert(code == 0);
     dir->dirHandle = newdir;
 }
 
@@ -3257,7 +3120,6 @@ JudgeEntry(void *arock, char *name, afs_int32 vnodeNumber,
     struct SalvInfo *salvinfo = params->salvinfo;
     struct VnodeEssence *vnodeEssence;
     afs_int32 dirOrphaned, todelete;
-    int badunique = 0;
 
     dirOrphaned = IsVnodeOrphaned(salvinfo, dir->vnodeNumber);
 
@@ -3268,13 +3130,13 @@ JudgeEntry(void *arock, char *name, afs_int32 vnodeNumber,
 	}
 	if (!Testing) {
 	    CopyOnWrite(salvinfo, dir);
-	    osi_Assert(Delete(&dir->dirHandle, name) == 0);
+	    opr_Verify(afs_dir_Delete(&dir->dirHandle, name) == 0);
 	}
 	return 0;
     }
 #ifdef AFS_AIX_ENV
 #ifndef AFS_NAMEI_ENV
-    /* On AIX machines, don't allow entries to point to inode 0. That is a special 
+    /* On AIX machines, don't allow entries to point to inode 0. That is a special
      * mount inode for the partition. If this inode were deleted, it would crash
      * the machine.
      */
@@ -3282,7 +3144,7 @@ JudgeEntry(void *arock, char *name, afs_int32 vnodeNumber,
 	Log("dir vnode %d: invalid entry: %s" OS_DIRSEP "%s has no inode (vnode %d, unique %d)%s\n", dir->vnodeNumber, (dir->name ? dir->name : "??"), name, vnodeNumber, unique, (Testing ? "-- would have deleted" : " -- deleted"));
 	if (!Testing) {
 	    CopyOnWrite(salvinfo, dir);
-	    osi_Assert(Delete(&dir->dirHandle, name) == 0);
+	    opr_Verify(afs_dir_Delete(&dir->dirHandle, name) == 0);
 	}
 	return 0;
     }
@@ -3300,7 +3162,7 @@ JudgeEntry(void *arock, char *name, afs_int32 vnodeNumber,
 	if (!unique) {
 	    if (!Testing) {
 		CopyOnWrite(salvinfo, dir);
-		osi_Assert(Delete(&dir->dirHandle, name) == 0);
+		opr_Verify(afs_dir_Delete(&dir->dirHandle, name) == 0);
 	    }
 	    return 0;
 	}
@@ -3310,58 +3172,60 @@ JudgeEntry(void *arock, char *name, afs_int32 vnodeNumber,
      * so its unique matches the vnode unique. Delete if the unique is zero
      * or if the directory is orphaned.
      */
-    if (osdvol) {
-        if (!vnodeEssence->unique
-          || (!vnodeEssence->osdMetadataIndex && (vnodeEssence->unique) != unique))
-	    badunique = 1;
-    } else {
-        if (!vnodeEssence->unique || (vnodeEssence->unique) != unique)
-	    badunique = 1;
-    }
-    if (badunique) {
-	if (!vnodeEssence->unique
-	    && ((strcmp(name, "..") == 0) || (strcmp(name, ".") == 0))) {
-	    /* This is an orphaned directory. Don't delete the . or ..
-	     * entry. Otherwise, it will get created in the next 
-	     * salvage and deleted again here. So Just skip it.
-	     */
-	    return 0;
-	}
-
+    if (!vnodeEssence->unique || (vnodeEssence->unique) != unique) {
 	todelete = ((!vnodeEssence->unique || dirOrphaned) ? 1 : 0);
 
-	if (!Showmode) {
-	    Log("dir vnode %u: %s" OS_DIRSEP "%s (vnode %u): unique changed from %u to %u %s\n", dir->vnodeNumber, (dir->name ? dir->name : "??"), name, vnodeNumber, unique, vnodeEssence->unique, (!todelete ? "" : (Testing ? "-- would have deleted" : "-- deleted")));
+	if (todelete
+	    && ((strcmp(name, "..") == 0) || (strcmp(name, ".") == 0))) {
+		if (dirOrphaned) {
+		    /* This is an orphaned directory. Don't delete the . or ..
+		     * entry. Otherwise, it will get created in the next
+		     * salvage and deleted again here. So Just skip it.
+		     * */
+		    return 0;
+		}
+		/* (vnodeEssence->unique == 0 && ('.' || '..'));
+		 * Entries arriving here should be deleted, but the directory
+		 * is not orphaned. Therefore, the entry must be pointing at
+		 * the wrong vnode.  Skip the 'else' clause and fall through;
+		 * the code below will repair the entry so it correctly points
+		 * at the vnode of the current directory (if '.') or the parent
+		 * directory (if '..'). */
+	} else {
+	    if (!Showmode) {
+		Log("dir vnode %u: %s" OS_DIRSEP "%s (vnode %u): unique changed from %u to %u %s\n",
+		    dir->vnodeNumber, (dir->name ? dir->name : "??"), name, vnodeNumber, unique,
+		    vnodeEssence->unique, (!todelete ? "" : (Testing ? "-- would have deleted" : "-- deleted")));
+	    }
+	    if (!Testing) {
+		AFSFid fid;
+		fid.Vnode = vnodeNumber;
+		fid.Unique = vnodeEssence->unique;
+		CopyOnWrite(salvinfo, dir);
+		opr_Verify(afs_dir_Delete(&dir->dirHandle, name) == 0);
+		if (!todelete)
+		    opr_Verify(afs_dir_Create(&dir->dirHandle, name, &fid) == 0);
+	    }
+	    if (todelete)
+		return 0;		/* no need to continue */
 	}
-	if (!Testing) {
-	    AFSFid fid;
-	    fid.Vnode = vnodeNumber;
-	    fid.Unique = vnodeEssence->unique;
-	    CopyOnWrite(salvinfo, dir);
-	    osi_Assert(Delete(&dir->dirHandle, name) == 0);
-	    if (!todelete)
-		osi_Assert(Create(&dir->dirHandle, name, &fid) == 0);
-	}
-	if (todelete)
-	    return 0;		/* no need to continue */
     }
 
     if (strcmp(name, ".") == 0) {
 	if (dir->vnodeNumber != vnodeNumber || (dir->unique != unique)) {
-	    AFSFid fid;
 	    if (!Showmode)
 		Log("directory vnode %u.%u: bad '.' entry (was %u.%u); fixed\n", dir->vnodeNumber, dir->unique, vnodeNumber, unique);
 	    if (!Testing) {
+		AFSFid fid;
 		CopyOnWrite(salvinfo, dir);
-		osi_Assert(Delete(&dir->dirHandle, ".") == 0);
+		opr_Verify(afs_dir_Delete(&dir->dirHandle, ".") == 0);
 		fid.Vnode = dir->vnodeNumber;
 		fid.Unique = dir->unique;
-		osi_Assert(Create(&dir->dirHandle, ".", &fid) == 0);
+		opr_Verify(afs_dir_Create(&dir->dirHandle, ".", &fid) == 0);
+	        vnodeNumber = fid.Vnode;	/* Get the new Essence */
+	        unique = fid.Unique;
+	        vnodeEssence = CheckVnodeNumber(salvinfo, vnodeNumber);
 	    }
-
-	    vnodeNumber = fid.Vnode;	/* Get the new Essence */
-	    unique = fid.Unique;
-	    vnodeEssence = CheckVnodeNumber(salvinfo, vnodeNumber);
 	}
 	dir->haveDot = 1;
     } else if (strcmp(name, "..") == 0) {
@@ -3370,7 +3234,7 @@ JudgeEntry(void *arock, char *name, afs_int32 vnodeNumber,
 	    struct VnodeEssence *dotdot;
 	    pa.Vnode = dir->parent;
 	    dotdot = CheckVnodeNumber(salvinfo, pa.Vnode);
-	    osi_Assert(dotdot != NULL);	/* XXX Should not be assert */
+	    opr_Assert(dotdot != NULL);	/* XXX Should not be assert */
 	    pa.Unique = dotdot->unique;
 	} else {
 	    pa.Vnode = dir->vnodeNumber;
@@ -3381,8 +3245,8 @@ JudgeEntry(void *arock, char *name, afs_int32 vnodeNumber,
 		Log("directory vnode %u.%u: bad '..' entry (was %u.%u); fixed\n", dir->vnodeNumber, dir->unique, vnodeNumber, unique);
 	    if (!Testing) {
 		CopyOnWrite(salvinfo, dir);
-		osi_Assert(Delete(&dir->dirHandle, "..") == 0);
-		osi_Assert(Create(&dir->dirHandle, "..", &pa) == 0);
+		opr_Verify(afs_dir_Delete(&dir->dirHandle, "..") == 0);
+		opr_Verify(afs_dir_Create(&dir->dirHandle, "..", &pa) == 0);
 	    }
 
 	    vnodeNumber = pa.Vnode;	/* Get the new Essence */
@@ -3396,7 +3260,7 @@ JudgeEntry(void *arock, char *name, afs_int32 vnodeNumber,
 	}
 	if (!Testing) {
 	    CopyOnWrite(salvinfo, dir);
-	    osi_Assert(Delete(&dir->dirHandle, name) == 0);
+	    opr_Verify(afs_dir_Delete(&dir->dirHandle, name) == 0);
 	}
 	vnodeEssence->claimed = 0;	/* Not claimed: Orphaned */
 	vnodeEssence->todelete = 1;	/* Will later delete vnode and decr inode */
@@ -3427,23 +3291,24 @@ JudgeEntry(void *arock, char *name, afs_int32 vnodeNumber,
 		IH_RELEASE(ihP);
 		return 0;
 	    }
-	
+
 	    if (size > 1024)
 		size = 1024;
 	    nBytes = FDH_PREAD(fdP, buf, size, 0);
 	    if (nBytes == size) {
 		buf[size] = '\0';
 		if ( (*buf != '#' && *buf != '%') || buf[strlen(buf)-1] != '.' ) {
-		    Log("Volume %u (%s) mount point %s" OS_DIRSEP "%s to '%s' invalid, %s to symbolic link\n",
-			dir->dirHandle.dirh_handle->ih_vid, dir->vname, dir->name ? dir->name : "??", name, buf,
+		    Log("Volume %" AFS_VOLID_FMT " (%s) mount point %s" OS_DIRSEP "%s to '%s' invalid, %s to symbolic link\n",
+			afs_printable_VolumeId_lu(dir->dirHandle.dirh_handle->ih_vid), dir->vname, dir->name ? dir->name : "??", name, buf,
 			Testing ? "would convert" : "converted");
 		    vnodeEssence->modeBits |= 0111;
 		    vnodeEssence->changed = 1;
-		} else if (ShowMounts) Log("In volume %u (%s) found mountpoint %s" OS_DIRSEP "%s to '%s'\n",
-		    dir->dirHandle.dirh_handle->ih_vid, dir->vname,
-		    dir->name ? dir->name : "??", name, buf);
+		} else if (ShowMounts) 
+		    Log("In volume %" AFS_VOLID_FMT " (%s) found mountpoint %s" OS_DIRSEP "%s to '%s'\n",
+			afs_printable_VolumeId_lu(dir->dirHandle.dirh_handle->ih_vid),
+			dir->vname, dir->name ? dir->name : "??", name, buf);
 	    } else {
-		Log("Volume %s could not read mount point vnode %u size %d code %d\n",
+		Log("Volume %s cound not read mount point vnode %u size %d code %d\n",
 		    dir->vname, vnodeNumber, (int)size, (int)nBytes);
 	    }
 	    FDH_REALLYCLOSE(fdP);
@@ -3453,15 +3318,12 @@ JudgeEntry(void *arock, char *name, afs_int32 vnodeNumber,
 	    Log("FOUND root file: %s" OS_DIRSEP "%s (%u.%u %05o) author %u (vnode %u dir %u)\n", dir->name ? dir->name : "??", name, vnodeEssence->owner, vnodeEssence->group, vnodeEssence->modeBits, vnodeEssence->author, vnodeNumber, dir->vnodeNumber);
 	if (vnodeIdToClass(vnodeNumber) == vLarge
 	    && vnodeEssence->name == NULL) {
-	    char *n;
-	    if ((n = (char *)malloc(strlen(name) + 1)))
-		strcpy(n, name);
-	    vnodeEssence->name = n;
+	    vnodeEssence->name = strdup(name);
 	}
 
 	/* The directory entry points to the vnode. Check to see if the
-	 * vnode points back to the directory. If not, then let the 
-	 * directory claim it (else it might end up orphaned). Vnodes 
+	 * vnode points back to the directory. If not, then let the
+	 * directory claim it (else it might end up orphaned). Vnodes
 	 * already claimed by another directory are deleted from this
 	 * directory: hardlinks to the same vnode are not allowed
 	 * from different directories.
@@ -3490,7 +3352,7 @@ JudgeEntry(void *arock, char *name, afs_int32 vnodeNumber,
 		}
 		if (!Testing) {
 		    CopyOnWrite(salvinfo, dir);
-		    osi_Assert(Delete(&dir->dirHandle, name) == 0);
+		    opr_Verify(afs_dir_Delete(&dir->dirHandle, name) == 0);
 		}
 		return 0;
 	    }
@@ -3504,7 +3366,7 @@ JudgeEntry(void *arock, char *name, afs_int32 vnodeNumber,
 
 void
 DistilVnodeEssence(struct SalvInfo *salvinfo, VolumeId rwVId,
-		   VnodeClass class, Inode ino, Unique * maxu)
+                   VnodeClass class, Inode ino, Unique * maxu)
 {
     struct VnodeInfo *vip = &salvinfo->vnodeInfo[class];
     struct VnodeClassInfo *vcp = &VnodeClassInfo[class];
@@ -3518,20 +3380,21 @@ DistilVnodeEssence(struct SalvInfo *salvinfo, VolumeId rwVId,
 
     IH_INIT(vip->handle, salvinfo->fileSysDevice, rwVId, ino);
     fdP = IH_OPEN(vip->handle);
-    osi_Assert(fdP != NULL);
+    opr_Assert(fdP != NULL);
     file = FDH_FDOPEN(fdP, "r+");
-    osi_Assert(file != NULL);
+    opr_Assert(file != NULL);
     size = OS_SIZE(fdP->fd_fd);
-    osi_Assert(size != -1);
+    opr_Assert(size != -1);
     vip->nVnodes = (size / vcp->diskSize) - 1;
     if (vip->nVnodes > 0) {
-	osi_Assert((vip->nVnodes + 1) * vcp->diskSize == size);
-	osi_Assert(STREAM_ASEEK(file, vcp->diskSize) == 0);
-	osi_Assert((vip->vnodes = (struct VnodeEssence *)
-		calloc(vip->nVnodes, sizeof(struct VnodeEssence))) != NULL);
+	opr_Assert((vip->nVnodes + 1) * vcp->diskSize == size);
+	opr_Verify(STREAM_ASEEK(file, vcp->diskSize) == 0);
+	opr_Verify((vip->vnodes = calloc(vip->nVnodes,
+					 sizeof(struct VnodeEssence)))
+			!= NULL);
 	if (class == vLarge) {
-	    osi_Assert((vip->inodes = (Inode *)
-		    calloc(vip->nVnodes, sizeof(Inode))) != NULL);
+	    opr_Verify((vip->inodes = calloc(vip->nVnodes, sizeof(Inode)))
+			    != NULL);
 	} else {
 	    vip->inodes = NULL;
 	}
@@ -3545,7 +3408,6 @@ DistilVnodeEssence(struct SalvInfo *salvinfo, VolumeId rwVId,
 	 nVnodes && STREAM_READ(vnode, vcp->diskSize, 1, file) == 1;
 	 nVnodes--, vnodeIndex++) {
 	if (vnode->type != vNull) {
-	    VnodeId vnodeNumber = bitNumberToVnodeNumber(vnodeIndex, class);
 	    struct VnodeEssence *vep = &vip->vnodes[vnodeIndex];
 	    afs_fsize_t vnodeLength;
 	    vip->nAllocatedVnodes++;
@@ -3565,6 +3427,7 @@ DistilVnodeEssence(struct SalvInfo *salvinfo, VolumeId rwVId,
 	    vep->group = vnode->group;
 	    if (vnode->type == vDirectory) {
 		if (class != vLarge) {
+		    VnodeId vnodeNumber = bitNumberToVnodeNumber(vnodeIndex, class);
 		    vip->nAllocatedVnodes--;
 		    memset(vnode, 0, sizeof(*vnode));
 		    IH_IWRITE(salvinfo->vnodeInfo[vSmall].handle,
@@ -3574,10 +3437,6 @@ DistilVnodeEssence(struct SalvInfo *salvinfo, VolumeId rwVId,
 		} else
 		    vip->inodes[vnodeIndex] = VNDISK_GET_INO(vnode);
 	    }
-            vep->osdMetadataIndex = 0;
-            if (osdvol && (osdvol->op_isOsdFile(salvinfo->VolInfo.osdPolicy,
-						rwVId, vnode, vnodeNumber)))
-                vep->osdMetadataIndex = vnode->osdMetadataIndex;
 	}
     }
     STREAM_CLOSE(file);
@@ -3586,7 +3445,7 @@ DistilVnodeEssence(struct SalvInfo *salvinfo, VolumeId rwVId,
 
 static char *
 GetDirName(struct SalvInfo *salvinfo, VnodeId vnode, struct VnodeEssence *vp,
-	   char *path)
+           char *path)
 {
     struct VnodeEssence *parentvp;
 
@@ -3693,7 +3552,8 @@ SalvageDir(struct SalvInfo *salvinfo, char *name, VolumeId rwVid,
 	judge_params.salvinfo = salvinfo;
 	judge_params.dir = &dir;
 
-	osi_Assert(EnumerateDir(&dirHandle, JudgeEntry, &judge_params) == 0);
+	opr_Verify(afs_dir_EnumerateDir(&dirHandle, JudgeEntry,
+				        &judge_params) == 0);
     }
 
     /* Delete the old directory if it was copied in order to salvage.
@@ -3704,7 +3564,7 @@ SalvageDir(struct SalvInfo *salvinfo, char *name, VolumeId rwVid,
     DFlush();
     if (dir.copied && !Testing) {
 	code = IH_DEC(dir.ds_linkH, dirHandle.dirh_handle->ih_ino, rwVid);
-	osi_Assert(code == 0);
+	opr_Assert(code == 0);
 	dirVnodeInfo->inodes[i] = dir.dirHandle.dirh_inode;
     }
 
@@ -3729,7 +3589,7 @@ SalvageDir(struct SalvInfo *salvinfo, char *name, VolumeId rwVid,
  */
 static void
 GetNewFID(struct SalvInfo *salvinfo, VolumeDiskData *volHeader,
-	  VnodeClass class, AFSFid *afid, Unique *maxunique)
+          VnodeClass class, AFSFid *afid, Unique *maxunique)
 {
     int i;
     for (i = 0; i < salvinfo->vnodeInfo[class].nVnodes; i++) {
@@ -3741,8 +3601,8 @@ GetNewFID(struct SalvInfo *salvinfo, VolumeDiskData *volHeader,
 	/* no free vnodes; make a new one */
 	salvinfo->vnodeInfo[class].nVnodes++;
 	salvinfo->vnodeInfo[class].vnodes =
-	     realloc(salvinfo->vnodeInfo[class].vnodes,
-	                                  sizeof(struct VnodeEssence) * (i+1));
+	    realloc(salvinfo->vnodeInfo[class].vnodes,
+	            sizeof(struct VnodeEssence) * (i+1));
 
 	salvinfo->vnodeInfo[class].vnodes[i].type = vNull;
     }
@@ -3777,8 +3637,8 @@ GetNewFID(struct SalvInfo *salvinfo, VolumeDiskData *volHeader,
  */
 static int
 CreateReadme(struct SalvInfo *salvinfo, VolumeDiskData *volHeader,
-	     IHandle_t *alinkH, VolumeId vid, Unique *maxunique, AFSFid *afid,
-	     Inode *ainode)
+             IHandle_t *alinkH, VolumeId vid, Unique *maxunique, AFSFid *afid,
+             Inode *ainode)
 {
     Inode readmeinode;
     struct VnodeDiskObject *rvnode = NULL;
@@ -3813,7 +3673,7 @@ CreateReadme(struct SalvInfo *salvinfo, VolumeDiskData *volHeader,
 
     /* create the inode and write the contents */
     readmeinode = IH_CREATE(alinkH, salvinfo->fileSysDevice,
-			    salvinfo->fileSysPath, 0, vid,
+                            salvinfo->fileSysPath, 0, vid,
                             afid->Vnode, afid->Unique, 1);
     if (!VALID_INO(readmeinode)) {
 	Log("CreateReadme: readme IH_CREATE failed\n");
@@ -3850,8 +3710,7 @@ CreateReadme(struct SalvInfo *salvinfo, VolumeDiskData *volHeader,
     rvnode->owner = 0;
     rvnode->parent = 1;
     rvnode->group = 0;
-    if (!osdvol)
-        rvnode->vnodeMagic = VnodeClassInfo[vSmall].magic;
+    rvnode->vnodeMagic = VnodeClassInfo[vSmall].magic;
 
     bytes = IH_IWRITE(salvinfo->vnodeInfo[vSmall].handle,
                       vnodeIndexOffset(&VnodeClassInfo[vSmall], afid->Vnode),
@@ -3919,8 +3778,8 @@ CreateReadme(struct SalvInfo *salvinfo, VolumeDiskData *volHeader,
  */
 static int
 CreateRootDir(struct SalvInfo *salvinfo, VolumeDiskData *volHeader,
-	      IHandle_t *alinkH, VolumeId vid, struct DirSummary *rootdir,
-	      Unique *maxunique)
+              IHandle_t *alinkH, VolumeId vid, struct DirSummary *rootdir,
+              Unique *maxunique)
 {
     FileVersion dv;
     int decroot = 0, decreadme = 0;
@@ -3947,8 +3806,8 @@ CreateRootDir(struct SalvInfo *salvinfo, VolumeDiskData *volHeader,
 	salvinfo->vnodeInfo[vLarge].vnodes = calloc(1, sizeof(struct VnodeEssence));
 	salvinfo->vnodeInfo[vLarge].inodes = calloc(1, sizeof(Inode));
 
-	osi_Assert(salvinfo->vnodeInfo[vLarge].vnodes);
-	osi_Assert(salvinfo->vnodeInfo[vLarge].inodes);
+	opr_Assert(salvinfo->vnodeInfo[vLarge].vnodes);
+	opr_Assert(salvinfo->vnodeInfo[vLarge].inodes);
     }
 
     vep = &salvinfo->vnodeInfo[vLarge].vnodes[vnodeIdToBitNumber(1)];
@@ -3959,7 +3818,7 @@ CreateRootDir(struct SalvInfo *salvinfo, VolumeDiskData *volHeader,
     }
 
     if (CreateReadme(salvinfo, volHeader, alinkH, vid, maxunique, &readmeid,
-		     &readmeinode) != 0) {
+                     &readmeinode) != 0) {
 	goto error;
     }
     decreadme = 1;
@@ -3969,7 +3828,7 @@ CreateRootDir(struct SalvInfo *salvinfo, VolumeDiskData *volHeader,
     dv = 1 << 30;
 
     rootinode = IH_CREATE(alinkH, salvinfo->fileSysDevice, salvinfo->fileSysPath,
-			  0, vid, 1, 1, dv);
+                          0, vid, 1, 1, dv);
     if (!VALID_INO(rootinode)) {
 	Log("CreateRootDir: IH_CREATE failed\n");
 	goto error;
@@ -3977,21 +3836,21 @@ CreateRootDir(struct SalvInfo *salvinfo, VolumeDiskData *volHeader,
     decroot = 1;
 
     SetSalvageDirHandle(&rootdir->dirHandle, vid, salvinfo->fileSysDevice,
-		        rootinode, &salvinfo->VolumeChanged);
+                        rootinode, &salvinfo->VolumeChanged);
     did.Volume = vid;
     did.Vnode = 1;
     did.Unique = 1;
-    if (MakeDir(&rootdir->dirHandle, (afs_int32*)&did, (afs_int32*)&did)) {
+    if (afs_dir_MakeDir(&rootdir->dirHandle, (afs_int32*)&did, (afs_int32*)&did)) {
 	Log("CreateRootDir: MakeDir failed\n");
 	goto error;
     }
-    if (Create(&rootdir->dirHandle, "README.ROOTDIR", &readmeid)) {
+    if (afs_dir_Create(&rootdir->dirHandle, "README.ROOTDIR", &readmeid)) {
 	Log("CreateRootDir: Create failed\n");
 	goto error;
     }
     DFlush();
-    length = Length(&rootdir->dirHandle);
-    DZap((void *)&rootdir->dirHandle);
+    length = afs_dir_Length(&rootdir->dirHandle);
+    DZap(&rootdir->dirHandle);
 
     /* create the new root dir vnode */
     rootvnode = calloc(1, SIZEOF_LARGEDISKVNODE);
@@ -4025,8 +3884,7 @@ CreateRootDir(struct SalvInfo *salvinfo, VolumeDiskData *volHeader,
     rootvnode->owner = 0;
     rootvnode->parent = 0;
     rootvnode->group = 0;
-    if (!osdvol)
-        rootvnode->vnodeMagic = VnodeClassInfo[vLarge].magic;
+    rootvnode->vnodeMagic = VnodeClassInfo[vLarge].magic;
 
     /* write it out to disk */
     bytes = IH_IWRITE(salvinfo->vnodeInfo[vLarge].handle,
@@ -4131,15 +3989,15 @@ SalvageVolume(struct SalvInfo *salvinfo, struct InodeSummary *rwIsp, IHandle_t *
     vid = rwIsp->volSummary->header.id;
     IH_INIT(h, salvinfo->fileSysDevice, vid, rwIsp->volSummary->header.volumeInfo);
     nBytes = IH_IREAD(h, 0, (char *)&volHeader, sizeof(volHeader));
-    osi_Assert(nBytes == sizeof(volHeader));
-    osi_Assert(volHeader.stamp.magic == VOLUMEINFOMAGIC);
-    osi_Assert(volHeader.destroyMe != DESTROY_ME);
+    opr_Assert(nBytes == sizeof(volHeader));
+    opr_Assert(volHeader.stamp.magic == VOLUMEINFOMAGIC);
+    opr_Assert(volHeader.destroyMe != DESTROY_ME);
     /* (should not have gotten this far with DESTROY_ME flag still set!) */
 
     DistilVnodeEssence(salvinfo, vid, vLarge,
-		       rwIsp->volSummary->header.largeVnodeIndex, &maxunique);
+                       rwIsp->volSummary->header.largeVnodeIndex, &maxunique);
     DistilVnodeEssence(salvinfo, vid, vSmall,
-		       rwIsp->volSummary->header.smallVnodeIndex, &maxunique);
+                       rwIsp->volSummary->header.smallVnodeIndex, &maxunique);
 
     dirVnodeInfo = &salvinfo->vnodeInfo[vLarge];
     for (i = 0; i < dirVnodeInfo->nVnodes; i++) {
@@ -4162,7 +4020,7 @@ SalvageVolume(struct SalvInfo *salvinfo, struct InodeSummary *rwIsp, IHandle_t *
 	    "a new one\n", afs_printable_uint32_lu(vid));
 
 	code = CreateRootDir(salvinfo, &volHeader, alinkH, vid, &rootdir,
-			     &maxunique);
+	                     &maxunique);
 	if (code == 0) {
 	    rootdirfound = 1;
 	    newrootdir = 1;
@@ -4217,7 +4075,7 @@ SalvageVolume(struct SalvInfo *salvinfo, struct InodeSummary *rwIsp, IHandle_t *
 		LFVnode = rootdir.vnodeNumber;	/* Lost+Found vnode number */
 		LFUnique = rootdir.unique;	/* Lost+Found uniquifier */
 
-		/* Update this orphaned vnode's info. Its parent info and 
+		/* Update this orphaned vnode's info. Its parent info and
 		 * link count (do for orphaned directories and files).
 		 */
 		vep->parent = LFVnode;	/* Parent is the root dir */
@@ -4226,7 +4084,7 @@ SalvageVolume(struct SalvInfo *salvinfo, struct InodeSummary *rwIsp, IHandle_t *
 		vep->claimed = 1;
 		vep->count--;	/* Inc link count (root dir will pt to it) */
 
-		/* If this orphaned vnode is a directory, change '..'. 
+		/* If this orphaned vnode is a directory, change '..'.
 		 * The name of the orphaned dir/file is unknown, so we
 		 * build a unique name. No need to CopyOnWrite the directory
 		 * since it is not connected to tree in BK or RO volume and
@@ -4239,11 +4097,11 @@ SalvageVolume(struct SalvInfo *salvinfo, struct InodeSummary *rwIsp, IHandle_t *
 		    /* Remove and recreate the ".." entry in this orphaned directory */
 		    SetSalvageDirHandle(&dh, vid, salvinfo->fileSysDevice,
 					salvinfo->vnodeInfo[class].inodes[v],
-					&salvinfo->VolumeChanged);
+		                        &salvinfo->VolumeChanged);
 		    pa.Vnode = LFVnode;
 		    pa.Unique = LFUnique;
-		    osi_Assert(Delete(&dh, "..") == 0);
-		    osi_Assert(Create(&dh, "..", &pa) == 0);
+		    opr_Verify(afs_dir_Delete(&dh, "..") == 0);
+		    opr_Verify(afs_dir_Create(&dh, "..", &pa) == 0);
 
 		    /* The original parent's link count was decremented above.
 		     * Here we increment the new parent's link count.
@@ -4260,20 +4118,19 @@ SalvageVolume(struct SalvInfo *salvinfo, struct InodeSummary *rwIsp, IHandle_t *
 		    pa.Vnode = ThisVnode;
 		    pa.Unique = ThisUnique;
 
-		    (void)afs_snprintf(npath, sizeof npath, "%s.%u.%u",
-				       ((class ==
-					 vLarge) ? "__ORPHANDIR__" :
-					"__ORPHANFILE__"), ThisVnode,
-				       ThisUnique);
+		    snprintf(npath, sizeof npath, "%s.%u.%u",
+			     ((class == vLarge) ? "__ORPHANDIR__"
+					        : "__ORPHANFILE__"),
+			     ThisVnode, ThisUnique);
 
 		    CopyOnWrite(salvinfo, &rootdir);
-		    code = Create(&rootdir.dirHandle, npath, &pa);
+		    code = afs_dir_Create(&rootdir.dirHandle, npath, &pa);
 		    if (!code)
 			break;
 
 		    ThisUnique += 50;	/* Try creating a different file */
 		}
-		osi_Assert(code == 0);
+		opr_Assert(code == 0);
 		Log("Attaching orphaned %s to volume's root dir as %s\n",
 		    ((class == vLarge) ? "directory" : "file"), npath);
 	    }
@@ -4286,7 +4143,7 @@ SalvageVolume(struct SalvInfo *salvinfo, struct InodeSummary *rwIsp, IHandle_t *
 	code =
 	    IH_DEC(oldrootdir.ds_linkH, oldrootdir.dirHandle.dirh_inode,
 		   oldrootdir.rwVid);
-	osi_Assert(code == 0);
+	opr_Assert(code == 0);
 	/* dirVnodeInfo->inodes[?] is not updated with new inode number */
     }
 
@@ -4324,7 +4181,7 @@ SalvageVolume(struct SalvInfo *salvinfo, struct InodeSummary *rwIsp, IHandle_t *
 		    IH_IREAD(salvinfo->vnodeInfo[class].handle,
 			     vnodeIndexOffset(vcp, vnodeNumber),
 			     (char *)&vnode, sizeof(vnode));
-		osi_Assert(nBytes == sizeof(vnode));
+		opr_Assert(nBytes == sizeof(vnode));
 
 		vnode.parent = vnp->parent;
 		oldCount = vnode.linkCount;
@@ -4335,7 +4192,7 @@ SalvageVolume(struct SalvInfo *salvinfo, struct InodeSummary *rwIsp, IHandle_t *
 		if (orphaned) {
 		    if (!vnp->todelete) {
 			/* Orphans should have already been attached (if requested) */
-			osi_Assert(orphans != ORPH_ATTACH);
+			opr_Assert(orphans != ORPH_ATTACH);
 			oblocks += vnp->blockCount;
 			ofiles++;
 		    }
@@ -4346,7 +4203,7 @@ SalvageVolume(struct SalvInfo *salvinfo, struct InodeSummary *rwIsp, IHandle_t *
 			if (VNDISK_GET_INO(&vnode)) {
 			    code =
 				IH_DEC(alinkH, VNDISK_GET_INO(&vnode), vid);
-			    osi_Assert(code == 0);
+			    opr_Assert(code == 0);
 			}
 			memset(&vnode, 0, sizeof(vnode));
 		    }
@@ -4364,7 +4221,7 @@ SalvageVolume(struct SalvInfo *salvinfo, struct InodeSummary *rwIsp, IHandle_t *
 			IH_IWRITE(salvinfo->vnodeInfo[class].handle,
 				  vnodeIndexOffset(vcp, vnodeNumber),
 				  (char *)&vnode, sizeof(vnode));
-		    osi_Assert(nBytes == sizeof(vnode));
+		    opr_Assert(nBytes == sizeof(vnode));
 		}
 		salvinfo->VolumeChanged = 1;
 	    }
@@ -4395,7 +4252,7 @@ SalvageVolume(struct SalvInfo *salvinfo, struct InodeSummary *rwIsp, IHandle_t *
     /* Make sure the uniquifer is big enough: maxunique is the real maxUniquifier */
     if (volHeader.uniquifier < (maxunique + 1)) {
 	if (!Showmode)
-	    Log("Volume uniquifier is too low; fixed\n");
+	    Log("Volume uniquifier %u is too low (max uniq %u); fixed\n", volHeader.uniquifier, maxunique);
 	/* Plus 2,000 in case there are workstations out there with
 	 * cached vnodes that have since been deleted
 	 */
@@ -4416,31 +4273,31 @@ SalvageVolume(struct SalvInfo *salvinfo, struct InodeSummary *rwIsp, IHandle_t *
 
 	    fsync_code = FSYNC_VolOp(vid, NULL, FSYNC_VOL_BREAKCBKS, FSYNC_SALVAGE, NULL);
 	    if (fsync_code) {
-	        Log("Error trying to tell the fileserver to break callbacks for "
+		Log("Error trying to tell the fileserver to break callbacks for "
 		    "changed volume %lu; error code %ld\n",
 		    afs_printable_uint32_lu(vid),
 		    afs_printable_int32_ld(fsync_code));
 	    } else {
-	        salvinfo->VolumeChanged = 0;
+		salvinfo->VolumeChanged = 0;
 	    }
-        }
+	}
 #endif /* FSSYNC_BUILD_CLIENT */
 
 #ifdef AFS_DEMAND_ATTACH_FS
-        if (!salvinfo->useFSYNC) {
-            /* A volume's contents have changed, but the fileserver will not
-             * break callbacks on the volume until it tries to load the vol
-             * header. So, to reduce the amount of time a client could have
-             * stale data, remove fsstate.dat, so the fileserver will init
-             * callback state with all clients. This is a very coarse hammer,
-             * and in the future we should just record which volumes have
-             * changed. */
-            code = unlink(AFSDIR_SERVER_FSSTATE_FILEPATH);
-            if (code && errno != ENOENT) {
-                Log("Error %d when trying to unlink FS state file %s\n", errno,
-                    AFSDIR_SERVER_FSSTATE_FILEPATH);
-            }
-        }
+	if (!salvinfo->useFSYNC) {
+	    /* A volume's contents have changed, but the fileserver will not
+	     * break callbacks on the volume until it tries to load the vol
+	     * header. So, to reduce the amount of time a client could have
+	     * stale data, remove fsstate.dat, so the fileserver will init
+	     * callback state with all clients. This is a very coarse hammer,
+	     * and in the future we should just record which volumes have
+	     * changed. */
+	    code = unlink(AFSDIR_SERVER_FSSTATE_FILEPATH);
+	    if (code && errno != ENOENT) {
+		Log("Error %d when trying to unlink FS state file %s\n", errno,
+		    AFSDIR_SERVER_FSSTATE_FILEPATH);
+	    }
+	}
 #endif
     }
 
@@ -4453,11 +4310,11 @@ SalvageVolume(struct SalvInfo *salvinfo, struct InodeSummary *rwIsp, IHandle_t *
     salvinfo->VolumeChanged = 0;
     if (!Testing) {
 	nBytes = IH_IWRITE(h, 0, (char *)&volHeader, sizeof(volHeader));
-	osi_Assert(nBytes == sizeof(volHeader));
+	opr_Assert(nBytes == sizeof(volHeader));
     }
     if (!Showmode) {
-	Log("%sSalvaged %s (%u): %d files, %d blocks\n",
-	    (Testing ? "It would have " : ""), volHeader.name, volHeader.id,
+	Log("%sSalvaged %s (%" AFS_VOLID_FMT "): %d files, %d blocks\n",
+	    (Testing ? "It would have " : ""), volHeader.name, afs_printable_VolumeId_lu(volHeader.id),
 	    FilesInVolume, BlocksInVolume);
     }
 
@@ -4476,15 +4333,15 @@ ClearROInUseBit(struct VolumeSummary *summary)
     VolumeDiskData volHeader;
 
     nBytes = IH_IREAD(h, 0, (char *)&volHeader, sizeof(volHeader));
-    osi_Assert(nBytes == sizeof(volHeader));
-    osi_Assert(volHeader.stamp.magic == VOLUMEINFOMAGIC);
+    opr_Assert(nBytes == sizeof(volHeader));
+    opr_Assert(volHeader.stamp.magic == VOLUMEINFOMAGIC);
     volHeader.inUse = 0;
     volHeader.needsSalvaged = 0;
     volHeader.inService = 1;
     volHeader.dontSalvage = DONT_SALVAGE;
     if (!Testing) {
 	nBytes = IH_IWRITE(h, 0, (char *)&volHeader, sizeof(volHeader));
-	osi_Assert(nBytes == sizeof(volHeader));
+	opr_Assert(nBytes == sizeof(volHeader));
     }
 }
 
@@ -4495,18 +4352,18 @@ ClearROInUseBit(struct VolumeSummary *summary)
  */
 void
 MaybeZapVolume(struct SalvInfo *salvinfo, struct InodeSummary *isp,
-	       char *message, int deleteMe, int check)
+               char *message, int deleteMe, int check)
 {
     if (readOnly(isp) || deleteMe) {
 	if (isp->volSummary && !isp->volSummary->deleted) {
 	    if (deleteMe) {
 		if (!Showmode)
-		    Log("Volume %u (is only a partial volume--probably an attempt was made to move/restore it when a machine crash occured.\n", isp->volumeId);
+		    Log("Volume %" AFS_VOLID_FMT " (is only a partial volume--probably an attempt was made to move/restore it when a machine crash occured.\n", afs_printable_VolumeId_lu(isp->volumeId));
 		if (!Showmode)
 		    Log("It will be deleted on this server (you may find it elsewhere)\n");
 	    } else {
 		if (!Showmode)
-		    Log("Volume %u needs to be salvaged.  Since it is read-only, however,\n", isp->volumeId);
+		    Log("Volume %" AFS_VOLID_FMT " needs to be salvaged.  Since it is read-only, however,\n", afs_printable_VolumeId_lu(isp->volumeId));
 		if (!Showmode)
 		    Log("it will be deleted instead.  It should be recloned.\n");
 	    }
@@ -4519,9 +4376,9 @@ MaybeZapVolume(struct SalvInfo *salvinfo, struct InodeSummary *isp,
 
 		code = VDestroyVolumeDiskHeader(salvinfo->fileSysPartition, isp->volumeId, isp->RWvolumeId);
 		if (code) {
-		    Log("Error %ld destroying volume disk header for volume %lu\n",
+		    Log("Error %ld destroying volume disk header for volume %" AFS_VOLID_FMT "\n",
 		        afs_printable_int32_ld(code),
-		        afs_printable_uint32_lu(isp->volumeId));
+		        afs_printable_VolumeId_lu(isp->volumeId));
 		}
 
 		/* make sure we actually delete the header file; ENOENT
@@ -4530,16 +4387,16 @@ MaybeZapVolume(struct SalvInfo *salvinfo, struct InodeSummary *isp,
 		if (unlink(path) && errno != ENOENT) {
 		    Log("Unable to unlink %s (errno = %d)\n", path, errno);
 		}
-                if (salvinfo->useFSYNC) {
-                    AskDelete(salvinfo, isp->volumeId);
-                }
-                isp->volSummary->deleted = 1;
+		if (salvinfo->useFSYNC) {
+		    AskDelete(salvinfo, isp->volumeId);
+		}
+		isp->volSummary->deleted = 1;
 	    }
 	}
     } else if (!check) {
-	Log("%s salvage was unsuccessful: read-write volume %u\n", message,
-	    isp->volumeId);
-	Abort("Salvage of volume %u aborted\n", isp->volumeId);
+	Log("%s salvage was unsuccessful: read-write volume %" AFS_VOLID_FMT "\n", message,
+	    afs_printable_VolumeId_lu(isp->volumeId));
+	Abort("Salvage of volume %" AFS_VOLID_FMT " aborted\n", afs_printable_VolumeId_lu(isp->volumeId));
     }
 }
 
@@ -4622,7 +4479,8 @@ LockVolume(struct SalvInfo *salvinfo, VolumeId volumeId)
         * case). But if it's there enough that we can read it, but
         * somehow we cannot write to it to signify we're salvaging it,
         * we've got a big problem and we cannot continue. */
-       osi_Assert(IH_IWRITE(h, 0, (char*)&volHeader, sizeof(volHeader)) == sizeof(volHeader));
+       opr_Verify(IH_IWRITE(h, 0, (char*)&volHeader, sizeof(volHeader))
+		       == sizeof(volHeader));
 
        IH_RELEASE(h);
     }
@@ -4639,9 +4497,9 @@ AskError(struct SalvInfo *salvinfo, VolumeId volumeId)
     code = FSYNC_VolOp(volumeId, salvinfo->fileSysPartition->name,
                        FSYNC_VOL_FORCE_ERROR, FSYNC_WHATEVER, NULL);
     if (code != SYNC_OK) {
-        Log("AskError: failed to force volume %lu into error state; "
-            "SYNC error code %ld (%s)\n", (long unsigned)volumeId,
-            (long)code, SYNC_res2string(code));
+	Log("AskError: failed to force volume %lu into error state; "
+	    "SYNC error code %ld (%s)\n", (long unsigned)volumeId,
+	    (long)code, SYNC_res2string(code));
     }
 #endif /* AFS_DEMAND_ATTACH_FS || AFS_DEMAND_ATTACH_UTIL */
 }
@@ -4656,30 +4514,30 @@ AskOffline(struct SalvInfo *salvinfo, VolumeId volumeId)
 
     for (i = 0; i < 3; i++) {
 	code = FSYNC_VolOp(volumeId, salvinfo->fileSysPartition->name,
-			   FSYNC_VOL_OFF, FSYNC_SALVAGE, &res);
+	                   FSYNC_VOL_OFF, FSYNC_SALVAGE, &res);
 
 	if (code == SYNC_OK) {
 	    break;
 	} else if (code == SYNC_DENIED) {
-            if (AskDAFS())
-	        Log("AskOffline:  file server denied offline request; a general salvage may be required.\n");
+	    if (AskDAFS())
+		Log("AskOffline:  file server denied offline request; a general salvage may be required.\n");
 	    else
-	        Log("AskOffline:  file server denied offline request; a general salvage is required.\n");
+		Log("AskOffline:  file server denied offline request; a general salvage is required.\n");
 	    Abort("Salvage aborted\n");
 	} else if (code == SYNC_BAD_COMMAND) {
 	    Log("AskOffline:  fssync protocol mismatch (bad command word '%d'); salvage aborting.\n",
 		FSYNC_VOL_OFF);
-            if (AskDAFS()) {
+	    if (AskDAFS()) {
 #ifdef AFS_DEMAND_ATTACH_FS
-	        Log("AskOffline:  please make sure dafileserver, davolserver, salvageserver and dasalvager binaries are same version.\n");
+		Log("AskOffline:  please make sure dafileserver, davolserver, salvageserver and dasalvager binaries are same version.\n");
 #else
 		Log("AskOffline:  fileserver is DAFS but we are not.\n");
 #endif
 	    } else {
 #ifdef AFS_DEMAND_ATTACH_FS
-                Log("AskOffline:  fileserver is not DAFS but we are.\n");
+		Log("AskOffline:  fileserver is not DAFS but we are.\n");
 #else
-	        Log("AskOffline:  please make sure fileserver, volserver and salvager binaries are same version.\n");
+		Log("AskOffline:  please make sure fileserver, volserver and salvager binaries are same version.\n");
 #endif
 	    }
 	    Abort("Salvage aborted\n");
@@ -4706,30 +4564,30 @@ AskDAFS(void)
 
     /* we don't care if we race. the answer shouldn't change */
     if (isDAFS != -1)
-        return isDAFS;
+	return isDAFS;
 
     memset(&res, 0, sizeof(res));
 
     for (i = 0; code && i < 3; i++) {
-        code = FSYNC_VolOp(0, NULL, FSYNC_VOL_LISTVOLUMES, FSYNC_SALVAGE, &res);
-        if (code) {
-            Log("AskDAFS: FSYNC_VOL_LISTVOLUMES failed with code %ld reason "
-                "%ld (%s); trying again...\n", (long)code, (long)res.hdr.reason,
-                FSYNC_reason2string(res.hdr.reason));
-            FSYNC_clientFinis();
-            FSYNC_clientInit();
-        }
+	code = FSYNC_VolOp(0, NULL, FSYNC_VOL_LISTVOLUMES, FSYNC_SALVAGE, &res);
+	if (code) {
+	    Log("AskDAFS: FSYNC_VOL_LISTVOLUMES failed with code %ld reason "
+	        "%ld (%s); trying again...\n", (long)code, (long)res.hdr.reason,
+	        FSYNC_reason2string(res.hdr.reason));
+	    FSYNC_clientFinis();
+	    FSYNC_clientInit();
+	}
     }
 
     if (code) {
-        Log("AskDAFS: could not determine DAFS-ness, assuming not DAFS\n");
-        res.hdr.flags = 0;
+	Log("AskDAFS: could not determine DAFS-ness, assuming not DAFS\n");
+	res.hdr.flags = 0;
     }
 
     if ((res.hdr.flags & SYNC_FLAG_DAFS_EXTENSIONS)) {
-        isDAFS = 1;
+	isDAFS = 1;
     } else {
-        isDAFS = 0;
+	isDAFS = 0;
     }
 
     return isDAFS;
@@ -4742,8 +4600,8 @@ MaybeAskOnline(struct SalvInfo *salvinfo, VolumeId volumeId)
     int code;
     code = VReadVolumeDiskHeader(volumeId, salvinfo->fileSysPartition, &diskHdr);
     if (code) {
-        /* volume probably does not exist; no need to bring back online */
-        return;
+	/* volume probably does not exist; no need to bring back online */
+	return;
     }
     AskOnline(salvinfo, volumeId);
 }
@@ -4755,12 +4613,12 @@ AskOnline(struct SalvInfo *salvinfo, VolumeId volumeId)
 
     for (i = 0; i < 3; i++) {
 	code = FSYNC_VolOp(volumeId, salvinfo->fileSysPartition->name,
-			   FSYNC_VOL_ON, FSYNC_WHATEVER, NULL);
+	                   FSYNC_VOL_ON, FSYNC_WHATEVER, NULL);
 
 	if (code == SYNC_OK) {
 	    break;
 	} else if (code == SYNC_DENIED) {
-	    Log("AskOnline:  file server denied online request to volume %u partition %s; trying again...\n", volumeId, salvinfo->fileSysPartition->name);
+	    Log("AskOnline:  file server denied online request to volume %" AFS_VOLID_FMT " partition %s; trying again...\n", afs_printable_VolumeId_lu(volumeId), salvinfo->fileSysPartition->name);
 	} else if (code == SYNC_BAD_COMMAND) {
 	    Log("AskOnline:  fssync protocol mismatch (bad command word '%d')\n",
 		FSYNC_VOL_ON);
@@ -4783,41 +4641,41 @@ AskDelete(struct SalvInfo *salvinfo, VolumeId volumeId)
 
     for (i = 0; i < 3; i++) {
 	memset(&res, 0, sizeof(res));
-        code = FSYNC_VolOp(volumeId, salvinfo->fileSysPartition->name,
-                           FSYNC_VOL_DONE, FSYNC_SALVAGE, &res);
+	code = FSYNC_VolOp(volumeId, salvinfo->fileSysPartition->name,
+	                   FSYNC_VOL_DONE, FSYNC_SALVAGE, &res);
 
-        if (code == SYNC_OK) {
-            break;
-        } else if (code == SYNC_DENIED) {
-            Log("AskOnline:  file server denied DONE request to volume %u partition %s; trying again...\n", volumeId, salvinfo->fileSysPartition->name);
-        } else if (code == SYNC_BAD_COMMAND) {
-            Log("AskOnline:  fssync protocol mismatch (bad command word '%d')\n",
-                FSYNC_VOL_DONE);
-            if (AskDAFS()) {
+	if (code == SYNC_OK) {
+	    break;
+	} else if (code == SYNC_DENIED) {
+	    Log("AskOnline:  file server denied DONE request to volume %" AFS_VOLID_FMT " partition %s; trying again...\n", afs_printable_VolumeId_lu(volumeId), salvinfo->fileSysPartition->name);
+	} else if (code == SYNC_BAD_COMMAND) {
+	    Log("AskOnline:  fssync protocol mismatch (bad command word '%d')\n",
+		FSYNC_VOL_DONE);
+	    if (AskDAFS()) {
 #ifdef AFS_DEMAND_ATTACH_FS
-                Log("AskOnline:  please make sure dafileserver, davolserver, salvageserver and dasalvager binaries are same version.\n");
+		Log("AskOnline:  please make sure dafileserver, davolserver, salvageserver and dasalvager binaries are same version.\n");
 #else
-                Log("AskOnline:  fileserver is DAFS but we are not.\n");
+		Log("AskOnline:  fileserver is DAFS but we are not.\n");
 #endif
-            } else {
+	    } else {
 #ifdef AFS_DEMAND_ATTACH_FS
-                Log("AskOnline:  fileserver is not DAFS but we are.\n");
+		Log("AskOnline:  fileserver is not DAFS but we are.\n");
 #else
-                Log("AskOnline:  please make sure fileserver, volserver and salvager binaries are same version.\n");
+		Log("AskOnline:  please make sure fileserver, volserver and salvager binaries are same version.\n");
 #endif
-            }
-            break;
+	    }
+	    break;
 	} else if (code == SYNC_FAILED &&
-		     (res.hdr.reason == FSYNC_UNKNOWN_VOLID ||
-		      res.hdr.reason == FSYNC_WRONG_PART)) {
+	             (res.hdr.reason == FSYNC_UNKNOWN_VOLID ||
+	              res.hdr.reason == FSYNC_WRONG_PART)) {
 	    /* volume is already effectively 'deleted' */
 	    break;
-        } else if (i < 2) {
-            /* try it again */
-            Log("AskOnline:  request for fileserver to delete volume failed; trying again...\n");
+	} else if (i < 2) {
+	    /* try it again */
+	    Log("AskOnline:  request for fileserver to delete volume failed; trying again...\n");
 	    FSYNC_clientFinis();
-            FSYNC_clientInit();
-        }
+	    FSYNC_clientInit();
+	}
     }
 }
 
@@ -4835,14 +4693,14 @@ CopyInode(Device device, Inode inode1, Inode inode2, int rwvolume)
 
     IH_INIT(srcH, device, rwvolume, inode1);
     srcFdP = IH_OPEN(srcH);
-    osi_Assert(srcFdP != NULL);
+    opr_Assert(srcFdP != NULL);
     IH_INIT(destH, device, rwvolume, inode2);
     destFdP = IH_OPEN(destH);
     while ((nBytes = FDH_PREAD(srcFdP, buf, sizeof(buf), size)) > 0) {
-	osi_Assert(FDH_PWRITE(destFdP, buf, nBytes, size) == nBytes);
+	opr_Verify(FDH_PWRITE(destFdP, buf, nBytes, size) == nBytes);
 	size += nBytes;
     }
-    osi_Assert(nBytes == 0);
+    opr_Assert(nBytes == 0);
     FDH_REALLYCLOSE(srcFdP);
     FDH_REALLYCLOSE(destFdP);
     IH_RELEASE(srcH);
@@ -4855,19 +4713,21 @@ PrintInodeList(struct SalvInfo *salvinfo)
 {
     struct ViceInodeInfo *ip;
     struct ViceInodeInfo *buf;
-    struct afs_stat status;
     int nInodes;
     afs_ino_str_t stmp;
+    afs_sfsize_t st_size;
 
-    osi_Assert(afs_fstat(salvinfo->inodeFd, &status) == 0);
-    buf = (struct ViceInodeInfo *)malloc(status.st_size);
-    osi_Assert(buf != NULL);
-    nInodes = status.st_size / sizeof(struct ViceInodeInfo);
-    osi_Assert(read(salvinfo->inodeFd, buf, status.st_size) == status.st_size);
+    st_size = OS_SIZE(salvinfo->inodeFd);
+    opr_Assert(st_size >= 0);
+    buf = malloc(st_size);
+    opr_Assert(buf != NULL);
+    nInodes = st_size / sizeof(struct ViceInodeInfo);
+    opr_Verify(OS_READ(salvinfo->inodeFd, buf, st_size) == st_size);
     for (ip = buf; nInodes--; ip++) {
-	Log("Inode:%s, linkCount=%d, size=%#llx, p=(%u,%u,%u,%u)\n",
+	Log("Inode:%s, linkCount=%d, size=%#llx, p=(%" AFS_VOLID_FMT ",%u,%u,%u)\n", /* VolumeId in param */
 	    PrintInode(stmp, ip->inodeNumber), ip->linkCount,
-	    (afs_uintmax_t) ip->byteCount, ip->u.param[0], ip->u.param[1],
+	    (afs_uintmax_t) ip->byteCount,
+	    afs_printable_VolumeId_lu(ip->u.param[0]), ip->u.param[1],
 	    ip->u.param[2], ip->u.param[3]);
     }
     free(buf);
@@ -4881,7 +4741,7 @@ PrintInodeSummary(struct SalvInfo *salvinfo)
 
     for (i = 0; i < salvinfo->nVolumesInInodeFile; i++) {
 	isp = &salvinfo->inodeSummary[i];
-	Log("VID:%u, RW:%u, index:%d, nInodes:%d, nSpecialInodes:%d, maxUniquifier:%u, volSummary\n", isp->volumeId, isp->RWvolumeId, isp->index, isp->nInodes, isp->nSpecialInodes, isp->maxUniquifier);
+	Log("VID:%" AFS_VOLID_FMT ", RW:%" AFS_VOLID_FMT ", index:%d, nInodes:%d, nSpecialInodes:%d, maxUniquifier:%u, volSummary\n", afs_printable_VolumeId_lu(isp->volumeId), afs_printable_VolumeId_lu(isp->RWvolumeId), isp->index, isp->nInodes, isp->nSpecialInodes, isp->maxUniquifier);
     }
 }
 
@@ -4891,10 +4751,10 @@ Fork(void)
     int f;
 #ifdef AFS_NT40_ENV
     f = 0;
-    osi_Assert(0);			/* Fork is never executed in the NT code path */
+    opr_Assert(0);	/* Fork is never executed in the NT code path */
 #else
     f = fork();
-    osi_Assert(f >= 0);
+    opr_Assert(f >= 0);
 #ifdef AFS_DEMAND_ATTACH_FS
     if ((f == 0) && (programType == salvageServer)) {
 	/* we are a salvageserver child */
@@ -4910,26 +4770,23 @@ Fork(void)
     return f;
 }
 
-void
-Exit(int code)
+static void
+QuietExit(int code)
 {
-    if (ShowLog)
-	showlog();
-
 #ifdef AFS_DEMAND_ATTACH_FS
     if (programType == salvageServer) {
-        /* release all volume locks before closing down our SYNC channels.
-         * the fileserver may try to online volumes we have checked out when
-         * we close down FSSYNC, so we should make sure we don't have those
-         * volumes locked when it does */
-        struct DiskPartition64 *dp;
-        int i;
-        for (i = 0; i <= VOLMAXPARTS; i++) {
-            dp = VGetPartitionById(i, 0);
-            if (dp) {
-                VLockFileReinit(&dp->volLockFile);
-            }
-        }
+	/* release all volume locks before closing down our SYNC channels.
+	 * the fileserver may try to online volumes we have checked out when
+	 * we close down FSSYNC, so we should make sure we don't have those
+	 * volumes locked when it does */
+	struct DiskPartition64 *dp;
+	int i;
+	for (i = 0; i <= VOLMAXPARTS; i++) {
+	    dp = VGetPartitionById(i, 0);
+	    if (dp) {
+		VLockFileReinit(&dp->volLockFile);
+	    }
+	}
 # ifdef SALVSYNC_BUILD_CLIENT
 	VDisconnectSALV();
 # endif
@@ -4949,13 +4806,21 @@ Exit(int code)
 #endif
 }
 
+void
+Exit(int code)
+{
+    SalvageShowLog();
+    QuietExit(code);
+}
+
+
 int
 Wait(char *prog)
 {
     int status;
     int pid;
     pid = wait(&status);
-    osi_Assert(pid != -1);
+    opr_Assert(pid != -1);
     if (WCOREDUMP(status))
 	Log("\"%s\" core dumped!\n", prog);
     if (WIFSIGNALED(status) != 0 || WEXITSTATUS(status) != 0)
@@ -4964,188 +4829,92 @@ Wait(char *prog)
 }
 
 static char *
-TimeStamp(time_t clock, int precision)
+TimeStamp(char *buffer, size_t size, time_t clock, int precision)
 {
     struct tm *lt;
-    static char timestamp[20];
+    size_t nbytes;
+
     lt = localtime(&clock);
     if (precision)
-	(void)strftime(timestamp, 20, "%m/%d/%Y %H:%M:%S", lt);
+	nbytes = strftime(buffer, size, "%m/%d/%Y %H:%M:%S", lt);
     else
-	(void)strftime(timestamp, 20, "%m/%d/%Y %H:%M", lt);
-    return timestamp;
+	nbytes = strftime(buffer, size, "%m/%d/%Y %H:%M", lt);
+    if (nbytes == 0)
+	memset(buffer, 0, size);
+    return buffer;
 }
 
-void
-CheckLogFile(char * log_path)
-{
-    char oldSlvgLog[AFSDIR_PATH_MAX];
-
-#ifndef AFS_NT40_ENV
-    if (useSyslog) {
-	ShowLog = 0;
-	return;
-    }
-#endif
-
-    strcpy(oldSlvgLog, log_path);
-    strcat(oldSlvgLog, ".old");
-    if (!logFile) {
-        time_t t = time(0);
-        struct stat buf;
-	struct tm *TimeFields;
-        TimeFields = localtime(&t);
-    makefilename:
-        afs_snprintf(oldSlvgLog, MAXPATHLEN, "%s.%d%02d%02d%02d%02d%02d",
-                     log_path, TimeFields->tm_year + 1900,
-                     TimeFields->tm_mon + 1, TimeFields->tm_mday,
-                     TimeFields->tm_hour, TimeFields->tm_min,
-                     TimeFields->tm_sec);
-        if(lstat(oldSlvgLog, &buf) == 0) {
-            /* avoid clobbering a log */
-            TimeFields->tm_sec++;
-            goto makefilename;
-        }
-	renamefile(log_path, oldSlvgLog);
-	logFile = afs_fopen(log_path, "a");
-
-	if (!logFile) {		/* still nothing, use stdout */
-	    logFile = stdout;
-	    ShowLog = 0;
-	}
-#ifndef AFS_NAMEI_ENV
-	AFS_DEBUG_IOPS_LOG(logFile);
-#endif
-    }
-}
-
-#ifndef AFS_NT40_ENV
-void
-TimeStampLogFile(char * log_path)
-{
-    char stampSlvgLog[AFSDIR_PATH_MAX];
-    struct tm *lt;
-    time_t now;
-
-    now = time(0);
-    lt = localtime(&now);
-    (void)afs_snprintf(stampSlvgLog, sizeof stampSlvgLog,
-		       "%s.%04d-%02d-%02d.%02d:%02d:%02d",
-		       log_path, lt->tm_year + 1900,
-		       lt->tm_mon + 1, lt->tm_mday, lt->tm_hour, lt->tm_min,
-		       lt->tm_sec);
-
-    /* try to link the logfile to a timestamped filename */
-    /* if it fails, oh well, nothing we can do */
-    if (link(log_path, stampSlvgLog))
-	; /* oh well */
-}
-#endif
-
-void
-showlog(void)
+static void
+SalvageShowLog(void)
 {
     char line[256];
+    char *filename;
+    FILE *logFile;
 
-#ifndef AFS_NT40_ENV
-    if (useSyslog) {
-	printf("Can't show log since using syslog.\n");
-	fflush(stdout);
-	return;
+    if (ShowLog == 0 || ClientMode) {
+	return; /* nothing to do */
     }
-#endif
+    filename = strdup(GetLogFilename());
+    opr_Assert(filename != NULL);
+    CloseLog();
 
-    if (logFile) {
-	rewind(logFile);
-	fclose(logFile);
-    }
-
-    logFile = afs_fopen(AFSDIR_SERVER_SLVGLOG_FILEPATH, "r");
-
+    logFile = afs_fopen(filename, "r");
     if (!logFile)
-	printf("Can't read %s, exiting\n", AFSDIR_SERVER_SLVGLOG_FILEPATH);
+	printf("Can't read %s, exiting\n", ShowLogFilename);
     else {
-	rewind(logFile);
 	while (fgets(line, sizeof(line), logFile))
 	    printf("%s", line);
 	fflush(stdout);
+    }
+    free(filename);
+}
+
+static void
+vLog(const char *format, va_list args)
+{
+    if (!ClientMode) {
+	vFSLog(format, args);
+    } else {
+	struct timeval now;
+	char buffer[64];
+
+	gettimeofday(&now, NULL);
+	fprintf(stderr, "%s ", TimeStamp(buffer, sizeof(buffer), now.tv_sec, 1));
+	vfprintf(stderr, format, args);
+	fflush(stderr);
     }
 }
 
 void
 Log(const char *format, ...)
 {
-    struct timeval now;
-    char tmp[1024];
     va_list args;
 
     va_start(args, format);
-    (void)afs_vsnprintf(tmp, sizeof tmp, format, args);
+    vLog(format, args);
     va_end(args);
-#ifndef AFS_NT40_ENV
-    if (useSyslog) {
-	syslog(LOG_INFO, "%s", tmp);
-    } else
-#endif
-	if (logFile) {
-	    gettimeofday(&now, 0);
-	    fprintf(logFile, "%s %s", TimeStamp(now.tv_sec, 1), tmp);
-	    fflush(logFile);
-	}
-}
-
-void
-LogOsd(const char *format, va_list args)
-{
-    struct timeval now;
-    char tmp[1024];
-
-    (void)afs_vsnprintf(tmp, sizeof tmp, format, args);
-#ifndef AFS_NT40_ENV
-    if (useSyslog) {
-        syslog(LOG_INFO, "%s", tmp);
-    } else
-#endif
-    if (logFile) {
-        gettimeofday(&now, 0);
-        fprintf(logFile, "%s %s", TimeStamp(now.tv_sec, 1), tmp);
-        fflush(logFile);
-    }
 }
 
 void
 Abort(const char *format, ...)
 {
     va_list args;
-    char tmp[1024];
 
     va_start(args, format);
-    (void)afs_vsnprintf(tmp, sizeof tmp, format, args);
+    vLog(format, args);
     va_end(args);
-#ifndef AFS_NT40_ENV
-    if (useSyslog) {
-	syslog(LOG_INFO, "%s", tmp);
-    } else
-#endif
-	if (logFile) {
-	    fprintf(logFile, "%s", tmp);
-	    fflush(logFile);
-	    if (ShowLog)
-		showlog();
-	}
-
+    SalvageShowLog();
     if (debug)
 	abort();
-    Exit(1);
+    QuietExit(1);
 }
 
 char *
 ToString(const char *s)
 {
     char *p;
-    p = (char *)malloc(strlen(s) + 1);
-    osi_Assert(p != NULL);
-    strcpy(p, s);
+    p = strdup(s);
+    opr_Assert(p != NULL);
     return p;
 }
 
@@ -5154,7 +4923,7 @@ void
 RemoveTheForce(char *path)
 {
     char target[1024];
-    struct afs_stat force; /* so we can use afs_stat to find it */
+    struct afs_stat_st force; /* so we can use afs_stat to find it */
     strcpy(target,path);
     strcat(target,"/FORCESALVAGE");
     if (!Testing && ForceSalvage) {
@@ -5169,7 +4938,7 @@ RemoveTheForce(char *path)
 int
 UseTheForceLuke(char *path)
 {
-    struct afs_stat force;
+    struct afs_stat_st force;
     char target[1024];
     strcpy(target,path);
     strcat(target,"/FORCESALVAGE");
@@ -5222,7 +4991,7 @@ int
 nt_SetupPartitionSalvage(void *datap, int len)
 {
     childJob_t *jobp = (childJob_t *) datap;
-    char logname[AFSDIR_PATH_MAX];
+    char *logname;
 
     if (len != sizeof(childJob_t))
 	return -1;
@@ -5231,11 +5000,11 @@ nt_SetupPartitionSalvage(void *datap, int len)
     myjob = *jobp;
 
     /* Open logFile */
-    (void)sprintf(logname, "%s.%d", AFSDIR_SERVER_SLVGLOG_FILEPATH,
-		  myjob.cj_number);
-    logFile = afs_fopen(logname, "w");
-    if (!logFile)
-	logFile = stdout;
+    if (asprintf(&logname, "%s.%d", AFSDIR_SERVER_SLVGLOG_FILEPATH,
+		 myjob.cj_number) < 0)
+	return -1;
+    OpenLog(logname);
+    free(logname);
 
     return 0;
 }

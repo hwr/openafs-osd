@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -52,32 +52,17 @@ statindex 16
 #define     VOLDUMPV2           65538
 #define     VOLDISKPART64       65539
 #define     VOLOSDSUPPORT       65540
+#define     VOLTRAVERSE         65541
+#define     VOLWIPECAND         65542
+#define     OLDVOLSALVAGE       65543
+#define     VOLARCHCANDold      65544
 #define     VOLSALVAGE          65545
+#define     VOLLISTOBJECTS      65546
 #define     VOLSPLIT            65547
-#define     VOLVARIABLE         65550
-#define     VOLSTATISTIC        65551
-#define     VOLPOLUSE           65552
-#define     VOLTRAVERSE         65553
-#define     VOLARCHCAND         65554
-#define     VOLLISTOBJECTS      65555
+#define     VOLARCHCAND         65548
 
 /* Bits for flags for DumpV2 */
 %#define     VOLDUMPV2_OMITDIRS 1
-%#define     VOLDUMPV2_OSDMETADATA 2
-%#define     VOLDUMPV2_METADATADUMP 8
-
-%#define     SALVAGE_UPDATE    2       /* for "vos salvage" */
-%#define     SALVAGE_DECREM    4       /* for "vos salvage" */
-%#define     SALVAGE_IGNORE_LINKCOUNTS 16 /* for "vos salvage" */
-
-%#define     EXTRACT_MD5       1       /* for "vos listobjects" */
-%#define     EXTRACT_SIZE      2       /* for "vos listobjects" */
-%#define     ONLY_HERE         4       /* for "vos listobjects" */
-%#define     POL_INDICES       8       /* for "vos listobjects" */
-%#define     ONLY_WIPED       16       /* for "vos listobjects" */
-
-%#define     ONLY_BIGGER_MINWIPESIZE   1       /* for vos archvcand */
-%#define     FORCE_ARCHCAND            2       /* for vos archvcand */
 
 const SIZE = 1024;
 
@@ -135,10 +120,10 @@ struct volintInfo {
     int maxquota;
     int size;
     afs_int32 flags;		/* used by the backup system */
-    afs_int32 osdPolicy;	/* whether and how to use object storage */
+    afs_int32 spare0;		/* Used to hold the minquota value */
     afs_int32 spare1;		/* Used to hold the weekuse value */
-    afs_int32 spare2;		/* Used to hold the updateCount  */
-    afs_int32 filequota;	/* max. number of files AFS+OSD */
+    afs_int32 spare2;		/* Used to hold volUpdateCounter */
+    afs_int32 spare3;
 };
 
 /*
@@ -225,9 +210,10 @@ struct pIDs {
 };
 
 struct diskPartition {
-	 char	name[32];	/* Mounted partition name */
-   	 char	devName[32];	
-	 int	lock_fd;
+	char	name[32];	/* Mounted partition name */
+   	char	devName[32];
+	int	lock_fd;        /* assigned from DiskPartition FD_t
+                                   which is 64-bit HANDLE on Windows */
 	int	totalUsable;
 	int 	free;
 	int 	minFree;
@@ -235,13 +221,13 @@ struct diskPartition {
 };
 
 struct diskPartition64 {
-    char	name[256];	/* Mounted partition name */
-    char	devName[256];	
-    int		lock_fd;
-    afs_int64	totalUsable;
-    afs_int64 	free;
-    afs_int64 	minFree;
-
+        char	        name[256];	/* Mounted partition name */
+        char	        devName[256];
+        int	        lock_fd;        /* assigned from DiskPartition64 FD_t
+                                           which is a 64-bit HANDLE on Windows */
+        afs_int64	totalUsable;
+        afs_int64 	free;
+        afs_int64 	minFree;
 };
 
 struct restoreCookie {
@@ -259,35 +245,6 @@ struct replica {
 /*  Various size parameters of the volume  */
 struct volintSize {
     afs_uint64 dump_size;
-};
-
-struct osd_info {
-    afs_uint32 osdid;
-    afs_uint32 fids;
-    afs_uint32 fids1;   /* fids with no other copy */
-    afs_uint64 bytes;
-    afs_uint64 bytes1;  /* bytes only stored here */
-};
-typedef struct osd_info osd_infoList <>;
-
-struct sizerange {
-    afs_uint64 maxsize;
-    afs_uint64 bytes;
-    afs_uint32 fids;
-};
-typedef struct sizerange sizerangeList <>;
-
-struct hsmcand {
-    afs_uint32 volume;
-    afs_uint32 vnode;
-    afs_uint32 unique;
-    afs_uint32 weight;
-    afs_uint32 blocks;
-};
-typedef struct hsmcand hsmcandList <>;
-
-struct volser_kbps {
-    afs_uint32 val[96];
 };
 
 typedef  replica manyDests<>;
@@ -488,68 +445,9 @@ proc PartitionInfo64(
     OUT struct diskPartition64 *partition
 ) = VOLDISKPART64;
 
-proc OsdSupport(
-  OUT afs_int32 *have_it
-) = VOLOSDSUPPORT;
-
-proc Salvage(
-  IN afs_uint32 vid,
-  IN afs_int32 flag,
-  IN afs_int32 instances,
-  IN afs_int32 localinst
-) split = VOLSALVAGE;
-
 proc SplitVolume (
   IN afs_uint32 vid,
   IN afs_uint32 newid,
   IN afs_uint32 where,
   IN afs_int32 verbose
 ) split = VOLSPLIT;
-
-proc Variable (
-  IN afs_int32 cmd,
-  IN string name<256>,
-  IN afs_int64 value,
-  OUT afs_int64 *result
-) = VOLVARIABLE;
-
-proc Statistic (
-  IN afs_int32 reset,
-  OUT afs_uint32 *since,
-  OUT afs_uint64* rcvd,
-  OUT afs_uint64* sent,
-  OUT struct volser_kbps *kbpsrcvd,
-  OUT struct volser_kbps *kbpssent
-) = VOLSTATISTIC;
-
-proc PolicyUsage (
-  IN afs_uint32 vid,
-  OUT sizerangeList *srl,
-  OUT osd_infoList *list
-) = VOLPOLUSE;
-
-proc Traverse(
-  IN afs_uint32 vid,
-  afs_uint32 delay,
-  afs_int32 flag,
-  OUT sizerangeList *srl,
-  OUT osd_infoList *list
-) = VOLTRAVERSE;
-
-proc GetArchCandidates(
-  IN afs_uint64 minsize,
-  IN afs_uint64 maxsize,
-  IN afs_int32 copies,
-  IN afs_int32 maxcandidates,
-  IN afs_int32 osd,
-  IN afs_int32 flag,
-  IN afs_uint32 delay,
-  OUT hsmcandList *list
-) = VOLARCHCAND;
-
-proc ListObjects(
-  IN afs_uint32 vid,
-  IN afs_int32 flag,
-  IN afs_int32 osd,
-  IN afs_uint32 minage
-) split = VOLLISTOBJECTS;

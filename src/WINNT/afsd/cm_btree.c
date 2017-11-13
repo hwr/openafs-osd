@@ -10,6 +10,10 @@
  * Thanks to Jan Jannink for B+ tree algorithms.
  */
 
+#include <afsconfig.h>
+#include <afs/param.h>
+#include <roken.h>
+
 #include <windows.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -267,7 +271,7 @@ Nptr bplus_Lookup(Tree *B, keyT key)
     Nptr	leafNode;
 
 #ifdef DEBUG_BTREE
-    StringCbPrintfA(B->message, sizeof(B->message), "LOOKUP:  key %s.\n", key.name);
+    StringCbPrintfA(B->message, sizeof(B->message), "LOOKUP:  key %S.\n", key.name);
     OutputDebugString(B->message);
 #endif
 
@@ -287,7 +291,7 @@ Nptr bplus_Lookup(Tree *B, keyT key)
         dataNode = getnode(leafNode, slot);
         data = getdatavalue(dataNode);
 
-        StringCbPrintfA(B->message, sizeof(B->message), "LOOKUP: %s found on page %d value (%d.%d.%d).\n",
+        StringCbPrintfA(B->message, sizeof(B->message), "LOOKUP: %S found on page %d value (%d.%d.%d).\n",
                  key.name,
                  getnodenumber(B, leafNode),
                  data.fid.volume,
@@ -455,7 +459,7 @@ void insert(Tree *B, keyT key, dataT data)
     Nptr newNode;
 
 #ifdef DEBUG_BTREE
-    StringCbPrintfA(B->message, sizeof(B->message), "INSERT:  key %s.\n", key.name);
+    StringCbPrintfA(B->message, sizeof(B->message), "INSERT:  key %S.\n", key.name);
     osi_Log1(afsd_logp, "BPlus: %s", osi_LogSaveString(afsd_logp, B->message));
 #endif
 
@@ -733,7 +737,7 @@ void delete(Tree *B, keyT key)
     Nptr newNode;
 
 #ifdef DEBUG_BTREE
-    StringCbPrintfA(B->message, sizeof(B->message), "DELETE:  key %s.\n", key.name);
+    StringCbPrintfA(B->message, sizeof(B->message), "DELETE:  key %S.\n", key.name);
     osi_Log1(afsd_logp, "BPlus: %s", osi_LogSaveString(afsd_logp, B->message));
 #endif
 
@@ -1408,7 +1412,7 @@ void showNode(Tree *B, const char * where, Nptr n)
     for (x = 1; x <= numentries(n); x++) {
         StringCbPrintfA(B->message, sizeof(B->message), "| entry %6d ", x);
         osi_Log1(afsd_logp, "BPlus: %s", osi_LogSaveString(afsd_logp, B->message));
-        StringCbPrintfA(B->message, sizeof(B->message), "| key = %6s ", getkey(n, x).name);
+        StringCbPrintfA(B->message, sizeof(B->message), "| key = %6S ", getkey(n, x).name);
         osi_Log1(afsd_logp, "BPlus: %s", osi_LogSaveString(afsd_logp, B->message));
         StringCbPrintfA(B->message, sizeof(B->message), "| node = %6d  |\n", getnodenumber(B, getnode(n, x)));
         osi_Log1(afsd_logp, "BPlus: %s", osi_LogSaveString(afsd_logp, B->message));
@@ -1440,8 +1444,8 @@ void showBtree(Tree *B)
     osi_Log1(afsd_logp, "BPlus: %s", osi_LogSaveString(afsd_logp, B->message));
     StringCbPrintfA(B->message, sizeof(B->message), "|  theKey      %6s  |\n", getfunkey(B).name);
     osi_Log1(afsd_logp, "BPlus: %s", osi_LogSaveString(afsd_logp, B->message));
-    StringCbPrintfA(B->message, sizeof(B->message), "|  theData     %d.%d.%d |\n", getfundata(B).volume,
-             getfundata(B).vnode, getfundata(B).unique);
+    StringCbPrintfA(B->message, sizeof(B->message), "|  theData     %s (%d.%d.%d) |\n", getfundata(B).fsname, getfundata(B).fid.volume,
+             getfundata(B).fid.vnode, getfundata(B).fid.unique);
     osi_Log1(afsd_logp, "BPlus: %s", osi_LogSaveString(afsd_logp, B->message));
     StringCbPrintfA(B->message, sizeof(B->message), "-  --  --  --  --  --  -\n");
     osi_Log1(afsd_logp, "BPlus: %s", osi_LogSaveString(afsd_logp, B->message));
@@ -1793,7 +1797,7 @@ long cm_BPlusDirCreateEntry(cm_dirOp_t * op, clientchar_t * entry, cm_fid_t * cf
 
     insert(op->scp->dirBplus, key, data);
 
-    if (!cm_Is8Dot3(entry)) {
+    if (cm_shortNames && !cm_Is8Dot3(entry)) {
         cm_dirFid_t dfid;
         clientchar_t wshortName[13];
 
@@ -1904,14 +1908,17 @@ int  cm_BPlusDirDeleteEntry(cm_dirOp_t * op, clientchar_t *centry)
                 }
 
                 if (rc != CM_ERROR_AMBIGUOUS_FILENAME) {
-                    dfid.vnode = htonl(fid.vnode);
-                    dfid.unique = htonl(fid.unique);
-                    cm_Gen8Dot3NameIntW(centry, &dfid, shortName, NULL);
-
                     /* delete first the long name and then the short name */
                     delete(op->scp->dirBplus, key);
-                    key.name = shortName;
-                    delete(op->scp->dirBplus, key);
+
+                    if (cm_shortNames) {
+                        dfid.vnode = htonl(fid.vnode);
+                        dfid.unique = htonl(fid.unique);
+                        cm_Gen8Dot3NameIntW(centry, &dfid, shortName, NULL);
+
+                        key.name = shortName;
+                        delete(op->scp->dirBplus, key);
+                    }
                 }
             } /* !NONODE */
         } else {
@@ -1990,6 +1997,57 @@ int  cm_BPlusDirDeleteEntry(cm_dirOp_t * op, clientchar_t *centry)
 
 }
 
+/*
+   On entry:
+       op->scp->dirlock is read locked
+
+   On exit:
+       op->scp->dirlock is read locked
+
+   Return:
+
+*/
+int cm_BPlusDirIsEmpty(cm_dirOp_t *op, afs_uint32 *pbEmpty)
+{
+    int rc = 0;
+    afs_uint32 count = 0, slot, numentries;
+    Nptr leafNode = NONODE, nextLeafNode;
+    Nptr firstDataNode, dataNode, nextDataNode;
+
+    if (op->scp->dirBplus == NULL ||
+        op->dataVersion != op->scp->dirDataVersion) {
+        rc = EINVAL;
+        goto done;
+    }
+
+    /* If we find any entry that is not "." or "..", the directory is not empty */
+
+    for (count = 0, leafNode = getleaf(op->scp->dirBplus); leafNode; leafNode = nextLeafNode) {
+
+	for ( slot = 1, numentries = numentries(leafNode); slot <= numentries; slot++) {
+	    firstDataNode = getnode(leafNode, slot);
+
+	    for ( dataNode = firstDataNode; dataNode; dataNode = nextDataNode) {
+
+                if ( cm_ClientStrCmp(getdatavalue(dataNode).cname, L".") &&
+                     cm_ClientStrCmp(getdatavalue(dataNode).cname, L".."))
+                {
+
+                    *pbEmpty = 0;
+                    goto done;
+                }
+
+		nextDataNode = getdatanext(dataNode);
+	    }
+	}
+	nextLeafNode = getnextnode(leafNode);
+    }
+
+    *pbEmpty = 1;
+
+  done:
+    return rc;
+}
 
 int cm_BPlusDirFoo(struct cm_scache *scp, struct cm_dirEntry *dep,
                    void *dummy, osi_hyper_t *entryOffsetp)
@@ -2027,7 +2085,7 @@ int cm_BPlusDirFoo(struct cm_scache *scp, struct cm_dirEntry *dep,
     /* the Write lock is held in cm_BPlusDirBuildTree() */
     insert(scp->dirBplus, key, data);
 
-    if (!cm_Is8Dot3(data.cname)) {
+    if (cm_shortNames && !cm_Is8Dot3(data.cname)) {
         cm_dirFid_t dfid;
         wchar_t wshortName[13];
 
@@ -2272,17 +2330,19 @@ cm_BPlusDirEnumerate(cm_scache_t *dscp, cm_user_t *userp, cm_req_t *reqp,
                     enump->entry[count].name = name;
                     enump->entry[count].fid  = getdatavalue(dataNode).fid;
 
-                    if (!cm_Is8Dot3(name)) {
-                        cm_dirFid_t dfid;
+                    if (cm_shortNames) {
+                        if (!cm_Is8Dot3(name)) {
+                            cm_dirFid_t dfid;
 
-                        dfid.vnode = htonl(getdatavalue(dataNode).fid.vnode);
-                        dfid.unique = htonl(getdatavalue(dataNode).fid.unique);
+                            dfid.vnode = htonl(getdatavalue(dataNode).fid.vnode);
+                            dfid.unique = htonl(getdatavalue(dataNode).fid.unique);
 
-                        cm_Gen8Dot3NameIntW(name, &dfid, enump->entry[count].shortName, NULL);
-                    } else {
-                        StringCbCopyW(enump->entry[count].shortName,
-                                      sizeof(enump->entry[count].shortName),
-                                      name);
+                            cm_Gen8Dot3NameIntW(name, &dfid, enump->entry[count].shortName, NULL);
+                        } else {
+                            StringCbCopyW(enump->entry[count].shortName,
+                                          sizeof(enump->entry[count].shortName),
+                                          name);
+                        }
                     }
 
                     count++;
@@ -2298,6 +2358,7 @@ cm_BPlusDirEnumerate(cm_scache_t *dscp, cm_user_t *userp, cm_req_t *reqp,
     enump->userp = userp;
     enump->reqFlags = reqp->flags;
     enump->fetchStatus = fetchStatus;
+    enump->dataVersion = dscp->dirDataVersion;
 
   done:
     if (!locked)
@@ -2336,10 +2397,18 @@ cm_BPlusDirEnumBulkStat(cm_direnum_t *enump)
 {
     cm_scache_t *dscp = enump->dscp;
     cm_user_t   *userp = enump->userp;
-    cm_bulkStat_t *bsp;
+    cm_bulkStat_t *bsp = NULL;
+    afs_uint32 ** bs_errorCodep = NULL;
+    afs_uint32 ** bs_flagsp = NULL;
+    afs_uint32    dscp_errorCode = 0;
+    afs_uint32    dscp_flags = 0;
     afs_uint32 count;
     afs_uint32 code = 0;
     cm_req_t req;
+    int i;
+    cm_scache_t   *tscp;
+    afs_int32 nobulkstat = 0;
+    afs_int32 base = 1;
 
     cm_InitReq(&req);
     req.flags = enump->reqFlags;
@@ -2348,18 +2417,49 @@ cm_BPlusDirEnumBulkStat(cm_direnum_t *enump)
         return 0;
 
     bsp = malloc(sizeof(cm_bulkStat_t));
-    if (!bsp)
-        return ENOMEM;
+    if (!bsp) {
+        code = ENOMEM;
+        goto done;
+    }
     memset(bsp, 0, sizeof(cm_bulkStat_t));
+    bsp->userp = userp;
 
+    bs_errorCodep = malloc(sizeof(afs_uint32 *) * AFSCBMAX);
+    if (!bs_errorCodep) {
+        code = ENOMEM;
+        goto done;
+    }
+
+    bs_flagsp = malloc(sizeof(afs_uint32 *) * AFSCBMAX);
+    if (!bs_flagsp) {
+        code = ENOMEM;
+        goto done;
+    }
+
+    /*
+     * In order to prevent the directory callback from expiring
+     * on really large directories with many symlinks to mount
+     * points such as /afs/andrew.cmu.edu/usr/, always include
+     * the directory fid in the search.
+     */
+    bsp->fids[0].Volume = dscp->fid.volume;
+    bsp->fids[0].Vnode = dscp->fid.vnode;
+    bsp->fids[0].Unique = dscp->fid.unique;
+    bs_errorCodep[0] = &dscp_errorCode;
+    bs_flagsp[0] = &dscp_flags;
+    bsp->counter++;
+
+  restart_stat:
     for ( count = 0; count < enump->count; count++ ) {
-        cm_scache_t   *tscp = cm_FindSCache(&enump->entry[count].fid);
-        int i;
-
+        if ( !wcscmp(L".", enump->entry[count].name) || !wcscmp(L"..", enump->entry[count].name) ) {
+            continue;
+        }
+        
+        tscp = cm_FindSCache(&enump->entry[count].fid);
         if (tscp) {
             if (lock_TryWrite(&tscp->rw)) {
                 /* we have an entry that we can look at */
-                if (!(tscp->flags & CM_SCACHEFLAG_EACCESS) && cm_HaveCallback(tscp)) {
+                if (!cm_EAccesFindEntry(userp, &tscp->fid) && cm_HaveCallback(tscp)) {
                     /* we have a callback on it.  Don't bother
                      * fetching this stat entry, since we're happy
                      * with the info we have.
@@ -2367,8 +2467,20 @@ cm_BPlusDirEnumBulkStat(cm_direnum_t *enump)
                     lock_ReleaseWrite(&tscp->rw);
                     cm_ReleaseSCache(tscp);
                     enump->entry[count].flags |= CM_DIRENUM_FLAG_GOT_STATUS;
+                    enump->entry[count].errorCode = 0;
                     continue;
                 }
+
+                if (nobulkstat) {
+                    code = cm_SyncOp(tscp, NULL, userp, &req, 0,
+                                      CM_SCACHESYNC_NEEDCALLBACK | CM_SCACHESYNC_GETSTATUS);
+                    lock_ReleaseWrite(&tscp->rw);
+                    cm_ReleaseSCache(tscp);
+                    enump->entry[count].flags |= CM_DIRENUM_FLAG_GOT_STATUS;
+                    enump->entry[count].errorCode = code;
+                    continue;
+                }
+
                 lock_ReleaseWrite(&tscp->rw);
             }	/* got lock */
             cm_ReleaseSCache(tscp);
@@ -2378,18 +2490,269 @@ cm_BPlusDirEnumBulkStat(cm_direnum_t *enump)
         bsp->fids[i].Volume = enump->entry[count].fid.volume;
         bsp->fids[i].Vnode = enump->entry[count].fid.vnode;
         bsp->fids[i].Unique = enump->entry[count].fid.unique;
+        bs_errorCodep[i] = &enump->entry[count].errorCode;
+        bs_flagsp[bsp->counter] = &enump->entry[i].flags;
         enump->entry[count].flags |= CM_DIRENUM_FLAG_GOT_STATUS;
 
         if (bsp->counter == AFSCBMAX) {
+            base = 0;
             code = cm_TryBulkStatRPC(dscp, bsp, userp, &req);
+            if (code == CM_ERROR_BULKSTAT_FAILURE) {
+                /*
+                 * If bulk stat cannot be used for this directory
+                 * we must perform individual fetch status calls.
+                 * Restart from the beginning of the enumeration.
+                 */
+                nobulkstat = 1;
+
+                for (i=0; i<bsp->counter; i++) {
+                    *(bs_flagsp[i]) &= ~CM_DIRENUM_FLAG_GOT_STATUS;
+                }
+                goto restart_stat;
+            }
+
+            if (code) {
+                /* on any other error, exit */
+                goto done;
+            }
+            for ( i=0; i<bsp->counter; i++) {
+                *(bs_errorCodep[i]) = cm_MapRPCError(bsp->stats[i].errorCode, &req);
+            }
+
+            if (dscp_errorCode) {
+                code = dscp_errorCode;
+                goto done;
+            }
             memset(bsp, 0, sizeof(cm_bulkStat_t));
+            bsp->userp = userp;
+
+            /*
+             * In order to prevent the directory callback from expiring
+             * on really large directories with many symlinks to mount
+             * points such as /afs/andrew.cmu.edu/usr/, always include
+             * the directory fid in the search.
+             */
+            bsp->fids[0].Volume = dscp->fid.volume;
+            bsp->fids[0].Vnode = dscp->fid.vnode;
+            bsp->fids[0].Unique = dscp->fid.unique;
+            bs_errorCodep[0] = &dscp_errorCode;
+            bsp->counter++;
         }
     }
 
-    if (bsp->counter > 0)
+    /*
+     * if the counter is 1, only the directory entry is in the list,
+     * do not issue the RPC.
+     */
+
+    if (bsp->counter > base) {
+        code = cm_TryBulkStatRPC(dscp, bsp, userp, &req);
+        if (code == CM_ERROR_BULKSTAT_FAILURE) {
+            /*
+             * If bulk stat cannot be used for this directory
+             * we must perform individual fetch status calls.
+             * Restart from the beginning of the enumeration.
+             */
+            nobulkstat = 1;
+
+            for (i=0; i<bsp->counter; i++) {
+                *(bs_flagsp[i]) &= ~CM_DIRENUM_FLAG_GOT_STATUS;
+            }
+            goto restart_stat;
+        }
+
+        if (code)
+            goto done;
+
+        for ( i=0; i<bsp->counter; i++) {
+            *(bs_errorCodep[i]) = cm_MapRPCError(bsp->stats[i].errorCode, &req);
+        }
+
+        if (dscp_errorCode) {
+            code = dscp_errorCode;
+            goto done;
+        }
+    }
+
+  done:
+    if (bsp)
+        free(bsp);
+    if (bs_errorCodep)
+        free(bs_errorCodep);
+    if (bs_flagsp)
+        free(bs_flagsp);
+
+    return code;
+}
+
+/*
+ * Similar to cm_BPlusDirEnumBulkStat() except that only
+ * one RPC is issued containing the provided scp FID and up to
+ * AFSCBMAX - 2 other FIDs for which the status info has yet
+ * to be obtained.
+ */
+long
+cm_BPlusDirEnumBulkStatOne(cm_direnum_t *enump, cm_scache_t *scp)
+{
+    cm_scache_t *dscp = enump->dscp;
+    cm_user_t   *userp = enump->userp;
+    cm_bulkStat_t *bsp = NULL;
+    afs_uint32 ** bs_errorCodep = NULL;
+    afs_uint32 ** bs_flagsp = NULL;
+    afs_uint32    dscp_errorCode = 0;
+    afs_uint32    dscp_flags = 0;
+    afs_uint32    scp_errorCode = 0;
+    afs_uint32    scp_flags = 0;
+    afs_uint32 code = 0;
+    afs_uint32 i;
+    cm_req_t req;
+    cm_scache_t   *tscp;
+
+    if ( dscp->fid.cell == AFS_FAKE_ROOT_CELL_ID )
+        return 0;
+
+    cm_InitReq(&req);
+    req.flags = enump->reqFlags;
+
+    bsp = malloc(sizeof(cm_bulkStat_t));
+    if (!bsp) {
+        code = ENOMEM;
+        goto done;
+    }
+    memset(bsp, 0, sizeof(cm_bulkStat_t));
+    bsp->userp = userp;
+
+    bs_errorCodep = malloc(sizeof(afs_uint32 *) * AFSCBMAX);
+    if (!bs_errorCodep) {
+        code = ENOMEM;
+        goto done;
+    }
+
+    bs_flagsp = malloc(sizeof(afs_uint32 *) * AFSCBMAX);
+    if (!bs_flagsp) {
+        code = ENOMEM;
+        goto done;
+    }
+
+    /*
+     * In order to prevent the directory callback from expiring
+     * on really large directories with many symlinks to mount
+     * points such as /afs/andrew.cmu.edu/usr/, always include
+     * the directory fid in the search.
+     */
+    bsp->fids[0].Volume = dscp->fid.volume;
+    bsp->fids[0].Vnode = dscp->fid.vnode;
+    bsp->fids[0].Unique = dscp->fid.unique;
+    bs_errorCodep[0] = &dscp_errorCode;
+    bs_flagsp[0] = &dscp_flags;
+    bsp->counter++;
+
+    /*
+     * There is an assumption that this FID is located
+     * within the directory enumeration but it could be
+     * the case that the enumeration is out of date and
+     * the FID is not listed.  So we explicitly add it
+     * after the directory FID and then skip it later
+     * if we find it.
+     */
+    bsp->fids[1].Volume = scp->fid.volume;
+    bsp->fids[1].Vnode = scp->fid.vnode;
+    bsp->fids[1].Unique = scp->fid.unique;
+    bs_errorCodep[1] = &scp_errorCode;
+    bs_flagsp[1] = &scp_flags;
+    bsp->counter++;
+
+    if (enump->count <= AFSCBMAX - 1) {
+        i = 0;
+    } else {
+        /*
+         * Find the requested FID in the enumeration and start from there.
+         */
+        for (i=0; i < enump->count && cm_FidCmp(&scp->fid, &enump->entry[i].fid); i++);
+    }
+
+    for ( ; bsp->counter < AFSCBMAX && i < enump->count; i++) {
+        if ( !wcscmp(L".", enump->entry[i].name) || !wcscmp(L"..", enump->entry[i].name) ) {
+            continue;
+        }
+
+        tscp = cm_FindSCache(&enump->entry[i].fid);
+        if (tscp) {
+            if (tscp == scp) {
+                cm_ReleaseSCache(tscp);
+                continue;
+            }
+
+            if (lock_TryWrite(&tscp->rw)) {
+                /* we have an entry that we can look at */
+                if (!cm_EAccesFindEntry(userp, &tscp->fid) && cm_HaveCallback(tscp)) {
+                    /* we have a callback on it.  Don't bother
+                     * fetching this stat entry, since we're happy
+                     * with the info we have.
+                     */
+                    lock_ReleaseWrite(&tscp->rw);
+                    cm_ReleaseSCache(tscp);
+                    enump->entry[i].flags |= CM_DIRENUM_FLAG_GOT_STATUS;
+                    enump->entry[i].errorCode = 0;
+                    continue;
+                }
+                lock_ReleaseWrite(&tscp->rw);
+            }	/* got lock */
+            cm_ReleaseSCache(tscp);
+        } /* found entry */
+
+        bsp->fids[bsp->counter].Volume = enump->entry[i].fid.volume;
+        bsp->fids[bsp->counter].Vnode = enump->entry[i].fid.vnode;
+        bsp->fids[bsp->counter].Unique = enump->entry[i].fid.unique;
+        bs_errorCodep[bsp->counter] = &enump->entry[i].errorCode;
+        bs_flagsp[bsp->counter] = &enump->entry[i].flags;
+        enump->entry[i].flags |= CM_DIRENUM_FLAG_GOT_STATUS;
+        bsp->counter++;
+    }
+
+    /*
+     * if the counter is 1, only the directory entry is in the list,
+     * do not issue the RPC.
+     */
+
+    if (bsp->counter > 1) {
         code = cm_TryBulkStatRPC(dscp, bsp, userp, &req);
 
-    free(bsp);
+        /* Now process any errors that might have occurred */
+        if (code == CM_ERROR_BULKSTAT_FAILURE) {
+            for (i=2; i<bsp->counter; i++) {
+                *(bs_flagsp[i]) &= ~CM_DIRENUM_FLAG_GOT_STATUS;
+            }
+
+            lock_ObtainWrite(&scp->rw);
+            code = cm_SyncOp(scp, NULL, userp, &req, 0,
+                              CM_SCACHESYNC_NEEDCALLBACK | CM_SCACHESYNC_GETSTATUS);
+            lock_ReleaseWrite(&scp->rw);
+            goto done;
+        }
+
+        if (code)
+            goto done;
+
+        for ( i=0; i<bsp->counter; i++) {
+            *(bs_errorCodep[i]) = cm_MapRPCError(bsp->stats[i].errorCode, &req);
+        }
+
+        /* Check if there was an error on the requested FID, if so return it */
+        if ( scp_errorCode ) {
+            code = scp_errorCode;
+            goto done;
+        }
+    }
+
+  done:
+    if (bsp)
+        free(bsp);
+    if (bs_errorCodep)
+        free(bs_errorCodep);
+    if (bs_flagsp)
+        free(bs_flagsp);
+
     return code;
 }
 
@@ -2398,30 +2761,67 @@ cm_BPlusDirEnumBulkStatNext(cm_direnum_t *enump)
 {
     cm_scache_t *dscp = enump->dscp;
     cm_user_t   *userp = enump->userp;
-    cm_bulkStat_t *bsp;
+    cm_bulkStat_t *bsp = NULL;
+    afs_uint32 ** bs_errorCodep = NULL;
+    afs_uint32 ** bs_flagsp = NULL;
+    afs_uint32    dscp_errorCode = 0;
+    afs_uint32    dscp_flags = 0;
     afs_uint32 count;
     afs_uint32 code = 0;
     cm_req_t req;
-
-    cm_InitReq(&req);
-    req.flags = enump->reqFlags;
+    cm_scache_t   *tscp;
+    afs_int32     next = -1;
+    int i;
 
     if ( dscp->fid.cell == AFS_FAKE_ROOT_CELL_ID )
         return 0;
 
+    cm_InitReq(&req);
+    req.flags = enump->reqFlags;
+
     bsp = malloc(sizeof(cm_bulkStat_t));
-    if (!bsp)
-        return ENOMEM;
+    if (!bsp) {
+        code = ENOMEM;
+        goto done;
+    }
     memset(bsp, 0, sizeof(cm_bulkStat_t));
+    bsp->userp = userp;
 
-    for ( count = enump->next; count < enump->count; count++ ) {
-        cm_scache_t   *tscp = cm_FindSCache(&enump->entry[count].fid);
-        int i;
+    bs_errorCodep = malloc(sizeof(afs_uint32 *) * AFSCBMAX);
+    if (!bs_errorCodep) {
+        code = ENOMEM;
+        goto done;
+    }
 
+    bs_flagsp = malloc(sizeof(afs_uint32 *) * AFSCBMAX);
+    if (!bs_flagsp) {
+        code = ENOMEM;
+        goto done;
+    }
+
+    /*
+     * In order to prevent the directory callback from expiring
+     * on really large directories with many symlinks to mount
+     * points such as /afs/andrew.cmu.edu/usr/, always include
+     * the directory fid in the search.
+     */
+    bsp->fids[0].Volume = dscp->fid.volume;
+    bsp->fids[0].Vnode = dscp->fid.vnode;
+    bsp->fids[0].Unique = dscp->fid.unique;
+    bs_errorCodep[0] = &dscp_errorCode;
+    bs_flagsp[0] = &dscp_flags;
+    bsp->counter++;
+
+    for ( count = enump->next; count < enump->count && bsp->counter < AFSCBMAX; count++ ) {
+        if ( !wcscmp(L".", enump->entry[count].name) || !wcscmp(L"..", enump->entry[count].name) ) {
+            continue;
+        }
+
+        tscp = cm_FindSCache(&enump->entry[count].fid);
         if (tscp) {
             if (lock_TryWrite(&tscp->rw)) {
                 /* we have an entry that we can look at */
-                if (!(tscp->flags & CM_SCACHEFLAG_EACCESS) && cm_HaveCallback(tscp)) {
+                if (!cm_EAccesFindEntry(userp, &tscp->fid) && cm_HaveCallback(tscp)) {
                     /* we have a callback on it.  Don't bother
                      * fetching this stat entry, since we're happy
                      * with the info we have.
@@ -2429,6 +2829,7 @@ cm_BPlusDirEnumBulkStatNext(cm_direnum_t *enump)
                     lock_ReleaseWrite(&tscp->rw);
                     cm_ReleaseSCache(tscp);
                     enump->entry[count].flags |= CM_DIRENUM_FLAG_GOT_STATUS;
+                    enump->entry[count].errorCode = 0;
                     continue;
                 }
                 lock_ReleaseWrite(&tscp->rw);
@@ -2436,28 +2837,82 @@ cm_BPlusDirEnumBulkStatNext(cm_direnum_t *enump)
             cm_ReleaseSCache(tscp);
         }	/* found entry */
 
-        i = bsp->counter++;
-        bsp->fids[i].Volume = enump->entry[count].fid.volume;
-        bsp->fids[i].Vnode = enump->entry[count].fid.vnode;
-        bsp->fids[i].Unique = enump->entry[count].fid.unique;
-        enump->entry[count].flags |= CM_DIRENUM_FLAG_GOT_STATUS;
+        /* 'next' is the enump entry that is stored in the [bsp->counter == 1] element */
+        if (next == -1)
+            next = count;
 
-        if (bsp->counter == AFSCBMAX) {
-            code = cm_TryBulkStatRPC(dscp, bsp, userp, &req);
-            break;
+        bsp->fids[bsp->counter].Volume = enump->entry[count].fid.volume;
+        bsp->fids[bsp->counter].Vnode = enump->entry[count].fid.vnode;
+        bsp->fids[bsp->counter].Unique = enump->entry[count].fid.unique;
+        bs_errorCodep[bsp->counter] = &enump->entry[count].errorCode;
+        bs_flagsp[bsp->counter] = &enump->entry[count].flags;
+        enump->entry[count].flags |= CM_DIRENUM_FLAG_GOT_STATUS;
+        bsp->counter++;
+    }
+
+    /*
+     * if the counter is 1, only the directory entry is in the list,
+     * do not issue the RPC.
+     */
+
+    if (bsp->counter > 1) {
+        code = cm_TryBulkStatRPC(dscp, bsp, userp, &req);
+
+        /* Now process any errors that might have occurred */
+        if (code == CM_ERROR_BULKSTAT_FAILURE) {
+            for (i=0; i<bsp->counter; i++) {
+                *(bs_flagsp[i]) &= ~CM_DIRENUM_FLAG_GOT_STATUS;
+            }
+
+            /* if next == -1, there is no entry to update the status of */
+            if (next != -1) {
+                code = cm_GetSCache(&enump->entry[next].fid, NULL, &tscp, userp, &req);
+                if (code == 0) {
+                    if (lock_TryWrite(&tscp->rw)) {
+                        code = cm_SyncOp(tscp, NULL, userp, &req, 0,
+                                          CM_SCACHESYNC_NEEDCALLBACK | CM_SCACHESYNC_GETSTATUS);
+                        lock_ReleaseWrite(&tscp->rw);
+                        *(bs_errorCodep[1]) = code;
+                        *(bs_flagsp[1]) |= CM_DIRENUM_FLAG_GOT_STATUS;
+                    }
+                    cm_ReleaseSCache(tscp);
+                } else {
+                    *(bs_errorCodep[1]) = code;
+                    *(bs_flagsp[1]) |= CM_DIRENUM_FLAG_GOT_STATUS;
+                }
+            }
+            goto done;
+        }
+
+        if (code)
+            goto done;
+
+        for ( i=0; i<bsp->counter; i++) {
+            *(bs_errorCodep[i]) = cm_MapRPCError(bsp->stats[i].errorCode, &req);
+        }
+
+        if (dscp_errorCode) {
+            code = dscp_errorCode;
+            goto done;
         }
     }
 
-    if (bsp->counter > 0 && bsp->counter < AFSCBMAX)
-        code = cm_TryBulkStatRPC(dscp, bsp, userp, &req);
+  done:
+    if (bsp)
+        free(bsp);
+    if (bs_errorCodep)
+        free(bs_errorCodep);
+    if (bs_flagsp)
+        free(bs_flagsp);
 
-    free(bsp);
     return code;
 }
 
 long
 cm_BPlusDirNextEnumEntry(cm_direnum_t *enump, cm_direnum_entry_t **entrypp)
 {
+    long code = 0;
+
     if (enump == NULL || entrypp == NULL || enump->next >= enump->count) {
 	if (entrypp)
 	    *entrypp = NULL;
@@ -2466,8 +2921,9 @@ cm_BPlusDirNextEnumEntry(cm_direnum_t *enump, cm_direnum_entry_t **entrypp)
     }
 
     if (enump->fetchStatus &&
-        !(enump->entry[enump->next].flags & CM_DIRENUM_FLAG_GOT_STATUS))
-        cm_BPlusDirEnumBulkStatNext(enump);
+		!(enump->entry[enump->next].flags & CM_DIRENUM_FLAG_GOT_STATUS)) {
+        code = cm_BPlusDirEnumBulkStatNext(enump);
+    }
 
     *entrypp = &enump->entry[enump->next++];
     if ( enump->next == enump->count ) {
@@ -2475,7 +2931,12 @@ cm_BPlusDirNextEnumEntry(cm_direnum_t *enump, cm_direnum_entry_t **entrypp)
 	return CM_ERROR_STOPNOW;
     }
     else {
-	osi_Log0(afsd_logp, "cm_BPlusDirNextEnumEntry SUCCESS");
+        if (code) {
+            (*entrypp)->errorCode = code;
+            osi_Log1(afsd_logp, "cm_BPlusDirNextEnumEntry ERROR 0x%x", code);
+        } else {
+            osi_Log0(afsd_logp, "cm_BPlusDirNextEnumEntry SUCCESS");
+        }
 	return 0;
     }
 }
@@ -2483,6 +2944,8 @@ cm_BPlusDirNextEnumEntry(cm_direnum_t *enump, cm_direnum_entry_t **entrypp)
 long
 cm_BPlusDirPeekNextEnumEntry(cm_direnum_t *enump, cm_direnum_entry_t **entrypp)
 {
+    long code;
+
     if (enump == NULL || entrypp == NULL || enump->next >= enump->count) {
 	if (entrypp)
 	    *entrypp = NULL;
@@ -2491,8 +2954,11 @@ cm_BPlusDirPeekNextEnumEntry(cm_direnum_t *enump, cm_direnum_entry_t **entrypp)
     }
 
     if (enump->fetchStatus &&
-        !(enump->entry[enump->next].flags & CM_DIRENUM_FLAG_GOT_STATUS))
-        cm_BPlusDirEnumBulkStatNext(enump);
+        !(enump->entry[enump->next].flags & CM_DIRENUM_FLAG_GOT_STATUS)) {
+        code = cm_BPlusDirEnumBulkStatNext(enump);
+        if (code)
+            return code;
+    }
 
     *entrypp = &enump->entry[enump->next];
     if ( enump->next == enump->count ) {

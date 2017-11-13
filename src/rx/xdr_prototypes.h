@@ -18,7 +18,6 @@ extern int xdr_afsUUID(XDR * xdrs, afsUUID * objp);
 /* xdr_int32.c */
 extern bool_t xdr_afs_int32(XDR * xdrs, afs_int32 * ip);
 extern bool_t xdr_afs_uint32(XDR * xdrs, afs_uint32 * up);
-/*extern bool_t xdr_afs_NBOint32(XDR * xdrs, void * ip); */
 
 /* xdr_int64.c */
 extern bool_t xdr_int64(XDR * xdrs, afs_int64 * ulp);

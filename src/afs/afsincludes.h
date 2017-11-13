@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -10,12 +10,12 @@
 #ifndef AFS_INCLUDES_H
 #define AFS_INCLUDES_H 1
 
-
 #include <afsconfig.h>
 
 #ifdef UKERNEL
 #include <UKERNEL/afsincludes.h>
 #else
+
 
 /* AFS based headers */
 #include "afs/stds.h"
@@ -43,7 +43,6 @@
 #undef __FDMASK
 #endif
 #include "afsint.h"
-#include "rxosd.h"
 #include "afs/exporter.h"
 #include "vldbint.h"
 #include "afs/afs.h"

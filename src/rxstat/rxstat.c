@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -10,14 +10,15 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
+#ifndef KERNEL
+#include <roken.h>
+#endif
 
 #include <afs/stds.h>
 #include <rx/rx.h>
 #include <rx/rxstat.h>
 #if defined(KERNEL) && !defined(UKERNEL)
 #include "sys/errno.h"
-#else /* KERNEL && !UKERNEL */
-#include <errno.h>
 #endif /* KERNEL && !UKERNEL */
 
 /*

@@ -165,7 +165,6 @@ afs_StoreAllSegments(struct vcache *avc, struct vrequest *areq,
     struct dcache *tdc;
     afs_int32 code = 0;
     afs_int32 index;
-    afs_int32 nChunksAtOnce = NCHUNKSATONCE;
     afs_int32 origCBs, foreign = 0;
     int hash;
     afs_hyper_t newDV, oldDV;	/* DV when we start, and finish, respectively */
@@ -178,7 +177,7 @@ afs_StoreAllSegments(struct vcache *avc, struct vrequest *areq,
 
     hash = DVHash(&avc->f.fid);
     foreign = (avc->f.states & CForeign);
-    dcList = (struct dcache **)osi_AllocLargeSpace(AFS_LRALLOCSIZ);
+    dcList = osi_AllocLargeSpace(AFS_LRALLOCSIZ);
     afs_Trace2(afs_iclSetp, CM_TRACE_STOREALL, ICL_TYPE_POINTER, avc,
 	       ICL_TYPE_OFFSET, ICL_HANDLE_OFFSET(avc->f.m.Length));
 #if !defined(AFS_AIX32_ENV) && !defined(AFS_SGI65_ENV)
@@ -247,11 +246,8 @@ afs_StoreAllSegments(struct vcache *avc, struct vrequest *areq,
     maxStoredLength = 0;
     minj = 0;
 
-    if ((avc->protocol & PROTOCOL_MASK) == RX_OSD)
-	nChunksAtOnce = 256;
-
     do {
-	memset(dcList, 0, nChunksAtOnce * sizeof(struct dcache *));
+	memset(dcList, 0, NCHUNKSATONCE * sizeof(struct dcache *));
 	high = 0;
 	moredata = FALSE;
 
@@ -272,7 +268,7 @@ afs_StoreAllSegments(struct vcache *avc, struct vrequest *areq,
 		ReleaseReadLock(&tdc->tlock);
 		if (!FidCmp(&tdc->f.fid, &avc->f.fid) && tdc->f.chunk >= minj) {
 		    off = tdc->f.chunk - minj;
-		    if (off < nChunksAtOnce) {
+		    if (off < NCHUNKSATONCE) {
 			if (dcList[off])
 			    osi_Panic("dclist slot already in use!");
 			if (afs_mariner && !marineronce) {
@@ -296,7 +292,7 @@ afs_StoreAllSegments(struct vcache *avc, struct vrequest *areq,
 		    } else {
 			moredata = TRUE;
 			afs_PutDCache(tdc);
-			if (j == nChunksAtOnce)
+			if (j == NCHUNKSATONCE)
 			    break;
 		    }
 		} else {
@@ -328,7 +324,7 @@ afs_StoreAllSegments(struct vcache *avc, struct vrequest *areq,
 	    }
 	}
 	/* if (j) */
-	minj += nChunksAtOnce;
+	minj += NCHUNKSATONCE;
     } while (!code && moredata);
 
  done:
@@ -364,7 +360,7 @@ afs_StoreAllSegments(struct vcache *avc, struct vrequest *areq,
 	do {
 	    moredata = FALSE;
 	    memset(dcList, 0,
-		   nChunksAtOnce * sizeof(struct dcache *));
+		   NCHUNKSATONCE * sizeof(struct dcache *));
 
 	    /* overkill, but it gets the lock in case GetDSlot needs it */
 	    ObtainWriteLock(&afs_xdcache, 285);
@@ -391,16 +387,16 @@ afs_StoreAllSegments(struct vcache *avc, struct vrequest *areq,
 		    if (!FidCmp(&tdc->f.fid, &avc->f.fid)
 			&& tdc->f.chunk >= minj) {
 			off = tdc->f.chunk - minj;
-			if (off < nChunksAtOnce) {
+			if (off < NCHUNKSATONCE) {
 			    /* this is the file, and the correct chunk range */
-			    if (j >= nChunksAtOnce)
+			    if (j >= NCHUNKSATONCE)
 				osi_Panic
 				    ("Too many dcache entries in range\n");
 			    dcList[j++] = tdc;
 			} else {
 			    moredata = TRUE;
 			    afs_PutDCache(tdc);
-			    if (j == nChunksAtOnce)
+			    if (j == NCHUNKSATONCE)
 				break;
 			}
 		    } else {
@@ -449,7 +445,7 @@ afs_StoreAllSegments(struct vcache *avc, struct vrequest *areq,
 		afs_PutDCache(tdc);
 	    }
 
-	    minj += nChunksAtOnce;
+	    minj += NCHUNKSATONCE;
 
 	} while (moredata);
     }
@@ -530,12 +526,7 @@ afs_InvalidateAllSegments(struct vcache *avc)
     hash = DVHash(&avc->f.fid);
     avc->f.truncPos = AFS_NOTRUNC;	/* don't truncate later */
     avc->f.states &= ~CExtendedFile;	/* not any more */
-    ObtainWriteLock(&afs_xcbhash, 459);
-    afs_DequeueCallback(avc);
-    avc->f.states &= ~(CStatd | CDirty);	/* mark status information as bad, too */
-    ReleaseWriteLock(&afs_xcbhash);
-    if (avc->f.fid.Fid.Vnode & 1 || (vType(avc) == VDIR))
-	osi_dnlc_purgedp(avc);
+    afs_StaleVCacheFlags(avc, 0, CDirty);
     /* Blow away pages; for now, only for Solaris */
 #if	(defined(AFS_SUN5_ENV))
     if (WriteLocked(&avc->lock))
@@ -556,7 +547,7 @@ afs_InvalidateAllSegments(struct vcache *avc)
 		 * invalidate all of the relevant chunks. Otherwise, the chunks
 		 * will be left with the 'new' data that was never successfully
 		 * written to the server, but the DV in the dcache is still the
-		 * old DV. So, we may indefintely serve serve applications data
+		 * old DV. So, we may indefinitely serve data to applications
 		 * that is not actually in the file on the fileserver. If we
 		 * cannot afs_GetValidDSlot the appropriate entries, currently
 		 * there is no way to ensure the dcache is invalidated. So for

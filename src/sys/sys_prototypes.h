@@ -32,9 +32,7 @@ extern int pioctl(char *path, afs_int32 cmd, struct ViceIoctl *data,
 #ifdef AFS_DUX40_ENV
 extern int afs_setpag(void);
 #else
-#ifndef UKERNEL
 extern int setpag(void);
-#endif
 #endif
 
 /* rmtsysnet.c */
@@ -43,7 +41,8 @@ extern void outparam_conversion(afs_int32, char *, afs_int32);
 
 /* rmtsyss.c */
 extern void rmt_Quit(char *msg, ...)
-    AFS_ATTRIBUTE_FORMAT(__printf__, 1, 2);
+    AFS_ATTRIBUTE_FORMAT(__printf__, 1, 2)
+    AFS_NORETURN;
 
 extern void rmtsysd(void);
 

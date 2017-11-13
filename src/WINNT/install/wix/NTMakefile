@@ -11,6 +11,7 @@ RELDIR=WINNT\install\wix
 
 MEDIADIR = $(DESTDIR)\WinInstall
 MEDIABINDIR = $(MEDIADIR)\Dll
+HEIMREDISTDIR= $(HEIMDALSDKDIR)\redist\$(CPU)
 
 !IFDEF LITECLIENT
 LITE=-lite
@@ -99,6 +100,7 @@ $(WIXOBJ): openafs.wxs $(WIXINCLUDES)
 		"-dDestDir=$(DESTDIR)\\" \
 		-dCellDbFile=CellServDB \
 		"-dIDNMRedistDir=$(MSIDNNLS)\\REDIST" 	\
+		"-dKrbCompatRedistDir=$(HEIMREDISTDIR)"	\
 !IFDEF LITECLIENT
 		-dLiteClient=1 \
 !ENDIF
@@ -117,12 +119,14 @@ $(BINWIXOBJ): oafwbins.wxs $(WIXINCLUDES)
 		-dVersionPatch=$(AFSPRODUCT_VER_PATCH)	\
 		"-dDestDir=$(DESTDIR)\\" \
 		-dCellDbFile=CellServDB \
+		"-dKrbCompatRedistDir=$(HEIMREDISTDIR)"	\
 !IFDEF LITECLIENT
 		-dLiteClient=1 \
 !ENDIF
 		-v0 \
 		-w0 \
-        $(WIXCYGOPT) $(AFSDEV_AUXWIXDEFINES)	oafwbins.wxs
+		-sw1044 \
+                $(AFSDEV_AUXWIXDEFINES)	oafwbins.wxs
 
 $(BINMSIFILE): $(BINWIXOBJ)
 	light -nologo -out $(BINMSIFILE) \

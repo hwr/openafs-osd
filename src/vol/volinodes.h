@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -45,47 +45,47 @@ static struct afs_inode_info {
 	sizeof(VolumeDiskData),
 	(Inode*)offsetof(struct VolumeHeader, volumeInfo),
 	"Volume information",
-	 0
+	0
     },
     {
-        {SMALLINDEXMAGIC, SMALLINDEXVERSION},
-        VI_SMALLINDEX,
-        sizeof(struct versionStamp),
-        (Inode*)offsetof(struct VolumeHeader, smallVnodeIndex),
-        "small inode index",
-        0
+	{SMALLINDEXMAGIC, SMALLINDEXVERSION},
+	VI_SMALLINDEX,
+	sizeof(struct versionStamp),
+	(Inode*)offsetof(struct VolumeHeader, smallVnodeIndex),
+	"small inode index",
+	0
     },
     {
-        {LARGEINDEXMAGIC, LARGEINDEXVERSION},
-        VI_LARGEINDEX,
-        sizeof(struct versionStamp),
-        (Inode*)offsetof(struct VolumeHeader, largeVnodeIndex),
-        "large inode index",
-        0
+	{LARGEINDEXMAGIC, LARGEINDEXVERSION},
+	VI_LARGEINDEX,
+	sizeof(struct versionStamp),
+	(Inode*)offsetof(struct VolumeHeader, largeVnodeIndex),
+	"large inode index",
+	0
     },
     {
-        {ACLMAGIC, ACLVERSION},
-        VI_ACL,
-        sizeof(struct versionStamp),
-        (Inode*)offsetof(struct VolumeHeader, volumeAcl),
-        "access control list",
-        1
+	{ACLMAGIC, ACLVERSION},
+	VI_ACL,
+	sizeof(struct versionStamp),
+	(Inode*)offsetof(struct VolumeHeader, volumeAcl),
+	"access control list",
+	1
     },
     {
-        {OSDMETAMAGIC, OSDMETAVERSION},
-        VI_OSDMETADATA,
-        sizeof(struct versionStamp),
-        (Inode*)offsetof(struct VolumeHeader, OsdMetadata),
-        "OSD metadata",
-        2
+	{MOUNTMAGIC, MOUNTVERSION},
+	VI_MOUNTTABLE,
+	sizeof(struct versionStamp),
+	(Inode*)offsetof(struct VolumeHeader, volumeMountTable),
+	"mount table",
+	1
     },
     {
-        {LINKTABLEMAGIC, LINKTABLEVERSION},
-        VI_LINKTABLE,
-        sizeof(struct versionStamp),
-        (Inode*)offsetof(struct VolumeHeader, linkTable),
-        "link table",
-        NO_LINK_TABLE
+	{LINKTABLEMAGIC, LINKTABLEVERSION},
+	VI_LINKTABLE,
+	sizeof(struct versionStamp),
+	(Inode*)offsetof(struct VolumeHeader, linkTable),
+	"link table",
+	NO_LINK_TABLE
     },
 };
 /* inodeType is redundant in the above table;  it used to be useful, but now
@@ -106,7 +106,7 @@ init_inode_info(struct VolumeHeader *header,
     int i;
     memcpy(stuff, afs_common_inode_info, sizeof(afs_common_inode_info));
     for (i = 0; i < MAXINODETYPE; i++) {
-        stuff[i].inode = (Inode*)((char*)header + (uintptr_t)stuff[i].inode);
+	stuff[i].inode = (Inode*)((char*)header + (uintptr_t)stuff[i].inode);
     }
 }
 

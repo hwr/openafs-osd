@@ -41,9 +41,9 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _WIN64
-#define HAVE_KRB4
-#endif
+#include <afsconfig.h>
+#include <afs/param.h>
+#include <roken.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -78,10 +78,7 @@
 #include <afs\pioctl_nt.h>
 #include <afs\smb_iocons.h>
 #include <WINNT\afsreg.h>
-
-#define stat _stat
-#define __S_ISTYPE(mode, mask) (((mode) & _S_IFMT) == (mask))
-#define S_ISDIR(mode)          __S_ISTYPE((mode), _S_IFDIR)
+#include <krbcompat_delayload.h>
 
 #define DONT_HAVE_GET_AD_TKT
 #define MAXSYMLINKS 255
@@ -197,11 +194,6 @@ static int use524 = FALSE;  /* use krb524? */
 static krb5_context context = 0;
 static krb5_ccache _krb425_ccache = 0;
 
-static krb5_error_code (KRB5_CALLCONV *pkrb5_init_context)(krb5_context *context) = NULL;
-static krb5_error_code (KRB5_CALLCONV *pkrb5_free_context)(krb5_context context) = NULL;
-static char * (KRB5_CALLCONV *pkrb5_get_error_message)(krb5_context context, krb5_error_code code)=NULL;
-static void (KRB5_CALLCONV *pkrb5_free_error_message)(krb5_context context, char *s) = NULL;
-
 void akexit(int exit_code)
 {
     if (_krb425_ccache)
@@ -229,21 +221,17 @@ redirect_errors(const char *who, afs_int32 code, const char *fmt, va_list ap)
         int freestr = 0;
         char *str = (char *)afs_error_message(code);
         if (strncmp(str, "unknown", strlen(str)) == 0) {
-            if (pkrb5_init_context &&
-                pkrb5_get_error_message &&
-                !pkrb5_init_context(&context))
+            if (!krb5_init_context(&context))
             {
-                str = pkrb5_get_error_message(NULL, code);
+                str = krb5_get_error_message(NULL, code);
                 freestr = 1;
-            } else {
-                str = (char *)error_message(code);
             }
         }
         fputs(str, stderr);
         fputs(" ", stderr);
         if (freestr) {
-            pkrb5_free_error_message(NULL, str);
-            pkrb5_free_context(context);
+            krb5_free_error_message(context, str);
+            krb5_free_context(context);
         }
     }
     if (fmt) {
@@ -337,6 +325,9 @@ void ViceIDToUsername(char *username, char *realm_of_user, char *realm_of_cell,
 #ifdef ALLOW_REGISTER
         } else if (strcmp(realm_of_user, realm_of_cell) != 0) {
             int i;
+            int flags = 0;
+            char * smbname = NULL;
+
             if (dflag) {
                 printf("doing first-time registration of %s "
                         "at %s\n", username, cell_to_use);
@@ -352,7 +343,16 @@ void ViceIDToUsername(char *username, char *realm_of_user, char *realm_of_cell,
                     aclient->cell[i] = toupper(aclient->cell[i]);
             }
 
-            if ((*status = ktc_SetToken(aserver, atoken, aclient, 0))) {
+            smbname = getenv("AFS_SMBNAME");
+            if ( smbname ) {
+                strncpy(aclient->smbname, smbname, MAXKTCNAMELEN - 1);
+                aclient->smbname[MAXKTCNAMELEN - 1] = '\0';
+                flags = AFS_SETTOK_LOGON;
+                if (dflag)
+                    printf("obtaining tokens for %s\n", aclient->smbname);
+            }
+
+            if ((*status = ktc_SetToken(aserver, atoken, aclient, flags))) {
                 afs_com_err(progname, *status,
                              "while obtaining tokens for cell %s\n",
                              cell_to_use);
@@ -482,7 +482,6 @@ static int get_v5cred(krb5_context context,
     krb5_creds increds;
     krb5_error_code r;
     static krb5_principal client_principal = 0;
-    int passes = 0;
 
     if (client_principal) {
         krb5_free_principal(context, client_principal);
@@ -513,20 +512,18 @@ static int get_v5cred(krb5_context context,
     increds.client = client_principal;
     increds.times.endtime = 0;
 	/* Ask for DES since that is what V4 understands */
-    increds.keyblock.enctype = ENCTYPE_DES_CBC_CRC;
+    if (c != NULL)
+	increds.session.keytype = ENCTYPE_DES_CBC_CRC;
 
-    do {
-        r = krb5_get_credentials(context, 0, _krb425_ccache, &increds, creds);
-        if (r == KRB5KRB_AP_ERR_REPEAT)
-            Sleep(1000);
-    } while(r == KRB5KRB_AP_ERR_REPEAT && passes++ < 2);
-
+    r = krb5_get_credentials(context, 0, _krb425_ccache, &increds, creds);
     if (r) {
         return((int)r);
     }
+#ifdef HAVE_KRB4
     /* This requires krb524d to be running with the KDC */
     if (c != NULL)
         r = krb5_524_convert_creds(context, *creds, c);
+#endif
 
     return((int)r);
 }
@@ -651,7 +648,6 @@ static int get_v5_user_realm(krb5_context context,char *realm)
 {
     static krb5_principal client_principal = 0;
     krb5_error_code code;
-    int i;
 
     if (!_krb425_ccache) {
         code = krb5_cc_default(context, &_krb425_ccache);
@@ -663,29 +659,24 @@ static int get_v5_user_realm(krb5_context context,char *realm)
         if (code)
             return(code);
     }
-    i = krb5_princ_realm(context, client_principal)->length;
-    if (i < REALM_SZ-1) i = REALM_SZ-1;
-    strncpy(realm,krb5_princ_realm(context, client_principal)->data,i);
-    realm[i] = 0;
+    strncpy(realm, krb5_principal_get_realm(context, client_principal), REALM_SZ - 1);
+    realm[REALM_SZ - 1] = 0;
     return(KSUCCESS);
 }
 
 static void
 copy_realm_of_ticket(krb5_context context, char * dest, size_t destlen, krb5_creds *v5cred) {
-    krb5_error_code code;
-    krb5_ticket *ticket;
+    Ticket ticket;
     size_t len;
+    int ret;
 
-    code = krb5_decode_ticket(&v5cred->ticket, &ticket);
-    if (code == 0) {
-        len = krb5_princ_realm(context, ticket->server)->length;
-        if (len > destlen - 1)
-            len = destlen - 1;
+    ret = decode_Ticket(v5cred->ticket.data, v5cred->ticket.length,
+                        &ticket, &len);
+    if (ret == 0) {
+        strncpy(dest, ticket.realm, destlen - 1);
+        dest[destlen - 1] = '\0';
 
-        strncpy(dest, krb5_princ_realm(context, ticket->server)->data, len);
-        dest[len] = '\0';
-
-        krb5_free_ticket(context, ticket);
+        free_Ticket(&ticket);
     }
 }
 
@@ -774,6 +765,8 @@ static int auth_to_cell(krb5_context context, char *cell, char *realm)
     struct afsconf_cell ak_cellconfig; /* General information about the cell */
     int i;
     int getLinkedCell = 0;
+    int flags = 0;
+    char * smbname = getenv("AFS_SMBNAME");
 
     /* try to avoid an expensive call to get_cellconfig */
     if (cell && ll_string_check(&authedcells, cell))
@@ -836,14 +829,10 @@ static int auth_to_cell(krb5_context context, char *cell, char *realm)
         if ((status = get_v5_user_realm(context, realm_of_user)) != KSUCCESS) {
             char * msg;
 
-            if (pkrb5_get_error_message)
-                msg = pkrb5_get_error_message(context, status);
-            else
-                msg = (char *)error_message(status);
+            msg = krb5_get_error_message(context, status);
             fprintf(stderr, "%s: Couldn't determine realm of user: %s\n",
-                     progname, msg);
-            if (pkrb5_free_error_message)
-                pkrb5_free_error_message(context, msg);
+                    progname, msg);
+            krb5_free_error_message(context, msg);
             status = AKLOG_KERBEROS;
             goto done;
         }
@@ -970,19 +959,16 @@ static int auth_to_cell(krb5_context context, char *cell, char *realm)
             printf("Kerberos error code returned by get_cred: %d\n", status);
 
         if (usev5) {
-            if (pkrb5_get_error_message)
-                msg = pkrb5_get_error_message(context, status);
-            else
-                msg = (char *)error_message(status);
+            msg = krb5_get_error_message(context, status);
         }
 #ifdef HAVE_KRB4
         else
             msg = krb_err_text(status);
 #endif
         fprintf(stderr, "%s: Couldn't get %s AFS tickets: %s\n",
-                 progname, cell_to_use, msg?msg:"(unknown error)");
-        if (usev5 && pkrb5_free_error_message)
-            pkrb5_free_error_message(context, msg);
+                progname, cell_to_use, msg?msg:"(unknown error)");
+        if (usev5)
+            krb5_free_error_message(context, msg);
         status = AKLOG_KERBEROS;
         goto done;
     }
@@ -998,16 +984,17 @@ static int auth_to_cell(krb5_context context, char *cell, char *realm)
          */
         char * p;
         int len;
+        const char *un;
 
-        len = min(v5cred->client->data[0].length,MAXKTCNAMELEN - 1);
-        strncpy(username, v5cred->client->data[0].data, len);
-        username[len] = '\0';
+        un = krb5_principal_get_comp_string(context, v5cred->client, 0);
+        strncpy(username, un, MAXKTCNAMELEN - 1);
+        username[MAXKTCNAMELEN - 1] = '\0';
 
-        if ( v5cred->client->length > 1 ) {
+        if ( krb5_principal_get_num_comp(context, v5cred->client) > 1 ) {
             strcat(username, ".");
             p = username + strlen(username);
-            len = min(v5cred->client->data[1].length, (unsigned int)(MAXKTCNAMELEN - strlen(username) - 1));
-            strncpy(p, v5cred->client->data[1].data, len);
+            len = (unsigned int)(MAXKTCNAMELEN - strlen(username) - 1);
+            strncpy(p, krb5_principal_get_comp_string(context, v5cred->client, 1), len);
             p[len] = '\0';
         }
 
@@ -1015,7 +1002,12 @@ static int auth_to_cell(krb5_context context, char *cell, char *realm)
         atoken.kvno = RXKAD_TKT_TYPE_KERBEROS_V5;
         atoken.startTime = v5cred->times.starttime;
         atoken.endTime = v5cred->times.endtime;
-        memcpy(&atoken.sessionKey, v5cred->keyblock.contents, v5cred->keyblock.length);
+	if (tkt_DeriveDesKey(v5cred->session.keytype,
+			     v5cred->session.keyvalue.data,
+			     v5cred->session.keyvalue.length, &atoken.sessionKey)) {
+	    status = AKLOG_MISC;
+	    goto done;
+	}
         atoken.ticketLen = v5cred->ticket.length;
         memcpy(atoken.ticket, v5cred->ticket.data, atoken.ticketLen);
     } else {
@@ -1042,11 +1034,12 @@ static int auth_to_cell(krb5_context context, char *cell, char *realm)
     }
 
     if (!force &&
-         !ktc_GetToken(&aserver, &btoken, sizeof(btoken), &aclient) &&
-         atoken.kvno == btoken.kvno &&
-         atoken.ticketLen == btoken.ticketLen &&
-         !memcmp(&atoken.sessionKey, &btoken.sessionKey, sizeof(atoken.sessionKey)) &&
-         !memcmp(atoken.ticket, btoken.ticket, atoken.ticketLen))
+        !smbname &&
+        !ktc_GetToken(&aserver, &btoken, sizeof(btoken), &aclient) &&
+        atoken.kvno == btoken.kvno &&
+        atoken.ticketLen == btoken.ticketLen &&
+        !memcmp(&atoken.sessionKey, &btoken.sessionKey, sizeof(atoken.sessionKey)) &&
+        !memcmp(atoken.ticket, btoken.ticket, atoken.ticketLen))
     {
         if (dflag)
             printf("Identical tokens already exist; skipping.\n");
@@ -1100,9 +1093,9 @@ static int auth_to_cell(krb5_context context, char *cell, char *realm)
     strcpy(aclient.instance, "");
 
     if (usev5 && !use524) {
-        int len = min(v5cred->client->realm.length,MAXKTCNAMELEN - 1);
-        strncpy(aclient.cell, v5cred->client->realm.data, len);
-        aclient.cell[len] = '\0';
+        strncpy(aclient.cell,
+                krb5_principal_get_realm(context, v5cred->client), MAXKTCNAMELEN - 1);
+        aclient.cell[MAXKTCNAMELEN - 1] = '\0';
     }
 #ifdef HAVE_KRB4
     else
@@ -1114,12 +1107,22 @@ static int auth_to_cell(krb5_context context, char *cell, char *realm)
             aclient.cell[i] = toupper(aclient.cell[i]);
     }
 
-    if (dflag)
-        printf("Getting tokens.\n");
-    if (status = ktc_SetToken(&aserver, &atoken, &aclient, 0))
+    if ( smbname ) {
+        if (dflag)
+            printf("Setting tokens for %s.\n", smbname);
+
+        strncpy(aclient.smbname, smbname, MAXKTCNAMELEN - 1);
+        aclient.smbname[MAXKTCNAMELEN - 1] = '\0';
+        flags = AFS_SETTOK_LOGON;
+    } else {
+        if (dflag)
+            printf("Setting tokens.\n");
+    }
+
+    if (status = ktc_SetToken(&aserver, &atoken, &aclient, flags))
     {
         afs_com_err(progname, status,
-                     "while obtaining tokens for cell %s\n",
+                     "while setting token for cell %s\n",
                      cell_to_use);
         status = AKLOG_TOKEN;
     }
@@ -1422,31 +1425,11 @@ static void usage(void)
     akexit(AKLOG_USAGE);
 }
 
-#ifndef _WIN64
-#define KRB5LIB "krb5_32.dll"
-#else
-#define KRB5LIB "krb5_64.dll"
-#endif
-void
-load_krb5_error_message_funcs(void)
-{
-    HINSTANCE h = LoadLibrary(KRB5LIB);
-    if (h) {
-        (FARPROC)pkrb5_init_context = GetProcAddress(h, "krb5_init_context");
-        (FARPROC)pkrb5_free_context = GetProcAddress(h, "krb5_free_context");
-        (FARPROC)pkrb5_get_error_message = GetProcAddress(h, "krb5_get_error_message");
-        (FARPROC)pkrb5_free_error_message = GetProcAddress(h, "krb5_free_error_message");
-    }
-}
-
 void
 validate_krb5_availability(void)
 {
-    HINSTANCE h = LoadLibrary(KRB5LIB);
-    if (h)
-        FreeLibrary(h);
-    else {
-        fprintf(stderr, "Kerberos for Windows library %s is not available.\n", KRB5LIB);
+    if (!DelayLoadHeimdal()) {
+        fprintf(stderr, "Kerberos for Windows or Heimdal is not available.\n");
         akexit(AKLOG_KFW_NOT_INSTALLED);
     }
 }
@@ -1635,7 +1618,8 @@ int main(int argc, char *argv[])
         validate_krb5_availability();
         if (krb5_init_context(&context))
             return(AKLOG_KERBEROS);
-        load_krb5_error_message_funcs();
+        if (krb5_enctype_valid(context, ETYPE_DES_CBC_CRC))
+            krb5_enctype_enable(context, ETYPE_DES_CBC_CRC);
     } else
         validate_krb4_availability();
     afs_set_com_err_hook(redirect_errors);

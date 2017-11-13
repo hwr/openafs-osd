@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -9,17 +9,14 @@
 
 #include <afsconfig.h>
 #include <afs/param.h>
-
-
 #include <afs/stds.h>
-#include <sys/types.h>
-#include <stdio.h>
-#include "ktime.h"
-#include <time.h>
-#include <ctype.h>
-#include <string.h>
-#include "afsutil.h"
 
+#include <roken.h>
+
+#include <ctype.h>
+
+#include "ktime.h"
+#include "afsutil.h"
 
 /* maximum values for relative dates */
 
@@ -272,7 +269,7 @@ RelDatetoString(struct ktime_date *datePtr)
 }
 
 /* Add_RelDate_to_Time
- *	Returns current time with a relative time added. Note that the 
+ *	Returns current time with a relative time added. Note that the
  *	computation adds in most significant fields first, i.e. year, month
  *	day etc. Addition of least significant fields would produce different
  *	results (depending on the data).

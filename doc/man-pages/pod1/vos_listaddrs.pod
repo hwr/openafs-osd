@@ -10,12 +10,16 @@ vos_listaddrs - Displays all VLDB server entries
 B<vos listaddrs> S<<< [B<-uuid> <I<uuid of server>>] >>>
     S<<< [B<-host> <I<address of host>>] >>> [B<-printuuid>]
     S<<< [B<-cell> <I<cell name>>] >>> [B<-noauth>] [B<-localauth>]
-    [B<-verbose>] [B<-encrypt>] [B<-noresolve>] [B<-help>]
+    [B<-verbose>] [B<-encrypt>] [B<-noresolve>]
+    S<<< [B<-config> <I<config directory>>] >>>
+    [B<-help>]
 
 B<vos lista> [B<-u> <I<uuid of server>>] >>>
     S<<< [B<-h> <I<address of host>>] >>> [B<-p>]
     S<<< [B<-c> <I<cell name>>] >>> [B<-noa>] [B<-l>]
-    [B<-v>] [B<-e>] [B<-nor>] [B<-he>]
+    [B<-v>] [B<-e>] [B<-nor>]
+    S<<< [B<-co> <I<config directory>>] >>>
+    [B<-he>]
 
 =for html
 </div>
@@ -57,8 +61,9 @@ with the B<-localauth> flag. For more details, see L<vos(1)>.
 
 =item B<-noauth>
 
-Assigns the unprivileged identity anonymous to the issuer. Do not combine
-this flag with the B<-localauth> flag. For more details, see L<vos(1)>.
+Assigns the unprivileged identity C<anonymous> to the issuer. Do not
+combine this flag with the B<-localauth> flag. For more details, see
+L<vos(1)>.
 
 =item B<-localauth>
 
@@ -87,6 +92,13 @@ useful when the server address is registered as 127.0.0.1 or when dealing
 with multi-homed servers. This option is available in OpenAFS
 versions 1.4.8 or later and 1.5.35 or later.
 
+=item B<-config> <I<configuration directory>>
+
+Set the location of the configuration directory to be used. This defaults to
+F</usr/vice/etc>, except if B<-localauth> is specified, in which case the
+default is F</usr/afs/etc>. This option allows the use of alternative
+configuration locations for testing purposes.
+
 =item B<-help>
 
 Prints the online help for this command. All other valid options are
@@ -113,21 +125,21 @@ entries, use the B<vos changeaddr> command with the B<-remove> argument.
 
 =head1 EXAMPLES
 
-The following command displays the VLDB server entries in the ABC
+The following command displays the VLDB server entries in the Example
 Corporation cell:
 
    % vos listaddrs
-   sv5.abc.com
-   sv1.abc.com
-   sv2.abc.com  afs2.abc.com
-   sv6.abc.com
+   sv5.example.com
+   sv1.example.com
+   sv2.example.com  afs2.example.com
+   sv6.example.com
 
 The following command displays the VLDB server entry and UUID for
-host sv5.abc.com in the ABC Corporation cell:
+host sv5.example.com in the Example Corporation cell:
 
-   % vos listaddrs -p -ho sv5.abc.com
+   % vos listaddrs -p -ho sv5.example.com
    UUID: 000c5aff-8246-1699-96-c4-437b5a45aa77
-   sv5.abc.com
+   sv5.example.com
 
 =head1 PRIVILEGE REQUIRED
 

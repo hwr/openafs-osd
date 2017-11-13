@@ -7,16 +7,14 @@
  * directory or online at http://www.openafs.org/dl/license10.html
  */
 
+#include <afsconfig.h>
 #include <afs/param.h>
 #include <afs/stds.h>
 
+#include <roken.h>
+
 #include <windows.h>
 #include <shlobj.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <stddef.h>
-#include <string.h>
-#include <errno.h>
 
 #include <afs/errmap_nt.h>
 
@@ -107,7 +105,7 @@ afssw_GetClientCellServDBDir(char **bufPP)   /* [out] data buffer */
         if (path[tlen-1] != '\\') {
             char * newPath = malloc(tlen+2);
             if (newPath) {
-                snprintf(newPath,tlen+2,"%s\\",path);
+                _snprintf(newPath,tlen+2,"%s\\",path);
                 free(path);
                 path = newPath;
             }

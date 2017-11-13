@@ -7,7 +7,10 @@
  * directory or online at http://www.openafs.org/dl/license10.html
  */
 
+#include <afsconfig.h>
 #include <afs/param.h>
+#include <roken.h>
+
 #include <afs/stds.h>
 #include <afs/cellconfig.h>
 #include <afs/afs_consts.h>
@@ -75,7 +78,12 @@ cm_CleanFile(cm_scache_t *scp, cm_user_t *userp, cm_req_t *reqp)
 {
     long code;
 
-    code = cm_FSync(scp, userp, reqp, FALSE);
+    if (RDR_Initialized &&
+        RDR_InvalidateObject(scp->fid.cell, scp->fid.volume, scp->fid.vnode, scp->fid.unique,
+                             scp->fid.hash, scp->fileType, AFS_INVALIDATE_FLUSHED))
+        code = CM_ERROR_WOULDBLOCK;
+    else
+        code = cm_FSync(scp, userp, reqp, FALSE);
     if (!code) {
         lock_ObtainWrite(&scp->rw);
         cm_DiscardSCache(scp);
@@ -96,17 +104,30 @@ cm_FlushFile(cm_scache_t *scp, cm_user_t *userp, cm_req_t *reqp)
 
 #ifdef AFS_FREELANCE_CLIENT
     if ( scp->fid.cell == AFS_FAKE_ROOT_CELL_ID && scp->fid.volume == AFS_FAKE_ROOT_VOL_ID ) {
-	cm_noteLocalMountPointChange(FALSE);
-	return 0;
+	return CM_ERROR_NOACCESS;
     }
 #endif
 
-    code = buf_FlushCleanPages(scp, userp, reqp);
+    /*
+     * The file system will forget all knowledge of the object
+     * when it receives this message.
+     */
+    if (RDR_Initialized &&
+        RDR_InvalidateObject(scp->fid.cell, scp->fid.volume, scp->fid.vnode, scp->fid.unique,
+                             scp->fid.hash, scp->fileType, AFS_INVALIDATE_FLUSHED))
+        code = CM_ERROR_WOULDBLOCK;
+    else
+        code = buf_FlushCleanPages(scp, userp, reqp);
 
     if (scp->fileType == CM_SCACHETYPE_DIRECTORY)
         lock_ObtainWrite(&scp->dirlock);
     lock_ObtainWrite(&scp->rw);
     cm_DiscardSCache(scp);
+    if (scp->fileType == CM_SCACHETYPE_MOUNTPOINT ||
+	scp->fileType == CM_SCACHETYPE_SYMLINK) {
+	scp->mpDataVersion = CM_SCACHE_VERSION_BAD;
+	scp->mountPointStringp[0] = '\0';
+    }
     if (scp->fileType == CM_SCACHETYPE_DIRECTORY) {
         cm_ResetSCacheDirectory(scp, 1);
         lock_ReleaseWrite(&scp->dirlock);
@@ -149,8 +170,7 @@ cm_FlushVolume(cm_user_t *userp, cm_req_t *reqp, afs_uint32 cell, afs_uint32 vol
 
 #ifdef AFS_FREELANCE_CLIENT
     if ( cell == AFS_FAKE_ROOT_CELL_ID && volume == AFS_FAKE_ROOT_VOL_ID ) {
-	cm_noteLocalMountPointChange(FALSE);
-	return 0;
+	return CM_ERROR_NOACCESS;
     }
 #endif
 
@@ -170,7 +190,7 @@ cm_FlushVolume(cm_user_t *userp, cm_req_t *reqp, afs_uint32 cell, afs_uint32 vol
     }
     lock_ReleaseWrite(&cm_scacheLock);
 
-    return code;
+    return 0;
 }
 
 /*
@@ -422,7 +442,7 @@ cm_IoctlGetACL(cm_ioctl_t *ioctlp, cm_user_t *userp, cm_scache_t *scp, cm_req_t 
             code = RXAFS_FetchACL(rxconnp, &afid, &acl, &fileStatus, &volSync);
             rx_PutConnection(rxconnp);
 
-        } while (cm_Analyze(connp, userp, reqp, &scp->fid, 0, &volSync, NULL, NULL, code));
+        } while (cm_Analyze(connp, userp, reqp, &scp->fid, NULL, 0, &fileStatus, &volSync, NULL, NULL, code));
         code = cm_MapRPCError(code, reqp);
 
         if (code)
@@ -520,13 +540,17 @@ cm_IoctlSetACL(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_scache_t *scp,
             code = RXAFS_StoreACL(rxconnp, &fid, &acl, &fileStatus, &volSync);
             rx_PutConnection(rxconnp);
 
-        } while (cm_Analyze(connp, userp, reqp, &scp->fid, 1, &volSync, NULL, NULL, code));
+        } while (cm_Analyze(connp, userp, reqp, &scp->fid, NULL, 1, &fileStatus, &volSync, NULL, NULL, code));
         code = cm_MapRPCError(code, reqp);
 
         /* invalidate cache info, since we just trashed the ACL cache */
         lock_ObtainWrite(&scp->rw);
         cm_DiscardSCache(scp);
         lock_ReleaseWrite(&scp->rw);
+
+        if (RDR_Initialized)
+            RDR_InvalidateObject(scp->fid.cell, scp->fid.volume, scp->fid.vnode, scp->fid.unique,
+                                 scp->fid.hash, scp->fileType, AFS_INVALIDATE_CREDS);
     }
 
     return code;
@@ -558,7 +582,11 @@ cm_IoctlFlushAllVolumes(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_req_t
     }
     lock_ReleaseWrite(&cm_scacheLock);
 
-    return code;
+#ifdef AFS_FREELANCE_CLIENT
+    cm_noteLocalMountPointChange(FALSE);
+#endif
+
+    return 0;
 }
 
 /*
@@ -570,21 +598,15 @@ cm_IoctlFlushAllVolumes(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_req_t
 afs_int32
 cm_IoctlFlushVolume(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_scache_t *scp, cm_req_t *reqp)
 {
-    afs_int32 code;
-    afs_uint32 volume;
-    afs_uint32 cell;
 
 #ifdef AFS_FREELANCE_CLIENT
     if ( scp->fid.cell == AFS_FAKE_ROOT_CELL_ID && scp->fid.volume == AFS_FAKE_ROOT_VOL_ID ) {
-	code = CM_ERROR_NOACCESS;
-    } else
-#endif
-    {
-        volume = scp->fid.volume;
-        cell = scp->fid.cell;
-        code = cm_FlushVolume(userp, reqp, cell, volume);
+	cm_noteLocalMountPointChange(FALSE);
+	return 0;
     }
-    return code;
+#endif
+
+    return cm_FlushVolume(userp, reqp, scp->fid.cell, scp->fid.volume);
 }
 
 /*
@@ -600,13 +622,11 @@ cm_IoctlFlushFile(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_scache_t *s
 
 #ifdef AFS_FREELANCE_CLIENT
     if ( scp->fid.cell == AFS_FAKE_ROOT_CELL_ID && scp->fid.volume == AFS_FAKE_ROOT_VOL_ID ) {
-	code = CM_ERROR_NOACCESS;
-    } else
-#endif
-    {
-        cm_FlushFile(scp, userp, reqp);
+	return CM_ERROR_NOACCESS;
     }
-    return 0;
+#endif
+
+    return cm_FlushFile(scp, userp, reqp);
 }
 
 
@@ -690,7 +710,7 @@ cm_IoctlSetVolumeStatus(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_scach
                                          &storeStat, volName, offLineMsg, motd);
             rx_PutConnection(rxconnp);
 
-        } while (cm_Analyze(tcp, userp, reqp, &scp->fid, 1, NULL, NULL, NULL, code));
+        } while (cm_Analyze(tcp, userp, reqp, &scp->fid, NULL, 1, NULL, NULL, NULL, NULL, code));
         code = cm_MapRPCError(code, reqp);
     }
 
@@ -754,20 +774,30 @@ cm_IoctlGetVolumeStatus(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_scach
     } else
 #endif
     {
-	Name = volName;
-	OfflineMsg = offLineMsg;
-	MOTD = motd;
-	do {
-	    code = cm_ConnFromFID(&scp->fid, userp, reqp, &connp);
-	    if (code) continue;
+        cm_fid_t    vfid;
+        cm_scache_t *vscp;
 
-	    rxconnp = cm_GetRxConn(connp);
-	    code = RXAFS_GetVolumeStatus(rxconnp, scp->fid.volume,
-					 &volStat, &Name, &OfflineMsg, &MOTD);
-	    rx_PutConnection(rxconnp);
+        cm_SetFid(&vfid, scp->fid.cell, scp->fid.volume, 1, 1);
+        code = cm_GetSCache(&vfid, NULL, &vscp, userp, reqp);
+        if (code)
+            return code;
 
-	} while (cm_Analyze(connp, userp, reqp, &scp->fid, 0, NULL, NULL, NULL, code));
-	code = cm_MapRPCError(code, reqp);
+        Name = volName;
+        OfflineMsg = offLineMsg;
+        MOTD = motd;
+        do {
+            code = cm_ConnFromFID(&vfid, userp, reqp, &connp);
+            if (code) continue;
+
+            rxconnp = cm_GetRxConn(connp);
+            code = RXAFS_GetVolumeStatus(rxconnp, vfid.volume,
+                                         &volStat, &Name, &OfflineMsg, &MOTD);
+            rx_PutConnection(rxconnp);
+
+        } while (cm_Analyze(connp, userp, reqp, &vfid, NULL, 0, NULL, NULL, NULL, NULL, code));
+        code = cm_MapRPCError(code, reqp);
+
+        cm_ReleaseSCache(vscp);
     }
 
     if (code)
@@ -1020,7 +1050,7 @@ cm_IoctlWhereIs(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_scache_t *scp
 
         cp = ioctlp->outDatap;
 
-        tsrpp = cm_GetVolServers(tvp, volume, userp, reqp);
+        tsrpp = cm_GetVolServers(tvp, volume, userp, reqp, NULL);
         if (tsrpp == NULL) {
             code = CM_ERROR_NOSUCHVOLUME;
         } else {
@@ -1060,7 +1090,7 @@ cm_IoctlStatMountPoint(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_scache
     cp = cm_ParseIoctlStringAlloc(ioctlp, NULL);
 
     code = cm_Lookup(dscp, cp[0] ? cp : L".", CM_FLAG_NOMOUNTCHASE, userp, reqp, &scp);
-    if (code)
+    if (code && code != CM_ERROR_INEXACT_MATCH)
         goto done_2;
 
     lock_ObtainWrite(&scp->rw);
@@ -1117,7 +1147,7 @@ cm_IoctlDeleteMountPoint(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_scac
     code = cm_Lookup(dscp, cp[0] ? cp : L".", CM_FLAG_NOMOUNTCHASE, userp, reqp, &scp);
 
     /* if something went wrong, bail out now */
-    if (code)
+    if (code && code != CM_ERROR_INEXACT_MATCH)
         goto done3;
 
     lock_ObtainWrite(&scp->rw);
@@ -1182,6 +1212,11 @@ cm_IoctlDeleteMountPoint(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_scac
     cm_DiscardSCache(scp);
     lock_ReleaseWrite(&scp->rw);
     cm_ReleaseSCache(scp);
+
+    if (RDR_Initialized &&
+        !RDR_InvalidateObject(scp->fid.cell, scp->fid.volume, scp->fid.vnode, scp->fid.unique,
+                              scp->fid.hash, scp->fileType, AFS_INVALIDATE_DELETED))
+        buf_ClearRDRFlag(scp, "deleted mp");
 
   done3:
     if (originalName != NULL)
@@ -1263,7 +1298,9 @@ cm_IoctlCheckServers(struct cm_ioctl *ioctlp, struct cm_user *userp)
     /* now return the current down server list */
     cp = ioctlp->outDatap;
     lock_ObtainRead(&cm_serverLock);
-    for (tsp = cm_allServersp; tsp; tsp=tsp->allNextp) {
+    for (tsp = cm_serversAllFirstp;
+	 tsp;
+	 tsp = (cm_server_t *)osi_QNext(&tsp->allq)) {
         if (cellp && tsp->cellp != cellp)
             continue;	/* cell spec'd and wrong */
         if (tsp->flags & CM_SERVERFLAG_DOWN) {
@@ -1272,7 +1309,9 @@ cm_IoctlCheckServers(struct cm_ioctl *ioctlp, struct cm_user *userp)
              * is up, do not report the server as down.
              */
             if (tsp->type == CM_SERVER_FILE) {
-                for (csp = cm_allServersp; csp; csp=csp->allNextp) {
+                for (csp = cm_serversAllFirstp;
+		     csp;
+		     csp = (cm_server_t *)osi_QNext(&csp->allq)) {
                     if (csp->type == CM_SERVER_FILE &&
                         !(csp->flags & CM_SERVERFLAG_DOWN) &&
                         afs_uuid_equal(&tsp->uuid, &csp->uuid)) {
@@ -1401,13 +1440,16 @@ cm_IoctlGetCacheParms(struct cm_ioctl *ioctlp, struct cm_user *userp)
 
     memset(&parms, 0, sizeof(parms));
 
-    /* first we get, in 1K units, the cache size */
+    /* the cache size */
     parms.parms[0] = cm_data.buf_nbuffers * (cm_data.buf_blockSize / 1024);
 
-    /* and then the actual # of buffers in use (not in the free list, I guess,
-     * will be what we do).
+    /*
+     * the used cache space.  this number is not available on windows.
+     * the cm_data.buf_freeCount represents all buffers eligible for recycling.
+     * so we report the entire cache in use since reporting 0 in use disturbs
+     * many users.
      */
-    parms.parms[1] = (cm_data.buf_nbuffers - buf_CountFreeList()) * (cm_data.buf_blockSize / 1024);
+    parms.parms[1] = cm_data.buf_usedCount * (cm_data.buf_blockSize / 1024);
 
     memcpy(ioctlp->outDatap, &parms, sizeof(parms));
     ioctlp->outDatap += sizeof(parms);
@@ -1677,6 +1719,13 @@ cm_IoctlGetWsCell(cm_ioctl_t *ioctlp, cm_user_t *userp)
  * VIOC_AFS_SYSNAME internals.
  *
  * Assumes that pioctl path has been parsed or skipped.
+ *
+ * In order to support both 32-bit and 64-bit sysname lists
+ * we will treat bit-31 of the setSysName value as a flag
+ * indicating which architecture is being indicated.  If unset
+ * the architecture is 32-bit and if set the architecture is
+ * 64-bit.  This change is backward compatible with cache
+ * managers that do not support this extension.
  */
 afs_int32
 cm_IoctlSysName(struct cm_ioctl *ioctlp, struct cm_user *userp)
@@ -1686,9 +1735,13 @@ cm_IoctlSysName(struct cm_ioctl *ioctlp, struct cm_user *userp)
     clientchar_t *inname = NULL;
     int t;
     unsigned int count;
+    int arch64 = 0;
 
     memcpy(&setSysName, ioctlp->inDatap, sizeof(afs_uint32));
     ioctlp->inDatap += sizeof(afs_uint32);
+
+    arch64 = (setSysName & 0x8000000) ? 1 : 0;
+    setSysName &= 0x7FFFFFF;
 
     if (setSysName) {
         /* check my args */
@@ -1714,46 +1767,57 @@ cm_IoctlSysName(struct cm_ioctl *ioctlp, struct cm_user *userp)
     }
 
     /* Not xlating, so local case */
-    if (!cm_sysName)
-        osi_panic("cm_IoctlSysName: !cm_sysName\n", __FILE__, __LINE__);
-
     if (setSysName) {
         /* Local guy; only root can change sysname */
         /* clear @sys entries from the dnlc, once afs_lookup can
          * do lookups of @sys entries and thinks it can trust them */
         /* privs ok, store the entry, ... */
 
-        cm_ClientStrCpy(cm_sysName, lengthof(cm_sysName), inname);
-        cm_ClientStrCpy(cm_sysNameList[0], MAXSYSNAME, inname);
+        cm_ClientStrCpy(arch64 ? cm_sysName64List[0] : cm_sysNameList[0], MAXSYSNAME, inname);
 
         if (setSysName > 1) {       /* ... or list */
             for (count = 1; count < setSysName; ++count) {
                 clientchar_t * newsysname;
 
-                if (!cm_sysNameList[count])
+                if (!(arch64 ? cm_sysName64List[count] : cm_sysNameList[count]))
                     osi_panic("cm_IoctlSysName: no cm_sysNameList entry to write\n",
                               __FILE__, __LINE__);
 
                 newsysname = cm_ParseIoctlStringAlloc(ioctlp, NULL);
-                cm_ClientStrCpy(cm_sysNameList[count], MAXSYSNAME, newsysname);
+                cm_ClientStrCpy(arch64 ? cm_sysName64List[count] : cm_sysNameList[count], MAXSYSNAME, newsysname);
                 free(newsysname);
             }
         }
-        cm_sysNameCount = setSysName;
+        if ( arch64 ) {
+            cm_sysName64Count = setSysName;
+            if (cm_sysName64Count)
+                RDR_SysName( AFS_SYSNAME_ARCH_64BIT, cm_sysName64Count, cm_sysName64List );
+            else if (cm_sysNameCount)
+                RDR_SysName( AFS_SYSNAME_ARCH_64BIT, cm_sysNameCount, cm_sysNameList );
+        } else {
+            cm_sysNameCount = setSysName;
+            RDR_SysName( AFS_SYSNAME_ARCH_32BIT, cm_sysNameCount, cm_sysNameList );
+        }
     } else {
         afs_uint32 i32;
 
-        /* return the sysname to the caller */
-        i32 = cm_sysNameCount;
+        /* return the sysname list to the caller.
+         * if there is no 64-bit list and 64-bit is requested, use the 32-bit list.
+         */
+        if ( arch64 && cm_sysName64Count == 0 )
+            arch64 = 0;
+
+        i32 = arch64 ? cm_sysName64Count : cm_sysNameCount;
         memcpy(ioctlp->outDatap, &i32, sizeof(afs_int32));
         ioctlp->outDatap += sizeof(afs_int32);	/* skip found flag */
 
-        if (cm_sysNameCount) {
-            for ( count=0; count < cm_sysNameCount ; ++count) {   /* ... or list */
-                if ( !cm_sysNameList[count] || *cm_sysNameList[count] == _C('\0'))
+        if (i32) {
+            for ( count=0; count < i32 ; ++count) {   /* ... or list */
+                if ( !(arch64 ? cm_sysName64List[count] : cm_sysNameList[count]) ||
+                     *(arch64 ? cm_sysName64List[count] : cm_sysNameList[count]) == _C('\0'))
                     osi_panic("cm_IoctlSysName: no cm_sysNameList entry to read\n",
                               __FILE__, __LINE__);
-                cm_UnparseIoctlString(ioctlp, NULL, cm_sysNameList[count], -1);
+                cm_UnparseIoctlString(ioctlp, NULL, arch64 ? cm_sysName64List[count] : cm_sysNameList[count], -1);
             }
         }
     }
@@ -1878,9 +1942,9 @@ cm_IoctlSetSPrefs(struct cm_ioctl *ioctlp, struct cm_user *userp)
         if ( tsp )		/* an existing server - ref count increased */
         {
             lock_ObtainMutex(&tsp->mx);
-            tsp->ipRank = rank;
+            tsp->adminRank = rank;
             _InterlockedOr(&tsp->flags, CM_SERVERFLAG_PREF_SET);
-	    tsp->adminRank = tsp->ipRank;
+            cm_RankServer(tsp);
             lock_ReleaseMutex(&tsp->mx);
 
             switch (type) {
@@ -1902,11 +1966,9 @@ cm_IoctlSetSPrefs(struct cm_ioctl *ioctlp, struct cm_user *userp)
         {
             tsp = cm_NewServer(&tmp, type, NULL, NULL, CM_FLAG_NOPROBE); /* refcount = 1 */
             lock_ObtainMutex(&tsp->mx);
-            tsp->ipRank = rank;
+            tsp->adminRank = rank;
             _InterlockedOr(&tsp->flags, CM_SERVERFLAG_PREF_SET);
-	    tsp->adminRank = tsp->ipRank;
             lock_ReleaseMutex(&tsp->mx);
-            tsp->ipRank = rank;
         }
 	cm_PutServer(tsp);  /* decrease refcount */
     }
@@ -1936,7 +1998,9 @@ cm_IoctlGetSPrefs(struct cm_ioctl *ioctlp, struct cm_user *userp)
 
     lock_ObtainRead(&cm_serverLock); /* get server lock */
 
-    for (tsp=cm_allServersp, i=0; tsp && noServers; tsp=tsp->allNextp,i++){
+    for (tsp = cm_serversAllFirstp, i=0;
+	 tsp && noServers;
+	 tsp = (cm_server_t *)osi_QNext(&tsp->allq),i++){
         if (spin->offset > i) {
             continue;    /* catch up to where we left off */
         }
@@ -1947,7 +2011,7 @@ cm_IoctlGetSPrefs(struct cm_ioctl *ioctlp, struct cm_user *userp)
             continue;   /* ignore vlservers */
 
         srvout->host = tsp->addr.sin_addr;
-        srvout->rank = tsp->ipRank;
+        srvout->rank = tsp->activeRank;
         srvout++;
         spout->num_servers++;
         noServers--;
@@ -1995,6 +2059,13 @@ cm_IoctlCreateMountPoint(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_scac
 
     /* Extract the possibly partial cell name */
     mpp = cm_ParseIoctlStringAlloc(ioctlp, NULL);
+
+    len = cm_ClientStrLen(mpp);
+    if (len <= 1 || mpp[len-1] != L'.') {
+        code = CM_ERROR_INVAL;
+        goto done;
+    }
+
     cell = cm_ClientCharNext(mpp);
     if (cp = cm_ClientStrChr(cell, ':')) {
 
@@ -2012,7 +2083,8 @@ cm_IoctlCreateMountPoint(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_scac
             goto done;
         }
 
-        StringCbPrintfA(mpInfo, sizeof(mpInfo), "%c%s:%s.", (char) *mpp,
+        /* fsvolume includes the trailing dot */
+        StringCbPrintfA(mpInfo, sizeof(mpInfo), "%c%s:%s", (char) *mpp,
                         fullCell, fsvolume);
 
     } else {
@@ -2022,10 +2094,9 @@ cm_IoctlCreateMountPoint(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_scac
         cellp = cm_FindCellByID(dscp->fid.cell, CM_FLAG_NOPROBE);
     }
 
-    /* remove the trailing dot if it is present */
+    /* remove the trailing dot */
     len = strlen(fsvolume);
-    if (len > 1 && fsvolume[len-1] == '.')
-        fsvolume[len-1] = '\0';
+    fsvolume[len-1] = '\0';
 
     /* validate the target info */
     if (cm_VolNameIsID(fsvolume)) {
@@ -2059,10 +2130,16 @@ cm_IoctlCreateMountPoint(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_scac
         code = cm_SymLink(dscp, leaf, mpInfo, 0, &tattr, userp, reqp, NULL);
     }
 
-    if (code == 0 && (dscp->flags & CM_SCACHEFLAG_ANYWATCH))
-        smb_NotifyChange(FILE_ACTION_ADDED,
-                         FILE_NOTIFY_CHANGE_DIR_NAME,
-                         dscp, leaf, NULL, TRUE);
+    if (code == 0) {
+        if (dscp->flags & CM_SCACHEFLAG_ANYWATCH)
+            smb_NotifyChange(FILE_ACTION_ADDED,
+                             FILE_NOTIFY_CHANGE_DIR_NAME,
+                             dscp, leaf, NULL, TRUE);
+
+        if (RDR_Initialized)
+            RDR_InvalidateObject(dscp->fid.cell, dscp->fid.volume, dscp->fid.vnode, dscp->fid.unique,
+                                 dscp->fid.hash, dscp->fileType, AFS_INVALIDATE_DATA_VERSION);
+    }
 
   done:
     if (volp)
@@ -2128,11 +2205,18 @@ cm_IoctlSymlink(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_scache_t *dsc
         code = cm_SymLink(dscp, leaf, cp, 0, &tattr, userp, reqp, NULL);
     }
 
-    if (code == 0 && (dscp->flags & CM_SCACHEFLAG_ANYWATCH))
-        smb_NotifyChange(FILE_ACTION_ADDED,
-                          FILE_NOTIFY_CHANGE_FILE_NAME
-                          | FILE_NOTIFY_CHANGE_DIR_NAME,
-                          dscp, leaf, NULL, TRUE);
+    if (code == 0) {
+        if (dscp->flags & CM_SCACHEFLAG_ANYWATCH)
+            smb_NotifyChange(FILE_ACTION_ADDED,
+                             FILE_NOTIFY_CHANGE_FILE_NAME
+                             | FILE_NOTIFY_CHANGE_DIR_NAME,
+                             dscp, leaf, NULL, TRUE);
+
+        if (RDR_Initialized)
+            RDR_InvalidateObject(dscp->fid.cell, dscp->fid.volume, dscp->fid.vnode, dscp->fid.unique,
+                                 dscp->fid.hash, dscp->fileType, AFS_INVALIDATE_DATA_VERSION);
+    }
+
     return code;
 }
 
@@ -2162,7 +2246,7 @@ cm_IoctlListlink(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_scache_t *ds
     clientp = cm_Utf8ToClientStringAlloc(cp, -1, NULL);
     code = cm_Lookup(dscp, clientp[0] ? clientp : L".", CM_FLAG_NOMOUNTCHASE, userp, reqp, &scp);
     free(clientp);
-    if (code)
+    if (code && code != CM_ERROR_INEXACT_MATCH)
         return code;
 
     /* Check that it's a real symlink */
@@ -2231,7 +2315,7 @@ cm_IoctlIslink(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_scache_t *dscp
     clientp = cm_Utf8ToClientStringAlloc(cp, -1, NULL);
     code = cm_Lookup(dscp, clientp[0] ? clientp : L".", CM_FLAG_NOMOUNTCHASE, userp, reqp, &scp);
     free(clientp);
-    if (code)
+    if (code && code != CM_ERROR_INEXACT_MATCH)
         return code;
 
     /* Check that it's a real symlink */
@@ -2269,7 +2353,7 @@ cm_IoctlDeletelink(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_scache_t *
     code = cm_Lookup(dscp, clientp[0] ? clientp : L".", CM_FLAG_NOMOUNTCHASE, userp, reqp, &scp);
 
     /* if something went wrong, bail out now */
-    if (code)
+    if (code && code != CM_ERROR_INEXACT_MATCH)
         goto done3;
 
     lock_ObtainWrite(&scp->rw);
@@ -2343,6 +2427,11 @@ cm_IoctlDeletelink(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_scache_t *
     cm_DiscardSCache(scp);
     lock_ReleaseWrite(&scp->rw);
     cm_ReleaseSCache(scp);
+
+    if (RDR_Initialized &&
+        !RDR_InvalidateObject(scp->fid.cell, scp->fid.volume, scp->fid.vnode, scp->fid.unique,
+                              scp->fid.hash, scp->fileType, AFS_INVALIDATE_DELETED))
+        buf_ClearRDRFlag(scp, "deleted link");
 
   done3:
     free(clientp);
@@ -2527,8 +2616,14 @@ cm_IoctlSetToken(struct cm_ioctl *ioctlp, struct cm_user *userp)
     }
 
     if (flags & PIOCTL_LOGON) {
-        userp = smb_FindCMUserByName(smbname, ioctlp->fidp->vcp->rname,
+        clientchar_t *cname;
+
+        cname = cm_FsStringToClientStringAlloc(smbname, -1, NULL);
+
+        userp = smb_FindCMUserByName(cname, ioctlp->fidp->vcp->rname,
 				     SMB_FLAG_CREATE|SMB_FLAG_AFSLOGON);
+        if (cname)
+            free(cname);
 	release_userp = 1;
     }
 
@@ -3225,11 +3320,11 @@ cm_IoctlMemoryDump(struct cm_ioctl *ioctlp, struct cm_user *userp)
     /* dump all interesting data */
     cm_MemDumpDirStats(hLogFile, cookie, 1);
     cm_MemDumpBPlusStats(hLogFile, cookie, 1);
-    cm_DumpCells(hLogFile, cookie, 1);
-    cm_DumpVolumes(hLogFile, cookie, 1);
-    cm_DumpSCache(hLogFile, cookie, 1);
-    cm_DumpBufHashTable(hLogFile, cookie, 1);
-    cm_DumpServers(hLogFile, cookie, 1);
+    cm_DumpCells(hLogFile, cookie, !RDR_Initialized);
+    cm_DumpVolumes(hLogFile, cookie, !RDR_Initialized);
+    cm_DumpSCache(hLogFile, cookie, !RDR_Initialized);
+    cm_DumpBufHashTable(hLogFile, cookie, !RDR_Initialized);
+    cm_DumpServers(hLogFile, cookie, !RDR_Initialized);
     smb_DumpVCP(hLogFile, cookie, 1);
     rx_DumpCalls(hLogFile, cookie);
     rx_DumpPackets(hLogFile, cookie);
@@ -3250,17 +3345,18 @@ cm_CheckServersStatus(cm_serverRef_t *serversp)
     afs_int32 code = 0;
     cm_serverRef_t *tsrp;
     cm_server_t *tsp;
-    int someBusy = 0, someOffline = 0, allOffline = 1, allBusy = 1, allDown = 1;
+    int someBusy = 0, someOffline = 0, allOffline = 1, allBusy = 1, allDown = 1, allDeleted = 1;
 
     if (serversp == NULL) {
-	osi_Log1(afsd_logp, "cm_CheckServersStatus returning 0x%x", CM_ERROR_ALLDOWN);
-	return CM_ERROR_ALLDOWN;
+	osi_Log1(afsd_logp, "cm_CheckServersStatus returning 0x%x", CM_ERROR_EMPTY);
+	return CM_ERROR_EMPTY;
     }
 
     lock_ObtainRead(&cm_serverLock);
     for (tsrp = serversp; tsrp; tsrp=tsrp->next) {
         if (tsrp->status == srv_deleted)
             continue;
+        allDeleted = 0;
         if (tsp = tsrp->server) {
             cm_GetServerNoLock(tsp);
             if (!(tsp->flags & CM_SERVERFLAG_DOWN)) {
@@ -3283,7 +3379,9 @@ cm_CheckServersStatus(cm_serverRef_t *serversp)
     }
     lock_ReleaseRead(&cm_serverLock);
 
-    if (allDown)
+    if (allDeleted)
+        code = CM_ERROR_EMPTY;
+    else if (allDown)
         code = CM_ERROR_ALLDOWN;
     else if (allBusy)
         code = CM_ERROR_ALLBUSY;
@@ -3504,5 +3602,71 @@ cm_IoctlSetUnixMode(struct cm_ioctl *ioctlp, struct cm_user *userp, cm_scache_t 
 
         code = cm_SetAttr(scp, &attr, userp, reqp);
     }
+    return code;
+}
+
+/*
+ * VIOC_GETVERIFYDATA internals.
+ *
+ * Assumes that pioctl path has been parsed or skipped.
+ */
+afs_int32
+cm_IoctlGetVerifyData(cm_ioctl_t *ioctlp)
+{
+    memcpy(ioctlp->outDatap, &cm_verifyData, sizeof(cm_verifyData));
+    ioctlp->outDatap += sizeof(cm_verifyData);
+
+    return 0;
+}
+
+/*
+ * VIOC_SETVERIFYDATA internals.
+ *
+ * Assumes that pioctl path has been parsed or skipped.
+ */
+afs_int32
+cm_IoctlSetVerifyData(cm_ioctl_t *ioctlp)
+{
+    memcpy(&cm_verifyData, ioctlp->inDatap, sizeof(cm_verifyData));
+
+    return 0;
+}
+
+/*
+ * VIOC_GETCALLERACCESS internals.
+ *
+ * Assumes that pioctl path has been parsed or skipped.
+ */
+
+afs_int32
+cm_IoctlGetCallerAccess(cm_ioctl_t *ioctlp, struct cm_user *userp, cm_scache_t *scp, cm_req_t *reqp)
+{
+    afs_int32 code;
+    afs_uint32 rights = 0;
+    int haveRights = 0;
+    char *cp;
+
+    lock_ObtainWrite(&scp->rw);
+    code = cm_SyncOp(scp, NULL, userp, reqp, 0,
+                     CM_SCACHESYNC_NEEDCALLBACK | CM_SCACHESYNC_GETSTATUS);
+    if (code == 0) {
+        haveRights = cm_HaveAccessRights(scp, userp, reqp, 0xFF0000FF, &rights);
+        cm_SyncOpDone(scp, NULL, CM_SCACHESYNC_NEEDCALLBACK | CM_SCACHESYNC_GETSTATUS);
+    }
+    lock_ReleaseWrite(&scp->rw);
+
+    cp = ioctlp->outDatap;
+    /* Copy all this junk into msg->im_data, keeping track of the lengths. */
+    if (haveRights)
+        memcpy(cp, (char *)&rights, sizeof(afs_uint32));
+    else
+        memcpy(cp, (char *)&scp->anyAccess, sizeof(afs_uint32));
+    cp += sizeof(afs_uint32);
+    memcpy(cp, (char *)&scp->anyAccess, sizeof(afs_uint32));
+    cp += sizeof(afs_uint32);
+
+    /* return new size */
+    ioctlp->outDatap = cp;
+
     return code;
 }

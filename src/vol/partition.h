@@ -33,7 +33,7 @@
 #endif
 
 #include "lock.h"
-#if defined(AFS_DEMAND_ATTACH_FS) || defined(AFS_DEMAND_ATTACH_UTIL)
+#ifdef AFS_DEMAND_ATTACH_FS
 # include <pthread.h>
 #endif
 
@@ -50,6 +50,11 @@
 #define VICE_ALWAYSATTACH_FILE	"AlwaysAttach"
 #endif
 
+/* If a file by this name exists in a /vicepX directory, it means that
+ * this directory should NOT be used as an AFS partition.
+ */
+#define VICE_NEVERATTACH_FILE	"NeverAttach"
+
 /**
  * abstraction for files used for file-locking.
  */
@@ -58,12 +63,12 @@ struct VLockFile {
     char *path;             /**< path to the lock file */
     int refcount;           /**< how many locks we have on the file */
 
-#if defined(AFS_PTHREAD_ENV) || defined(AFS_DEMAND_ATTACH_UTIL)
+#ifdef AFS_PTHREAD_ENV
     pthread_mutex_t mutex;  /**< lock for the VLockFile struct */
-#endif /* AFS_PTHREAD_ENV || AFS_DEMAND_ATTACH_UTIL */
+#endif /* AFS_PTHREAD_ENV */
 };
 
-#if defined(AFS_DEMAND_ATTACH_FS) || defined(AFS_DEMAND_ATTACH_UTIL)
+#ifdef AFS_DEMAND_ATTACH_FS
 /*
  * flag bits for 'flags' in struct VDiskLock.
  */
@@ -85,13 +90,13 @@ struct VDiskLock {
 
     unsigned int flags;         /**< see above for flag bits */
 };
-#endif /* AFS_DEMAND_ATTACH_FS || AFS_DEMAND_ATTACH_UTIL */
+#endif /* AFS_DEMAND_ATTACH_FS */
 
 
-/* For NT, the roles of "name" and "devName" are reversed. That is, "name"
- * refers to the drive letter name and "devName" refers to the /vicep style
- * or name. The reason for this is that a lot of places assume that "name"
- * is the right thing to use to access the partition. Silly of them isn't it?
+/* For NT, the roles of "name" and "devName" are no longer reversed. 
+ * That is, "name" refers to the canonical name (/vicep) style and
+ * "devName" refers to drive name.
+ *
  * The NT version of VInitPartition does the intial setup. There is an NT
  * variant for VGetPartition as well. Also, the VolPartitionInfo RPC does
  * a swap before sending the data out on the wire.
@@ -126,7 +131,7 @@ struct DiskPartition64 {
 				 * from the superblock */
     int flags;
     afs_int64 f_files;		/* total number of files in this partition */
-#if defined(AFS_DEMAND_ATTACH_FS) || defined(AFS_DEMAND_ATTACH_UTIL)
+#ifdef AFS_DEMAND_ATTACH_FS
     struct {
 	struct rx_queue head;   /* list of volumes on this partition (VByPList) */
 	afs_uint32 len;         /* length of volume list */
@@ -137,7 +142,7 @@ struct DiskPartition64 {
     struct VDiskLock headerLock; /* lock for the collective headers on the partition */
 
     struct VLockFile volLockFile; /* lock file for individual volume locks */
-#endif /* AFS_DEMAND_ATTACH_FS || AFS_DEMAND_ATTACH_UTIL */
+#endif /* AFS_DEMAND_ATTACH_FS */
 };
 
 struct DiskPartitionStats64 {
@@ -155,11 +160,9 @@ struct DiskPartitionStats64 {
 				 * using the same drive. Will be dumped before
 				 * all partitions attached.
 				 */
-#define PART_NEWLY_MOUNTED 4
 
 #ifdef AFS_NT40_ENV
 #include <WINNT/vptab.h>
-extern int VValidVPTEntry(struct vptab *vptp);
 #endif
 
 

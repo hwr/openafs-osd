@@ -7,7 +7,10 @@
  * directory or online at http://www.openafs.org/dl/license10.html
  */
 
+#include <afsconfig.h>
 #include <afs/param.h>
+#include <roken.h>
+
 #include <afs/stds.h>
 
 #include <windows.h>
@@ -1928,7 +1931,7 @@ int smb_FindShare(smb_vc_t *vcp, smb_user_t *uidp,
         p = pathName;
         cchlen = lengthof(pathName);
 
-        /* within this code block, we maintain, cchlen = writeable
+        /* within this code block, we maintain, cchlen = writable
            buffer length of p */
 
         if (cm_ClientStrCmpN(p, cm_mountRootC, cm_mountRootCLen) == 0) {
@@ -3075,7 +3078,7 @@ void smb_SendPacket(smb_vc_t *vcp, smb_packet_t *inp)
         smb_FreeNCB(ncbp);
 }
 
-void smb_MapNTError(long code, unsigned long *NTStatusp)
+void smb_MapNTError(long code, unsigned long *NTStatusp, afs_uint32 redir)
 {
     unsigned long NTStatus;
 
@@ -3091,26 +3094,34 @@ void smb_MapNTError(long code, unsigned long *NTStatusp)
         NTStatus = 0xC0000034L;	/* Name not found */
     }
     else if (code == CM_ERROR_TIMEDOUT) {
+        if (redir)
+            NTStatus = 0xC0020052L; /* RPC_NT_COMM_FAILURE */
+        else {
 #ifdef COMMENT
-        NTStatus = 0xC00000CFL;	/* Sharing Paused */
+            NTStatus = 0xC00000CFL;	/* Sharing Paused */
 
-        /* Do not send Timeout to the SMB redirector.
-         * It causes the redirector to drop the connection */
-        NTStatus = 0x00000102L; /* Timeout */
-        /* do not send Retry to the SMB redirector.
-         * It believes the error comes from the transport
-         * layer not from the SMB server. */
-        NTStatus = 0xC000022DL;	/* Retry */
+            /* Do not send Timeout to the SMB redirector.
+             * It causes the redirector to drop the connection */
+            NTStatus = 0x00000102L; /* Timeout */
+            /* do not send Retry to the SMB redirector.
+             * It believes the error comes from the transport
+             * layer not from the SMB server. */
+            NTStatus = 0xC000022DL;	/* Retry */
 #else
-        NTStatus = 0xC00000B5L;	/* I/O Timeout */
+            NTStatus = 0xC00000B5L;	/* I/O Timeout */
 #endif
+        }
     }
     else if (code == CM_ERROR_RETRY) {
+        if (redir)
+            NTStatus = 0xC000022DL;	/* Retry */
+        else {
 #ifdef COMMENT
-        NTStatus = 0xC000022DL;	/* Retry */
+            NTStatus = 0xC000022DL;	/* Retry */
 #else
-        NTStatus = 0xC00000B5L; /* I/O Timeout */
+            NTStatus = 0xC00000B5L; /* I/O Timeout */
 #endif
+        }
     }
     else if (code == CM_ERROR_NOACCESS) {
         NTStatus = 0xC0000022L;	/* Access denied */
@@ -3130,6 +3141,9 @@ void smb_MapNTError(long code, unsigned long *NTStatusp)
     }
     else if (code == CM_ERROR_INVAL) {
         NTStatus = 0xC000000DL;	/* Invalid parameter */
+    }
+    else if (code == CM_ERROR_INVAL_NET_RESP) {
+        NTStatus = 0xC00000C3L; /* Invalid network response */
     }
     else if (code == CM_ERROR_BADFD) {
         NTStatus = 0xC0000008L;	/* Invalid handle */
@@ -3184,7 +3198,14 @@ void smb_MapNTError(long code, unsigned long *NTStatusp)
         NTStatus = 0xC09820FBL;	/* SMB use standard */
     }
     else if (code == CM_ERROR_QUOTA) {
-        NTStatus = 0xC0000044L;	/* Quota exceeded */
+        /*
+         * AFS Redirector does not support Windows quota
+         * interface.  Always report disk full instead.
+         */
+        if (redir)
+            NTStatus = 0xC000007FL;	/* Disk full */
+        else
+            NTStatus = 0xC0000044L;	/* Quota exceeded */
     }
     else if (code == CM_ERROR_SPACE) {
         NTStatus = 0xC000007FL;	/* Disk full */
@@ -3242,7 +3263,9 @@ void smb_MapNTError(long code, unsigned long *NTStatusp)
         NTStatus = 0xC0020018L; /* RPC_NT_SERVER_TOO_BUSY */
 #endif
     }
-    else if (code == CM_ERROR_ALLOFFLINE || code == CM_ERROR_ALLDOWN) {
+    else if (code == CM_ERROR_ALLOFFLINE ||
+             code == CM_ERROR_ALLDOWN ||
+             code == CM_ERROR_EMPTY) {
 #ifdef COMMENT
         NTStatus = 0xC000003AL; /* Path not found */
 #else
@@ -3267,10 +3290,16 @@ void smb_MapNTError(long code, unsigned long *NTStatusp)
     else if (code == ENOMEM) {
         NTStatus = 0xC0000017L; /* Out of Memory */
     }
+    else if (code == EIO) {
+	NTStatus = 0xC000016AL;	/* Disk Operation Failure */
+    }
     else if (code == CM_ERROR_RPC_MOREDATA) {
 	NTStatus = 0x80000005L;	/* Buffer overflow */
     }
-    else  {
+    else {
+        char foo[256];
+        sprintf(foo, "No mapping for 0x%X using 0xC0982001\r\n", code);
+        OutputDebugString(foo);
         NTStatus = 0xC0982001L;	/* SMB non-specific error */
     }
 
@@ -4626,6 +4655,7 @@ smb_ApplyDirListPatches(cm_scache_t * dscp, smb_dirListPatch_t **dirPatchespp,
     clientchar_t path[AFSPATHMAX];
     afs_uint32 rights;
     afs_int32 mustFake = 0;
+    afs_int32 nobulkstat = 0;
 
     lock_ObtainWrite(&dscp->rw);
     code = cm_FindACLCache(dscp, userp, &rights);
@@ -4646,7 +4676,9 @@ smb_ApplyDirListPatches(cm_scache_t * dscp, smb_dirListPatch_t **dirPatchespp,
         cm_bulkStat_t *bsp = malloc(sizeof(cm_bulkStat_t));
 
         memset(bsp, 0, sizeof(cm_bulkStat_t));
+        bsp->userp = userp;
 
+      restart_patchset:
         for (patchp = *dirPatchespp, count=0;
              patchp;
              patchp = (smb_dirListPatch_t *) osi_QNext(&patchp->q)) {
@@ -4656,7 +4688,7 @@ smb_ApplyDirListPatches(cm_scache_t * dscp, smb_dirListPatch_t **dirPatchespp,
             if (tscp) {
                 if (lock_TryWrite(&tscp->rw)) {
                     /* we have an entry that we can look at */
-                    if (!(tscp->flags & CM_SCACHEFLAG_EACCESS) && cm_HaveCallback(tscp)) {
+                    if (!cm_EAccesFindEntry(userp, &tscp->fid) && cm_HaveCallback(tscp)) {
                         /* we have a callback on it.  Don't bother
                         * fetching this stat entry, since we're happy
                         * with the info we have.
@@ -4665,6 +4697,15 @@ smb_ApplyDirListPatches(cm_scache_t * dscp, smb_dirListPatch_t **dirPatchespp,
                         cm_ReleaseSCache(tscp);
                         continue;
                     }
+
+                    if (nobulkstat) {
+                        code = cm_SyncOp(tscp, NULL, userp, reqp, 0,
+                                          CM_SCACHESYNC_NEEDCALLBACK | CM_SCACHESYNC_GETSTATUS);
+                        lock_ReleaseWrite(&tscp->rw);
+                        cm_ReleaseSCache(tscp);
+                        continue;
+                    }
+
                     lock_ReleaseWrite(&tscp->rw);
                 } /* got lock */
                 cm_ReleaseSCache(tscp);
@@ -4678,6 +4719,17 @@ smb_ApplyDirListPatches(cm_scache_t * dscp, smb_dirListPatch_t **dirPatchespp,
             if (bsp->counter == AFSCBMAX) {
                 code = cm_TryBulkStatRPC(dscp, bsp, userp, reqp);
                 memset(bsp, 0, sizeof(cm_bulkStat_t));
+                bsp->userp = userp;
+
+                if (code == CM_ERROR_BULKSTAT_FAILURE) {
+                    /*
+                     * If bulk stat cannot be used for this directory
+                     * we must perform individual fetch status calls.
+                     * Restart from the beginning of the patch series.
+                     */
+                    nobulkstat = 1;
+                    goto restart_patchset;
+                }
             }
         }
 
@@ -4697,7 +4749,7 @@ smb_ApplyDirListPatches(cm_scache_t * dscp, smb_dirListPatch_t **dirPatchespp,
         reqp->relPathp = path;
         reqp->tidPathp = tidPathp;
 
-        code = cm_GetSCache(&patchp->fid, &scp, userp, reqp);
+        code = cm_GetSCache(&patchp->fid, &dscp->fid, &scp, userp, reqp);
         reqp->relPathp = reqp->tidPathp = NULL;
 
         if (code) {
@@ -4706,7 +4758,7 @@ smb_ApplyDirListPatches(cm_scache_t * dscp, smb_dirListPatch_t **dirPatchespp,
             continue;
         }
         lock_ObtainWrite(&scp->rw);
-        if (mustFake || (scp->flags & CM_SCACHEFLAG_EACCESS) || !cm_HaveCallback(scp)) {
+        if (mustFake || cm_EAccesFindEntry(userp, &scp->fid) || !cm_HaveCallback(scp)) {
             lock_ReleaseWrite(&scp->rw);
 
             /* set the attribute */
@@ -5072,7 +5124,7 @@ long smb_ReceiveCoreSearchDir(smb_vc_t *vcp, smb_packet_t *inp, smb_packet_t *ou
                 bufferp = NULL;
             }
             lock_ReleaseWrite(&scp->rw);
-            code = buf_Get(scp, &thyper, &req, &bufferp);
+            code = buf_Get(scp, &thyper, &req, 0, &bufferp);
             lock_ObtainMutex(&dsp->mx);
 
             /* now, if we're doing a star match, do bulk fetching of all of
@@ -5164,7 +5216,7 @@ long smb_ReceiveCoreSearchDir(smb_vc_t *vcp, smb_packet_t *inp, smb_packet_t *ou
 
         /* Compute 8.3 name if necessary */
         actualName = cm_FsStringToClientStringAlloc(dep->name, -1, NULL);
-        if (dep->fid.vnode != 0 && !cm_Is8Dot3(actualName)) {
+        if (dep->fid.vnode != 0 && cm_shortNames && !cm_Is8Dot3(actualName)) {
             if (actualName)
                 free(actualName);
             cm_Gen8Dot3NameInt(dep->name, &dep->fid, shortName, &shortNameEnd);
@@ -5922,6 +5974,7 @@ int smb_UnlinkProc(cm_scache_t *dscp, cm_dirEntry_t *dep, void *vrockp, osi_hype
     match = cm_MatchMask(matchName, rockp->maskp, caseFold);
     if (!match &&
         (rockp->flags & SMB_MASKFLAG_TILDE) &&
+        cm_shortNames &&
         !cm_Is8Dot3(matchName)) {
         cm_Gen8Dot3Name(dep, matchName, NULL);
         /* 8.3 matches are always case insensitive */
@@ -6128,6 +6181,7 @@ int smb_RenameProc(cm_scache_t *dscp, cm_dirEntry_t *dep, void *vrockp, osi_hype
     match = cm_MatchMask(matchName, rockp->maskp, caseFold);
     if (!match &&
         (rockp->flags & SMB_MASKFLAG_TILDE) &&
+        cm_shortNames &&
         !cm_Is8Dot3(matchName)) {
         cm_Gen8Dot3Name(dep, matchName, NULL);
         match = cm_MatchMask(matchName, rockp->maskp, caseFold);
@@ -6588,6 +6642,7 @@ int smb_RmdirProc(cm_scache_t *dscp, cm_dirEntry_t *dep, void *vrockp, osi_hyper
         match = (cm_ClientStrCmp(matchName, rockp->maskp) == 0);
     if (!match &&
          (rockp->flags & SMB_MASKFLAG_TILDE) &&
+         cm_shortNames &&
          !cm_Is8Dot3(matchName)) {
         cm_Gen8Dot3Name(dep, matchName, NULL);
         match = (cm_ClientStrCmpI(matchName, rockp->maskp) == 0);
@@ -6805,7 +6860,7 @@ int smb_FullNameProc(cm_scache_t *scp, cm_dirEntry_t *dep, void *rockp,
         return 0;
     }
 
-    if (!cm_Is8Dot3(matchName)) {
+    if (cm_shortNames && !cm_Is8Dot3(matchName)) {
         clientchar_t shortName[13];
 
         cm_Gen8Dot3Name(dep, shortName, NULL);
@@ -6935,8 +6990,10 @@ long smb_CloseFID(smb_vc_t *vcp, smb_fid_t *fidp, cm_user_t *userp,
 
         lock_ReleaseMutex(&fidp->mx);
 
-        /* CM_UNLOCK_BY_FID doesn't look at the process ID.  We pass
-              * in zero. */
+        /*
+         * CM_UNLOCK_FLAG_BY_FID doesn't look at the process ID.
+         * We pass in zero.
+         */
         key = cm_GenerateKey(vcp->vcID, 0, fidp->fid);
         lock_ObtainWrite(&scp->rw);
 
@@ -6951,7 +7008,7 @@ long smb_CloseFID(smb_vc_t *vcp, smb_fid_t *fidp, cm_user_t *userp,
             goto post_syncopdone;
         }
 
-        cm_UnlockByKey(scp, key, CM_UNLOCK_BY_FID, userp, &req);
+        cm_UnlockByKey(scp, key, CM_UNLOCK_FLAG_BY_FID, userp, &req);
 
 	cm_SyncOpDone(scp, NULL, CM_SCACHESYNC_NEEDCALLBACK | CM_SCACHESYNC_GETSTATUS | CM_SCACHESYNC_LOCK);
 
@@ -7192,7 +7249,7 @@ long smb_ReadData(smb_fid_t *fidp, osi_hyper_t *offsetp, afs_uint32 count, char 
             }
             lock_ReleaseWrite(&scp->rw);
 
-            code = buf_Get(scp, &thyper, &req, &bufferp);
+            code = buf_Get(scp, &thyper, &req, 0, &bufferp);
 
             lock_ObtainWrite(&scp->rw);
             if (code) goto done;
@@ -7382,7 +7439,7 @@ long smb_WriteData(smb_fid_t *fidp, osi_hyper_t *offsetp, afs_uint32 count, char
             }
             lock_ReleaseWrite(&scp->rw);
 
-            code = buf_Get(scp, &thyper, &req, &bufferp);
+            code = buf_Get(scp, &thyper, &req, 0, &bufferp);
 
             lock_ObtainMutex(&bufferp->mx);
             lock_ObtainWrite(&scp->rw);
@@ -7510,18 +7567,27 @@ long smb_WriteData(smb_fid_t *fidp, osi_hyper_t *offsetp, afs_uint32 count, char
         if (smb_AsyncStore > 0) {
             if (doWriteBack) {
                 long code2;
+                rock_BkgStore_t *rockp = malloc(sizeof(*rockp));
 
-                lock_ObtainWrite(&scp->rw);
-                osi_Log1(smb_logp, "smb_WriteData fid %d calling cm_SyncOp ASYNCSTORE",
-                          fidp->fid);
-                code2 = cm_SyncOp(scp, NULL, userp, &req, 0, CM_SCACHESYNC_ASYNCSTORE);
-                osi_Log2(smb_logp, "smb_WriteData fid %d calling cm_SyncOp ASYNCSTORE returns 0x%x",
-                          fidp->fid, code2);
-                lock_ReleaseWrite(&scp->rw);
-                cm_QueueBKGRequest(scp, cm_BkgStore, writeBackOffset.LowPart,
-                                    writeBackOffset.HighPart,
-                                    smb_AsyncStoreSize, 0, userp, &req);
-                /* cm_SyncOpDone is called at the completion of cm_BkgStore */
+                if (rockp) {
+                    lock_ObtainWrite(&scp->rw);
+                    osi_Log1(smb_logp, "smb_WriteData fid %d calling cm_SyncOp ASYNCSTORE",
+                             fidp->fid);
+                    code2 = cm_SyncOp(scp, NULL, userp, &req, 0, CM_SCACHESYNC_ASYNCSTORE);
+                    osi_Log2(smb_logp, "smb_WriteData fid %d calling cm_SyncOp ASYNCSTORE returns 0x%x",
+                             fidp->fid, code2);
+                    lock_ReleaseWrite(&scp->rw);
+                    if (code2 == 0) {
+                        rockp->length = smb_AsyncStoreSize;
+                        rockp->offset = writeBackOffset;
+
+                        cm_QueueBKGRequest(scp, cm_BkgStore, rockp, userp, &req);
+                        /* cm_SyncOpDone is called at the completion of cm_BkgStore */
+                        /* rock is freed by cm_BkgDaemon */
+                    } else {
+                        free(rockp);
+                    }
+                }
             }
         } else {
             cm_BufWrite(scp, offsetp, *writtenp, 0, userp, &req);
@@ -8702,7 +8768,7 @@ void smb_DispatchPacket(smb_vc_t *vcp, smb_packet_t *inp, smb_packet_t *outp,
          */
         if (code) {
             if (vcp->flags & SMB_VCFLAG_STATUS32) {
-                smb_MapNTError(code, &NTStatus);
+                smb_MapNTError(code, &NTStatus, FALSE);
                 outWctp = outp->wctp;
                 smbp = (smb_t *) &outp->data;
                 if (code != CM_ERROR_PARTIALWRITE
@@ -9903,7 +9969,7 @@ void smb_Listener(void *parmp)
 
             if (vcp->flags & SMB_VCFLAG_STATUS32) {
                 unsigned long NTStatus;
-                smb_MapNTError(code, &NTStatus);
+                smb_MapNTError(code, &NTStatus, FALSE);
                 outWctp = outp->wctp;
                 smbp = (smb_t *) &outp->data;
                 *outWctp++ = 0;
@@ -10000,8 +10066,8 @@ exit_thread:
     return;
 }
 
-static void
-configureBackConnectionHostNames(void)
+void
+smb_configureBackConnectionHostNames(int bEnable)
 {
     /* On Windows XP SP2, Windows 2003 SP1, and all future Windows operating systems
      * there is a restriction on the use of SMB authentication on loopback connections.
@@ -10042,10 +10108,31 @@ configureBackConnectionHostNames(void)
     DWORD dwSize, dwAllocSize;
     DWORD dwValue;
     PBYTE pHostNames = NULL, pName = NULL;
+    PBYTE pOrigNames = NULL, pOrig = NULL;
     BOOL  bNameFound = FALSE;
+    DWORD dwLoopbackCheckDisabled;
+    DWORD dwszBackConnectionHostNames;
+    size_t nbsize = strlen(cm_NetbiosName) + 2;
+    size_t len;
     static BOOL bLoopbackCheckDisabled = FALSE;
 
-    /* BackConnectionHostNames and DisableLoopbackCheck */
+    /* DisableLoopbackCheck */
+    if ( RegOpenKeyEx( HKEY_LOCAL_MACHINE,
+                       "SYSTEM\\CurrentControlSet\\Control\\Lsa",
+                       0,
+                       KEY_READ|KEY_WRITE,
+                       &hkLsa) == ERROR_SUCCESS )
+    {
+        dwSize = sizeof(DWORD);
+        if ( RegQueryValueEx( hkLsa, "DisableLoopbackCheck", 0, &dwType, (LPBYTE)&dwLoopbackCheckDisabled, &dwSize) != ERROR_SUCCESS)
+        {
+            dwLoopbackCheckDisabled = 0;
+        }
+    } else {
+        hkLsa = INVALID_HANDLE_VALUE;
+    }
+
+    /* BackConnectionHostNames */
     if ( RegOpenKeyEx( HKEY_LOCAL_MACHINE,
                        "SYSTEM\\CurrentControlSet\\Control\\Lsa\\MSV1_0",
                        0,
@@ -10059,12 +10146,12 @@ configureBackConnectionHostNames(void)
 	    dwAllocSize += 1 /* in case the source string is not nul terminated */
 		+ (DWORD)strlen(cm_NetbiosName) + 2;
 	    pHostNames = malloc(dwAllocSize);
-	    dwSize = dwAllocSize;
+	    dwszBackConnectionHostNames = dwAllocSize;
             if (RegQueryValueEx( hkMSV10, "BackConnectionHostNames", 0, &dwType,
-				 pHostNames, &dwSize) == ERROR_SUCCESS)
+				 pHostNames, &dwszBackConnectionHostNames) == ERROR_SUCCESS)
             {
 		for (pName = pHostNames;
-		     (pName - pHostNames < (int) dwSize) && *pName ;
+		     (pName - pHostNames < (int) dwszBackConnectionHostNames) && *pName ;
 		     pName += strlen(pName) + 1)
 		{
 		    if ( !stricmp(pName, cm_NetbiosName) ) {
@@ -10075,33 +10162,27 @@ configureBackConnectionHostNames(void)
 	    }
         }
 
-        if ( !bNameFound ) {
-            size_t size = strlen(cm_NetbiosName) + 2;
-            if ( !pHostNames ) {
-                pHostNames = malloc(size);
-		pName = pHostNames;
-            }
-            StringCbCopyA(pName, size, cm_NetbiosName);
-            pName += size - 1;
-            *pName = '\0';  /* add a second nul terminator */
+        if ( bEnable ) {
+            if ( !bNameFound ) {
+                size_t size = strlen(cm_NetbiosName) + 2;
+                if ( !pHostNames ) {
+                    pHostNames = malloc(size);
+                    pName = pHostNames;
+                }
+                StringCbCopyA(pName, size, cm_NetbiosName);
+                pName += size - 1;
+                *pName = '\0';  /* add a second nul terminator */
 
-            dwType = REG_MULTI_SZ;
-	    dwSize = (DWORD)(pName - pHostNames + 1);
-            RegSetValueEx( hkMSV10, "BackConnectionHostNames", 0, dwType, pHostNames, dwSize);
+                dwType = REG_MULTI_SZ;
+                dwSize = (DWORD)(pName - pHostNames + 1);
+                RegSetValueEx( hkMSV10, "BackConnectionHostNames", 0, dwType, pHostNames, dwSize);
 
-            if ( RegOpenKeyEx( HKEY_LOCAL_MACHINE,
-                               "SYSTEM\\CurrentControlSet\\Control\\Lsa",
-                               0,
-                               KEY_READ|KEY_WRITE,
-                               &hkLsa) == ERROR_SUCCESS )
-            {
-                dwSize = sizeof(DWORD);
-                if ( RegQueryValueEx( hkLsa, "DisableLoopbackCheck", 0, &dwType, (LPBYTE)&dwValue, &dwSize) != ERROR_SUCCESS ||
-                     dwValue == 0 ) {
+                if ( hkLsa != INVALID_HANDLE_VALUE && !dwLoopbackCheckDisabled)
+                {
                     dwType = REG_DWORD;
                     dwSize = sizeof(DWORD);
-                    dwValue = 1;
-                    RegSetValueEx( hkLsa, "DisableLoopbackCheck", 0, dwType, (LPBYTE)&dwValue, dwSize);
+                    dwLoopbackCheckDisabled = 1;
+                    RegSetValueEx( hkLsa, "DisableLoopbackCheck", 0, dwType, (LPBYTE)&dwLoopbackCheckDisabled, dwSize);
 
                     if (RegCreateKeyEx( HKEY_LOCAL_MACHINE,
                                         AFSREG_CLT_OPENAFS_SUBKEY,
@@ -10120,35 +10201,82 @@ configureBackConnectionHostNames(void)
                         bLoopbackCheckDisabled = TRUE;
                         RegCloseKey(hkClient);
                     }
-                    RegCloseKey(hkLsa);
                 }
-            }
-        } else if (!bLoopbackCheckDisabled) {
-            if (RegCreateKeyEx( HKEY_LOCAL_MACHINE,
-                                AFSREG_CLT_OPENAFS_SUBKEY,
-                                0,
-                                NULL,
-                                REG_OPTION_NON_VOLATILE,
-                                KEY_READ|KEY_WRITE,
-                                NULL,
-                                &hkClient,
-                                NULL) == ERROR_SUCCESS) {
+            } else if (!bLoopbackCheckDisabled && hkLsa != INVALID_HANDLE_VALUE) {
+                if (RegCreateKeyEx( HKEY_LOCAL_MACHINE,
+                                    AFSREG_CLT_OPENAFS_SUBKEY,
+                                    0,
+                                    NULL,
+                                    REG_OPTION_NON_VOLATILE,
+                                    KEY_READ|KEY_WRITE,
+                                    NULL,
+                                    &hkClient,
+                                    NULL) == ERROR_SUCCESS) {
 
-                dwSize = sizeof(DWORD);
-                if ( RegQueryValueEx( hkClient, "RemoveDisableLoopbackCheck", 0, &dwType, (LPBYTE)&dwValue, &dwSize) == ERROR_SUCCESS &&
-                     dwValue == 1 ) {
-                    if ( RegOpenKeyEx( HKEY_LOCAL_MACHINE,
-                                       "SYSTEM\\CurrentControlSet\\Control\\Lsa",
-                                       0,
-                                       KEY_READ|KEY_WRITE,
-                                       &hkLsa) == ERROR_SUCCESS )
-                    {
+                    dwSize = sizeof(DWORD);
+                    if ( RegQueryValueEx( hkClient, "RemoveDisableLoopbackCheck", 0, &dwType, (LPBYTE)&dwValue, &dwSize) == ERROR_SUCCESS &&
+                         dwValue == 1 ) {
                         RegDeleteValue(hkLsa, "DisableLoopbackCheck");
-                        RegCloseKey(hkLsa);
                     }
                 }
                 RegDeleteValue(hkClient, "RemoveDisableLoopbackCheck");
                 RegCloseKey(hkClient);
+            }
+        } else {
+            /*
+             * Disable SMB.  Start by removing the DisableLoopbackCheck value if present.
+             */
+            if (hkLsa != INVALID_HANDLE_VALUE) {
+                if (RegCreateKeyEx( HKEY_LOCAL_MACHINE,
+                                    AFSREG_CLT_OPENAFS_SUBKEY,
+                                    0,
+                                    NULL,
+                                    REG_OPTION_NON_VOLATILE,
+                                    KEY_READ|KEY_WRITE,
+                                    NULL,
+                                    &hkClient,
+                                    NULL) == ERROR_SUCCESS) {
+
+                    dwSize = sizeof(DWORD);
+                    if ( RegQueryValueEx( hkClient, "RemoveDisableLoopbackCheck", 0, &dwType, (LPBYTE)&dwValue, &dwSize) == ERROR_SUCCESS &&
+                         dwValue == 1 ) {
+                        RegDeleteValue(hkLsa, "DisableLoopbackCheck");
+                    }
+                }
+                RegDeleteValue(hkClient, "RemoveDisableLoopbackCheck");
+                RegCloseKey(hkClient);
+            }
+
+            /* Then remove our NetbiosName from the BackConnectionHostNames list */
+            if ( bNameFound ) {
+                /*
+                * we found our name so if the size of the value is smaller
+                * or equal to the length of our name alone, we are done.
+                */
+                if ( dwszBackConnectionHostNames <= nbsize ) {
+                    RegDeleteValue( hkMSV10, "BackConnectionHostNames");
+                } else {
+                    pOrigNames = pHostNames;
+                    pHostNames = malloc(dwAllocSize);
+
+                    pOrig = pOrigNames;
+                    pName = pHostNames;
+                    while (pOrig - pOrigNames < dwszBackConnectionHostNames) {
+                        len = strlen(pOrig);
+                        if ( stricmp(pOrig, cm_NetbiosName)) {
+                            /* not our name */
+                            StringCbCopyA(pName, dwAllocSize - (pName - pHostNames), pOrig);
+                            pName += len + 1;
+                        }
+                        pOrig += len + 1;
+                    }
+                    *pName = '\0';  /* add a second nul terminator */
+                    pName++;
+
+                    dwType = REG_MULTI_SZ;
+                    dwSize = (DWORD)(pName - pHostNames + 1);
+                    RegSetValueEx( hkMSV10, "BackConnectionHostNames", 0, dwType, pHostNames, dwSize);
+                }
             }
         }
 
@@ -10157,19 +10285,28 @@ configureBackConnectionHostNames(void)
             pHostNames = NULL;
         }
 
+        if (pOrigNames) {
+            free(pOrigNames);
+            pOrigNames = NULL;
+        }
+
         RegCloseKey(hkMSV10);
+    }
+
+    if ( hkLsa != INVALID_HANDLE_VALUE ) {
+        RegCloseKey(hkLsa);
     }
 }
 
 
-static void
-configureExtendedSMBSessionTimeouts(void)
+void
+smb_configureExtendedSMBSessionTimeouts(int bEnable)
 {
     /*
      * In a Hot Fix to Windows 2003 SP2, the smb redirector was given the following
      * new functionality:
      *
-     *  [HKLM\SYSTEM\CurrentControlSet\Services\LanManWorkstation\Parameters]
+     *  [HKLM\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters]
      *   "ReconnectableServers"            REG_MULTI_SZ
      *   "ExtendedSessTimeout"             REG_DWORD  (seconds)
      *   "ServersWithExtendedSessTimeout"  REG_MULTI_SZ
@@ -10177,32 +10314,36 @@ configureExtendedSMBSessionTimeouts(void)
      * These values can be used to prevent the smb redirector from timing out
      * smb connection to the afs smb server prematurely.
      */
-    HKEY hkLanMan;
+    HKEY hkLanman;
     DWORD dwType;
     DWORD dwSize, dwAllocSize;
     DWORD dwValue;
-    PBYTE pHostNames = NULL, pName = NULL;
+    PBYTE pHostNames = NULL, pOrigNames = NULL, pName = NULL, pOrig = NULL;
     BOOL  bNameFound = FALSE;
+    DWORD dwszReconnectableServers;
+    DWORD dwszServersWithExtendedSessTimeout;
+    size_t nbsize = strlen(cm_NetbiosName) + 2;
+    size_t len;
 
     if ( RegOpenKeyEx( HKEY_LOCAL_MACHINE,
-                       "SYSTEM\\CurrentControlSet\\Services\\LanManWorkstation\\Parameters",
+                       "SYSTEM\\CurrentControlSet\\Services\\LanmanWorkstation\\Parameters",
                        0,
                        KEY_READ|KEY_WRITE,
-                       &hkLanMan) == ERROR_SUCCESS )
+                       &hkLanman) == ERROR_SUCCESS )
     {
-        if ((RegQueryValueEx( hkLanMan, "ReconnectableServers", 0,
+        if ((RegQueryValueEx( hkLanman, "ReconnectableServers", 0,
 			     &dwType, NULL, &dwAllocSize) == ERROR_SUCCESS) &&
             (dwType == REG_MULTI_SZ))
         {
 	    dwAllocSize += 1 /* in case the source string is not nul terminated */
 		+ (DWORD)strlen(cm_NetbiosName) + 2;
 	    pHostNames = malloc(dwAllocSize);
-	    dwSize = dwAllocSize;
-            if (RegQueryValueEx( hkLanMan, "ReconnectableServers", 0, &dwType,
-				 pHostNames, &dwSize) == ERROR_SUCCESS)
+	    dwszReconnectableServers = dwAllocSize;
+            if (RegQueryValueEx( hkLanman, "ReconnectableServers", 0, &dwType,
+				 pHostNames, &dwszReconnectableServers) == ERROR_SUCCESS)
             {
 		for (pName = pHostNames;
-		     (pName - pHostNames < (int) dwSize) && *pName ;
+		     (pName - pHostNames < (int) dwszReconnectableServers) && *pName ;
 		     pName += strlen(pName) + 1)
 		{
 		    if ( !stricmp(pName, cm_NetbiosName) ) {
@@ -10213,7 +10354,98 @@ configureExtendedSMBSessionTimeouts(void)
 	    }
         }
 
-        if ( !bNameFound ) {
+        /*
+         * If our name was not found and we are enabling SMB,
+         * add our name to the current value.
+         */
+        if ( bEnable && !bNameFound ) {
+            if ( !pHostNames ) {
+                pHostNames = malloc(nbsize);
+		pName = pHostNames;
+            }
+            StringCbCopyA(pName, nbsize, cm_NetbiosName);
+            pName += nbsize - 1;
+            *pName = '\0';  /* add a second nul terminator */
+
+            dwType = REG_MULTI_SZ;
+	    dwSize = (DWORD)(pName - pHostNames + 1);
+            RegSetValueEx( hkLanman, "ReconnectableServers", 0, dwType, pHostNames, dwSize);
+        }
+
+        /*
+         * If our name was found and we are disabling SMB,
+         * remove our name from the list and update the value.
+         * If our name is the only entry, remove the value.
+         */
+        if ( !bEnable && bNameFound ) {
+            /*
+             * we found our name so if the size of the value is smaller
+             * or equal to the length of our name alone, we are done.
+             */
+            if ( dwszReconnectableServers <= nbsize ) {
+                RegDeleteValue( hkLanman, "ReconnectableServers");
+            } else {
+                pOrigNames = pHostNames;
+                pHostNames = malloc(dwAllocSize);
+
+                pOrig = pOrigNames;
+                pName = pHostNames;
+                while (pOrig - pOrigNames <dwszReconnectableServers ) {
+                    len = strlen(pOrig);
+                    if ( stricmp(pOrig, cm_NetbiosName)) {
+                        /* not our name */
+                        StringCbCopyA(pName, dwAllocSize - (pName - pHostNames), pOrig);
+                        pName += len + 1;
+                    }
+                    pOrig += len + 1;
+                }
+                *pName = '\0';  /* add a second nul terminator */
+                pName++;
+
+                dwType = REG_MULTI_SZ;
+                dwSize = (DWORD)(pName - pHostNames + 1);
+                RegSetValueEx( hkLanman, "ReconnectableServers", 0, dwType, pHostNames, dwSize);
+            }
+        }
+
+        if (pHostNames) {
+            free(pHostNames);
+            pHostNames = NULL;
+        }
+
+        if (pOrigNames) {
+            free(pOrigNames);
+            pOrigNames = NULL;
+        }
+
+        if ((RegQueryValueEx( hkLanman, "ServersWithExtendedSessTimeout", 0,
+			     &dwType, NULL, &dwAllocSize) == ERROR_SUCCESS) &&
+            (dwType == REG_MULTI_SZ))
+        {
+	    dwAllocSize += 1 /* in case the source string is not nul terminated */
+		+ (DWORD)strlen(cm_NetbiosName) + 2;
+	    pHostNames = malloc(dwAllocSize);
+	    dwszServersWithExtendedSessTimeout = dwAllocSize;
+            if (RegQueryValueEx( hkLanman, "ServersWithExtendedSessTimeout", 0, &dwType,
+				 pHostNames, &dwszServersWithExtendedSessTimeout) == ERROR_SUCCESS)
+            {
+		for (pName = pHostNames;
+		     (pName - pHostNames < (int) dwszServersWithExtendedSessTimeout) && *pName ;
+		     pName += strlen(pName) + 1)
+		{
+		    if ( !stricmp(pName, cm_NetbiosName) ) {
+			bNameFound = TRUE;
+			break;
+		    }
+		}
+	    }
+        }
+
+        /*
+         * If our name was not found and we are enabling SMB,
+         * add our name to the current value.
+         */
+        if ( bEnable && !bNameFound ) {
             size_t size = strlen(cm_NetbiosName) + 2;
             if ( !pHostNames ) {
                 pHostNames = malloc(size);
@@ -10225,50 +10457,43 @@ configureExtendedSMBSessionTimeouts(void)
 
             dwType = REG_MULTI_SZ;
 	    dwSize = (DWORD)(pName - pHostNames + 1);
-            RegSetValueEx( hkLanMan, "ReconnectableServers", 0, dwType, pHostNames, dwSize);
+            RegSetValueEx( hkLanman, "ServersWithExtendedSessTimeout", 0, dwType, pHostNames, dwSize);
         }
 
-        if (pHostNames) {
-            free(pHostNames);
-            pHostNames = NULL;
-        }
+        /*
+         * If our name was found and we are disabling SMB,
+         * remove our name from the list and update the value.
+         * If our name is the only entry, remove the value.
+         */
+        if ( !bEnable && bNameFound ) {
+            /*
+             * we found our name so if the size of the value is smaller
+             * or equal to the length of our name alone, we are done.
+             */
+            if ( dwszServersWithExtendedSessTimeout <= nbsize ) {
+                RegDeleteValue( hkLanman, "ServersWithExtendedSessTimeout");
+            } else {
+                pOrigNames = pHostNames;
+                pHostNames = malloc(dwAllocSize);
 
-        if ((RegQueryValueEx( hkLanMan, "ServersWithExtendedSessTimeout", 0,
-			     &dwType, NULL, &dwAllocSize) == ERROR_SUCCESS) &&
-            (dwType == REG_MULTI_SZ))
-        {
-	    dwAllocSize += 1 /* in case the source string is not nul terminated */
-		+ (DWORD)strlen(cm_NetbiosName) + 2;
-	    pHostNames = malloc(dwAllocSize);
-	    dwSize = dwAllocSize;
-            if (RegQueryValueEx( hkLanMan, "ServersWithExtendedSessTimeout", 0, &dwType,
-				 pHostNames, &dwSize) == ERROR_SUCCESS)
-            {
-		for (pName = pHostNames;
-		     (pName - pHostNames < (int) dwSize) && *pName ;
-		     pName += strlen(pName) + 1)
-		{
-		    if ( !stricmp(pName, cm_NetbiosName) ) {
-			bNameFound = TRUE;
-			break;
-		    }
-		}
-	    }
-        }
+                pOrig = pOrigNames;
+                pName = pHostNames;
+                while (pOrig - pOrigNames < dwszServersWithExtendedSessTimeout) {
+                    len = strlen(pOrig);
+                    if ( stricmp(pOrig, cm_NetbiosName)) {
+                        /* not our name */
+                        StringCbCopyA(pName, dwAllocSize - (pName - pHostNames), pOrig);
+                        pName += len + 1;
+                    }
+                    pOrig += len + 1;
+                }
+                *pName = '\0';  /* add a second nul terminator */
+                pName++;
 
-        if ( !bNameFound ) {
-            size_t size = strlen(cm_NetbiosName) + 2;
-            if ( !pHostNames ) {
-                pHostNames = malloc(size);
-		pName = pHostNames;
+                dwType = REG_MULTI_SZ;
+                dwSize = (DWORD)(pName - pHostNames + 1);
+                RegSetValueEx( hkLanman, "ServersWithExtendedSessTimeout", 0, dwType, pHostNames, dwSize);
             }
-            StringCbCopyA(pName, size, cm_NetbiosName);
-            pName += size - 1;
-            *pName = '\0';  /* add a second nul terminator */
-
-            dwType = REG_MULTI_SZ;
-	    dwSize = (DWORD)(pName - pHostNames + 1);
-            RegSetValueEx( hkLanMan, "ServersWithExtendedSessTimeout", 0, dwType, pHostNames, dwSize);
         }
 
         if (pHostNames) {
@@ -10276,16 +10501,23 @@ configureExtendedSMBSessionTimeouts(void)
             pHostNames = NULL;
         }
 
-        if ((RegQueryValueEx( hkLanMan, "ExtendedSessTimeout", 0,
-                              &dwType, (LPBYTE)&dwValue, &dwAllocSize) != ERROR_SUCCESS) ||
-             (dwType != REG_DWORD))
-        {
-            dwType = REG_DWORD;
-	    dwSize = sizeof(dwValue);
-            dwValue = 300;      /* 5 minutes */
-            RegSetValueEx( hkLanMan, "ExtendedSessTimeout", 0, dwType, (const BYTE *)&dwValue, dwSize);
+        if (pOrigNames) {
+            free(pOrigNames);
+            pOrigNames = NULL;
         }
-        RegCloseKey(hkLanMan);
+
+        if ( bEnable ) {
+            if ((RegQueryValueEx( hkLanman, "ExtendedSessTimeout", 0,
+                                  &dwType, (LPBYTE)&dwValue, &dwAllocSize) != ERROR_SUCCESS) ||
+                 (dwType != REG_DWORD))
+            {
+                dwType = REG_DWORD;
+                dwSize = sizeof(dwValue);
+                dwValue = 300;      /* 5 minutes */
+                RegSetValueEx( hkLanman, "ExtendedSessTimeout", 0, dwType, (const BYTE *)&dwValue, dwSize);
+            }
+        }
+        RegCloseKey(hkLanman);
     }
 }
 
@@ -10400,6 +10632,9 @@ int smb_NetbiosInit(int locked)
     int len;
     int lana_found = 0;
     lana_number_t lanaNum;
+
+    if (!smb_Enabled)
+        return 0;
 
     if (!locked)
         lock_ObtainMutex(&smb_StartedLock);
@@ -10585,6 +10820,9 @@ void smb_StartListeners(int locked)
     int lpid;
     thread_t phandle;
 
+    if (!smb_Enabled)
+        return;
+
     if (!locked)
         lock_ObtainMutex(&smb_StartedLock);
 
@@ -10596,12 +10834,12 @@ void smb_StartListeners(int locked)
 
     afsi_log("smb_StartListeners");
     /* Ensure the AFS Netbios Name is registered to allow loopback access */
-    configureBackConnectionHostNames();
+    smb_configureBackConnectionHostNames(TRUE);
 
     /* Configure Extended SMB Session Timeouts */
     if (msftSMBRedirectorSupportsExtendedTimeouts()) {
         afsi_log("Microsoft SMB Redirector supports Extended Timeouts");
-        configureExtendedSMBSessionTimeouts();
+        smb_configureExtendedSMBSessionTimeouts(TRUE);
     }
 
     smb_ListenerState = SMB_LISTENER_STARTED;
@@ -10625,6 +10863,9 @@ void smb_StartListeners(int locked)
 
 void smb_RestartListeners(int locked)
 {
+    if (!smb_Enabled)
+        return;
+
     if (!locked)
         lock_ObtainMutex(&smb_StartedLock);
 
@@ -10679,6 +10920,9 @@ void smb_StopListeners(int locked)
     NCB *ncbp;
     int lana, l;
 
+    if (!smb_Enabled)
+        return;
+
     if (!locked)
         lock_ObtainMutex(&smb_StartedLock);
 
@@ -10731,6 +10975,9 @@ void smb_Init(osi_log_t *logp, int useV3,
     EVENT_HANDLE retHandle;
     char eventName[MAX_PATH];
     int startListeners = 0;
+
+    if (!smb_Enabled)
+        return;
 
     smb_MBfunc = aMBfunc;
 
@@ -11092,6 +11339,9 @@ void smb_Shutdown(void)
     afs_uint32 i;
     smb_vc_t *vcp;
 
+    if (!smb_Enabled)
+        return;
+
     /*fprintf(stderr, "Entering smb_Shutdown\n");*/
 
     /* setup the NCB system */
@@ -11322,7 +11572,7 @@ int smb_DumpVCP(FILE *outputFile, char *cookie, int lock)
                      cookie, ucellp, ucellp->cellp, ucellp->flags, ucellp->ticketLen, ucellp->kvno,
                      ucellp->expirationTime, ucellp->gen,
                      ucellp->userName,
-                     ucellp->cellp->name);
+                     ucellp->cellp ? ucellp->cellp->name : "<null>");
             WriteFile(outputFile, output, (DWORD)strlen(output), &zilch, NULL);
         }
 
@@ -11334,9 +11584,11 @@ int smb_DumpVCP(FILE *outputFile, char *cookie, int lock)
     WriteFile(outputFile, output, (DWORD)strlen(output), &zilch, NULL);
 
 
+    if (!smb_Enabled)
+        goto done;
+
     sprintf(output, "begin dumping smb_waitingLockRequest_t\r\n");
     WriteFile(outputFile, output, (DWORD)strlen(output), &zilch, NULL);
-
 
     for ( wlrp = smb_allWaitingLocks; wlrp; wlrp = (smb_waitingLockRequest_t *) osi_QNext(&wlrp->q)) {
         smb_waitingLock_t *lockp;
@@ -11465,6 +11717,7 @@ int smb_DumpVCP(FILE *outputFile, char *cookie, int lock)
     sprintf(output, "done dumping DEAD smb_vc_t\r\n");
     WriteFile(outputFile, output, (DWORD)strlen(output), &zilch, NULL);
 
+  done:
     if (lock)
         lock_ReleaseRead(&smb_rctLock);
     return 0;
@@ -11473,6 +11726,10 @@ int smb_DumpVCP(FILE *outputFile, char *cookie, int lock)
 long smb_IsNetworkStarted(void)
 {
     long rc;
+
+    if (!smb_Enabled)
+        return 0;
+
     lock_ObtainWrite(&smb_globalLock);
     rc = (smb_ListenerState == SMB_LISTENER_STARTED && smbShutdownFlag == 0);
     lock_ReleaseWrite(&smb_globalLock);

@@ -59,6 +59,9 @@ typedef int (*cm_DirFuncp_t)(struct cm_scache *, struct cm_dirEntry *, void *,
 #define CM_PREFIX_VOL "@vol:"
 #define CM_PREFIX_VOL_CCH 5
 
+/* Maximum number of expanded components in a path */
+#define MAX_FID_COUNT 512
+
 /* arrays */
 
 extern fschar_t cm_foldUpper[];
@@ -149,7 +152,7 @@ extern long cm_AssembleLink(cm_scache_t *linkScp, fschar_t *pathSuffixp,
                             cm_scache_t **newRootScpp, cm_space_t **newSpaceBufferp,
                             cm_user_t *userp, cm_req_t *reqp);
 
-extern int cm_ExpandSysName(clientchar_t *inp, clientchar_t *outp, long outSizeCch,
+extern int cm_ExpandSysName(cm_req_t *reqp, clientchar_t *inp, clientchar_t *outp, long outSizeCch,
                             unsigned int sysNameIndex);
 
 extern long cm_Open(cm_scache_t *scp, int type, cm_user_t *userp);
@@ -174,9 +177,14 @@ typedef struct cm_lock_data {
     LARGE_INTEGER LOffset, LLength;
 } cm_lock_data_t;
 
-extern long cm_CheckNTOpen(cm_scache_t *scp, unsigned int desiredAccess,
-                           unsigned int createDisp, cm_user_t *userp,
-                           cm_req_t *reqp, cm_lock_data_t ** ldpp);
+extern long cm_CheckNTOpen(cm_scache_t *scp,
+                           unsigned int desiredAccess,
+                           unsigned int shareAccess,
+                           unsigned int createDisp,
+                           afs_offs_t process_id,
+                           afs_offs_t handle_id,
+                           cm_user_t *userp, cm_req_t *reqp,
+                           cm_lock_data_t ** ldpp);
 
 extern long cm_CheckNTOpenDone(cm_scache_t *scp, cm_user_t *userp, cm_req_t *reqp,
 			       cm_lock_data_t ** ldpp);
@@ -197,15 +205,14 @@ extern long cm_Lock(cm_scache_t *scp, unsigned char sLockType,
                     int allowWait, cm_user_t *userp, cm_req_t *reqp,
                     cm_file_lock_t **lockpp);
 
-#define CM_UNLOCK_BY_FID 	0x0001
-
 extern long cm_UnlockByKey(cm_scache_t * scp,
                            cm_key_t key,
                            afs_uint32 flags,
                            cm_user_t * userp,
                            cm_req_t * reqp);
 
-#define CM_UNLOCK_FLAG_MATCH_RANGE      0x01
+#define CM_UNLOCK_FLAG_BY_FID 	        0x0001
+#define CM_UNLOCK_FLAG_MATCH_RANGE      0x0002
 
 extern long cm_Unlock(cm_scache_t *scp, unsigned char sLockType,
                       LARGE_INTEGER LOffset, LARGE_INTEGER LLength, cm_key_t key,
@@ -234,9 +241,11 @@ extern long cm_RetryLock(cm_file_lock_t *oldFileLock, int client_is_dead);
 #define CM_SESSION_CMINT    0xfffd
 #define CM_SESSION_RESERVED 0xfff0
 
-extern cm_key_t cm_GenerateKey(afs_uint16 session_id, afs_offs_t process_id, afs_uint16 file_id);
+extern cm_key_t cm_GenerateKey(afs_uint16 session_id, afs_offs_t process_id, afs_uint64 file_id);
 
 extern int cm_KeyEquals(cm_key_t * k1, cm_key_t * k2, int flags);
+
+extern int cm_IsSpaceAvailable(cm_fid_t * fidp, osi_hyper_t *sizep, cm_user_t *userp, cm_req_t *reqp);
 
 #define MAX_SYMLINK_COUNT 64
 
@@ -248,6 +257,7 @@ extern int cm_KeyEquals(cm_key_t * k1, cm_key_t * k2, int flags);
 
 /* rock for bulk stat calls */
 typedef struct cm_bulkStat {
+    cm_user_t *userp;
     osi_hyper_t bufOffset;	/* only do it for things in this buffer page */
 
     /* info for the actual call */

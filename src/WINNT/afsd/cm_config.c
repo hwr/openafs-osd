@@ -7,20 +7,22 @@
  * directory or online at http://www.openafs.org/dl/license10.html
  */
 
+
+#include <afsconfig.h>
+#include <afs/param.h>
+#include <afs/stds.h>
+
+#include <roken.h>
+
 #include <windows.h>
 #include <winsock2.h>
 #include <shlwapi.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
 #include <strsafe.h>
 
 #include "afsd.h"
 #include <WINNT\afssw.h>
 #include <WINNT\afsreg.h>
 
-#include <afs/param.h>
-#include <afs/stds.h>
 #include <afs/cellconfig.h>
 
 #include "cm_dns.h"
@@ -474,7 +476,7 @@ long cm_SearchCellRegistry(afs_uint32 client,
     DWORD dwType, dwSize;
     DWORD dwCells, dwServers, dwForceDNS;
     DWORD dwIndex, dwRank, dwPort;
-    unsigned short ipRank;
+    unsigned short adminRank;
     unsigned short vlPort;
     LONG code;
     FILETIME ftLastWriteTime;
@@ -655,9 +657,9 @@ long cm_SearchCellRegistry(afs_uint32 client,
         code = RegQueryValueEx(hkServerName, "Rank", NULL, &dwType,
                                 (BYTE *) &dwRank, &dwSize);
         if (code == ERROR_SUCCESS && dwType == REG_DWORD) {
-            ipRank = (unsigned short)(dwRank <= 65535 ? dwRank : 65535);
+            adminRank = (unsigned short)(dwRank <= 65535 ? dwRank : 65535);
         } else {
-            ipRank = 0;
+            adminRank = 0;
         }
 
         dwSize = sizeof(szAddr);
@@ -686,7 +688,7 @@ long cm_SearchCellRegistry(afs_uint32 client,
             vlSockAddr.sin_family = AF_INET;
             /* sin_port supplied by connection code */
             if (procp)
-                (*procp)(rockp, &vlSockAddr, s, ipRank);
+                (*procp)(rockp, &vlSockAddr, s, adminRank);
         } else if (szAddr[0]) {
             afs_uint32 ip_addr;
             unsigned int c1, c2, c3, c4;
@@ -709,7 +711,7 @@ long cm_SearchCellRegistry(afs_uint32 client,
                 vlSockAddr.sin_family = AF_INET;
                 /* sin_port supplied by connection code */
                 if (procp)
-                    (*procp)(rockp, &vlSockAddr, s, ipRank);
+                    (*procp)(rockp, &vlSockAddr, s, adminRank);
             }
         }
 
@@ -838,15 +840,16 @@ long cm_EnumerateCellRegistry(afs_uint32 client, cm_enumCellProc_t *procp, void 
     LONG code;
     FILETIME ftLastWriteTime;
     char szCellName[CELL_MAXNAMELEN];
+	char * subkey = AFSREG_CLT_OPENAFS_SUBKEY "\\CellServDB";
 
     /* No server CellServDB in the registry. */
     if (!client || procp == NULL)
         return 0;
 
     if (RegOpenKeyEx( HKEY_LOCAL_MACHINE,
-                      AFSREG_CLT_OPENAFS_SUBKEY "\\CellServDB",
+		      subkey,
                       0,
-                      KEY_READ|KEY_WRITE|KEY_QUERY_VALUE,
+		      KEY_READ|KEY_QUERY_VALUE,
                       &hkCellServDB) != ERROR_SUCCESS)
         return 0;
 
@@ -892,7 +895,7 @@ long cm_SearchCellByDNS(char *cellNamep, char *newCellNamep, int *ttl,
     int rc;
     int  cellHostAddrs[AFSMAXCELLHOSTS];
     char cellHostNames[AFSMAXCELLHOSTS][MAXHOSTCHARS];
-    unsigned short ipRanks[AFSMAXCELLHOSTS];
+    unsigned short adminRanks[AFSMAXCELLHOSTS];
     unsigned short ports[AFSMAXCELLHOSTS];      /* network byte order */
     int numServers;
     int i;
@@ -914,15 +917,15 @@ long cm_SearchCellByDNS(char *cellNamep, char *newCellNamep, int *ttl,
 	return -1;
 
     rc = getAFSServer("afs3-vlserver", "udp", cellNamep, htons(7003),
-                      cellHostAddrs, cellHostNames, ports, ipRanks, &numServers, ttl);
+                      cellHostAddrs, cellHostNames, ports, adminRanks, &numServers, ttl);
     if (rc == 0 && numServers > 0) {     /* found the cell */
-        for (i = 0; i < numServers; i++) {
+	for (i = 0; i < numServers; i++) {
             memcpy(&vlSockAddr.sin_addr.s_addr, &cellHostAddrs[i],
                    sizeof(long));
             vlSockAddr.sin_port = ports[i];
             vlSockAddr.sin_family = AF_INET;
             if (procp)
-                (*procp)(rockp, &vlSockAddr, cellHostNames[i], ipRanks[i]);
+                (*procp)(rockp, &vlSockAddr, cellHostNames[i], adminRanks[i]);
         }
         if (newCellNamep) {
             if(FAILED(StringCchCopy(newCellNamep, CELL_MAXNAMELEN, cellNamep)))

@@ -22,8 +22,8 @@
 /* salvager data structures */
 struct InodeSummary {		/* Inode summary file--an entry for each
 				 * volume in the inode file for a partition */
-    VolId volumeId;		/* Volume id */
-    VolId RWvolumeId;		/* RW volume associated */
+    VolumeId volumeId;		/* Volume id */
+    VolumeId RWvolumeId;		/* RW volume associated */
     int index;			/* index into inode file (0, 1, 2 ...) */
     int nInodes;		/* Number of inodes for this volume */
     int nSpecialInodes;		/* Number of special inodes, i.e.  volume
@@ -61,8 +61,8 @@ struct VolumeSummary {		/* Volume summary an entry for each
     byte wouldNeedCallback;	/* set if the file server should issue
 				 * call backs for all the files in this volume when
 				 * the volume goes back on line */
-    byte unused;		/* is this volume 'extra'? i.e. not referenced
-				 * by anything? */
+    byte unused;                /* is this volume 'extra'? i.e. not referenced
+                                 * by anything? */
 };
 
 struct VnodeInfo {
@@ -95,11 +95,6 @@ struct VnodeInfo {
 	int author;		/* File author */
 	int owner;		/* File owner */
 	int group;		/* File group */
-        union {
-            struct OsdMetadata o;
-            bit32 vnodemagic;       /* Magic number--mainly for file server
-                                     * paranoia checks */
-        } u;
     } *vnodes;
 };
 
@@ -138,11 +133,6 @@ extern int ShowMounts;		        /* -showmounts flag */
 extern int orphans;	                /* -orphans option */
 extern int Showmode;
 
-#ifndef AFS_NT40_ENV
-extern int useSyslog;		        /* -syslog flag */
-extern int useSyslogFacility;	        /* -syslogfacility option */
-#endif
-
 #define	MAXPARALLEL	32
 
 extern int OKToZap;			/* -o flag */
@@ -156,7 +146,6 @@ extern int ForceSalvage;		/* If salvage should occur despite the DONT_SALVAGE fl
 
 
 extern char * tmpdir;
-extern FILE *logFile;	        /* one of {/usr/afs/logs,/vice/file}/SalvageLog */
 
 
 #ifdef AFS_NT40_ENV
@@ -203,9 +192,6 @@ extern void AskOffline(struct SalvInfo *salvinfo, VolumeId volumeId);
 extern void AskOnline(struct SalvInfo *salvinfo, VolumeId volumeId);
 extern void AskDelete(struct SalvInfo *salvinfo, VolumeId volumeId);
 extern void CheckLogFile(char * log_path);
-#ifndef AFS_NT40_ENV
-extern void TimeStampLogFile(char * log_path);
-#endif
 extern void ClearROInUseBit(struct VolumeSummary *summary);
 extern void CopyAndSalvage(struct SalvInfo *salvinfo, struct DirSummary *dir);
 extern int CopyInode(Device device, Inode inode1, Inode inode2, int rwvolume);
@@ -216,7 +202,7 @@ extern void DeleteExtraVolumeHeaderFile(struct SalvInfo *salvinfo,
                                         struct VolumeSummary *vsp);
 extern void DistilVnodeEssence(struct SalvInfo *salvinfo, VolumeId vid,
                                VnodeClass class, Inode ino, Unique * maxu);
-extern int GetInodeSummary(struct SalvInfo *salvinfo, FILE *inodeFile,
+extern int GetInodeSummary(struct SalvInfo *salvinfo, FD_t inodeFile,
                            VolumeId singleVolumeNumber);
 extern int GetVolumeSummary(struct SalvInfo *salvinfo,
 			    VolumeId singleVolumeNumber);
@@ -242,8 +228,7 @@ extern int SalvageHeader(struct SalvInfo *salvinfo, struct afs_inode_info *sp,
                         struct InodeSummary *isp, int check, int *deleteMe);
 extern int SalvageIndex(struct SalvInfo *salvinfo, Inode ino, VnodeClass class,
                         int RW, struct ViceInodeInfo *ip, int nInodes,
-                        struct VolumeSummary *volSummary, int check,
-			Inode osdMetadataInode);
+                        struct VolumeSummary *volSummary, int check);
 extern int SalvageVnodes(struct SalvInfo *salvinfo, struct InodeSummary *rwIsp,
                         struct InodeSummary *thisIsp,
                         struct ViceInodeInfo *inodes, int check);
@@ -252,15 +237,12 @@ extern int SalvageVolume(struct SalvInfo *salvinfo, struct InodeSummary *rwIsp,
 extern void DoSalvageVolumeGroup(struct SalvInfo *salvinfo,
                                  struct InodeSummary *isp, int nVols);
 #ifdef AFS_NT40_ENV
-extern void SalvageVolumeGroup(struct SalvInfo *salvinfo, struct InodeSummary *isp, int nVols);
-#else
-#define SalvageVolumeGroup DoSalvageVolumeGroup
+extern void nt_SalvageVolumeGroup(struct SalvInfo *salvinfo, struct InodeSummary *isp, int nVols);
 #endif
 extern int SalvageVolumeHeaderFile(struct SalvInfo *salvinfo,
                                    struct InodeSummary *isp,
                                    struct ViceInodeInfo *inodes, int RW,
                                    int check, int *deleteMe);
-extern void showlog(void);
 extern int UseTheForceLuke(char *path);
 
 

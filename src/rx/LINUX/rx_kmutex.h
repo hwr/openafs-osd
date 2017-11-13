@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -17,12 +17,6 @@
 #define RX_KMUTEX_H_
 
 #include "rx/rx_kernel.h"	/* for osi_Panic() */
-
-/* AFS_GLOBAL_RXLOCK_KERNEL is defined so that the busy tq code paths are
- * used. The thread can sleep when sending packets.
- */
-#define	AFS_GLOBAL_RXLOCK_KERNEL 1
-
 
 #define RX_ENABLE_LOCKS 1
 
@@ -58,10 +52,10 @@ typedef struct afs_kcondvar {
     wait_queue_head_t waitq;
 } afs_kcondvar_t;
 
-static inline int
-MUTEX_ISMINE(afs_kmutex_t * l)
+static inline void
+MUTEX_ASSERT(afs_kmutex_t * l)
 {
-    return l->owner == current->pid;
+    osi_Assert(l->owner == current->pid);
 }
 
 #define MUTEX_INIT(a,b,c,d)	afs_mutex_init(a)

@@ -9,13 +9,23 @@ volserver - Initializes the Volume Server component of the fs process
 
 B<volserver>
     [B<-log>] S<<< [B<-p> <I<number of processes>>] >>>
-    S<<< [B<-auditlog> <I<log path>>] >>> [B<-audit-interface> (file | sysvmq)]
+    S<<< [B<-auditlog> <I<log path>>] >>>
+    S<<< [B<-audit-interface> (file | sysvmq)] >>>
+    S<<< [B<-logfile <I<log file>>] >>> S<<< [B<-config> <I<configuration path>>] >>>
     S<<< [B<-udpsize> <I<size of socket buffer in bytes>>] >>>
     S<<< [B<-d> <I<debug level>>] >>>
     [B<-nojumbo>] [B<-jumbo>] 
     [B<-enable_peer_stats>] [B<-enable_process_stats>] 
-    [B<-allow-dotted-principals>] [B<-preserve-vol-stats>] [B<-help>]
+    [B<-allow-dotted-principals>] [B<-preserve-vol-stats>]
     [B<-sync> <I<sync behavior>>]
+    [B<-rxmaxmtu> <I<bytes>>]
+    [B<-rxbind>]
+    [B<-syslog>[=<I<FACILITY>]]
+    [B<-transarc-logs>]
+    [B<-sleep> <I<sleep time>/I<run time>>]
+    [B<-restricted_query> (anyuser | admin)]
+    [B<-s2scrypt> (never | always | inherit)]
+    [B<-help>]
 
 =for html
 </div>
@@ -63,6 +73,12 @@ Records in the /usr/afs/logs/VolserLog file the names of all users who
 successfully initiate a B<vos> command. The Volume Server also records any
 file removals that result from issuing the B<vos release> command with the
 B<-f> flag.
+
+=item B<-transarc-logs>
+
+Use Transarc style logging features. Rename the log file
+F</usr/afs/logs/VolserLog> to F</usr/afs/logs/VolserLog.old> when the volume server is
+restarted.  This option is provided for compatibility with older versions.
 
 =item B<-p> <I<number of processes>>
 
@@ -135,6 +151,73 @@ operations.
 This is the same as the B<-sync> option in L<fileserver(8)>. See
 L<fileserver(8)>.
 
+=item B<-logfile> <I<log file>>
+
+Sets the file to use for server logging.  If logfile is not specified and
+no other logging options are supplied, this will be F</usr/afs/logs/VolserLog>.
+Note that this option is intended for debugging and testing purposes.
+Changing the location of the log file from the command line may result
+in undesirable interactions with tools such as B<bos>.
+
+=item B<-config> <I<configuration directory>>
+
+Set the location of the configuration directory used to configure this
+service.  In a typical configuration this will be F</usr/afs/etc> - this
+option allows the use of alternative configuration locations for testing
+purposes.
+
+=item B<-rxmaxmtu> <I<bytes>>
+
+Defines the maximum size of an MTU.  The value must be between the
+minimum and maximum packet data sizes for Rx.
+
+=item B<-rxbind>
+
+Bind the Rx socket to the primary interface only. (If not specified, the Rx
+socket will listen on all interfaces.)
+
+=item B<-syslog>[=<I<syslog facility>>]
+
+Specifies that logging output should go to syslog instead of the normal
+log file. B<-syslog>=I<FACILITY> can be used to specify to which facility
+the log message should be sent.
+
+=item B<-sleep> <I<sleep_time>/I<run_time>>
+
+This option is obsolete, and is now only accepted for compatibility with older
+releases. All it does now is log a warning message about how the option is
+obsolete.
+
+=item B<-restricted_query> (anyuser | admin)
+
+Restrict RPCs that query information about volumes to a specific group
+of users. You can use C<admin> to restrict to AFS administrators.  The
+C<anyuser> option doesn't restrict the RPCs and leaves it open for all
+users including unauthenticated users, this is the default.
+
+=item B<-s2scrypt> (never | always | inherit)
+
+Set the cryptographic disposition of inter-volserver traffic.
+
+=over 4
+
+=item B<never>
+
+All inter-volserver traffic is unencrypted.  This is the default behavior.
+
+=item B<always>
+
+All inter-volserver traffic is encrypted (using rxkad).
+
+=item B<inherit>
+
+Inter-volserver traffic will be encrypted if the client connection triggering
+the server-to-server traffic is encrypted.  This has the effect of encrypting
+inter-server traffic if the "-encrypt" option is provided to
+L<B<vos release>|vos_release(1)>, for example.
+
+=back
+
 =item B<-help>
 
 Prints the online help for this command. All other valid options are
@@ -145,9 +228,9 @@ ignored.
 =head1 EXAMPLES
 
 The following B<bos create> command creates a C<volserver> process on the
-machine C<fs2.abc.com> as part of the fs process:
+machine C<fs2.example.com> as part of the fs process:
 
-   % bos create -server fs2.abc.com -instance fs -type fs \
+   % bos create -server fs2.example.com -instance fs -type fs \
                 -cmd "/usr/afs/bin/fileserver" \
                 /usr/afs/bin/volserver /usr/afs/bin/salvager
 

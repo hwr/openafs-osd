@@ -62,7 +62,6 @@
 #define _AFS_BYPASSCACHE_H
 
 #if defined(AFS_CACHE_BYPASS) || defined(UKERNEL)
-
 #include <afsconfig.h>
 #include "afs/param.h"
 #include "afs/sysincludes.h"
@@ -70,105 +69,11 @@
 
 #define AFS_CACHE_BYPASS_DISABLED -1
 
-/* conditional GLOCK macros */
-#define COND_GLOCK(var) \
-        do { \
-                var = ISAFS_GLOCK(); \
-                if(!var) \
-                        RX_AFS_GLOCK(); \
-        } while(0)
-
-#define COND_RE_GUNLOCK(var) \
-        do { \
-                if(var) \
-                        RX_AFS_GUNLOCK(); \
-        } while(0)
-
-
-/* conditional GUNLOCK macros */
-
-#define COND_GUNLOCK(var) \
-        do {    \
-                var = ISAFS_GLOCK(); \
-                if(var) \
-                        RX_AFS_GUNLOCK(); \
-        } while(0)
-
-#define COND_RE_GLOCK(var) \
-        do { \
-                if(var) \
-                        RX_AFS_GLOCK(); \
-        } while(0)
-
-
 #ifdef UKERNEL
-#ifndef AFS_USR_SUN5_ENV
-typedef struct uio uio_t;
-#endif
-#ifndef PAGE_SIZE
-#define PAGE_SIZE 1024 * sizeof(long) / 8
-#endif
-
 #ifndef PAGE_CACHE_SIZE
 #define PAGE_CACHE_SIZE 4096
 #endif
-
-/* In the case where there's an error in afs_NoCacheFetchProc or
- * afs_PrefetchNoCache, all of the pages they've been passed need
- * to be unlocked.
- */
-typedef void * bypass_page_t;
-
-#define unlock_and_release_pages(auio)
-#define release_full_page(pp, pageoff)
-
-#else /* UKERNEL */
-
-typedef struct page * bypass_page_t;
-
-#define unlock_and_release_pages(auio) \
-    do { \
-        struct iovec *ciov;     \
-        bypass_page_t pp; \
-        afs_int32 iovmax; \
-        afs_int32 iovno = 0; \
-        ciov = auio->uio_iov; \
-        iovmax = auio->uio_iovcnt - 1;  \
-        pp = (bypass_page_t) ciov->iov_base;    \
-        while(1) { \
-            if (pp) { \
-                if (PageLocked(pp)) \
-                    unlock_page(pp);    \
-                put_page(pp); /* decrement refcount */ \
-            } \
-            iovno++; \
-            if(iovno > iovmax) \
-                break; \
-            ciov = (auio->uio_iov + iovno);     \
-            pp = (bypass_page_t) ciov->iov_base;        \
-        } \
-    } while(0)
-
-#define release_full_page(pp, pageoff)                  \
-    do { \
-        /* this is appropriate when no caller intends to unlock \
-         * and release the page */ \
-        SetPageUptodate(pp); \
-        if(PageLocked(pp)) \
-            unlock_page(pp); \
-        else \
-            afs_warn("afs_NoCacheFetchProc: page not locked!\n"); \
-        put_page(pp); /* decrement refcount */ \
-    } while(0)
-
-#endif /* UKERNEL */
-
-#if defined(AFS_LINUX26_ENV)
-#define LockPage(pp) lock_page(pp)
-#define UnlockPage(pp) unlock_page(pp)
 #endif
-#define AFS_KMAP_ATOMIC 	1
-
 
 /* A ptr to an object of the following type is expected to be passed
  * as the ab->parm[0] to afs_BQueue */
@@ -181,7 +86,7 @@ struct nocache_read_request {
     caddr_t address;
 #elif defined(AFS_LINUX24_ENV) || defined(UKERNEL)
     /* The tested platform, as CITI impl. just packs ab->parms */
-    struct uio * auio;
+    struct uio *auio;
     struct vrequest *areq;
     afs_size_t offset;
     afs_size_t length;
@@ -199,8 +104,8 @@ extern int cache_bypass_prefetch;
 extern int cache_bypass_strategy;
 extern afs_size_t cache_bypass_threshold;
 
-afs_int32 afs_TransitionToBypass(struct vcache *, afs_ucred_t *, int);
-afs_int32 afs_TransitionToCaching(struct vcache *, afs_ucred_t *, int);
+void afs_TransitionToBypass(struct vcache *, afs_ucred_t *, int);
+void afs_TransitionToCaching(struct vcache *, afs_ucred_t *, int);
 
 /* Cache strategy permits vnode transition between caching and no-cache--
  * currently, this means LARGE_FILES_BYPASS_CACHE.  Currently, no pioctl permits
@@ -215,10 +120,10 @@ afs_int32 afs_TransitionToCaching(struct vcache *, afs_ucred_t *, int);
 	if(variable_cache_strategy) {					\
 	    if(bypasscache) {						\
 		if(!(avc->cachingStates & FCSBypass))			\
-		    bypasscache = afs_TransitionToBypass(avc, credp, TRANSChangeDesiredBit); \
+		    afs_TransitionToBypass(avc, credp, TRANSChangeDesiredBit); \
 	    } else {							\
 		if(avc->cachingStates & FCSBypass)			\
-		    bypasscache = afs_TransitionToCaching(avc, credp, TRANSChangeDesiredBit);	\
+		    afs_TransitionToCaching(avc, credp, TRANSChangeDesiredBit);	\
 	    }								\
 	}								\
     }									\
@@ -227,14 +132,12 @@ afs_int32 afs_TransitionToCaching(struct vcache *, afs_ucred_t *, int);
 /* dispatch a no-cache read request */
 afs_int32
 afs_ReadNoCache(struct vcache *avc, struct nocache_read_request *bparms,
-		afs_ucred_t *acred);
+		afs_ucred_t *acred) AFS_NONNULL((1,2));
 
 /* no-cache prefetch routine */
 afs_int32
 afs_PrefetchNoCache(struct vcache *avc, afs_ucred_t *acred,
 			struct nocache_read_request *bparms);
 
-
 #endif /* AFS_CACHE_BYPASS || UKERNEL */
 #endif /* _AFS_BYPASSCACHE_H */
-

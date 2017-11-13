@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -21,17 +21,15 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
+#include <roken.h>
 
 #include <ctype.h>
-#include <string.h>
+
 #ifdef AFS_NT40_ENV
 #include <windows.h>
 #include <winbase.h>
 #include <winioctl.h>
 #else
-#include <sys/param.h>
-#include <sys/types.h>
-#include <unistd.h>
 
 #if AFS_HAVE_STATVFS || AFS_HAVE_STATVFS64
 #include <sys/statvfs.h>
@@ -63,9 +61,6 @@
 #endif
 #endif /* AFS_VFSINCL_ENV */
 #endif /* AFS_OSF_ENV */
-#include <errno.h>
-#include <sys/stat.h>
-#include <stdio.h>
 #include <sys/file.h>
 #ifdef	AFS_AIX_ENV
 #include <sys/vfs.h>
@@ -73,8 +68,6 @@
 #else
 #ifdef	AFS_HPUX_ENV
 #include <sys/vfs.h>
-#include <unistd.h>
-#include <fcntl.h>
 #include <checklist.h>
 #else
 #if	defined(AFS_SUN_ENV)
@@ -84,7 +77,6 @@
 #endif
 #endif
 #ifdef AFS_SUN5_ENV
-#include <unistd.h>
 #include <sys/mnttab.h>
 #include <sys/mntent.h>
 #else
@@ -100,15 +92,16 @@
 #endif /* AFS_SGI_ENV */
 #endif /* AFS_NT40_ENV */
 #if defined(AFS_SGI_ENV)
-#include <sys/errno.h>
-#include <sys/stat.h>
-#include <stdio.h>
 #include <sys/file.h>
 #include <mntent.h>
 #endif
 
-#include <rx/xdr.h>
+#include <afs/opr.h>
+#ifdef AFS_PTHREAD_ENV
+# include <opr/lock.h>
+#endif
 #include <afs/afsint.h>
+#include <rx/rx_queue.h>
 #include "nfs.h"
 #include <afs/errors.h>
 #include "lock.h"
@@ -121,17 +114,13 @@
 #include "ntops.h"
 #else
 #include "namei_ops.h"
-#include <dirent.h>
 #endif /* AFS_NT40_ENV */
 #endif /* AFS_NAMEI_ENV */
 #include "vnode.h"
 #include "volume.h"
 #include "partition.h"
-#include <afs/afs_assert.h>
-#include <afs/cellconfig.h>
 
 #if defined(AFS_HPUX_ENV)
-#include <sys/types.h>
 #include <sys/privgrp.h>
 #endif /* defined(AFS_HPUX_ENV) */
 
@@ -139,48 +128,12 @@
 #include <jfs/filsys.h>
 #endif
 
-#ifdef O_LARGEFILE
+#ifdef AFS_NT40_ENV
+extern int VValidVPTEntry(struct vptab *vptp);
+#endif
 
-#define afs_stat	stat64
-#define afs_open	open64
-#define afs_fopen	fopen64
-#ifndef AFS_NT40_ENV
-#if AFS_HAVE_STATVFS64
-# define afs_statvfs	statvfs64
-#else
-# if AFS_HAVE_STATFS64
-#  define afs_statfs	statfs64
-#else
-#  if AFS_HAVE_STATVFS
-#   define afs_statvfs	statvfs
-#  else
-#   define afs_statfs	statfs
-#  endif /* !AFS_HAVE_STATVFS */
-# endif	/* !AFS_HAVE_STATFS64 */
-#endif /* !AFS_HAVE_STATVFS64 */
-#endif /* !AFS_NT40_ENV */
-
-#else /* !O_LARGEFILE */
-
-#define afs_stat	stat
-#define afs_open	open
-#define afs_fopen	fopen
-#ifndef AFS_NT40_ENV
-#if AFS_HAVE_STATVFS
-#define afs_statvfs	statvfs
-#else /* !AFS_HAVE_STATVFS */
-#define afs_statfs	statfs
-#endif /* !AFS_HAVE_STATVFS */
-#endif /* !AFS_NT40_ENV */
-
-#endif /* !O_LARGEFILE */
-
-extern int VInit;
-extern void *osdvol;
 int aixlow_water = 8;		/* default 8% */
 struct DiskPartition64 *DiskPartitionList;
-
-afsUUID FS_HostUUID;
 
 #ifdef AFS_DEMAND_ATTACH_FS
 /* file to lock to conceptually "lock" the vol headers on a partition */
@@ -240,61 +193,14 @@ VInitPartitionPackage(void)
     return 0;
 }
 
-#if defined(AFS_NAMEI_ENV) && !defined(AFS_NT40_ENV)
-#define PARTIDMAGIC 0x25062006
-static void
-writePartIdFile(char *path)
-{
-    char filename[32];
-    int fd, error = 1;
-    struct versionStamp vsn;
-    afs_int32 id;
-    afsUUID uuid;
-    struct afsconf_dir *tdir;
-    char cellstr[MAXCELLCHARS];
-
-    sprintf(filename, "%s/partid", path);
-    fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0755);
-    if (fd >= 0) {
-	vsn.magic = htonl(PARTIDMAGIC);
-	vsn.version = htonl(1);
-	id = volutil_GetPartitionID(path);
-	id = htonl(id);
-	uuid = FS_HostUUID;
-	afs_htonuuid(&uuid);
-	tdir = afsconf_Open(AFSDIR_SERVER_ETC_DIRPATH);
-	if (!tdir)
-	    goto bad;
-	if (afsconf_GetLocalCell(tdir, cellstr, sizeof(cellstr)))
-	    goto bad;
-	if (write(fd, (char *)&vsn, sizeof(vsn)) != sizeof(vsn))
-	    goto bad;
-	if (write(fd, (char *)&id, sizeof(id)) != sizeof(id))
-	    goto bad;
-	if (write(fd, (char *)&uuid, sizeof(uuid)) != sizeof(uuid))
-	    goto bad;
-	if (write(fd, (char *)&cellstr, sizeof(cellstr)) != sizeof(cellstr))
-	    goto bad;
-	error = 0;
-    bad:
-	close(fd);
-	if (error)
-	    unlink(filename);
-    }
-}
-#endif
-
 static void
 VInitPartition_r(char *path, char *devname, Device dev)
 {
     struct DiskPartition64 *dp, *op;
 
-    dp = (struct DiskPartition64 *)malloc(sizeof(struct DiskPartition64));
+    dp = malloc(sizeof(struct DiskPartition64));
     /* Add it to the end, to preserve order when we print statistics */
     for (op = DiskPartitionList; op; op = op->next) {
-	if (op->index == volutil_GetPartitionID(path)) { /* already attached */
-	    return;
-	}
 	if (!op->next)
 	    break;
     }
@@ -303,12 +209,11 @@ VInitPartition_r(char *path, char *devname, Device dev)
     else
 	DiskPartitionList = dp;
     dp->next = 0;
-    dp->name = (char *)malloc(strlen(path) + 1);
-    strncpy(dp->name, path, strlen(path) + 1);
+    dp->name = strdup(path);
     dp->index = volutil_GetPartitionID(path);
 #if defined(AFS_NAMEI_ENV) && !defined(AFS_NT40_ENV)
     /* Create a lockfile for the partition, of the form /vicepa/Lock/vicepa */
-    dp->devName = (char *)malloc(2 * strlen(path) + 6);
+    dp->devName = malloc(2 * strlen(path) + 6);
     strcpy(dp->devName, path);
     strcat(dp->devName, OS_DIRSEP);
     strcat(dp->devName, "Lock");
@@ -317,26 +222,15 @@ VInitPartition_r(char *path, char *devname, Device dev)
     close(afs_open(dp->devName, O_RDWR | O_CREAT, 0600));
     dp->device = dp->index;
 #else
-    dp->devName = (char *)malloc(strlen(devname) + 1);
-    strncpy(dp->devName, devname, strlen(devname) + 1);
+    dp->devName = strdup(devname);
     dp->device = dev;
 #endif
     dp->lock_fd = INVALID_FD;
     dp->flags = 0;
-#ifdef AFS_DEMAND_ATTACH_FS
-    if (VInit >= 2) {
-	Log("VInitPartition_r: found newly mounted partition %s\n", path);
-	dp->flags = PART_NEWLY_MOUNTED;
-    }
-#endif
-
     dp->f_files = 1;		/* just a default value */
 #if defined(AFS_NAMEI_ENV) && !defined(AFS_NT40_ENV)
-    if (programType == fileServer) {
+    if (programType == fileServer)
 	(void)namei_ViceREADME(VPartitionPath(dp));
-	if (osdvol) /* Only if this server supports OSD and VICEP-ACCESS */
-		(void)writePartIdFile(VPartitionPath(dp));
-    }
 #endif
     VSetPartitionDiskUsage_r(dp);
 #ifdef AFS_DEMAND_ATTACH_FS
@@ -347,11 +241,11 @@ VInitPartition_r(char *path, char *devname, Device dev)
     dp->vol_list.busy = 0;
     {
 	char lockpath[MAXPATHLEN+1];
-	afs_snprintf(lockpath, MAXPATHLEN, "%s/" AFS_PARTLOCK_FILE, dp->name);
+	snprintf(lockpath, MAXPATHLEN, "%s/" AFS_PARTLOCK_FILE, dp->name);
 	lockpath[MAXPATHLEN] = '\0';
 	VLockFileInit(&dp->headerLockFile, lockpath);
 
-	afs_snprintf(lockpath, MAXPATHLEN, "%s/" AFS_VOLUMELOCK_FILE, dp->name);
+	snprintf(lockpath, MAXPATHLEN, "%s/" AFS_VOLUMELOCK_FILE, dp->name);
 	lockpath[MAXPATHLEN] = '\0';
 	VLockFileInit(&dp->volLockFile, lockpath);
     }
@@ -382,23 +276,13 @@ VInitPartition(char *path, char *devname, Device dev)
  *
  * Use partition name as devname.
  */
-int
+static int
 VCheckPartition(char *part, char *devname, int logging)
 {
-    struct afs_stat status;
+    struct afs_stat_st status;
 #if !defined(AFS_LINUX20_ENV) && !defined(AFS_NT40_ENV)
     char AFSIDatPath[MAXPATHLEN];
 #endif
-    char OnlyRxosdPath[MAXPATHLEN];
-
-    sprintf(OnlyRxosdPath, "%s/OnlyRxosd", part);
-    if (afs_stat(OnlyRxosdPath, &status) == 0) {
-	if (VInit == 1) {
-	    Log("VCheckPartition: partition %s ignored, used as object storage.\n",
-	        part);
-	}
-	return 0;
-    }
 
     /* Only keep track of "/vicepx" partitions since it can get hairy
      * when NFS mounts are involved.. */
@@ -410,13 +294,13 @@ VCheckPartition(char *part, char *devname, int logging)
 	return 0;
     }
     if (logging) {
-        Log("This program is compiled without AFS_NAMEI_ENV, and "
-            "partition %s is mounted with the 'logging' option. "
-            "Using the inode fileserver backend with 'logging' UFS "
-            "partitions causes volume corruption, so please either "
-            "mount the partition without logging, or use the namei "
-            "fileserver backend. Aborting...\n", part);
-        return -1;
+	Log("This program is compiled without AFS_NAMEI_ENV, and "
+	    "partition %s is mounted with the 'logging' option. "
+	    "Using the inode fileserver backend with 'logging' UFS "
+	    "partitions causes volume corruption, so please either "
+	    "mount the partition without logging, or use the namei "
+	    "fileserver backend. Aborting...\n", part);
+	return -1;
     }
 #ifndef AFS_AIX32_ENV
     if (programType == fileServer) {
@@ -439,7 +323,7 @@ VCheckPartition(char *part, char *devname, int logging)
 	struct dirent *dp;
 
 	dirp = opendir(part);
-	osi_Assert(dirp);
+	opr_Assert(dirp);
 	while ((dp = readdir(dirp))) {
 	    if (dp->d_name[0] == 'V') {
 		Log("This program is compiled with AFS_NAMEI_ENV, but partition %s seems to contain volumes which don't use the namei-interface; aborting\n", part);
@@ -489,7 +373,7 @@ static int
 VIsAlwaysAttach(char *part, int *awouldattach)
 {
 #ifdef AFS_NAMEI_ENV
-    struct afs_stat st;
+    struct afs_stat_st st;
     char checkfile[256];
     int ret;
 #endif /* AFS_NAMEI_ENV */
@@ -517,12 +401,34 @@ VIsAlwaysAttach(char *part, int *awouldattach)
 #endif /* AFS_NAMEI_ENV */
 }
 
+/* VIsNeverAttach() checks whether a /vicepX directory should never be
+ * attached (return value 1), or follow the normal mounting logic. The
+ * Always Attach flag may override the NeverAttach flag.
+ */
+static int
+VIsNeverAttach(char *part)
+{
+    struct afs_stat_st st;
+    char checkfile[256];
+    int ret;
+
+    if (strncmp(part, VICE_PARTITION_PREFIX, VICE_PREFIX_SIZE))
+	return 0;
+
+    strncpy(checkfile, part, 100);
+    strcat(checkfile, OS_DIRSEP);
+    strcat(checkfile, VICE_NEVERATTACH_FILE);
+
+    ret = afs_stat(checkfile, &st);
+    return (ret < 0) ? 0 : 1;
+}
+
 /* VAttachPartitions2() looks for and attaches /vicepX partitions
  * where a special file (VICE_ALWAYSATTACH_FILE) exists.  This is
  * used to attach /vicepX directories which aren't on dedicated
  * partitions, in the NAMEI fileserver.
  */
-void
+static void
 VAttachPartitions2(void)
 {
 #ifdef AFS_NAMEI_ENV
@@ -542,32 +448,28 @@ VAttachPartitions2(void)
 	if (VIsAlwaysAttach(pname, &wouldattach)) {
 	    VCheckPartition(pname, "", 0);
 	} else {
-	   struct afs_stat st;
-            if (wouldattach && VGetPartition(pname, 0) == NULL &&
-                afs_stat(pname, &st) == 0 && S_ISDIR(st.st_mode) && VInit == 1) {
-    		char OnlyRxosdPath[MAXPATHLEN];
-    		sprintf(OnlyRxosdPath, "%s/OnlyRxosd", pname);
-    		if (afs_stat(OnlyRxosdPath, &st) != 0) {
+	    struct afs_stat_st st;
+	    if (wouldattach && VGetPartition(pname, 0) == NULL &&
+	        afs_stat(pname, &st) == 0 && S_ISDIR(st.st_mode)) {
 
-                    /* This is a /vicep* dir, and it has not been attached as a
-                     * partition. This probably means that this is a /vicep* dir
-                     * that is not a separate partition, so just give a notice so
-                     * admins are not confused as to why their /vicep* dirs are not
-                     * being attached.
-                     *
-                     * It is possible that the dir _is_ a separate partition and we
-                     * failed to attach it earlier, making this message a bit
-                     * confusing. But that should be rare, and an error message
-                     * about the failure will already be logged right before this,
-                     * so it should be clear enough. */
+		/* This is a /vicep* dir, and it has not been attached as a
+		 * partition. This probably means that this is a /vicep* dir
+		 * that is not a separate partition, so just give a notice so
+		 * admins are not confused as to why their /vicep* dirs are not
+		 * being attached.
+		 *
+		 * It is possible that the dir _is_ a separate partition and we
+		 * failed to attach it earlier, making this message a bit
+		 * confusing. But that should be rare, and an error message
+		 * about the failure will already be logged right before this,
+		 * so it should be clear enough. */
 
-                    Log("VAttachPartitions: not attaching %s; either it is not a "
-                        "separate partition, or it failed to attach (create the "
-                        "file %s/" VICE_ALWAYSATTACH_FILE " to force attachment)\n",
-                        pname, pname);
-		}
-            }
-        }
+		Log("VAttachPartitions: not attaching %s; either it is not a "
+		    "separate partition, or it failed to attach (create the "
+		    "file %s/" VICE_ALWAYSATTACH_FILE " to force attachment)\n",
+		    pname, pname);
+	    }
+	}
     }
     closedir(dirp);
 #endif /* AFS_NAMEI_ENV */
@@ -600,7 +502,11 @@ VAttachPartitions(void)
 #endif
 	    || (strncmp(mnt.mnt_mntopts, "ro,ignore", 9) == 0))
 	    continue;
-	
+
+	/* Skip this Partition? */
+	if (VIsNeverAttach(mnt.mnt_mountp))
+	    continue;
+
 	/* If we're going to always attach this partition, do it later. */
 	if (VIsAlwaysAttach(mnt.mnt_mountp, NULL))
 	    continue;
@@ -640,6 +546,10 @@ VAttachPartitions(void)
 	if (!hasmntopt(mntent, MNTOPT_RW))
 	    continue;
 
+	/* Skip this Partition? */
+	if (VIsNeverAttach(mntent->mnt_dir))
+	    continue;
+
 	/* If we're going to always attach this partition, do it later. */
 	if (VIsAlwaysAttach(mntent->mnt_dir, NULL))
 	    continue;
@@ -672,7 +582,7 @@ getmount(struct vmount **vmountpp)
 
     /* try the operation until ok or a fatal error */
     while (1) {
-	if ((vm = (struct vmount *)malloc(size)) == NULL) {
+	if ((vm = malloc(size)) == NULL) {
 	    /* failed getting memory for mount status buf */
 	    perror("FATAL ERROR: get_stat malloc failed\n");
 	    exit(-1);
@@ -743,6 +653,10 @@ VAttachPartitions(void)
 #endif
 #endif
 
+	/* Skip this Partition? */
+	if (VIsNeverAttach(part))
+	    continue;
+
 	/* If we're going to always attach this partition, do it later. */
 	if (VIsAlwaysAttach(part, NULL))
 	    continue;
@@ -773,6 +687,10 @@ VAttachPartitions(void)
 	if (strcmp(fsent->fs_type, "rw") != 0)
 	    continue;
 
+	/* Skip this Partition? */
+	if (VIsNeverAttach(fsent->fs_file))
+	    continue;
+
 	/* If we're going to always attach this partition, do it later. */
 	if (VIsAlwaysAttach(fsent->fs_file, NULL))
 	    continue;
@@ -790,8 +708,6 @@ VAttachPartitions(void)
 #endif
 
 #ifdef AFS_NT40_ENV
-#include <string.h>
-#include <sys/stat.h>
 /* VValidVPTEntry
  *
  * validate names in vptab.
@@ -801,7 +717,7 @@ VAttachPartitions(void)
  * 0 invalid entry
  */
 
-int
+static int
 VValidVPTEntry(struct vptab *vpe)
 {
     int len = strlen(vpe->vp_name);
@@ -840,7 +756,7 @@ VValidVPTEntry(struct vptab *vpe)
     return 1;
 }
 
-int
+static int
 VCheckPartition(char *partName)
 {
     char volRoot[4];
@@ -911,7 +827,7 @@ VAttachPartitions(void)
 	 * doing this for us.
 	 */
 	if (programType == fileServer) {
-	    struct afs_stat status;
+	    struct afs_stat_st status;
 	    char salvpath[MAXPATHLEN];
 	    strcpy(salvpath, entry.vp_dev);
 	    strcat(salvpath, "\\FORCESALVAGE");
@@ -957,6 +873,10 @@ VAttachPartitions(void)
 	}
     }
     while ((mntent = getmntent(mfd))) {
+	/* Skip this Partition? */
+	if (VIsNeverAttach(mntent->mnt_dir))
+	    continue;
+
 	/* If we're going to always attach this partition, do it later. */
 	if (VIsAlwaysAttach(mntent->mnt_dir, NULL))
 	    continue;
@@ -1000,7 +920,7 @@ VGetPartition_r(char *name, int abortp)
     }
 #endif /* AFS_DEMAND_ATTACH_FS */
     if (abortp)
-	osi_Assert(dp != NULL);
+	opr_Assert(dp != NULL);
     return dp;
 }
 
@@ -1208,14 +1128,14 @@ VPrintDiskStats_r(void)
     struct DiskPartition64 *dp;
     for (dp = DiskPartitionList; dp; dp = dp->next) {
 	if (dp->free < 0) {
-	    Log("Partition %s: %"AFS_INT64_FMT
-		" available 1K blocks (minfree=%"AFS_INT64_FMT"), "
-	        "overallocated by %"AFS_INT64_FMT" blocks\n", dp->name,
+	    Log("Partition %s: %lld "
+		" available 1K blocks (minfree=%lld), "
+	        "overallocated by %lld blocks\n", dp->name,
 	        dp->totalUsable, dp->minFree, -dp->free);
 	} else {
-	    Log("Partition %s: %"AFS_INT64_FMT
-		" available 1K blocks (minfree=%"AFS_INT64_FMT"), "
-	        "%"AFS_INT64_FMT" free blocks\n", dp->name,
+	    Log("Partition %s: %lld"
+		" available 1K blocks (minfree=%lld), "
+	        "%lld free blocks\n", dp->name,
 	        dp->totalUsable, dp->minFree, dp->free);
 	}
     }
@@ -1248,12 +1168,12 @@ VLockPartition_r(char *name)
 	    (FD_t)CreateFile(path, GENERIC_WRITE,
 			    FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
 			    CREATE_ALWAYS, FILE_ATTRIBUTE_HIDDEN, NULL);
-	osi_Assert(dp->lock_fd != INVALID_FD);
+	opr_Assert(dp->lock_fd != INVALID_FD);
 
 	memset(&lap, 0, sizeof(lap));
 	rc = LockFileEx((HANDLE) dp->lock_fd, LOCKFILE_EXCLUSIVE_LOCK, 0, 1,
 			0, &lap);
-	osi_Assert(rc);
+	opr_Assert(rc);
     }
 }
 
@@ -1338,11 +1258,11 @@ VLockPartition_r(char *name)
 	pausing.tv_usec = 500000;
 	select(0, NULL, NULL, NULL, &pausing);
     }
-    osi_Assert(retries != 0);
+    opr_Assert(retries != 0);
 
 #if defined (AFS_HPUX_ENV)
 
-    osi_Assert(getprivgrp(privGrpList) == 0);
+    opr_Verify(getprivgrp(privGrpList) == 0);
 
     /*
      * In general, it will difficult and time-consuming ,if not impossible,
@@ -1363,26 +1283,26 @@ VLockPartition_r(char *name)
     if (((*globalMask) & privmask(PRIV_LOCKRDONLY)) == 0) {
 	/* allow everybody to set a lock on a read-only file descriptor */
 	(*globalMask) |= privmask(PRIV_LOCKRDONLY);
-	osi_Assert(setprivgrp(PRIV_GLOBAL, privGrpList[globalMaskIndex].priv_mask)
-	       == 0);
+	opr_Verify(setprivgrp(PRIV_GLOBAL,
+			      privGrpList[globalMaskIndex].priv_mask) == 0);
 
 	lockfRtn = lockf(dp->lock_fd, F_LOCK, 0);
 
 	/* remove the privilege granted to everybody to lock a read-only fd */
 	(*globalMask) &= ~(privmask(PRIV_LOCKRDONLY));
-	osi_Assert(setprivgrp(PRIV_GLOBAL, privGrpList[globalMaskIndex].priv_mask)
-	       == 0);
+	opr_Verify(setprivgrp(PRIV_GLOBAL,
+			      privGrpList[globalMaskIndex].priv_mask) == 0);
     } else {
 	/* in this case, we should be able to do this with impunity, anyway */
 	lockfRtn = lockf(dp->lock_fd, F_LOCK, 0);
     }
 
-    osi_Assert(lockfRtn != -1);
+    opr_Assert(lockfRtn != -1);
 #else
 #if defined(AFS_AIX_ENV) || defined(AFS_SUN5_ENV)
-    osi_Assert(lockf(dp->lock_fd, F_LOCK, 0) != -1);
+    opr_Verify(lockf(dp->lock_fd, F_LOCK, 0) != -1);
 #else
-    osi_Assert(flock(dp->lock_fd, LOCK_EX) == 0);
+    opr_Verify(flock(dp->lock_fd, LOCK_EX) == 0);
 #endif /* defined(AFS_AIX_ENV) || defined(AFS_SUN5_ENV) */
 #endif
 }
@@ -1479,7 +1399,7 @@ VPartHeaderUnlock(struct DiskPartition64 *dp, int locktype)
  * @internal volume package internal use only
  */
 
-struct DiskPartition64 * 
+struct DiskPartition64 *
 VGetPartitionById_r(afs_int32 id, int abortp)
 {
     struct DiskPartition64 *dp = NULL;
@@ -1489,7 +1409,7 @@ VGetPartitionById_r(afs_int32 id, int abortp)
     }
 
     if (abortp) {
-	osi_Assert(dp != NULL);
+	opr_Assert(dp != NULL);
     }
     return dp;
 }
@@ -1519,7 +1439,7 @@ VGetPartitionById(afs_int32 id, int abortp)
     return dp;
 }
 
-static struct DiskPartition64 * 
+static struct DiskPartition64 *
 VLookupPartition_r(char * path)
 {
     afs_int32 id = volutil_GetPartitionID(path);
@@ -1530,18 +1450,18 @@ VLookupPartition_r(char * path)
     return DiskPartitionTable[id];
 }
 
-static void 
+static void
 AddPartitionToTable_r(struct DiskPartition64 *dp)
 {
-    osi_Assert(dp->index >= 0 && dp->index <= VOLMAXPARTS);
+    opr_Assert(dp->index >= 0 && dp->index <= VOLMAXPARTS);
     DiskPartitionTable[dp->index] = dp;
 }
 
 #if 0
-static void 
+static void
 DeletePartitionFromTable_r(struct DiskPartition64 *dp)
 {
-    osi_Assert(dp->index >= 0 && dp->index <= VOLMAXPARTS);
+    opr_Assert(dp->index >= 0 && dp->index <= VOLMAXPARTS);
     DiskPartitionTable[dp->index] = NULL;
 }
 #endif

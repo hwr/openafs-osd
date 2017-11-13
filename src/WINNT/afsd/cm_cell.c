@@ -7,7 +7,10 @@
  * directory or online at http://www.openafs.org/dl/license10.html
  */
 
+#include <afsconfig.h>
 #include <afs/param.h>
+#include <roken.h>
+
 #include <afs/stds.h>
 
 #include <windows.h>
@@ -30,7 +33,7 @@ osi_rwlock_t cm_cellLock;
  *
  * At the present time the return value is ignored by the caller.
  */
-long cm_AddCellProc(void *rockp, struct sockaddr_in *addrp, char *hostnamep, unsigned short ipRank)
+long cm_AddCellProc(void *rockp, struct sockaddr_in *addrp, char *hostnamep, unsigned short adminRank)
 {
     cm_server_t *tsp;
     cm_serverRef_t *tsrp;
@@ -41,23 +44,11 @@ long cm_AddCellProc(void *rockp, struct sockaddr_in *addrp, char *hostnamep, uns
     cellp = cellrockp->cellp;
     probe = !(cellrockp->flags & CM_FLAG_NOPROBE);
 
-    /* if this server was previously created by fs setserverprefs */
-    if ( tsp = cm_FindServer(addrp, CM_SERVER_VLDB, FALSE))
-    {
-        if ( !tsp->cellp )
-            tsp->cellp = cellp;
-        else if (tsp->cellp != cellp) {
-            osi_Log3(afsd_logp, "found a vlserver %s associated with two cells named %s and %s",
-                     osi_LogSaveString(afsd_logp,hostnamep),
-                     osi_LogSaveString(afsd_logp,tsp->cellp->name),
-                     osi_LogSaveString(afsd_logp,cellp->name));
-        }
-    }
-    else
-        tsp = cm_NewServer(addrp, CM_SERVER_VLDB, cellp, NULL, probe ? 0 : CM_FLAG_NOPROBE);
+    tsp = cm_NewServer(addrp, CM_SERVER_VLDB, cellp, NULL,
+		       probe ? 0 : CM_FLAG_NOPROBE);
 
-    if (ipRank)
-        tsp->ipRank = ipRank;
+    if (adminRank)
+        tsp->adminRank = adminRank;
 
     /* Insert the vlserver into a sorted list, sorted by server rank */
     tsrp = cm_NewServerRef(tsp, 0);
@@ -89,7 +80,7 @@ cm_cell_t *cm_UpdateCell(cm_cell_t * cp, afs_uint32 flags)
     }
 #endif
 
-    if ((cp->vlServersp == NULL) ||
+    if (cm_IsServerListEmpty(cp->vlServersp) ||
         (time(0) > cp->timeout) ||
         (cm_dnsEnabled &&
          (cp->flags & CM_CELLFLAG_DNS) &&
@@ -177,6 +168,8 @@ cm_cell_t *cm_GetCell_Gen(char *namep, char *newnamep, afs_uint32 flags)
     afs_uint32 hash;
     cm_cell_rock_t rock;
     size_t len;
+    size_t namelen;
+    afs_int32 cellID;
 
     if (namep == NULL || !namep[0] || !strcmp(namep,CM_IOCTL_FILENAME_NOSLASH))
         return NULL;
@@ -194,6 +187,7 @@ cm_cell_t *cm_GetCell_Gen(char *namep, char *newnamep, afs_uint32 flags)
     if (len == 0)
         return NULL;
     namep = name;
+    namelen = strlen(namep);
 
     hash = CM_CELL_NAME_HASH(namep);
 
@@ -207,13 +201,32 @@ cm_cell_t *cm_GetCell_Gen(char *namep, char *newnamep, afs_uint32 flags)
     }
 
     if (!cp) {
-        for (cp = cm_data.allCellsp; cp; cp=cp->allNextp) {
-            if (strnicmp(namep, cp->name, strlen(namep)) == 0) {
-                strncpy(fullname, cp->name, CELL_MAXNAMELEN);
-                fullname[CELL_MAXNAMELEN-1] = '\0';
-                break;
-            }
-        }
+	/* the name wasn't found but it might be a matching prefix */
+	for (cp = cm_data.allCellsp, cp2 = NULL; cp; cp=cp->allNextp) {
+	    if (strnicmp(namep, cp->name, namelen) == 0
+		 && (namelen == strlen(cp->name) || cp->name[namelen] == '.')) {
+		if (cp2 != NULL) {
+		    osi_Log5(afsd_logp,
+			      "cm_GetCell_gen ambiguous prefix match: prefix %s matches (%u) %s and (%u) %s",
+			      osi_LogSaveString(afsd_logp,namep),
+			      cp->cellID,
+			      osi_LogSaveString(afsd_logp,cp->name),
+			      cp2->cellID,
+			      osi_LogSaveString(afsd_logp,cp2->name));
+		    cp = NULL;
+		    lock_ReleaseRead(&cm_cellLock);
+		    goto done;
+		}
+		cp2 = cp;
+	    }
+	}
+
+	if (cp2 != NULL) {
+	    /* an unambiguous prefix match was found */
+	    cp = cp2;
+	    strncpy(fullname, cp->name, CELL_MAXNAMELEN);
+	    fullname[CELL_MAXNAMELEN-1] = '\0';
+	}
     }
 
     if (cp) {
@@ -230,30 +243,36 @@ cm_cell_t *cm_GetCell_Gen(char *namep, char *newnamep, afs_uint32 flags)
             if (cm_stricmp_utf8(namep, cp->name) == 0) {
                 strncpy(fullname, cp->name, CELL_MAXNAMELEN);
                 fullname[CELL_MAXNAMELEN-1] = '\0';
-                break;
+		goto done;
             }
         }
 
-        if (cp)
-            goto done;
+	/* the name wasn't found but it might be a matching prefix */
+	for (cp = cm_data.allCellsp, cp2 = NULL; cp; cp=cp->allNextp) {
+	    if (strnicmp(namep, cp->name, namelen) == 0
+		 && (namelen == strlen(cp->name) || cp->name[namelen] == '.')) {
+		if (cp2 != NULL) {
+		    osi_Log5(afsd_logp,
+			      "cm_GetCell_gen ambiguous prefix match: prefix %s matches (%u) %s and (%u) %s",
+			      osi_LogSaveString(afsd_logp,namep),
+			      cp->cellID,
+			      osi_LogSaveString(afsd_logp,cp->name),
+			      cp2->cellID,
+			      osi_LogSaveString(afsd_logp,cp2->name));
+		    cp = NULL;
+		    goto done;
+		}
+		cp2 = cp;
+	    }
+	}
 
-        for (cp = cm_data.allCellsp; cp; cp=cp->allNextp) {
-            if (strnicmp(namep, cp->name, strlen(namep)) == 0) {
-                strncpy(fullname, cp->name, CELL_MAXNAMELEN);
-                fullname[CELL_MAXNAMELEN-1] = '\0';
-                break;
-            }
-        }
-
-        if (cp) {
-            lock_ReleaseWrite(&cm_cellLock);
-            lock_ObtainMutex(&cp->mx);
-            lock_ObtainWrite(&cm_cellLock);
-            cm_AddCellToNameHashTable(cp);
-            cm_AddCellToIDHashTable(cp);
-            lock_ReleaseMutex(&cp->mx);
-            goto done;
-        }
+	if (cp2 != NULL) {
+	    /* an unambiguous prefix match was found */
+	    cp = cp2;
+	    strncpy(fullname, cp->name, CELL_MAXNAMELEN);
+	    fullname[CELL_MAXNAMELEN-1] = '\0';
+	    goto done;
+	}
 
         if ( cm_data.freeCellsp != NULL ) {
             cp = cm_data.freeCellsp;
@@ -266,15 +285,16 @@ cm_cell_t *cm_GetCell_Gen(char *namep, char *newnamep, afs_uint32 flags)
             if ( cm_data.currentCells >= cm_data.maxCells )
                 osi_panic("Exceeded Max Cells", __FILE__, __LINE__);
 
-            /* don't increment currentCells until we know that we
-             * are going to keep this entry
+            /*
+             * the cellID cannot be 0.
+             * If there is a name collision, one of the entries
+             * will end up on cm_data.freeCellsp for reuse.
              */
-            cp = &cm_data.cellBaseAddress[cm_data.currentCells];
+            cellID = InterlockedIncrement(&cm_data.currentCells);
+            cp = &cm_data.cellBaseAddress[cellID - 1];
             memset(cp, 0, sizeof(cm_cell_t));
             cp->magic = CM_CELL_MAGIC;
-
-            /* the cellID cannot be 0 */
-            cp->cellID = ++cm_data.currentCells;
+            cp->cellID = cellID;
 
             /* otherwise we found the cell, and so we're nearly done */
             lock_InitializeMutex(&cp->mx, "cm_cell_t mutex", LOCK_HIERARCHY_CELL);
@@ -349,6 +369,8 @@ cm_cell_t *cm_GetCell_Gen(char *namep, char *newnamep, afs_uint32 flags)
         }
 
         if (cp2) {
+	    cm_server_t *tsp;
+
             if (!hasMutex) {
                 lock_ObtainMutex(&cp->mx);
                 hasMutex = 1;
@@ -359,7 +381,24 @@ cm_cell_t *cm_GetCell_Gen(char *namep, char *newnamep, afs_uint32 flags)
             cm_RemoveCellFromNameHashTable(cp);
             lock_ReleaseMutex(&cp->mx);
             hasMutex = 0;
-            cm_FreeCell(cp);
+
+	    /* Replace cells references in servers */
+	    lock_ObtainRead(&cm_serverLock);
+	    for (tsp = cm_serversAllFirstp;
+		  tsp;
+		  tsp = (cm_server_t *)osi_QNext(&tsp->allq)) {
+		if (tsp->cellp == cp) {
+		    osi_Log4(afsd_logp, "cm_GetCell_gen race: replacing cell (%u) %s with cell (%u) %s",
+			      cp->cellID,
+			      osi_LogSaveString(afsd_logp,cp->name),
+			      cp2->cellID,
+			      osi_LogSaveString(afsd_logp,cp2->name));
+		    tsp->cellp = cp2;
+		}
+	    }
+	    lock_ReleaseRead(&cm_serverLock);
+
+	    cm_FreeCell(cp);
             cp = cp2;
             goto done;
         }
@@ -464,6 +503,14 @@ cm_ValidateCell(void)
     afs_uint32 count1, count2;
 
     for (cellp = cm_data.allCellsp, count1 = 0; cellp; cellp=cellp->allNextp, count1++) {
+
+	if ( cellp < (cm_cell_t *)cm_data.cellBaseAddress ||
+	     cellp >= (cm_cell_t *)cm_data.aclBaseAddress) {
+	    afsi_log("cm_ValidateCell failure: out of range cm_cell_t pointers");
+	    fprintf(stderr, "cm_ValidateCell failure: out of range cm_cell_t pointers\n");
+	    return -10;
+	}
+
         if ( cellp->magic != CM_CELL_MAGIC ) {
             afsi_log("cm_ValidateCell failure: cellp->magic != CM_CELL_MAGIC");
             fprintf(stderr, "cm_ValidateCell failure: cellp->magic != CM_CELL_MAGIC\n");
@@ -478,6 +525,14 @@ cm_ValidateCell(void)
     }
 
     for (cellp = cm_data.freeCellsp, count2 = 0; cellp; cellp=cellp->freeNextp, count2++) {
+
+	if ( cellp < (cm_cell_t *)cm_data.cellBaseAddress ||
+	     cellp >= (cm_cell_t *)cm_data.aclBaseAddress) {
+	    afsi_log("cm_ValidateCell failure: out of range cm_cell_t pointers");
+	    fprintf(stderr, "cm_ValidateCell failure: out of range cm_cell_t pointers\n");
+	    return -11;
+	}
+
         if ( count2 != 0 && cellp == cm_data.freeCellsp ||
              count2 > cm_data.maxCells ) {
             afsi_log("cm_ValidateCell failure: cm_data.freeCellsp infinite loop");
@@ -719,16 +774,27 @@ cm_CreateCellWithInfo( char * cellname,
     rock.cellp = cm_GetCell(cellname, CM_FLAG_CREATE | CM_FLAG_NOPROBE);
     rock.flags = 0;
 
-    cm_FreeServerList(&rock.cellp->vlServersp, CM_FREESERVERLIST_DELETE);
-
     if (!(flags & CM_CELLFLAG_DNS)) {
+	int first = 1;
+
         for (i = 0; i < host_count; i++) {
             thp = gethostbyname(hostname[i]);
+	    if (first) {
+		/*
+		 * If there is at least one resolved vlserver or an authoritative,
+		 * host not found response, destroy the prior list.
+		 */
+		if (thp != NULL || WSAGetLastError() == WSAHOST_NOT_FOUND) {
+		    cm_FreeServerList(&rock.cellp->vlServersp, CM_FREESERVERLIST_DELETE);
+		    first = 0;
+		}
+	    }
+
             if (thp) {
-                int foundAddr = 0;
+		if (thp->h_addrtype != AF_INET)
+		    continue;
+
                 for (j=0 ; thp->h_addr_list[j]; j++) {
-                    if (thp->h_addrtype != AF_INET)
-                        continue;
                     memcpy(&vlSockAddr.sin_addr.s_addr,
                            thp->h_addr_list[j],
                            sizeof(long));
@@ -742,6 +808,12 @@ cm_CreateCellWithInfo( char * cellname,
         _InterlockedAnd(&rock.cellp->flags, ~CM_CELLFLAG_DNS);
     } else if (cm_dnsEnabled) {
         int ttl;
+	cm_serverRef_t * vlServersp = NULL;
+
+	lock_ObtainWrite(&cm_serverLock);
+	vlServersp = rock.cellp->vlServersp;
+	rock.cellp->vlServersp = NULL;
+	lock_ReleaseWrite(&cm_serverLock);
 
         code = cm_SearchCellByDNS(rock.cellp->name, NULL, &ttl, cm_AddCellProc, &rock);
         lock_ObtainMutex(&rock.cellp->mx);
@@ -751,8 +823,29 @@ cm_CreateCellWithInfo( char * cellname,
 #ifdef DEBUG
             fprintf(stderr, "cell %s: ttl=%d\n", rock.cellp->name, ttl);
 #endif
-        }
+	} else {
+	    lock_ObtainWrite(&cm_serverLock);
+	    if (rock.cellp->vlServersp == NULL) {
+		rock.cellp->vlServersp = vlServersp;
+		vlServersp = NULL;
+	    }
+	    lock_ReleaseWrite(&cm_serverLock);
+	}
+
+	cm_FreeServerList(&vlServersp, CM_FREESERVERLIST_DELETE);
+	if (vlServersp != NULL) {
+	    /*
+	     * We moved the vlServer list out of the way and
+	     * in the meantime it was replaced.  If the vlServerp
+	     * list is non-Empty after cm_FreeServerList was called
+	     * it means that there are deleted entries with active
+	     * references.  Must put them back onto the list to
+	     * avoid leaking the memory.
+	     */
+	    cm_AppendServerList(rock.cellp->vlServersp, &vlServersp);
+	}
     } else {
+	cm_FreeServerList(&rock.cellp->vlServersp, CM_FREESERVERLIST_DELETE);
         lock_ObtainMutex(&rock.cellp->mx);
         rock.cellp->flags &= ~CM_CELLFLAG_DNS;
     }

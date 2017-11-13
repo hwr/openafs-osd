@@ -47,7 +47,9 @@ BOOL APIENTRY About(HWND, unsigned int, unsigned int, long);
 #include "cm_volstat.h"
 #include "cm_volume.h"
 #include "cm_dcache.h"
+#include "cm_direct.h"
 #include "cm_access.h"
+#include "cm_eacces.h"
 #include "cm_dir.h"
 #include "cm_utils.h"
 #include "cm_vnodeops.h"
@@ -60,6 +62,8 @@ BOOL APIENTRY About(HWND, unsigned int, unsigned int, long);
 #include "cm_memmap.h"
 #include "cm_freelance.h"
 #include "cm_performance.h"
+#include "cm_rdr.h"
+#include "rawops.h"
 #include "afsd_init.h"
 #include "afsd_eventlog.h"
 
@@ -112,10 +116,23 @@ extern int cm_fakeGettingCallback;			// 1 if currently updating the fake root.af
 
 extern int cm_dnsEnabled;
 extern int cm_readonlyVolumeVersioning;
+extern int cm_shortNames;
+extern int cm_directIO;
+extern int cm_volumeInfoReadOnlyFlag;
+
+extern afs_uint32 rdr_ReparsePointPolicy;
 
 extern long rx_mtu;
 
 extern HANDLE WaitToTerminate;
+
+extern int RDR_Initialized;
+
+extern afs_uint32 smb_Enabled;
+
+extern int cm_virtualCache;
+
+extern afs_int32 cm_verifyData;
 
 #define DFS_SUPPORT 1
 #define LOG_PACKET 1

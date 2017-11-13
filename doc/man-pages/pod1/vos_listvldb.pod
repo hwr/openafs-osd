@@ -12,13 +12,17 @@ B<vos listvldb> S<<< [B<-name> <I<volume name or ID>>] >>>
     S<<< [B<-partition> <I<partition name>>] >>>
     [B<-locked>] [B<-quiet>] [B<-nosort>]
     S<<< [B<-cell> <I<cell name>>] >>> [B<-noauth>] [B<-localauth>]
-    [B<-verbose>] [B<-encrypt>] [B<-noresolve>] [B<-help>]
+    [B<-verbose>] [B<-encrypt>] [B<-noresolve>]
+    S<<< [B<-config> <I<config directory>>] >>>
+    [B<-help>]
 
 B<vos listvl> S<<< [B<-na> <I<volume name or ID>>] >>>
     S<<< [B<-s> <I<machine name>>] >>>
     S<<< [B<-p> <I<partition name>>] >>>
     [B<-lock>] [B<-q>] [B<-nos>] S<<< [B<-c> <I<cell name>>] >>>
-    [B<-noa>] [B<-loca>] [B<-v>] [B<-e>] [B<-nor>] [B<-h>]
+    [B<-noa>] [B<-loca>] [B<-v>] [B<-e>] [B<-nor>]
+    S<<< [B<-co> <I<config directory>>] >>>
+    [B<-h>]
 
 =for html
 </div>
@@ -151,6 +155,13 @@ useful when the server address is registered as 127.0.0.1 or when dealing
 with multi-homed servers. This option is available in OpenAFS
 versions 1.4.8 or later and 1.5.35 or later.
 
+=item B<-config> <I<configuration directory>>
+
+Set the location of the configuration directory to be used. This defaults to
+F</usr/vice/etc>, except if B<-localauth> is specified, in which case the
+default is F</usr/afs/etc>. This option allows the use of alternative
+configuration locations for testing purposes.
+
 =item B<-help>
 
 Prints the online help for this command. All other valid options are
@@ -261,34 +272,34 @@ L<vos_release(1)>.
 
 =head1 EXAMPLES
 
-The following command displays VLDB information for the ABC Corporation
+The following command displays VLDB information for the Example Corporation
 volume called C<usr>, which has two read-only replication sites:
 
    % vos listvldb -name usr
    usr
     RWrite: 5360870981   ROnly: 536870982   Backup: 536870983
     number of sites -> 3
-       server fs1.abc.com partition /vicepa RO Site
-       server fs3.abc.com partition /vicepa RO Site
-       server fs2.abc.com partition /vicepb RW Site
+       server fs1.example.com partition /vicepa RO Site
+       server fs3.example.com partition /vicepa RO Site
+       server fs2.example.com partition /vicepb RW Site
 
 The following example shows entries for two of the volumes that reside on
-the file server machine C<fs4.abc.com>. The first VLDB entry is currently
+the file server machine C<fs4.example.com>. The first VLDB entry is currently
 locked. There are 508 entries that mention the machine as a volume site.
 
-   % vos listvldb -server fs4.abc.com
-   VLDB entries for server fs4.abc.com
+   % vos listvldb -server fs4.example.com
+   VLDB entries for server fs4.example.com
        .       .           .        .
        .       .           .        .
    user.smith
     RWrite: 278541326   ROnly: 278541327   Backup: 278542328
     number of sites -> 1
-      server fs4.abc.com partition /vicepg RW Site
+      server fs4.example.com partition /vicepg RW Site
     Volume is currently LOCKED
       user.terry
     RWrite 354287190   ROnly 354287191   Backup 354287192
     number of sites -> 1
-      server fs4.abc.com partition /vicepc RW Site
+      server fs4.example.com partition /vicepc RW Site
       .       .           .        .
       .       .           .        .
    Total entries: 508

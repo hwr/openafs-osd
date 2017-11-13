@@ -1,3 +1,15 @@
+/*
+ * Copyright 2000, International Business Machines Corporation and others.
+ * All Rights Reserved.
+ *
+ * This software has been released under the terms of the IBM Public
+ * License.  For details, see the LICENSE file in the top-level source
+ * directory or online at http://www.openafs.org/dl/license10.html
+ */
+
+#include <afsconfig.h>
+#include <afs/param.h>
+#include <roken.h>
 
 #include <afs/stds.h>
 
@@ -52,6 +64,7 @@ extern HANDLE afsi_file;
 
 static int powerEventsRegistered = 0;
 extern int powerStateSuspended = 0;
+extern int RDR_Initialized = 0;
 
 static VOID (WINAPI* pRtlCaptureContext)(PCONTEXT ContextRecord) = NULL;
 
@@ -112,7 +125,7 @@ static void afsd_notifier(char *msgp, char *filep, long line)
 
     if (bRunningAsService) {
         ServiceStatus.dwCurrentState = SERVICE_STOPPED;
-        ServiceStatus.dwWin32ExitCode = NO_ERROR;
+        ServiceStatus.dwWin32ExitCode = ERROR_EXCEPTION_IN_SERVICE;
         ServiceStatus.dwCheckPoint = 0;
         ServiceStatus.dwWaitHint = 0;
         ServiceStatus.dwControlsAccepted = 0;
@@ -187,7 +200,7 @@ afsd_ServiceControlHandler(DWORD ctrlCode)
             afsi_log("SERVICE_CONTROL_SHUTDOWN");
 
         /* Write all dirty buffers back to server */
-	if ( !lana_OnlyLoopback() )
+	if (cm_noIPAddr > 0)
 	    buf_CleanAndReset();
 
         /* Force trace if requested */
@@ -269,7 +282,7 @@ afsd_ServiceControlHandlerEx(
 
         /* Write all dirty buffers back to server */
 	if (dwCurrentState == SERVICE_RUNNING &&
-            !lana_OnlyLoopback() )
+	     cm_noIPAddr > 0)
 	    buf_CleanAndReset();
 
         /* Force trace if requested */
@@ -304,6 +317,7 @@ afsd_ServiceControlHandlerEx(
         ServiceStatus.dwControlsAccepted = SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN | SERVICE_ACCEPT_POWEREVENT;
         SetServiceStatus(StatusHandle, &ServiceStatus);
         afsi_log("SERVICE_CONTROL_INTERROGATE");
+        osi_Log0(afsd_logp, "SERVICE_CONTROL_INTERROGATE");
         dwRet = NO_ERROR;
         break;
 
@@ -314,6 +328,7 @@ afsd_ServiceControlHandlerEx(
 #ifdef DEBUG
 	    afsi_log("SERVICE_CONTROL_POWEREVENT");
 #endif
+	    osi_Log0(afsd_logp, "SERVICE_CONTROL_POWEREVENT");
             /*
             **	dwEventType of this notification == WPARAM of WM_POWERBROADCAST
             **	Return NO_ERROR == return TRUE for that message, i.e. accept request
@@ -321,91 +336,161 @@ afsd_ServiceControlHandlerEx(
             **	i.e. as if returning BROADCAST_QUERY_DENY
             */
             if (powerEventsRegistered) {
-                switch((int) dwEventType)
+		cm_UpdateIFInfo();
+
+		switch((int) dwEventType)
                 {
                 case PBT_APMQUERYSUSPEND:
                     afsi_log("SERVICE_CONTROL_APMQUERYSUSPEND");
+                    osi_Log0(afsd_logp,"SERVICE_CONTROL_APMQUERYSUSPEND");
                     /* Write all dirty buffers back to server */
-		    if ( !lana_OnlyLoopback() ) {
+		    if (cm_noIPAddr > 0)
 			buf_CleanAndReset();
-                        cm_SuspendSCache();
-                    }
                     afsi_log("SERVICE_CONTROL_APMQUERYSUSPEND buf_CleanAndReset complete");
+                    osi_Log0(afsd_logp,"SERVICE_CONTROL_APMQUERYSUSPEND buf_CleanAndReset complete");
                     dwRet = NO_ERROR;
                     break;
                 case PBT_APMQUERYSTANDBY:
                     afsi_log("SERVICE_CONTROL_APMQUERYSTANDBY");
+                    osi_Log0(afsd_logp,"SERVICE_CONTROL_APMQUERYSTANDBY");
                     /* Write all dirty buffers back to server */
-		    if ( !lana_OnlyLoopback() ) {
+		    if (cm_noIPAddr > 0)
 			buf_CleanAndReset();
-                        cm_SuspendSCache();
-                    }
                     afsi_log("SERVICE_CONTROL_APMQUERYSTANDBY buf_CleanAndReset complete");
+                    osi_Log0(afsd_logp,"SERVICE_CONTROL_APMQUERYSTANDBY buf_CleanAndReset complete");
                     dwRet = NO_ERROR;
                     break;
 
                     /* allow remaining case PBT_WhatEver */
                 case PBT_APMSUSPEND:
                     afsi_log("SERVICE_CONTROL_APMSUSPEND");
-		    powerStateSuspended = 1;
-		    if (osVersion.dwMajorVersion >= 6) {
-                        cm_SuspendSCache();
-			smb_StopListeners(0);
-                    }
+                    osi_Log0(afsd_logp,"SERVICE_CONTROL_APMSUSPEND");
+		    if (!powerStateSuspended) {
+			powerStateSuspended = 1;
+			if (osVersion.dwMajorVersion >= 6)
+			    smb_StopListeners(0);
+
+			if (RDR_Initialized)
+			    RDR_Suspend();
+			cm_SuspendSCache();
+		    }
                     dwRet = NO_ERROR;
+                    afsi_log("SERVICE_CONTROL_APMSUSPEND complete");
+                    osi_Log0(afsd_logp,"SERVICE_CONTROL_APMSUSPEND complete");
                     break;
                 case PBT_APMSTANDBY:
                     afsi_log("SERVICE_CONTROL_APMSTANDBY");
-		    powerStateSuspended = 1;
-		    if (osVersion.dwMajorVersion >= 6) {
-                        cm_SuspendSCache();
-			smb_StopListeners(0);
-                    }
+                    osi_Log0(afsd_logp,"SERVICE_CONTROL_APMSTANDBY");
+		    if (!powerStateSuspended) {
+			powerStateSuspended = 1;
+			if (osVersion.dwMajorVersion >= 6)
+			    smb_StopListeners(0);
+			if (RDR_Initialized)
+			    RDR_Suspend();
+			cm_SuspendSCache();
+		    }
                     dwRet = NO_ERROR;
+                    afsi_log("SERVICE_CONTROL_APMSTANDBY complete");
+                    osi_Log0(afsd_logp,"SERVICE_CONTROL_APMSTANDBY complete");
                     break;
                 case PBT_APMRESUMECRITICAL:
                     afsi_log("SERVICE_CONTROL_APMRESUMECRITICAL");
-		    if (osVersion.dwMajorVersion >= 6)
-			smb_RestartListeners(0);
+                    osi_Log0(afsd_logp,"SERVICE_CONTROL_APMRESUMECRITICAL");
+		    if (powerStateSuspended) {
+			powerStateSuspended = 0;
+			if (osVersion.dwMajorVersion >= 6)
+			    smb_RestartListeners(0);
+			cm_CheckServers(CM_FLAG_CHECKDOWNSERVERS
+					 | CM_FLAG_CHECKUPSERVERS, NULL);
+			if (RDR_Initialized)
+			    RDR_Resume();
+		    }
                     dwRet = NO_ERROR;
+                    afsi_log("SERVICE_CONTROL_APMRESUMECRITICAL complete");
+                    osi_Log0(afsd_logp,"SERVICE_CONTROL_APMRESUMECRITICAL complete");
                     break;
                 case PBT_APMRESUMESUSPEND:
 		    /* User logged in after suspend */
                     afsi_log("SERVICE_CONTROL_APMRESUMESUSPEND");
+                    osi_Log0(afsd_logp,"SERVICE_CONTROL_APMRESUMESUSPEND");
+		    if (powerStateSuspended) {
+			powerStateSuspended = 0;
+			cm_CheckServers(CM_FLAG_CHECKDOWNSERVERS
+					 | CM_FLAG_CHECKUPSERVERS, NULL);
+			if (osVersion.dwMajorVersion >= 6)
+			    smb_RestartListeners(0);
+			if (smb_Enabled && osVersion.dwMajorVersion >= 6) {
+			    smb_SetLanAdapterChangeDetected();
+			}
+			if (RDR_Initialized)
+			    RDR_Resume();
+		    }
                     dwRet = NO_ERROR;
+                    afsi_log("SERVICE_CONTROL_APMRESUMESUSPEND complete");
+                    osi_Log0(afsd_logp,"SERVICE_CONTROL_APMRESUMESUSPEND complete");
                     break;
                 case PBT_APMRESUMESTANDBY:
 		    /* User logged in after standby */
                     afsi_log("SERVICE_CONTROL_APMRESUMESTANDBY");
+                    osi_Log0(afsd_logp,"SERVICE_CONTROL_APMRESUMESTANDBY");
+		    if (powerStateSuspended) {
+			powerStateSuspended = 0;
+			cm_CheckServers(CM_FLAG_CHECKDOWNSERVERS
+					 | CM_FLAG_CHECKUPSERVERS, NULL);
+			if (osVersion.dwMajorVersion >= 6)
+			    smb_RestartListeners(0);
+			if (smb_Enabled && osVersion.dwMajorVersion >= 6) {
+			    smb_SetLanAdapterChangeDetected();
+			}
+			if (RDR_Initialized)
+			    RDR_Resume();
+		    }
                     dwRet = NO_ERROR;
+                    afsi_log("SERVICE_CONTROL_APMRESUMESTANDBY complete");
+                    osi_Log0(afsd_logp,"SERVICE_CONTROL_APMRESUMESTANDBY complete");
                     break;
                 case PBT_APMBATTERYLOW:
                     afsi_log("SERVICE_CONTROL_APMBATTERYLOW");
+                    osi_Log0(afsd_logp,"SERVICE_CONTROL_APMBATTERYLOW");
                     dwRet = NO_ERROR;
                     break;
                 case PBT_APMPOWERSTATUSCHANGE:
 #ifdef DEBUG
 		    afsi_log("SERVICE_CONTROL_APMPOWERSTATUSCHANGE");
 #endif
+		    osi_Log0(afsd_logp,"SERVICE_CONTROL_APMPOWERSTATUSCHANGE");
                     dwRet = NO_ERROR;
                     break;
                 case PBT_APMOEMEVENT:
 #ifdef DEBUG
                     afsi_log("SERVICE_CONTROL_APMOEMEVENT");
 #endif
+                    osi_Log0(afsd_logp,"SERVICE_CONTROL_APMOEMEVENT");
                     dwRet = NO_ERROR;
                     break;
                 case PBT_APMRESUMEAUTOMATIC:
 		    /* This is the message delivered once all devices are up */
                     afsi_log("SERVICE_CONTROL_APMRESUMEAUTOMATIC");
-		    powerStateSuspended = 0;
-		    if (osVersion.dwMajorVersion >= 6) {
-			smb_SetLanAdapterChangeDetected();
-                    }
+                    osi_Log0(afsd_logp,"SERVICE_CONTROL_APMRESUMEAUTOMATIC");
+		    if (powerStateSuspended) {
+			powerStateSuspended = 0;
+			cm_CheckServers(CM_FLAG_CHECKDOWNSERVERS
+					 | CM_FLAG_CHECKUPSERVERS, NULL);
+			if (osVersion.dwMajorVersion >= 6)
+			    smb_RestartListeners(0);
+			if (smb_Enabled && osVersion.dwMajorVersion >= 6) {
+			    smb_SetLanAdapterChangeDetected();
+			}
+			if (RDR_Initialized)
+			    RDR_Resume();
+		    }
                     dwRet = NO_ERROR;
+                    afsi_log("SERVICE_CONTROL_APMRESUMEAUTOMATIC complete");
+                    osi_Log0(afsd_logp,"SERVICE_CONTROL_APMRESUMEAUTOMATIC complete");
                     break;
                 default:
                     afsi_log("SERVICE_CONTROL_unknown");
+                    osi_Log1(afsd_logp, "SERVICE_CONTROL_unknown: 0x%x", dwEventType);
                     dwRet = NO_ERROR;
                 }
             }
@@ -580,7 +665,7 @@ GetVersionInfo( CHAR * filename, CHAR * szOutput, DWORD dwOutput )
     DWORD size = GetFileVersionInfoSize(filename, &dwVersionHandle);
 
     if (!size) {
-        afsi_log("GetFileVersionInfoSize failed");
+	afsi_log("GetFileVersionInfoSize(%s) failed", filename);
         return GetLastError();
     }
 
@@ -1091,6 +1176,151 @@ BOOL AFSModulesVerify(void)
 }
 
 /*
+ * Add or remove the specified service from the Network Provider "Order" value
+ * in the registry:
+ *
+ *    str : target string
+ *    str2: string to add/remove
+ *    bInst: == 1 if string should be added to target if not already there, otherwise remove string from target if present.
+ *    if before != NULL, add string before
+ */
+
+enum INP_ERR {
+    inp_err_error=0,
+    inp_err_present=1,
+    inp_err_added=2,
+    inp_err_absent=3,
+    inp_err_removed=4
+};
+
+static enum INP_ERR
+npi_CheckAndAddRemove(char *str, const char *str2, int bInst,
+		      const char *before)
+{
+    char *target = NULL;
+    char *charset = NULL;
+    char *match, *bmatch;
+    int code;
+    enum INP_ERR rv = inp_err_error;
+
+    code = asprintf(&target, ",%s,", str);
+    if (code < 0)
+	goto out;
+
+    code = asprintf(&charset, ",%s,", str2);
+    if (code < 0)
+	goto out;
+
+    match = strstr(target, charset);
+    if (match && bInst) {
+	if (before != NULL) {
+	    bmatch = strstr(target, before);
+	    if (bmatch == NULL || bmatch > match) {
+		rv = inp_err_present;
+		goto out;
+	    }
+
+	    strcpy(str+(match-target), match + strlen(str2) + 2);
+	    str[strlen(str)-1] = '\0';
+	    match = NULL;
+	} else {
+	    rv = inp_err_present;
+	    goto out;
+	}
+    }
+
+    if (match == NULL && !bInst) {
+	rv = inp_err_absent;
+    }
+    else if (bInst)
+    {
+	if (before == NULL || (bmatch = strstr(str, before)) == NULL) {
+	    /* append to list */
+	    strcat(str, ",");
+	    strcat(str, str2);
+	} else {
+	    /* insert before str2 */
+	    size_t s2len = strlen(str2);
+	    memmove(bmatch + s2len + 1, bmatch, strlen(bmatch) + 1);
+	    memcpy(bmatch, str2, s2len);
+	    bmatch[s2len] = ',';
+	}
+	rv = inp_err_added;
+    }
+    else
+    {
+	/* remove from list */
+	strcpy(str + (match-target), match + strlen(str2) + 2);
+	str[strlen(str)-1] = '\0';
+	rv = inp_err_removed;
+    }
+
+  out:
+    free(target);
+    free(charset);
+    return rv;
+}
+
+
+static DWORD
+InstNetProvider(const char *svcname, int bInst, const char *before)
+{
+    const char *strOrder = NULL;
+    HKEY hkOrder = NULL;
+    LONG rv;
+    DWORD dwSize;
+    HANDLE hProcHeap;
+
+    rv = RegOpenKeyEx(HKEY_LOCAL_MACHINE, AFSREG_NP_ORDER, 0,
+		      KEY_READ | KEY_WRITE, &hkOrder);
+    if (rv != ERROR_SUCCESS)
+	goto out;
+
+    dwSize = 0;
+    rv = RegQueryValueEx(hkOrder, AFSREG_NP_ORDER_VALUE,
+			 NULL, NULL, NULL, &dwSize);
+    if (rv != ERROR_SUCCESS)
+	goto out;
+
+    strOrder = malloc(dwSize + 2 + strlen(svcname));
+
+    rv = RegQueryValueEx(hkOrder, AFSREG_NP_ORDER_VALUE,
+			 NULL, NULL, (LPBYTE) strOrder, &dwSize);
+    if (rv != ERROR_SUCCESS)
+	goto out;
+
+    switch(npi_CheckAndAddRemove(strOrder, svcname , bInst, before)) {
+    case inp_err_added:
+    case inp_err_removed:
+	dwSize = strlen(strOrder) + 1;
+	rv = RegSetValueEx(hkOrder, AFSREG_NP_ORDER_VALUE, 0, REG_SZ,
+			   strOrder, dwSize);
+	break;
+    }
+
+  out:
+    if (hkOrder)
+	RegCloseKey(hkOrder);
+    free(strOrder);
+    return rv;
+}
+
+static int
+clientServiceProviderKeyExists(void)
+{
+    HKEY hk;
+    LONG rv;
+
+    rv = RegOpenKeyEx(HKEY_LOCAL_MACHINE,
+		      AFSREG_CLT_SVC_PROVIDER_SUBKEY, 0,
+		      KEY_READ, &hk);
+    if (rv == ERROR_SUCCESS)
+	RegCloseKey(hk);
+
+    return (rv == ERROR_SUCCESS);
+}
+
+/*
 control serviceex exists only on 2000/xp. These functions will be loaded dynamically.
 */
 
@@ -1324,9 +1554,47 @@ afsd_Main(DWORD argc, LPTSTR *argv)
         /* Notify any volume status handlers that the cache manager has started */
         cm_VolStatus_Service_Started();
 
+        code = RDR_Initialize();
+        if ( code == ERROR_SERVICE_DISABLED) {
+            afsi_log("RDR_Initialize failed: 1058 (Unable to load AFSRedirLib.sys)");
+            osi_panic(reason, __FILE__, __LINE__);
+        } else {
+            RDR_Initialized = !code;
+            afsi_log("RDR_Initialize returned: (code = %d)", code);
+        }
+
+        if (RDR_Initialized) {
+            if (cm_sysNameCount)
+                RDR_SysName( AFS_SYSNAME_ARCH_32BIT, cm_sysNameCount, cm_sysNameList );
+#ifdef _WIN64
+            if (cm_sysName64Count)
+                RDR_SysName( AFS_SYSNAME_ARCH_64BIT, cm_sysName64Count, cm_sysName64List );
+            else if (cm_sysNameCount)
+                RDR_SysName( AFS_SYSNAME_ARCH_64BIT, cm_sysNameCount, cm_sysNameList );
+#endif
+
+	    InstNetProvider("AFSRedirector", TRUE, "LanmanWorkstation");
+	} else {
+	    InstNetProvider("AFSRedirector", FALSE, NULL);
+	}
+
+	InstNetProvider("TransarcAFSDaemon", clientServiceProviderKeyExists(),
+			NULL);
+
+        /*
+         * Set the default for the SMB interface based upon the state of the
+         * Redirector interface.
+         */
+        smb_Enabled = !RDR_Initialized;
+
         code = afsd_InitSMB(&reason, MessageBox);
-        if (code != 0) {
+        if (smb_Enabled && code != 0) {
             afsi_log("afsd_InitSMB failed: %s (code = %d)", reason, code);
+            osi_panic(reason, __FILE__, __LINE__);
+        }
+
+        if (!smb_Enabled && !RDR_Initialized) {
+            afsi_log("Neither RDR nor SMB interfaces available");
             osi_panic(reason, __FILE__, __LINE__);
         }
 
@@ -1450,10 +1718,14 @@ afsd_Main(DWORD argc, LPTSTR *argv)
     DismountGlobalDrives();
     afsi_log("Global Drives dismounted");
 
+    if (RDR_Initialized) {
+        RDR_ShutdownNotify();
+        cm_VolStatus_SetRDRNotifications(FALSE);
+        afsi_log("RDR notified of shutdown");
+    }
+
     smb_Shutdown();
     afsi_log("smb shutdown complete");
-
-    RpcShutdown();
 
     cm_ReleaseAllLocks();
 
@@ -1465,7 +1737,14 @@ afsd_Main(DWORD argc, LPTSTR *argv)
 
     afsd_ShutdownCM();
 
+    RpcShutdown();
+
     cm_ShutdownMappedMemory();
+
+    if (RDR_Initialized) {
+        RDR_ShutdownFinal();
+        afsi_log("RDR shutdown complete");
+    }
 
     rx_Finalize();
     afsi_log("rx finalization complete");

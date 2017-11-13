@@ -11,8 +11,9 @@
 #include <ws2tcpip.h>
 
 extern "C" {
+#include <afsconfig.h>
 #include <afs/param.h>
-#include <afs/stds.h>
+#include <roken.h>
 #include <osilog.h>
 #include <afs/fs_utils.h>
 #include <rx\rxkad.h>
@@ -84,7 +85,6 @@ extern "C" int WINAPI WinMain (HINSTANCE hInst, HINSTANCE hPrev, LPSTR pCmdLine,
    return 0;
 }
 
-#define ISHIGHSECURITY(v) ( ((v) & LOGON_OPTION_HIGHSECURITY)==LOGON_OPTION_HIGHSECURITY)
 #define REG_CLIENT_PROVIDER_KEY "SYSTEM\\CurrentControlSet\\Services\\TransarcAFSDaemon\\NetworkProvider"
 
 BOOL InitApp (LPSTR pszCmdLineA)
@@ -154,8 +154,8 @@ BOOL InitApp (LPSTR pszCmdLineA)
 
          case ':':
              CopyAnsiToString(g.SmbName,pszCmdLineA);
-			 MapShareName(pszCmdLineA);
-			 break;
+             MapShareName(pszCmdLineA);
+             break;
 
          case 'z':
          case 'Z':
@@ -244,11 +244,6 @@ BOOL InitApp (LPSTR pszCmdLineA)
    Version.dwOSVersionInfoSize = sizeof(Version);
    if (GetVersionEx (&Version))
       g.fIsWinNT = (Version.dwPlatformId == VER_PLATFORM_WIN32_NT) ? TRUE : FALSE;
-
-   if (!g.fIsWinNT)
-      lstrcpy (g.szHelpFile, TEXT("afs-light.hlp"));
-   else
-      lstrcpy (g.szHelpFile, TEXT("afs-nt.hlp"));
 
    // Initialize winsock etc
    //

@@ -27,11 +27,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <afsconfig.h>
 #include <afs/param.h>
 
-#ifdef HAVE_SEARCH_H
+#include <roken.h>
+
 #include <search.h>
-#else
-#include "afscp_search.h"
-#endif
 
 #include <afs/vlserver.h>
 #include <afs/vldbint.h>
@@ -146,11 +144,13 @@ afscp_WaitForCallback(const struct afscp_venusfid *fid, int seconds)
 	    code = pthread_cond_timedwait(&(stored->cv), &(stored->mtx), &ts);
 	else
 	    pthread_cond_wait(&(stored->cv), &(stored->mtx));
-	if ((stored->nwaiters == 1) && stored->cleanup)
+	if ((stored->nwaiters == 1) && stored->cleanup) {
+	    pthread_mutex_unlock(&(stored->mtx));
 	    _StatCleanup(stored);
-	else
+	} else {
 	    stored->nwaiters--;
-        pthread_mutex_unlock(&(stored->mtx));
+	    pthread_mutex_unlock(&(stored->mtx));
+	}
     }
     if ((code == EINTR) || (code == ETIMEDOUT)) {
 	afscp_errno = code;
@@ -314,9 +314,11 @@ _StatInvalidate(const struct afscp_venusfid *fid)
 	    /* avoid blocking callback thread */
 	    pthread_cond_broadcast(&(stored->cv));
 	    stored->cleanup = 1;
-	} else
+	    pthread_mutex_unlock(&(stored->mtx));
+	} else {
+	    pthread_mutex_unlock(&(stored->mtx));
 	    _StatCleanup(stored);
-	pthread_mutex_unlock(&(stored->mtx));
+	}
     }
     return 0;
 }

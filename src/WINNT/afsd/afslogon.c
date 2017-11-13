@@ -7,7 +7,9 @@
  * directory or online at http://www.openafs.org/dl/license10.html
  */
 
-#include "afslogon.h"
+#include <afsconfig.h>
+#include <afs/param.h>
+#include <roken.h>
 
 #include <io.h>
 #include <sys/stat.h>
@@ -15,10 +17,15 @@
 #include <fcntl.h>
 
 #include <winsock2.h>
+#include <winioctl.h>
+#define SECURITY_WIN32
+#include <sspi.h>
 #include <lm.h>
 #include <nb30.h>
+#include <sddl.h>
 
-#include <afs/param.h>
+#include "afslogon.h"
+
 #include <afs/stds.h>
 #include <afs/pioctl_nt.h>
 #include <afs/kautils.h>
@@ -359,28 +366,116 @@ BOOL StartTheService (void)
     return (gle == 0);
 }
 
-/* LOOKUPKEYCHAIN: macro to look up the value in the list of keys in order until it's found
-   v:variable to receive value (reference type)
-   t:type
-   d:default, in case the value isn't on any of the keys
-   n:name of value */
+char *
+FindFullDomainName(const char *short_domain)
+{
+    /*
+     * Possible sources of domain or realm information:
+     *
+     * HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Group Policy\History
+     *   MachineDomain REG_SZ
+     *
+     * HKLM\SYSTEM\CurrentControlSet\Control\Lsa\CachedMachineNames
+     *   NameUserPrincipal REG_SZ  MACHINE$@DOMAIN
+     *
+     * HKLM\SYSTEM\CurrentControlSet\Control\Lsa\Kerberos\Domains\<DOMAIN>
+    */
+
+    LONG rv;
+    HKEY hk = NULL;
+    DWORD dwType;
+    DWORD dwSize;
+    char * domain;
+    size_t short_domain_len;
+
+    if (short_domain == NULL)
+        return NULL;
+
+    short_domain_len = strlen(short_domain);
+
+    /* First look for this machine's Active Directory domain */
+    rv = RegOpenKeyEx( HKEY_LOCAL_MACHINE,
+                       "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Group Policy\\History",
+                       0, KEY_READ, &hk);
+    if (rv == ERROR_SUCCESS) {
+        dwType = 0;
+        dwSize = 0;
+        rv = RegQueryValueEx(hk, "MachineDomain", 0, &dwType, NULL, &dwSize);
+        if (rv == ERROR_SUCCESS && dwType == REG_SZ) {
+            domain = malloc(dwSize + 1);
+            if (domain) {
+                dwSize += 1;
+                rv = RegQueryValueEx(hk, "MachineDomain", 0, &dwType, domain, &dwSize);
+                if (rv == ERROR_SUCCESS && dwType == REG_SZ) {
+                    domain[dwSize-1] = '\0';
+                    if (strncmp(short_domain, domain, strlen(short_domain)) == 0 &&
+                        domain[short_domain_len] == '.')
+                    {
+                        RegCloseKey(hk);
+                        return domain;
+                    }
+                }
+                free(domain);
+            }
+        }
+        RegCloseKey(hk);
+    }
+
+    /* Then check the list of configured Kerberos realms, if any */
+    rv = RegOpenKeyEx( HKEY_LOCAL_MACHINE,
+                       "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Group Policy\\History",
+                       0, KEY_READ, &hk);
+    if (rv == ERROR_SUCCESS) {
+        DWORD index, cch;
+        char  name[256];
+
+        for (index=0; rv==ERROR_SUCCESS; index++) {
+            cch = sizeof(name);
+            rv = RegEnumKeyEx(hk, index, name, &cch, NULL, NULL, NULL, NULL);
+            if (rv == ERROR_SUCCESS &&
+                strncmp(short_domain, name, strlen(short_domain)) == 0 &&
+                name[short_domain_len] == '.') {
+                domain = strdup(name);
+                RegCloseKey(hk);
+                return domain;
+            }
+        }
+        RegCloseKey(hk);
+    }
+
+    return NULL;
+}
+
+/*
+ * LOOKUPKEYCHAIN: macro to look up the value in the list of keys in order until it's found
+ *   v:variable to receive value (reference type).
+ *   t:type
+ *   d:default, in case the value isn't on any of the keys
+ *   n:name of value
+ */
 #define LOOKUPKEYCHAIN(v,t,d,n) \
 	do { \
 		rv = ~ERROR_SUCCESS; \
 		dwType = t; \
-		if(hkDom) { \
+		if(hkUserMap) { \
+			dwSize = sizeof(v); \
+			rv = RegQueryValueEx(hkUserMap, n, 0, &dwType, (LPBYTE) &(v), &dwSize); \
+			if(rv == ERROR_SUCCESS || rv == ERROR_MORE_DATA) \
+                            DebugEvent(#v " found in hkUserMap with type [%d]", dwType); \
+		} \
+		if(hkDom && ((rv != ERROR_SUCCESS && rv != ERROR_MORE_DATA) || dwType != t)) { \
 			dwSize = sizeof(v); \
 			rv = RegQueryValueEx(hkDom, n, 0, &dwType, (LPBYTE) &(v), &dwSize); \
 			if(rv == ERROR_SUCCESS || rv == ERROR_MORE_DATA) \
                             DebugEvent(#v " found in hkDom with type [%d]", dwType); \
 		} \
-		if(hkDoms && ((rv != ERROR_SUCCESS && rv != ERROR_MORE_DATA) || dwType != t)) { \
-			dwSize = sizeof(v); \
-			rv = RegQueryValueEx(hkDoms, n, 0, &dwType, (LPBYTE) &(v), &dwSize); \
-			if(rv == ERROR_SUCCESS || rv == ERROR_MORE_DATA) \
+                if(hkDoms && ((rv != ERROR_SUCCESS && rv != ERROR_MORE_DATA) || dwType != t)) { \
+                        dwSize = sizeof(v); \
+                        rv = RegQueryValueEx(hkDoms, n, 0, &dwType, (LPBYTE) &(v), &dwSize); \
+                        if(rv == ERROR_SUCCESS || rv == ERROR_MORE_DATA) \
                             DebugEvent(#v " found in hkDoms with type [%d]", dwType); \
-		} \
-		if(hkNp && ((rv != ERROR_SUCCESS && rv != ERROR_MORE_DATA) || dwType != t)) { \
+                } \
+                if(hkNp && ((rv != ERROR_SUCCESS && rv != ERROR_MORE_DATA) || dwType != t)) { \
 			dwSize = sizeof(v); \
 			rv = RegQueryValueEx(hkNp, n, 0, &dwType, (LPBYTE) &(v), &dwSize); \
 			if(rv == ERROR_SUCCESS || rv == ERROR_MORE_DATA) \
@@ -392,15 +487,117 @@ BOOL StartTheService (void)
 		} \
 	} while(0)
 
-/* Get domain specific configuration info.  We are returning void because if anything goes wrong
-   we just return defaults.
+
+/*
+ * FINDKEYCHAIN1: macro to find the value in the list of keys in order until it's found.
+ *   Sets hkTemp variable to the key the value is found in.
+ *   t:type
+ *   n:name of value
+ */
+#define FINDKEYCHAIN1(t,n) \
+	do { \
+                hkTemp = NULL; \
+		rv = ~ERROR_SUCCESS; \
+		dwType = 0; \
+		if(hkUserMap) { \
+			dwSize = 0; \
+			rv = RegQueryValueEx(hkUserMap, n, 0, &dwType, NULL, &dwSize); \
+                        if((rv == ERROR_SUCCESS || rv == ERROR_MORE_DATA) && dwType == t) { \
+                            DebugEvent(#n " found in hkUserMap with type [%d]", dwType); \
+                            hkTemp = hkUserMap; \
+                        } \
+		} \
+		if(hkDom && ((rv != ERROR_SUCCESS && rv != ERROR_MORE_DATA) || dwType != t)) { \
+			dwSize = 0; \
+			rv = RegQueryValueEx(hkDom, n, 0, &dwType, NULL, &dwSize); \
+                        if((rv == ERROR_SUCCESS || rv == ERROR_MORE_DATA) && dwType == t) { \
+                            DebugEvent(#n " found in hkDom with type [%d]", dwType); \
+                            hkTemp = hkDom; \
+                        } \
+		} \
+                if(hkDoms && ((rv != ERROR_SUCCESS && rv != ERROR_MORE_DATA) || dwType != t)) { \
+                        dwSize = 0; \
+                        rv = RegQueryValueEx(hkDoms, n, 0, &dwType, NULL, &dwSize); \
+                        if((rv == ERROR_SUCCESS || rv == ERROR_MORE_DATA) && dwType == t) { \
+                            DebugEvent(#n " found in hkDoms with type [%d]", dwType); \
+                            hkTemp = hkDoms; \
+                        } \
+                } \
+                if(hkNp && ((rv != ERROR_SUCCESS && rv != ERROR_MORE_DATA) || dwType != t)) { \
+			dwSize = 0; \
+			rv = RegQueryValueEx(hkNp, n, 0, &dwType, NULL, &dwSize); \
+                        if((rv == ERROR_SUCCESS || rv == ERROR_MORE_DATA) && dwType == t) { \
+                            DebugEvent(#n " found in hkNp with type [%d]", dwType); \
+                            hkTemp = hkNp; \
+                        } \
+		} \
+		if((rv != ERROR_SUCCESS && rv != ERROR_MORE_DATA) || dwType != t) { \
+			DebugEvent0(#n " not found"); \
+		} \
+	} while(0)
+
+/*
+ * FINDKEYCHAIN2: macro to find the value in the list of keys in order until it's found.
+ *   Sets hkTemp variable to the key the value is found in.
+ *   t1:type1
+ *   t2:type2
+ *   n:name of value
+ */
+#define FINDKEYCHAIN2(t1,t2,n) \
+	do { \
+                hkTemp = NULL; \
+		rv = ~ERROR_SUCCESS; \
+		dwType = 0; \
+		if(hkUserMap) { \
+			dwSize = 0; \
+			rv = RegQueryValueEx(hkUserMap, n, 0, &dwType, NULL, &dwSize); \
+                        if((rv == ERROR_SUCCESS || rv == ERROR_MORE_DATA) && (dwType == t1 || dwType == t2)) { \
+                            DebugEvent(#n " found in hkUserMap with type [%d]", dwType); \
+                            hkTemp = hkUserMap; \
+                        } \
+		} \
+		if(hkDom && ((rv != ERROR_SUCCESS && rv != ERROR_MORE_DATA) || (dwType != t1 && dwType != t2))) { \
+			dwSize = 0; \
+			rv = RegQueryValueEx(hkDom, n, 0, &dwType, NULL, &dwSize); \
+                        if((rv == ERROR_SUCCESS || rv == ERROR_MORE_DATA) && (dwType == t1 || dwType == t2)) {\
+                            DebugEvent(#n " found in hkDom with type [%d]", dwType); \
+                            hkTemp = hkDom; \
+                        } \
+		} \
+                if(hkDoms && ((rv != ERROR_SUCCESS && rv != ERROR_MORE_DATA) || (dwType != t1 && dwType != t2))) { \
+                        dwSize = 0; \
+                        rv = RegQueryValueEx(hkDoms, n, 0, &dwType, NULL, &dwSize); \
+                        if((rv == ERROR_SUCCESS || rv == ERROR_MORE_DATA) && (dwType == t1 || dwType == t2)) { \
+                            DebugEvent(#n " found in hkDoms with type [%d]", dwType); \
+                            hkTemp = hkDoms; \
+                        } \
+                } \
+                if(hkNp && ((rv != ERROR_SUCCESS && rv != ERROR_MORE_DATA) || (dwType != t1 && dwType != t2))) { \
+			dwSize = 0; \
+			rv = RegQueryValueEx(hkNp, n, 0, &dwType, NULL, &dwSize); \
+                        if((rv == ERROR_SUCCESS || rv == ERROR_MORE_DATA) && (dwType == t1 || dwType == t2)) { \
+                            DebugEvent(#n " found in hkNp with type [%d]", dwType); \
+                            hkTemp = hkNp; \
+                        } \
+		} \
+		if((rv != ERROR_SUCCESS && rv != ERROR_MORE_DATA) || (dwType != t1 && dwType != t2)) { \
+			DebugEvent0(#n " not found"); \
+		} \
+	} while(0)
+
+
+/*
+ * Get domain specific configuration info.  We return void
+ * because if anything goes wrong we just return defaults.
  */
 void
-GetDomainLogonOptions( PLUID lpLogonId, char * username, char * domain, LogonOptions_t *opt ) {
-    HKEY hkParm = NULL; /* Service parameter */
-    HKEY hkNp = NULL;   /* network provider key */
-    HKEY hkDoms = NULL; /* domains key */
-    HKEY hkDom = NULL;  /* DOMAINS/domain key */
+GetDomainLogonOptions( PLUID lpLogonId, BOOLEAN bKerberos,
+                       char * username, char * domain, LogonOptions_t *opt ) {
+    HKEY hkParm = NULL;         /* Service parameter */
+    HKEY hkNp = NULL;           /* network provider key */
+    HKEY hkDoms = NULL;         /* domains key */
+    HKEY hkDom = NULL;          /* DOMAINS/domain key */
+    HKEY hkUserMap = NULL;      /* User mapping key */
     HKEY hkTemp = NULL;
     LONG rv;
     DWORD dwSize;
@@ -410,9 +607,9 @@ GetDomainLogonOptions( PLUID lpLogonId, char * username, char * domain, LogonOpt
     char *effDomain = NULL;
 
     memset(opt, 0, sizeof(LogonOptions_t));
-
     DebugEvent("In GetDomainLogonOptions for user [%s] in domain [%s]", username, domain);
-    /* If the domain is the same as the Netbios computer name, we use the LOCALHOST domain name*/
+
+    /* If the domain is the same as the Netbios computer name, we use the LOCALHOST domain name. */
     opt->flags = LOGON_FLAG_REMOTE;
     if(domain) {
         dwSize = MAX_COMPUTERNAME_LENGTH + 1;
@@ -451,16 +648,27 @@ GetDomainLogonOptions( PLUID lpLogonId, char * username, char * domain, LogonOpt
         if( rv != ERROR_SUCCESS ) {
             hkDom = NULL;
             DebugEvent("GetDomainLogonOptions: Can't open domain key for [%s] [%d]", effDomain, rv);
+
             /* If none of the domains match, we shouldn't use the domain key either */
             RegCloseKey(hkDoms);
             hkDoms = NULL;
+        } else {
+            rv = RegOpenKeyEx( hkDom, username, 0, KEY_READ, &hkUserMap);
+            if ( rv != ERROR_SUCCESS ) {
+                hkUserMap = NULL;
+                DebugEvent("GetDomainLogonOptions: Can't open usermap key for [%s]@[%s] [%d]",
+                           username, effDomain, rv);
+            }
         }
-    } else
+    } else {
         DebugEvent0("Not opening domain key");
+    }
 
-    /* Each individual can either be specified on the domain key, the domains key or in the
-       net provider key.  They fail over in that order.  If none is found, we just use the
-       defaults. */
+    /*
+     * Most individual values can be specified on the user mapping key, the domain key,
+     * the domains key or in the net provider key.  They fail over in that order.
+     * If none is found, we just use the defaults.
+     */
 
     /* LogonOption */
     LOOKUPKEYCHAIN(opt->LogonOption, REG_DWORD, DEFAULT_LOGON_OPTION, REG_CLIENT_LOGON_OPTION_PARM);
@@ -484,13 +692,7 @@ GetDomainLogonOptions( PLUID lpLogonId, char * username, char * domain, LogonOpt
     }
 
     /* come up with SMB username */
-    if(ISHIGHSECURITY(opt->LogonOption)) {
-        DebugEvent0("High Security Mode active");
-        opt->smbName = malloc( MAXRANDOMNAMELEN );
-        if (opt->smbName == NULL)
-            goto cleanup;
-        GenRandomName(opt->smbName);
-    } else if (lpLogonId) {
+    if (lpLogonId) {
         /* username and domain for logon session is not necessarily the same as
            username and domain passed into network provider. */
         PSECURITY_LOGON_SESSION_DATA plsd=NULL;
@@ -539,6 +741,7 @@ GetDomainLogonOptions( PLUID lpLogonId, char * username, char * domain, LogonOpt
         if (plsd)
             LsaFreeReturnBuffer(plsd);
     }
+
     if (opt->smbName == NULL) {
         size_t len;
 
@@ -561,30 +764,10 @@ GetDomainLogonOptions( PLUID lpLogonId, char * username, char * domain, LogonOpt
     DebugEvent0("Looking up logon script");
     /* Logon script */
     /* First find out where the key is */
-    hkTemp = NULL;
-    rv = ~ERROR_SUCCESS;
-    dwType = 0;
-    if(hkDom)
-        rv = RegQueryValueExW(hkDom, REG_CLIENT_LOGON_SCRIPT_PARMW, 0, &dwType, NULL, &dwSize);
-    if(rv == ERROR_SUCCESS && (dwType == REG_SZ || dwType == REG_EXPAND_SZ)) {
-        hkTemp = hkDom;
-        DebugEvent0("Located logon script in hkDom");
-    }
-    else if(hkDoms) {
-        rv = RegQueryValueExW(hkDoms, REG_CLIENT_LOGON_SCRIPT_PARMW, 0, &dwType, NULL, &dwSize);
-        if(rv == ERROR_SUCCESS && !hkTemp && (dwType == REG_SZ || dwType == REG_EXPAND_SZ)) {
-            hkTemp = hkDoms;
-            DebugEvent0("Located logon script in hkDoms");
-        }
-        /* Note that the LogonScript in the NP key is only used if we are doing high security. */
-        else if(hkNp && ISHIGHSECURITY(opt->LogonOption)) {
-            rv = RegQueryValueExW(hkNp, REG_CLIENT_LOGON_SCRIPT_PARMW, 0, &dwType, NULL, &dwSize);
-            if(rv == ERROR_SUCCESS && !hkTemp && (dwType == REG_SZ || dwType == REG_EXPAND_SZ)) {
-                hkTemp = hkNp;
-                DebugEvent0("Located logon script in hkNp");
-            }
-        }
-    }
+    FINDKEYCHAIN2(REG_SZ, REG_EXPAND_SZ, REG_CLIENT_LOGON_SCRIPT_PARM);
+    /* Note that the LogonScript in the NP key not used. */
+    if (hkTemp == hkNp)
+        hkTemp = NULL;
 
     if(hkTemp) {
         WCHAR *regscript	= NULL;
@@ -665,27 +848,7 @@ GetDomainLogonOptions( PLUID lpLogonId, char * username, char * domain, LogonOpt
     DebugEvent0("Looking up TheseCells");
     /* TheseCells */
     /* First find out where the key is */
-    hkTemp = NULL;
-    rv = ~ERROR_SUCCESS;
-    dwSize = 0;
-    if (hkDom)
-        rv = RegQueryValueEx(hkDom, REG_CLIENT_THESE_CELLS_PARM, 0, &dwType, NULL, &dwSize);
-    if (rv == ERROR_SUCCESS && dwType == REG_MULTI_SZ) {
-        hkTemp = hkDom;
-        DebugEvent("Located TheseCells in hkDom size %d", dwSize);
-    } else if (hkDoms) {
-        rv = RegQueryValueEx(hkDoms, REG_CLIENT_THESE_CELLS_PARM, 0, &dwType, NULL, &dwSize);
-        if (rv == ERROR_SUCCESS && !hkTemp && dwType == REG_MULTI_SZ) {
-            hkTemp = hkDoms;
-            DebugEvent("Located TheseCells in hkDoms size %d", dwSize);
-        } else if (hkNp) {
-            rv = RegQueryValueEx(hkNp, REG_CLIENT_THESE_CELLS_PARM, 0, &dwType, NULL, &dwSize);
-            if (rv == ERROR_SUCCESS && !hkTemp && dwType == REG_MULTI_SZ) {
-                hkTemp = hkNp;
-                DebugEvent("Located TheseCells in hkNp size %d", dwSize);
-            }
-        }
-    }
+    FINDKEYCHAIN1(REG_MULTI_SZ, REG_CLIENT_THESE_CELLS_PARM);
 
     if (hkTemp) {
         CHAR * thesecells = NULL, *p;
@@ -720,27 +883,7 @@ GetDomainLogonOptions( PLUID lpLogonId, char * username, char * domain, LogonOpt
     DebugEvent0("Looking up Realm");
     /* Realm */
     /* First find out where the key is */
-    hkTemp = NULL;
-    rv = ~ERROR_SUCCESS;
-    dwSize = 0;
-    if (hkDom)
-        rv = RegQueryValueEx(hkDom, REG_CLIENT_REALM_PARM, 0, &dwType, NULL, &dwSize);
-    if (rv == ERROR_SUCCESS && dwType == REG_SZ) {
-        hkTemp = hkDom;
-        DebugEvent("Located Realm in hkDom size %d", dwSize);
-    } else if (hkDoms) {
-        rv = RegQueryValueEx(hkDoms, REG_CLIENT_REALM_PARM, 0, &dwType, NULL, &dwSize);
-        if (rv == ERROR_SUCCESS && !hkTemp && dwType == REG_SZ) {
-            hkTemp = hkDoms;
-            DebugEvent("Located Realm in hkDoms size %d", dwSize);
-        } else if (hkNp) {
-            rv = RegQueryValueEx(hkNp, REG_CLIENT_REALM_PARM, 0, &dwType, NULL, &dwSize);
-            if (rv == ERROR_SUCCESS && !hkTemp && dwType == REG_SZ) {
-                hkTemp = hkNp;
-                DebugEvent("Located Realm in hkNp size %d", dwSize);
-            }
-        }
-    }
+    FINDKEYCHAIN1(REG_SZ, REG_CLIENT_REALM_PARM);
 
     if (hkTemp) {
         CHAR * realm = NULL;
@@ -758,21 +901,88 @@ GetDomainLogonOptions( PLUID lpLogonId, char * username, char * domain, LogonOpt
         }
 
         DebugEvent("Found Realm [%s]", realm);
-        opt->realm = realm;
-        realm = NULL;
+        if (strcmp(realm, domain)) {
+            opt->realm = realm;
+            realm = NULL;
+        }
 
       doneRealm:
         if (realm) free(realm);
+    } else {
+        /*
+         * If no realm was found and the logon domain is not a valid
+         * realm name (aka LOCALHOST or domain short name, attempt
+         * to identify the full domain name or use the krb5 default
+         * realm.
+         *
+         * Possible sources of domain or realm information:
+         *
+         * HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Group Policy\History
+         *   MachineDomain REG_SZ
+         *
+         * HKLM\SYSTEM\CurrentControlSet\Control\Lsa\CachedMachineNames
+         *   NameUserPrincipal REG_SZ  MACHINE$@DOMAIN
+         *
+         * HKLM\SYSTEM\CurrentControlSet\Control\Lsa\Kerberos\Domains\<DOMAIN>
+         */
+        if ( !ISREMOTE(opt->flags)) {
+            opt->realm = KFW_get_default_realm();
+        } else if ( strchr(domain, '.') == NULL) {
+            opt->realm = FindFullDomainName(domain);
+            if (opt->realm == NULL)
+                opt->realm = KFW_get_default_realm();
+        }
+    }
+
+    /* Obtain the username mapping (if any) */
+    hkTemp = NULL;
+    rv = ~ERROR_SUCCESS;
+    dwType = REG_SZ;
+    if(hkUserMap) {
+        dwSize = 0;
+        rv = RegQueryValueEx(hkUserMap, REG_CLIENT_USERNAME_PARM, 0, &dwType, NULL, &dwSize);
+        if((rv == ERROR_SUCCESS || rv == ERROR_MORE_DATA) && dwType == REG_SZ) {
+            CHAR * usermap = NULL;
+
+            /* dwSize still has the size of the required buffer in bytes. */
+            usermap = malloc(dwSize*2);
+            if (!usermap)
+                goto doneUserMap;
+            dwSize *=2;
+            SetLastError(0);
+            rv = RegQueryValueEx(hkUserMap, REG_CLIENT_USERNAME_PARM, 0, NULL, (LPBYTE) usermap, &dwSize);
+            if(rv != ERROR_SUCCESS) {/* what the ..? */
+                DebugEvent("Can't look up Username rv [%d] size [%d] gle [%d]", rv, dwSize, GetLastError());
+                goto doneUserMap;
+            }
+
+            DebugEvent("Found Username [%s]", usermap);
+            if (strcmp(usermap, username)) {
+                opt->username = usermap;
+                usermap = NULL;
+            }
+
+          doneUserMap:
+            if (usermap) free(usermap);
+        }
+    }
+
+    /* Determine if the username@realm is the LSA Kerberos principal (if any) */
+    if (!opt->username && !opt->realm && bKerberos) {
+        opt->flags |= LOGON_FLAG_LSA;
     }
 
   cleanup:
     if(hkNp) RegCloseKey(hkNp);
     if(hkDom) RegCloseKey(hkDom);
     if(hkDoms) RegCloseKey(hkDoms);
+    if(hkUserMap) RegCloseKey(hkUserMap);
     if(hkParm) RegCloseKey(hkParm);
 }
 
 #undef LOOKUPKEYCHAIN
+#undef FINDKEYCHAIN1
+#undef FINDKEYCHAIN2
 
 /* Try to find out which cell the given path is in.  We must retain
    the contents of *cell in case of failure. *cell is assumed to be
@@ -822,7 +1032,83 @@ UnicodeStringToANSI(UNICODE_STRING uInputString, LPSTR lpszOutputString, int nOu
     return FALSE;
 }  // UnicodeStringToANSI
 
-DWORD APIENTRY NPLogonNotify(
+static DWORD
+ObtainTokens( PLUID lpLogonId,
+              LogonOptions_t *pOpt,
+              char uname[],
+              char realm[],
+              char cell[],
+              char password[],
+              char **preason)
+{
+    DWORD code = 0;
+    DWORD code2 = 0;
+    CtxtHandle LogonContext;
+    int pw_exp;
+
+    LogonSSP(lpLogonId, &LogonContext);
+    ImpersonateSecurityContext(&LogonContext);
+
+    if ( KFW_is_available() ) {
+        char * principal, *p;
+        size_t len, tlen;
+
+        SetEnvironmentVariable(DO_NOT_REGISTER_VARNAME, "");
+
+        if (ISLSA(pOpt->flags)) {
+            KFW_import_windows_lsa();
+        }
+
+        StringCchLength(pOpt->realm ? pOpt->realm : realm, MAX_DOMAIN_LENGTH, &tlen);
+        len = tlen;
+        StringCchLength(uname, MAX_USERNAME_LENGTH, &tlen);
+        len += tlen + 2;
+
+        /* tlen is now the length of uname in characters */
+        principal = (char *)malloc(len * sizeof(char));
+        if ( principal ) {
+            StringCchCopy(principal, len, uname);
+            p = principal + tlen;
+            *p++ = '@';
+            StringCchCopy(p, len - tlen -1, pOpt->realm ? pOpt->realm : realm);
+            code = KFW_AFS_get_cred(principal, cell, password, 0, NULL, preason);
+            DebugEvent("KFW_AFS_get_cred  uname=[%s] smbname=[NULL] cell=[%s] code=[%d]",
+                        principal, cell, code);
+
+            if (code == 0 && pOpt->theseCells) {
+                p = pOpt->theseCells;
+                while ( *p ) {
+                    if ( cm_stricmp_utf8(p, cell) ) {
+                        SetEnvironmentVariable(DO_NOT_REGISTER_VARNAME, "");
+                        code2 = KFW_AFS_get_cred(principal, p, password, 0, NULL, preason);
+                        SetEnvironmentVariable(DO_NOT_REGISTER_VARNAME, NULL);
+                        DebugEvent("KFW_AFS_get_cred  uname=[%s] smbname=[NULL] cell=[%s] code=[%d]",
+                                    principal, p, code2);
+                    }
+                    p += strlen(p) + 1;
+                }
+            }
+
+            free(principal);
+        }
+        SetEnvironmentVariable(DO_NOT_REGISTER_VARNAME, NULL);
+
+    } else {
+        code = ka_UserAuthenticateGeneral2(KA_USERAUTH_VERSION,
+                                            uname, "", cell, password, NULL, 0, &pw_exp, 0,
+                                            preason);
+        DebugEvent("AFS AfsLogon - (INTEGRATED only)ka_UserAuthenticateGeneral2 Code[%d] uname[%s] smbname=[NULL] Cell[%s] PwExp=[%d] Reason=[%s]",
+                    code, uname, cell, pw_exp, *preason ? *preason : "");
+    }
+
+    RevertSecurityContext(&LogonContext);
+    DeleteSecurityContext(&LogonContext);
+
+    return code;
+}
+
+DWORD APIENTRY
+NPLogonNotify(
 	PLUID lpLogonId,
 	LPCWSTR lpAuthentInfoType,
 	LPVOID lpAuthentInfo,
@@ -841,13 +1127,13 @@ DWORD APIENTRY NPLogonNotify(
 
     MSV1_0_INTERACTIVE_LOGON *IL;
 
-    DWORD code = 0, code2;
+    DWORD code = 0;
 
-    int pw_exp;
     char *reason;
     char *ctemp;
 
     BOOLEAN interactive;
+    BOOLEAN domainKerberos = FALSE;
     BOOLEAN flag;
     DWORD LSPtype, LSPsize;
     HKEY NPKey;
@@ -898,8 +1184,10 @@ DWORD APIENTRY NPLogonNotify(
     /* MSV1_0_INTERACTIVE_LOGON and KERB_INTERACTIVE_LOGON are equivalent for
      * our purposes */
 
+    domainKerberos = !wcsicmp(lpAuthentInfoType,L"Kerberos:Interactive");
+
     if ( wcsicmp(lpAuthentInfoType,L"MSV1_0:Interactive") &&
-         wcsicmp(lpAuthentInfoType,L"Kerberos:Interactive") )
+         !domainKerberos )
     {
         DebugEvent("Unsupported Authentication Info Type: %S",
                    lpAuthentInfoType);
@@ -910,34 +1198,32 @@ DWORD APIENTRY NPLogonNotify(
 
     /* Convert from Unicode to ANSI */
 
-    /*TODO: Use SecureZeroMemory to erase passwords */
     if (!UnicodeStringToANSI(IL->UserName, uname, MAX_USERNAME_LENGTH) ||
-	 !UnicodeStringToANSI(IL->Password, password, MAX_PASSWORD_LENGTH) ||
-	 !UnicodeStringToANSI(IL->LogonDomainName, logonDomain, MAX_DOMAIN_LENGTH))
+	!UnicodeStringToANSI(IL->LogonDomainName, logonDomain, MAX_DOMAIN_LENGTH) ||
+	!UnicodeStringToANSI(IL->Password, password, MAX_PASSWORD_LENGTH))
  	return 0;
 
-    /* Make sure AD-DOMAINS sent from login that is sent to us is stripped */
+    /*
+     * The AD logon domain can be provided in the IL->LogonDomainName field
+     * or as part of the IL->UserName field or both.  If the IL->UserName
+     * field contains a domain:
+     *   a) if there is no IL->LogonDomainName, use it as the domain
+     *   b) strip it from the username as we may combined the name with
+     *      another realm based upon our configuration
+     */
     ctemp = strchr(uname, '@');
     if (ctemp) {
+        DebugEvent("Username contains a realm: %s", uname);
         *ctemp = 0;
         ctemp++;
-        if ( logonDomain[0] == '\0' )
-            StringCchCopy(logonDomain, MAX_DOMAIN_LENGTH, ctemp);
-    }
-
-    /* is the name all lowercase? */
-    for ( ctemp = uname; *ctemp ; ctemp++) {
-        if ( !islower(*ctemp) ) {
-            lowercased_name = FALSE;
-            break;
-        }
+        StringCchCopy(logonDomain, MAX_DOMAIN_LENGTH, ctemp);
     }
 
     /*
      * Get Logon options
      */
+    GetDomainLogonOptions( lpLogonId, domainKerberos, uname, logonDomain, &opt);
 
-    GetDomainLogonOptions( lpLogonId, uname, logonDomain, &opt );
     retryInterval = opt.retryInterval;
     sleepInterval = opt.sleepInterval;
     *lpLogonScript = opt.logonScript;
@@ -964,7 +1250,7 @@ DWORD APIENTRY NPLogonNotify(
         /* Get cell name if doing integrated logon.
            We might overwrite this if we are logging into an AD realm and we find out that
            the user's home dir is in some other cell. */
-        DebugEvent("About to call cm_GetRootCellName()");
+        DebugEvent0("About to call cm_GetRootCellName()");
         code = cm_GetRootCellName(cell);
         if (code < 0) {
             DebugEvent0("Unable to obtain Root Cell");
@@ -984,7 +1270,8 @@ DWORD APIENTRY NPLogonNotify(
         }
     }
 
-    /* loop until AFS is started. */
+    AFSCreatePAG(lpLogonId);
+
     if (afsWillAutoStart) {
         /*
          * If the service is configured for auto start but hasn't started yet,
@@ -993,12 +1280,12 @@ DWORD APIENTRY NPLogonNotify(
         if (!(IsServiceRunning() || IsServiceStartPending()))
             StartTheService();
 
+        /* loop until AFS is started or fails. */
         while ( IsServiceStartPending() ) {
             Sleep(10);
         }
 
         while (IsServiceRunning() && code != KTC_NOCM && code != KTC_NOCMRPC && code != KTC_NOCELL) {
-
             DebugEvent("while(autostart) LogonOption[%x], Service AutoStart[%d]",
 			opt.LogonOption,afsWillAutoStart);
 
@@ -1007,7 +1294,8 @@ DWORD APIENTRY NPLogonNotify(
 		if (!code) {
 		    DebugEvent("profile path [%s] is in cell [%s]",homePath,cell);
 		}
-		/* Don't bail out if GetFileCellName failed.
+		/*
+                 * Don't bail out if GetFileCellName failed.
 		 * The home dir may not be in AFS after all.
 		 */
 	    } else
@@ -1016,80 +1304,9 @@ DWORD APIENTRY NPLogonNotify(
 	    /* if Integrated Logon  */
 	    if (ISLOGONINTEGRATED(opt.LogonOption))
 	    {
-		if ( KFW_is_available() ) {
-		    SetEnvironmentVariable(DO_NOT_REGISTER_VARNAME, "");
-                    if (opt.realm) {
-			char * principal, *p;
-			size_t len, tlen;
-
-			StringCchLength(opt.realm, MAX_DOMAIN_LENGTH, &tlen);
-			len = tlen;
-			StringCchLength(uname, MAX_USERNAME_LENGTH, &tlen);
-			len += tlen + 2;
-
-			/* tlen is now the length of uname in characters */
-			principal = (char *)malloc(len * sizeof(char));
-			if ( principal ) {
-			    StringCchCopy(principal, len, uname);
-			    p = principal + tlen;
-			    *p++ = '@';
-                            StringCchCopy(p, len - tlen -1, opt.realm);
-                            code = KFW_AFS_get_cred(principal, cell, password, 0, opt.smbName, &reason);
-                            DebugEvent("KFW_AFS_get_cred  uname=[%s] smbname=[%s] cell=[%s] code=[%d]",
-					    principal,opt.smbName,cell,code);
-			    free(principal);
-			}
-                    } else {
-                        code = KFW_AFS_get_cred(uname, cell, password, 0, opt.smbName, &reason);
-                        DebugEvent("KFW_AFS_get_cred  uname=[%s] smbname=[%s] cell=[%s] code=[%d]",
-                                    uname,opt.smbName,cell,code);
-                    }
-		    SetEnvironmentVariable(DO_NOT_REGISTER_VARNAME, NULL);
-		    if (code == 0 && opt.theseCells) {
-			char * principal, *p;
-			size_t len, tlen;
-
-			StringCchLength(opt.realm ? opt.realm : cell, MAX_DOMAIN_LENGTH, &tlen);
-			len = tlen;
-			StringCchLength(uname, MAX_USERNAME_LENGTH, &tlen);
-			len += tlen + 2;
-
-			/* tlen is now the length of uname in characters */
-			principal = (char *)malloc(len * sizeof(char));
-			if ( principal ) {
-			    StringCchCopy(principal, len, uname);
-			    p = principal + tlen;
-			    *p++ = '@';
-                            if (opt.realm) {
-                                StringCchCopy(p, len - tlen -1, opt.realm);
-                            } else {
-                                StringCchCopy(p, len - tlen - 1, cell);
-                                for ( ;*p; p++) {
-                                    *p = toupper(*p);
-                                }
-                            }
-			    p = opt.theseCells;
-			    while ( *p ) {
-                                if ( cm_stricmp_utf8(p, cell) ) {
-                                    SetEnvironmentVariable(DO_NOT_REGISTER_VARNAME, "");
-                                    code2 = KFW_AFS_get_cred(principal, p, password, 0, opt.smbName, &reason);
-                                    SetEnvironmentVariable(DO_NOT_REGISTER_VARNAME, NULL);
-                                    DebugEvent("KFW_AFS_get_cred  uname=[%s] smbname=[%s] cell=[%s] code=[%d]",
-                                               principal,opt.smbName,p,code2);
-                                }
-				p += strlen(p) + 1;
-			    }
-			    free(principal);
-			}
-		    }
-		} else {
-		    code = ka_UserAuthenticateGeneral2(KA_USERAUTH_VERSION+KA_USERAUTH_AUTHENT_LOGON,
-							uname, "", cell, password, opt.smbName, 0, &pw_exp, 0,
-							&reason);
-		    DebugEvent("AFS AfsLogon - (INTEGRATED only)ka_UserAuthenticateGeneral2 Code[%x] uname[%s] smbname=[%s] Cell[%s] PwExp=[%d] Reason=[%s]",
-				code,uname,opt.smbName,cell,pw_exp,reason?reason:"");
-		}
-		if ( code && code != KTC_NOCM && code != KTC_NOCMRPC && !lowercased_name ) {
+                code = ObtainTokens( lpLogonId, &opt, opt.username ? opt.username : uname,
+                                     opt.realm ? opt.realm : logonDomain, cell, password, &reason);
+		if ( code && code != KTC_NOCM && code != KTC_NOCMRPC && !lowercased_name && !opt.username) {
 		    for ( ctemp = uname; *ctemp ; ctemp++) {
 			*ctemp = tolower(*ctemp);
 		    }
@@ -1140,19 +1357,29 @@ DWORD APIENTRY NPLogonNotify(
 	    Sleep(sleepInterval * 1000);
 	    retryInterval -= sleepInterval;
 	}
+        DebugEvent0("while loop exited");
     }
-    DebugEvent0("while loop exited");
 
     /* remove any kerberos 5 tickets currently held by the SYSTEM account
      * for this user
      */
 
     if (ISLOGONINTEGRATED(opt.LogonOption) && KFW_is_available()) {
+        CtxtHandle LogonContext;
+
+        LogonSSP(lpLogonId, &LogonContext);
+        ImpersonateSecurityContext(&LogonContext);
+
 #ifdef KFW_LOGON
 	sprintf(szLogonId,"%d.%d",lpLogonId->HighPart, lpLogonId->LowPart);
+        DebugEvent("copying cache for %s %s", uname, szLogonId);
 	KFW_AFS_copy_cache_to_system_file(uname, szLogonId);
 #endif
+        DebugEvent("Destroying tickets for %s", uname);
 	KFW_AFS_destroy_tickets_for_principal(uname);
+
+        RevertSecurityContext(&LogonContext);
+        DeleteSecurityContext(&LogonContext);
     }
 
     if (code) {
@@ -1321,7 +1548,7 @@ VOID AFS_Logoff_Event( PWLX_NOTIFICATION_INFO pInfo )
 	    WideCharToMultiByte(CP_UTF8, 0, pInfo->Domain, (int)szlen,
 				 domain, sizeof(domain), NULL, NULL);
 
-	    GetDomainLogonOptions(NULL, username, domain, &opt);
+	    GetDomainLogonOptions(NULL, FALSE, username, domain, &opt);
 	}
 
         if (ISREMOTE(opt.flags)) {
@@ -1419,7 +1646,7 @@ VOID AFS_Logon_Event( PWLX_NOTIFICATION_INFO pInfo )
                             domain, sizeof(domain), NULL, NULL);
 
 	DebugEvent0("AFS_Logon_Event - Calling GetDomainLogonOptions");
-        GetDomainLogonOptions(NULL, username, domain, &opt);
+        GetDomainLogonOptions(NULL, FALSE, username, domain, &opt);
     } else {
 	if (!pInfo->UserName)
 	    DebugEvent0("AFS_Logon_Event - No pInfo->UserName");
@@ -1642,4 +1869,3 @@ VOID KFW_Logon_Event( PWLX_NOTIFICATION_INFO pInfo )
     DebugEvent0("KFW_Logon_Event - End");
 #endif
 }
-

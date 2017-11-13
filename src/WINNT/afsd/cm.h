@@ -42,6 +42,7 @@
 
 #define LOCK_HIERARCHY_IGNORE                    0
 
+#define LOCK_HIERARCHY_RDR_GLOBAL               10
 #define LOCK_HIERARCHY_SMB_STARTED              20
 #define LOCK_HIERARCHY_SMB_LISTENER             30
 #define LOCK_HIERARCHY_SMB_DIRWATCH             40
@@ -63,6 +64,7 @@
 #define LOCK_HIERARCHY_BUFFER                  540
 #define LOCK_HIERARCHY_SCACHE                  550
 #define LOCK_HIERARCHY_BUF_GLOBAL              560
+#define LOCK_HIERARCHY_SCACHE_REDIRMX          565
 #define LOCK_HIERARCHY_VOLUME                  570
 #define LOCK_HIERARCHY_USER                    580
 #define LOCK_HIERARCHY_SCACHE_GLOBAL           590
@@ -79,9 +81,14 @@
 #define LOCK_HIERARCHY_UTILS_GLOBAL            710
 #define LOCK_HIERARCHY_OTHER_GLOBAL            720
 #define LOCK_HIERARCHY_ACL_GLOBAL              730
-#define LOCK_HIERARCHY_USER_GLOBAL             740
+#define LOCK_HIERARCHY_EACCES_GLOBAL           740
+#define LOCK_HIERARCHY_USER_GLOBAL             750
+#define LOCK_HIERARCHY_GETADDRS_GLOBAL         800
 #define LOCK_HIERARCHY_AFSDBSBMT_GLOBAL       1000
 #define LOCK_HIERARCHY_TOKEN_EVENT_GLOBAL     2000
 #define LOCK_HIERARCHY_SYSCFG_GLOBAL          3000
+
+#define LOCK_HIERARCHY_RDR_EXTENTS               0
 #endif /*  OPENAFS_WINNT_AFSD_CM_H */
+
 

@@ -10,6 +10,8 @@
 #ifndef OPENAFS_WINNT_AFSD_CM_SCACHE_H
 #define OPENAFS_WINNT_AFSD_CM_SCACHE_H 1
 
+#include <opr/jhash.h>
+
 #define MOUNTPOINTLEN   1024    /* max path length for symlink; same as AFSPATHMAX */
 
 typedef struct cm_fid {
@@ -26,7 +28,7 @@ typedef struct cm_fid {
 typedef struct cm_key {
     afs_offs_t process_id;      /* process IDs can be 64bit on 64bit environments */
     afs_uint16 session_id;
-    afs_uint16 file_id;
+    afs_uint64 file_id;         /* afs redir uses File Object pointers as file id */
 } cm_key_t;
 
 typedef struct cm_range {
@@ -61,6 +63,8 @@ typedef struct cm_file_lock {
                                  * server. [protected by
                                  * cm_scacheLock] */
 } cm_file_lock_t;
+
+#define fileq_to_cm_file_lock_t(q) ((cm_file_lock_t *)((char *) (q) - offsetof(cm_file_lock_t, fileq)))
 
 #define CM_FILELOCK_FLAG_DELETED         0x01
 #define CM_FILELOCK_FLAG_LOST            0x02
@@ -140,6 +144,7 @@ typedef struct cm_scache {
                                          * storing data */
 
     /* symlink and mount point info */
+    afs_uint64   mpDataVersion;         /* data version represented by mountPointStringp */
     char mountPointStringp[MOUNTPOINTLEN];	/* the string stored in a mount point;
                                                  * first char is type, then vol name.
                                          * If this is a normal symlink, we store
@@ -152,6 +157,7 @@ typedef struct cm_scache {
     /* callback info */
     struct cm_server *cbServerp;	/* server granting callback */
     time_t cbExpires;			/* time callback expires */
+    time_t cbIssued;                    /* time callback was issued */
 
     /* access cache */
     long anyAccess;			/* anonymous user's access */
@@ -194,9 +200,11 @@ typedef struct cm_scache {
                                    have CM_FILELOCK_FLAG_CLIENTONLY
                                    set. */
 
-    afs_uint32   fsLockCount;   /* number of locks held as reported
+    afs_int32    fsLockCount;   /* number of locks held as reported
                                  * by the file server in the most
-                                 * recent fetch status.
+                                 * recent fetch status.  Updated by
+                                 * the locks known to have been acquired
+                                 * or released by this client.
                                  */
 
     /* bulk stat progress */
@@ -222,8 +230,17 @@ typedef struct cm_scache {
                                        Holds queue of
                                        cm_scache_waiter_t
                                        objects. Protected by
-                                       cm_cacheLock. */
+                                       cm_scacheLock. */
     osi_queue_t * waitQueueT;       /* locked by cm_scacheLock */
+
+    /* redirector state - protected by scp->redirMx */
+    osi_queue_t * redirQueueH;      /* LRU queue of buffers for this
+                                       file that are assigned to the
+                                       afsredir kernel module. */
+    osi_queue_t * redirQueueT;
+    afs_uint32    redirBufCount;    /* Number of buffers held by the redirector */
+    time_t        redirLastAccess;  /* last time redir accessed the vnode */
+    osi_mutex_t   redirMx;
 
     afs_uint32 activeRPCs;              /* atomic */
 } cm_scache_t;
@@ -246,9 +263,7 @@ typedef struct cm_scache {
 #define CM_SCACHETYPE_INVALID           99      /* an invalid link */
 
 /* flag bits */
-#define CM_SCACHEFLAG_STATD             0x01    /* status info is valid */
 #define CM_SCACHEFLAG_DELETED           0x02    /* file has been deleted */
-#define CM_SCACHEFLAG_CALLBACK          0x04    /* have a valid callback */
 #define CM_SCACHEFLAG_STORING           0x08    /* status being stored back */
 #define CM_SCACHEFLAG_FETCHING		0x10	/* status being fetched */
 #define CM_SCACHEFLAG_SIZESTORING	0x20	/* status being stored that
@@ -275,9 +290,10 @@ typedef struct cm_scache {
 #define CM_SCACHEFLAG_ANYWATCH \
 			(CM_SCACHEFLAG_WATCHED | CM_SCACHEFLAG_WATCHEDSUBTREE)
 
-#define CM_SCACHEFLAG_EACCESS           0x200000 /* Bulk Stat returned EACCES */
 #define CM_SCACHEFLAG_SMB_FID	        0x400000
 #define CM_SCACHEFLAG_LOCAL             0x800000 /* Locally modified */
+#define CM_SCACHEFLAG_BULKREADING       0x1000000/* Bulk read in progress */
+#define CM_SCACHEFLAG_RDR_IN_USE        0x2000000/* in use by Redirector; advisory */
 
 /* sync flags for calls to the server.  The CM_SCACHEFLAG_FETCHING,
  * CM_SCACHEFLAG_STORING and CM_SCACHEFLAG_SIZESTORING flags correspond to the
@@ -315,6 +331,8 @@ typedef struct cm_scache {
 #define CM_SCACHESYNC_FORCECB		0x200000/* when calling cm_GetCallback()
                                                  * set the force flag */
 
+#define CM_SCACHESYNC_BULKREAD          0x400000/* reading many buffers */
+
 /* flags for cm_RecycleSCache	*/
 #define CM_SCACHE_RECYCLEFLAG_DESTROY_BUFFERS 	0x1
 
@@ -326,16 +344,19 @@ typedef struct cm_scache {
 #define CM_MERGEFLAG_STOREDATA		2	/* Merge due to storedata op */
 #define CM_MERGEFLAG_DIROP              4       /* Merge due to directory op */
 #define CM_MERGEFLAG_FETCHDATA          8       /* Merge due to fetchdata op */
+#define CM_MERGEFLAG_BULKSTAT        0x10       /* Merge due to bulkstat op */
+#define CM_MERGEFLAG_CACHE_BYPASS    0x20       /* Data not stored into cache */
 
 /* hash define.  Must not include the cell, since the callback revocation code
  * doesn't necessarily know the cell in the case of a multihomed server
  * contacting us from a mystery address.
  */
-#define CM_SCACHE_HASH(fidp)	(((unsigned long)	\
-				   ((fidp)->volume +	\
-				    (fidp)->vnode +	\
-				    (fidp)->unique))	\
-					% cm_data.scacheHashTableSize)
+
+#define CM_FID_GEN_HASH(fidp) do { \
+    (fidp)->hash = opr_jhash(&(fidp)->volume, 3, 0); \
+} while(0)
+
+#define CM_SCACHE_HASH(fidp) ((fidp)->hash & (cm_data.scacheHashTableSize - 1))
 
 #include "cm_conn.h"
 #include "cm_buf.h"
@@ -352,16 +373,16 @@ typedef struct cm_scache_waiter {
 extern void cm_InitSCache(int, long);
 
 #ifdef DEBUG_REFCOUNT
-extern long cm_GetSCacheDbg(cm_fid_t *, cm_scache_t **, struct cm_user *,
+extern long cm_GetSCacheDbg(cm_fid_t *, cm_fid_t *, cm_scache_t **, struct cm_user *,
 	struct cm_req *, char *, long);
 
-#define cm_GetSCache(a,b,c,d)  cm_GetSCacheDbg(a,b,c,d,__FILE__,__LINE__)
+#define cm_GetSCache(a,b,c,d,e)  cm_GetSCacheDbg(a,b,c,d,e,__FILE__,__LINE__)
 #else
-extern long cm_GetSCache(cm_fid_t *, cm_scache_t **, struct cm_user *,
+extern long cm_GetSCache(cm_fid_t *, cm_fid_t *, cm_scache_t **, struct cm_user *,
 	struct cm_req *);
 #endif
 
-extern cm_scache_t *cm_GetNewSCache(void);
+extern cm_scache_t *cm_GetNewSCache(afs_uint32 locked);
 
 extern __inline int cm_FidCmp(cm_fid_t *, cm_fid_t *);
 
@@ -372,7 +393,9 @@ extern long cm_SyncOp(cm_scache_t *, struct cm_buf *, struct cm_user *,
 
 extern void cm_SyncOpDone(cm_scache_t *, struct cm_buf *, afs_uint32);
 
-extern void cm_MergeStatus(cm_scache_t * dscp, cm_scache_t * scp,
+extern long cm_IsStatusValid(AFSFetchStatus *statusp);
+
+extern long cm_MergeStatus(cm_scache_t * dscp, cm_scache_t * scp,
 			   struct AFSFetchStatus * statusp,
 			   struct AFSVolSync * volsyncp,
 			   struct cm_user *userp,

@@ -27,6 +27,11 @@
 #define CM_CONN_NATPINGINTERVAL          0
 #endif
 
+#define CM_CONN_IFS_HARDDEADTIME       120
+#define CM_CONN_IFS_CONNDEADTIME        60
+#define CM_CONN_IFS_IDLEDEADTIME      1200
+#define CM_CONN_IFS_IDLEDEADTIME_REP   180      /* must be larger than file server hard dead timeout = 120 */
+
 extern unsigned short ConnDeadtimeout;
 extern unsigned short HardDeadtimeout;
 extern DWORD          RDRtimeout;
@@ -41,11 +46,12 @@ typedef struct cm_conn {
         afs_int32 refCount;		/* Interlocked */
 	int ucgen;			/* ucellp's generation number */
         afs_uint32 flags;		/* locked by mx */
-	int cryptlevel;			/* encrytion status */
+	int cryptlevel;			/* encryption status */
 } cm_conn_t;
 
 #define CM_CONN_FLAG_FORCE_NEW          1
 #define CM_CONN_FLAG_REPLICATION        2
+#define CM_CONN_FLAG_NEW                4
 
 /*
  * structure used for tracking RPC progress
@@ -53,14 +59,16 @@ typedef struct cm_conn {
  * to the cache manager functions.
  */
 typedef struct cm_req {
-    DWORD startTime;		/* Quit before RDR times us out */
-    int rpcError;			/* RPC error code */
+    DWORD startTime;		/* GetTickCount() when this struct was initialized */
+    int rpcError;		/* RPC error code */
     int volumeError;		/* volume error code */
     int accessError;		/* access error code */
     struct cm_server * errorServp;  /* server that reported a token/idle error other than expired */
     int tokenError;
     int idleError;
     int vnovolError;
+    int volbusyCount;
+    int vioCount;
     afs_uint32 flags;
     clientchar_t * tidPathp;
     clientchar_t * relPathp;
@@ -71,7 +79,8 @@ typedef struct cm_req {
 #define CM_REQ_NEW_CONN_FORCED  0x02
 #define CM_REQ_SOURCE_SMB       0x04
 #define CM_REQ_VOLUME_UPDATED   0x08
-/* 0x10 and 0x20 are reserved for the afs redirector */
+#define CM_REQ_WOW64            0x10
+#define CM_REQ_SOURCE_REDIR     0x20
 #define CM_REQ_OFFLINE_VOL_CHK  0x40
 
 /*
@@ -127,15 +136,26 @@ typedef struct cm_req {
 #endif
 #include "rx.h"
 
+/*
+ * connp->serverp can be accessed without holding a lock because that
+ * never changes once the connection is created.
+ */
+#define SERVERHAS64BIT(connp) (!((connp)->serverp->flags & CM_SERVERFLAG_NO64BIT))
+#define SET_SERVERHASNO64BIT(connp) (cm_SetServerNo64Bit((connp)->serverp, TRUE))
+
+#define SERVERHASINLINEBULK(connp) (!((connp)->serverp->flags & CM_SERVERFLAG_NOINLINEBULK))
+#define SET_SERVERHASNOINLINEBULK(connp) (cm_SetServerNoInlineBulk((connp)->serverp, TRUE))
+
 extern void cm_InitConn(void);
 
 extern void cm_InitReq(cm_req_t *reqp);
 
 extern int cm_Analyze(cm_conn_t *connp, struct cm_user *up, struct cm_req *reqp,
-                      struct cm_fid *fidp,
+                      struct cm_fid *fidp, struct cm_cell *cellp,
                       afs_uint32 storeOp,
+                      struct AFSFetchStatus *statusp,
                       struct AFSVolSync *volInfop,
-                      cm_serverRef_t * serversp,
+                      cm_serverRef_t ** vlServerspp,
                       struct cm_callbackRequest *cbrp, long code);
 
 extern long cm_ConnByMServers(struct cm_serverRef *, afs_uint32, struct cm_user *,
@@ -159,5 +179,14 @@ extern struct rx_connection * cm_GetRxConn(cm_conn_t *connp);
 extern void cm_ForceNewConnections(cm_server_t *serverp);
 
 extern long cm_ServerAvailable(struct cm_fid *fidp, struct cm_user *userp);
+
+extern long cm_GetServerList(struct cm_fid *fidp, struct cm_user *userp,
+                             struct cm_req *reqp, afs_uint32 *replicated,
+                             cm_serverRef_t ***serversppp);
+
+extern long cm_GetVolServerList(struct cm_volume *volp, afs_uint32 volid,
+                                struct cm_user *userp,
+                                struct cm_req *reqp, afs_uint32 *replicated,
+                                cm_serverRef_t ***serversppp);
 
 #endif /*  OPENAFS_WINNT_AFSD_CM_CONN_H */

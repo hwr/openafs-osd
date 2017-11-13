@@ -2,23 +2,16 @@
 
 #include <afsconfig.h>
 #include <afs/param.h>
+#include <afs/stds.h>
 
-
-#include <sys/types.h>
-#ifdef AFS_NT40_ENV
-#include <io.h>
-#else
-#include <netinet/in.h>
-#endif
-#include <string.h>
-#include <stdarg.h>
+#include <roken.h>
 
 #include <lock.h>
-#define UBIK_INTERNALS
-#include <afs/stds.h>
 #include <afs/cellconfig.h>
+#define UBIK_INTERNALS
 #include <ubik.h>
 #include <rx/xdr.h>
+
 #include "ptint.h"
 #include "ptserver.h"
 
@@ -38,15 +31,23 @@ ubik_BeginTrans(struct ubik_dbase *dbase, afs_int32 transMode,
 {
     static int init = 0;
     struct ubik_hdr thdr;
+    ssize_t count;
 
     if (!init) {
+	memset(&thdr, 0, sizeof(thdr));
 	thdr.version.epoch = htonl(2);
 	thdr.version.counter = htonl(0);
 	thdr.magic = htonl(UBIK_MAGIC);
 	thdr.size = htons(HDRSIZE);
-	lseek(dbase_fd, 0, 0);
-	write(dbase_fd, &thdr, sizeof(thdr));
-	fsync(dbase_fd);
+	if (lseek(dbase_fd, 0, 0) == (off_t)-1)
+	    return errno;
+	count = write(dbase_fd, &thdr, sizeof(thdr));
+	if (count < 0)
+	    return errno;
+	else if (count != sizeof(thdr))
+	    return UIOERROR;
+	if (fsync(dbase_fd))
+	    return errno;
 	init = 1;
     }
     return (0);
@@ -167,11 +168,11 @@ ubik_Read(struct ubik_trans *tt, void *buf, afs_int32 len)
 
 /* Global declarations from ubik.c */
 afs_int32 ubik_quorum = 0;
-struct ubik_dbase *ubik_dbase[MAX_UBIK_DBASES] = {NULL, NULL, NULL, NULL};
+struct ubik_dbase *ubik_dbase = 0;
 struct ubik_stats ubik_stats;
 afs_uint32 ubik_host[UBIK_MAX_INTERFACE_ADDR];
-afs_int32 ubik_epochTime[MAX_UBIK_DBASES] = {0, 0, 0, 0};
-afs_int32 urecovery_state[MAX_UBIK_DBASES] = {0, 0, 0, 0};
+afs_int32 ubik_epochTime = 0;
+afs_int32 urecovery_state = 0;
 
 struct rx_securityClass *ubik_sc[3];
 
@@ -187,4 +188,3 @@ afsconf_GetNoAuthFlag(struct afsconf_dir *adir)
 
 char *prdir = "/dev/null";
 struct prheader cheader;
-char *pr_realmName;

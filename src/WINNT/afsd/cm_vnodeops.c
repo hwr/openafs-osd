@@ -7,16 +7,15 @@
  * directory or online at http://www.openafs.org/dl/license10.html
  */
 
+#include <afsconfig.h>
 #include <afs/param.h>
 #include <afs/stds.h>
+#include <roken.h>
+
+#include <afs/unified_afs.h>
 
 #include <windows.h>
 #include <winsock2.h>
-#include <stddef.h>
-#include <malloc.h>
-#include <string.h>
-#include <stdlib.h>
-#include <errno.h>
 
 #include <osi.h>
 
@@ -175,15 +174,29 @@ long cm_CheckOpen(cm_scache_t *scp, int openMode, int trunc, cm_user_t *userp,
 }
 
 /* return success if we can open this file in this mode */
-long cm_CheckNTOpen(cm_scache_t *scp, unsigned int desiredAccess,
-                    unsigned int createDisp, cm_user_t *userp, cm_req_t *reqp,
+long cm_CheckNTOpen(cm_scache_t *scp,
+                    unsigned int desiredAccess,
+                    unsigned int shareAccess,
+                    unsigned int createDisp,
+                    afs_offs_t process_id,
+                    afs_offs_t handle_id,
+                    cm_user_t *userp, cm_req_t *reqp,
 		    cm_lock_data_t **ldpp)
 {
     long rights;
     long code = 0;
+    afs_uint16 session_id;
 
     osi_assertx(ldpp != NULL, "null cm_lock_data_t");
     *ldpp = NULL;
+
+    /* compute the session id */
+    if (reqp->flags & CM_REQ_SOURCE_SMB)
+        session_id = CM_SESSION_SMB;
+    else if (reqp->flags & CM_REQ_SOURCE_REDIR)
+        session_id = CM_SESSION_IFS;
+    else
+        session_id = CM_SESSION_CMINT;
 
     /* Ignore the SYNCHRONIZE privilege */
     desiredAccess &= ~SYNCHRONIZE;
@@ -192,6 +205,10 @@ long cm_CheckNTOpen(cm_scache_t *scp, unsigned int desiredAccess,
     rights = 0;
 
     if (desiredAccess == DELETE)
+        goto done_2;
+
+    /* Always allow reading attributes (Hidden, System, Readonly, ...) */
+    if (desiredAccess == FILE_READ_ATTRIBUTES)
         goto done_2;
 
     if (desiredAccess & (AFS_ACCESS_READ|AFS_ACCESS_EXECUTE))
@@ -224,8 +241,9 @@ long cm_CheckNTOpen(cm_scache_t *scp, unsigned int desiredAccess,
         code = CM_ERROR_NOACCESS;
 
     if (code == 0 &&
-             ((rights & PRSFS_WRITE) || (rights & PRSFS_READ)) &&
-             scp->fileType == CM_SCACHETYPE_FILE) {
+        !(shareAccess & FILE_SHARE_WRITE) &&
+        ((rights & PRSFS_WRITE) || (rights & PRSFS_READ)) &&
+        scp->fileType == CM_SCACHETYPE_FILE) {
         cm_key_t key;
         unsigned int sLockType;
         LARGE_INTEGER LOffset, LLength;
@@ -233,11 +251,12 @@ long cm_CheckNTOpen(cm_scache_t *scp, unsigned int desiredAccess,
         /* Check if there's some sort of lock on the file at the
            moment. */
 
-        key = cm_GenerateKey(CM_SESSION_CMINT,0,0);
         if (rights & PRSFS_WRITE)
             sLockType = 0;
         else
             sLockType = LOCKING_ANDX_SHARED_LOCK;
+
+        key = cm_GenerateKey(session_id, process_id, 0);
 
         /* single byte lock at offset 0x0100 0000 0000 0000 */
         LOffset.HighPart = CM_FLSHARE_OFFSET_HIGH;
@@ -248,29 +267,30 @@ long cm_CheckNTOpen(cm_scache_t *scp, unsigned int desiredAccess,
         code = cm_Lock(scp, sLockType, LOffset, LLength, key, 0, userp, reqp, NULL);
 
         if (code == 0) {
-	    (*ldpp) = (cm_lock_data_t *)malloc(sizeof(cm_lock_data_t));
-	    if (!*ldpp) {
-		code = ENOMEM;
-		goto _done;
-	    }
+            (*ldpp) = (cm_lock_data_t *)malloc(sizeof(cm_lock_data_t));
+            if (!*ldpp) {
+                code = ENOMEM;
+                goto _done;
+            }
 
-	    (*ldpp)->key = key;
-	    (*ldpp)->sLockType = sLockType;
-	    (*ldpp)->LOffset.HighPart = LOffset.HighPart;
-	    (*ldpp)->LOffset.LowPart = LOffset.LowPart;
-	    (*ldpp)->LLength.HighPart = LLength.HighPart;
-	    (*ldpp)->LLength.LowPart = LLength.LowPart;
+            (*ldpp)->key = key;
+            (*ldpp)->sLockType = sLockType;
+            (*ldpp)->LOffset.HighPart = LOffset.HighPart;
+            (*ldpp)->LOffset.LowPart = LOffset.LowPart;
+            (*ldpp)->LLength.HighPart = LLength.HighPart;
+            (*ldpp)->LLength.LowPart = LLength.LowPart;
         } else {
-            /* In this case, we allow the file open to go through even
-               though we can't enforce mandatory locking on the
-               file. */
+            /*
+             * In this case, we allow the file open to go through even
+             * though we can't enforce mandatory locking on the
+             * file. */
             if (code == CM_ERROR_NOACCESS &&
-                !(rights & PRSFS_WRITE))
+                 !(rights & PRSFS_WRITE))
                 code = 0;
             else {
-		if (code == CM_ERROR_LOCK_NOT_GRANTED)
-		    code = CM_ERROR_SHARING_VIOLATION;
-	    }
+                if (code == CM_ERROR_LOCK_NOT_GRANTED)
+                    code = CM_ERROR_SHARING_VIOLATION;
+            }
         }
     } else if (code != 0) {
         goto _done;
@@ -287,9 +307,9 @@ long cm_CheckNTOpen(cm_scache_t *scp, unsigned int desiredAccess,
 extern long cm_CheckNTOpenDone(cm_scache_t *scp, cm_user_t *userp, cm_req_t *reqp,
 			       cm_lock_data_t ** ldpp)
 {
-    osi_Log2(afsd_logp,"cm_CheckNTOpenDone scp 0x%p ldp 0x%p", scp, *ldpp);
+	osi_Log2(afsd_logp,"cm_CheckNTOpenDone scp 0x%p ldp 0x%p", scp, ldpp ? *ldpp : 0);
     lock_ObtainWrite(&scp->rw);
-    if (*ldpp) {
+    if (ldpp && *ldpp) {
 	cm_Unlock(scp, (*ldpp)->sLockType, (*ldpp)->LOffset, (*ldpp)->LLength,
 		  (*ldpp)->key, 0, userp, reqp);
 	free(*ldpp);
@@ -340,7 +360,7 @@ long cm_CheckNTDelete(cm_scache_t *dscp, cm_scache_t *scp, cm_user_t *userp,
         return code;
 
     thyper.HighPart = 0; thyper.LowPart = 0;
-    code = buf_Get(scp, &thyper, reqp, &bufferp);
+    code = buf_Get(scp, &thyper, reqp, 0, &bufferp);
     if (code)
         return code;
 
@@ -355,8 +375,10 @@ long cm_CheckNTDelete(cm_scache_t *dscp, cm_scache_t *scp, cm_user_t *userp,
         if (code)
             goto done;
 
-        if (cm_HaveBuffer(scp, bufferp, 1))
+	if (cm_HaveBuffer(scp, bufferp, 1)) {
+	    cm_SyncOpDone(scp, bufferp, CM_SCACHESYNC_NEEDCALLBACK | CM_SCACHESYNC_READ | CM_SCACHESYNC_BUFLOCKED);
             break;
+	}
 
         /* otherwise, load the buffer and try again */
         lock_ReleaseMutex(&bufferp->mx);
@@ -583,7 +605,7 @@ long cm_ApplyDir(cm_scache_t *scp, cm_DirFuncp_t funcp, void *parmp,
                 bufferp = NULL;
             }
 
-            code = buf_Get(scp, &thyper, reqp, &bufferp);
+            code = buf_Get(scp, &thyper, reqp, 0, &bufferp);
             if (code) {
                 /* if buf_Get() fails we do not have a buffer object to lock */
                 bufferp = NULL;
@@ -605,10 +627,10 @@ long cm_ApplyDir(cm_scache_t *scp, cm_DirFuncp_t funcp, void *parmp,
                     lock_ReleaseWrite(&scp->rw);
                     break;
                 }
-		cm_SyncOpDone(scp, bufferp, CM_SCACHESYNC_NEEDCALLBACK | CM_SCACHESYNC_READ | CM_SCACHESYNC_BUFLOCKED);
 
                 if (cm_HaveBuffer(scp, bufferp, 1)) {
-                    lock_ReleaseWrite(&scp->rw);
+		    cm_SyncOpDone(scp, bufferp, CM_SCACHESYNC_NEEDCALLBACK | CM_SCACHESYNC_READ | CM_SCACHESYNC_BUFLOCKED);
+		    lock_ReleaseWrite(&scp->rw);
                     break;
                 }
 
@@ -616,7 +638,8 @@ long cm_ApplyDir(cm_scache_t *scp, cm_DirFuncp_t funcp, void *parmp,
                 lock_ReleaseMutex(&bufferp->mx);
                 code = cm_GetBuffer(scp, bufferp, NULL, userp,
                                     reqp);
-                lock_ReleaseWrite(&scp->rw);
+		cm_SyncOpDone(scp, bufferp, CM_SCACHESYNC_NEEDCALLBACK | CM_SCACHESYNC_READ);
+		lock_ReleaseWrite(&scp->rw);
                 lock_ObtainMutex(&bufferp->mx);
                 if (code)
                     break;
@@ -747,6 +770,7 @@ long cm_LookupSearchProc(cm_scache_t *scp, cm_dirEntry_t *dep, void *rockp,
 
     if (match != 0
         && sp->hasTilde
+        && cm_shortNames
         && !cm_Is8Dot3(matchName)) {
 
         cm_Gen8Dot3NameInt(dep->name, &dep->fid, matchName, NULL);
@@ -815,10 +839,17 @@ long cm_LookupSearchProc(cm_scache_t *scp, cm_dirEntry_t *dep, void *rockp,
  */
 long cm_ReadMountPoint(cm_scache_t *scp, cm_user_t *userp, cm_req_t *reqp)
 {
-    long code;
+    long code = 0;
 
-    if (scp->mountPointStringp[0])
-        return 0;
+    code = cm_SyncOp(scp, NULL, userp, reqp, 0, CM_SCACHESYNC_FETCHDATA);
+    if (code)
+        return code;
+
+    if (scp->mountPointStringp[0] &&
+         scp->mpDataVersion == scp->dataVersion) {
+        code = 0;
+        goto done;
+    }
 
 #ifdef AFS_FREELANCE_CLIENT
     /* File servers do not have data for freelance entries */
@@ -832,27 +863,37 @@ long cm_ReadMountPoint(cm_scache_t *scp, cm_user_t *userp, cm_req_t *reqp)
     {
         char temp[MOUNTPOINTLEN];
         osi_hyper_t offset;
+        afs_uint32 bytesRead = 0;
 
         /* otherwise, we have to read it in */
         offset.LowPart = offset.HighPart = 0;
-        code = cm_GetData(scp, &offset, temp, MOUNTPOINTLEN, userp, reqp);
+        code = cm_GetData(scp, &offset, temp, MOUNTPOINTLEN, &bytesRead, userp, reqp);
         if (code)
-            return code;
+            goto done;
 
         /*
          * scp->length is the actual length of the mount point string.
          * It is current because cm_GetData merged the most up to date
          * status info into scp and has not dropped the rwlock since.
          */
-        if (scp->length.LowPart > MOUNTPOINTLEN - 1)
-            return CM_ERROR_TOOBIG;
-        if (scp->length.LowPart == 0)
-            return CM_ERROR_INVAL;
+        if (scp->length.LowPart > MOUNTPOINTLEN - 1) {
+            code = CM_ERROR_TOOBIG;
+            goto done;
+        }
+
+        if (scp->length.LowPart == 0) {
+            code = CM_ERROR_INVAL;
+            goto done;
+        }
 
         /* convert the terminating dot to a NUL */
         temp[scp->length.LowPart - 1] = 0;
         memcpy(scp->mountPointStringp, temp, scp->length.LowPart);
+        scp->mpDataVersion = scp->dataVersion;
     }
+
+  done:
+    cm_SyncOpDone(scp, NULL, CM_SCACHESYNC_FETCHDATA);
 
     return code;
 }
@@ -881,7 +922,7 @@ long cm_FollowMountPoint(cm_scache_t *scp, cm_scache_t *dscp, cm_user_t *userp,
     if (scp->mountRootFid.cell != 0 && scp->mountRootGen >= cm_data.mountRootGen) {
         tfid = scp->mountRootFid;
         lock_ReleaseWrite(&scp->rw);
-        code = cm_GetSCache(&tfid, outScpp, userp, reqp);
+        code = cm_GetSCache(&tfid, NULL, outScpp, userp, reqp);
         lock_ObtainWrite(&scp->rw);
         return code;
     }
@@ -901,7 +942,7 @@ long cm_FollowMountPoint(cm_scache_t *scp, cm_scache_t *dscp, cm_user_t *userp,
 
         /* now look up the cell */
         lock_ReleaseWrite(&scp->rw);
-        cellp = cm_GetCell(cellNamep, CM_FLAG_CREATE);
+        cellp = cm_GetCell(cellNamep, CM_FLAG_CREATE|CM_FLAG_NOPROBE);
         lock_ObtainWrite(&scp->rw);
     } else {
         /* normal mt pt */
@@ -942,7 +983,7 @@ long cm_FollowMountPoint(cm_scache_t *scp, cm_scache_t *dscp, cm_user_t *userp,
     if (targetType == BACKVOL
          && (scp->flags & (CM_SCACHEFLAG_RO | CM_SCACHEFLAG_PURERO))
          == CM_SCACHEFLAG_RO) {
-        code = CM_ERROR_NOSUCHVOLUME;
+	code = CM_ERROR_TOO_MANY_SYMLINKS;
         goto done;
     }
 
@@ -998,7 +1039,7 @@ long cm_FollowMountPoint(cm_scache_t *scp, cm_scache_t *dscp, cm_user_t *userp,
 
         tfid = scp->mountRootFid;
         lock_ReleaseWrite(&scp->rw);
-        code = cm_GetSCache(&tfid, outScpp, userp, reqp);
+        code = cm_GetSCache(&tfid, NULL, outScpp, userp, reqp);
         lock_ObtainWrite(&scp->rw);
     }
 
@@ -1090,7 +1131,10 @@ retry_lookup:
                 goto haveFid;
             }
 
-            code = CM_ERROR_BPLUS_NOMATCH;
+	    if (code == CM_ERROR_AMBIGUOUS_FILENAME)
+		goto done;
+
+	    code = CM_ERROR_BPLUS_NOMATCH;
             goto notfound;
         }
 #endif
@@ -1128,7 +1172,7 @@ retry_lookup:
 notfound:
     getroot = (dscp==cm_data.rootSCachep) ;
     if (!rock.found) {
-        if (!cm_freelanceEnabled || !getroot) {
+        if (!(cm_freelanceEnabled && cm_freelanceDiscovery) || !getroot) {
             if (flags & CM_FLAG_CHECKPATH)
                 code = CM_ERROR_NOSUCHPATH;
             else
@@ -1243,7 +1287,7 @@ notfound:
     if ( !tscp )    /* we did not find it in the dnlc */
     {
         dnlcHit = 0;
-        code = cm_GetSCache(&rock.fid, &tscp, userp, reqp);
+        code = cm_GetSCache(&rock.fid, &dscp->fid, &tscp, userp, reqp);
         if (code)
             goto done;
     }
@@ -1324,10 +1368,16 @@ notfound:
     return code;
 }
 
-int cm_ExpandSysName(clientchar_t *inp, clientchar_t *outp, long outSizeCch, unsigned int index)
+int cm_ExpandSysName(cm_req_t * reqp, clientchar_t *inp, clientchar_t *outp, long outSizeCch, unsigned int index)
 {
     clientchar_t *tp;
     int prefixCount;
+#ifdef _WIN64
+    int use_sysname64 = 0;
+
+    if (cm_sysName64Count > 0 && reqp && !(reqp->flags & CM_REQ_WOW64) && (reqp->flags & CM_REQ_SOURCE_REDIR))
+        use_sysname64 = 1;
+#endif
 
     tp = cm_ClientStrRChr(inp, '@');
     if (tp == NULL)
@@ -1340,6 +1390,11 @@ int cm_ExpandSysName(clientchar_t *inp, clientchar_t *outp, long outSizeCch, uns
     if (outp == NULL)
         return 1;
 
+#ifdef _WIN64
+    if (use_sysname64 && index >= cm_sysName64Count)
+        return -1;
+    else
+#endif
     if (index >= cm_sysNameCount)
         return -1;
 
@@ -1347,8 +1402,14 @@ int cm_ExpandSysName(clientchar_t *inp, clientchar_t *outp, long outSizeCch, uns
     prefixCount = (int)(tp - inp);
 
     cm_ClientStrCpyN(outp, outSizeCch, inp, prefixCount);	/* copy out "a." from "a.@sys" */
-    outp[prefixCount] = 0;		/* null terminate the "a." */
-    cm_ClientStrCat(outp, outSizeCch, cm_sysNameList[index]);/* append i386_nt40 */
+    outp[prefixCount] = 0;		                        /* null terminate the "a." */
+#ifdef _WIN64
+    if (use_sysname64)
+        cm_ClientStrCat(outp, outSizeCch, cm_sysName64List[index]);
+    else
+#endif
+        cm_ClientStrCat(outp, outSizeCch, cm_sysNameList[index]);
+
     return 1;
 }
 
@@ -1442,7 +1503,7 @@ long cm_EvaluateVolumeReference(clientchar_t * namep, long flags, cm_user_t * us
 
     cm_SetFid(&fid, cellp->cellID, volume, 1, 1);
 
-    code = cm_GetSCache(&fid, outScpp, userp, reqp);
+    code = cm_GetSCache(&fid, NULL, outScpp, userp, reqp);
 
   _exit_cleanup:
     if (fnamep)
@@ -1491,9 +1552,9 @@ long cm_Lookup(cm_scache_t *dscp, clientchar_t *namep, long flags, cm_user_t *us
         return cm_EvaluateVolumeReference(namep, flags, userp, reqp, outScpp);
     }
 
-    if (cm_ExpandSysName(namep, NULL, 0, 0) > 0) {
+    if (cm_ExpandSysName(reqp, namep, NULL, 0, 0) > 0) {
         for ( sysNameIndex = 0; sysNameIndex < MAXNUMSYSNAMES; sysNameIndex++) {
-            code = cm_ExpandSysName(namep, tname, lengthof(tname), sysNameIndex);
+            code = cm_ExpandSysName(reqp, namep, tname, lengthof(tname), sysNameIndex);
             if (code > 0) {
                 code = cm_LookupInternal(dscp, tname, flags, userp, reqp, &scp);
 #ifdef DEBUG_REFCOUNT
@@ -1569,6 +1630,7 @@ long cm_Unlink(cm_scache_t *dscp, fschar_t *fnamep, clientchar_t * cnamep,
     cm_dirOp_t dirop;
     cm_scache_t *scp = NULL;
     int free_fnamep = FALSE;
+    int invalidate = 0;
 
     memset(&volSync, 0, sizeof(volSync));
 
@@ -1637,7 +1699,7 @@ long cm_Unlink(cm_scache_t *dscp, fschar_t *fnamep, clientchar_t * cnamep,
                                 &newDirStatus, &volSync);
         rx_PutConnection(rxconnp);
 
-    } while (cm_Analyze(connp, userp, reqp, &dscp->fid, 1, &volSync, NULL, NULL, code));
+    } while (cm_Analyze(connp, userp, reqp, &dscp->fid, NULL, 1, &newDirStatus, &volSync, NULL, NULL, code));
     code = cm_MapRPCError(code, reqp);
 
     if (code)
@@ -1652,7 +1714,16 @@ long cm_Unlink(cm_scache_t *dscp, fschar_t *fnamep, clientchar_t * cnamep,
     lock_ObtainWrite(&dscp->rw);
     cm_dnlcRemove(dscp, cnamep);
     if (code == 0) {
-        cm_MergeStatus(NULL, dscp, &newDirStatus, &volSync, userp, reqp, CM_MERGEFLAG_DIROP);
+        code = cm_MergeStatus(NULL, dscp, &newDirStatus, &volSync, userp, reqp, CM_MERGEFLAG_DIROP);
+        invalidate = 1;
+        if (cm_CheckDirOpForSingleChange(&dirop) && cnamep) {
+            lock_ReleaseWrite(&dscp->rw);
+            cm_DirDeleteEntry(&dirop, fnamep);
+#ifdef USE_BPLUS
+            cm_BPlusDirDeleteEntry(&dirop, cnamep);
+#endif
+            lock_ObtainWrite(&dscp->rw);
+        }
     } else {
         InterlockedDecrement(&scp->activeRPCs);
         if (code == CM_ERROR_NOSUCHFILE) {
@@ -1663,31 +1734,35 @@ long cm_Unlink(cm_scache_t *dscp, fschar_t *fnamep, clientchar_t * cnamep,
             dscp->cbServerp = NULL;
         }
     }
+
     cm_SyncOpDone(dscp, NULL, sflags);
     lock_ReleaseWrite(&dscp->rw);
 
-    if (code == 0 && cm_CheckDirOpForSingleChange(&dirop) && cnamep) {
-        cm_DirDeleteEntry(&dirop, fnamep);
-#ifdef USE_BPLUS
-        cm_BPlusDirDeleteEntry(&dirop, cnamep);
-#endif
-    }
     cm_EndDirOp(&dirop);
 
+    if (invalidate && RDR_Initialized &&
+        scp->fileType != CM_SCACHETYPE_FILE && scp->fileType != CM_SCACHETYPE_DIRECTORY)
+        RDR_InvalidateObject(dscp->fid.cell, dscp->fid.volume, dscp->fid.vnode,
+                              dscp->fid.unique, dscp->fid.hash,
+                              dscp->fileType, AFS_INVALIDATE_DATA_VERSION);
+
     if (scp) {
-        cm_ReleaseSCache(scp);
         if (code == 0) {
 	    lock_ObtainWrite(&scp->rw);
             if (--scp->linkCount == 0) {
-                scp->flags |= CM_SCACHEFLAG_DELETED;
+		_InterlockedOr(&scp->flags, CM_SCACHEFLAG_DELETED);
 		lock_ObtainWrite(&cm_scacheLock);
                 cm_AdjustScacheLRU(scp);
-                cm_RemoveSCacheFromHashTable(scp);
 		lock_ReleaseWrite(&cm_scacheLock);
             }
             cm_DiscardSCache(scp);
 	    lock_ReleaseWrite(&scp->rw);
+            if (RDR_Initialized && !(reqp->flags & CM_REQ_SOURCE_REDIR))
+                RDR_InvalidateObject(scp->fid.cell, scp->fid.volume, scp->fid.vnode,
+                                     scp->fid.unique, scp->fid.hash,
+                                     scp->fileType, AFS_INVALIDATE_DELETED);
         }
+        cm_ReleaseSCache(scp);
     }
 
   done:
@@ -1705,7 +1780,8 @@ long cm_HandleLink(cm_scache_t *linkScp, cm_user_t *userp, cm_req_t *reqp)
     long code = 0;
 
     lock_AssertWrite(&linkScp->rw);
-    if (!linkScp->mountPointStringp[0]) {
+    if (!linkScp->mountPointStringp[0] ||
+        linkScp->mpDataVersion != linkScp->dataVersion) {
 
 #ifdef AFS_FREELANCE_CLIENT
 	/* File servers do not have data for freelance entries */
@@ -1719,10 +1795,11 @@ long cm_HandleLink(cm_scache_t *linkScp, cm_user_t *userp, cm_req_t *reqp)
         {
             char temp[MOUNTPOINTLEN];
             osi_hyper_t offset;
+            afs_uint32 bytesRead = 0;
 
             /* read the link data from the file server */
             offset.LowPart = offset.HighPart = 0;
-            code = cm_GetData(linkScp, &offset, temp, MOUNTPOINTLEN, userp, reqp);
+            code = cm_GetData(linkScp, &offset, temp, MOUNTPOINTLEN, &bytesRead, userp, reqp);
             if (code)
                 return code;
 
@@ -1739,6 +1816,7 @@ long cm_HandleLink(cm_scache_t *linkScp, cm_user_t *userp, cm_req_t *reqp)
             /* make sure we are NUL terminated */
             temp[linkScp->length.LowPart] = 0;
             memcpy(linkScp->mountPointStringp, temp, linkScp->length.LowPart + 1);
+            linkScp->mpDataVersion = linkScp->dataVersion;
         }
 
         if ( !strnicmp(linkScp->mountPointStringp, "msdfs:", strlen("msdfs:")) )
@@ -1911,7 +1989,6 @@ long cm_NameI(cm_scache_t *rootSCachep, clientchar_t *pathp, long flags,
     int symlinkCount;		/* count of # of symlinks traversed */
     int extraFlag;		/* avoid chasing mt pts for dir cmd */
     int phase = 1;		/* 1 = tidPathp, 2 = pathp */
-#define MAX_FID_COUNT 512
     cm_fid_t fids[MAX_FID_COUNT]; /* array of fids processed in this path walk */
     int fid_count = 0;          /* number of fids processed in this path walk */
     int i;
@@ -1975,12 +2052,53 @@ long cm_NameI(cm_scache_t *rootSCachep, clientchar_t *pathp, long flags,
                  */
                 *cp++ = 0;	/* add null termination */
 		extraFlag = 0;
-		if ((flags & CM_FLAG_DIRSEARCH) && tc == 0)
-		    extraFlag = CM_FLAG_NOMOUNTCHASE;
-		code = cm_Lookup(tscp, component,
-                                 flags | extraFlag,
-                                 userp, reqp, &nscp);
 
+                if (tscp == cm_RootSCachep(userp, reqp)) {
+                    code = cm_Lookup(tscp, component, CM_FLAG_CHECKPATH, userp, reqp, &nscp);
+
+                    if ((code == CM_ERROR_NOSUCHPATH || code == CM_ERROR_NOSUCHFILE ||
+                         code == CM_ERROR_BPLUS_NOMATCH) &&
+                         tscp == cm_data.rootSCachep) {
+
+                        clientchar_t volref[AFSPATHMAX];
+
+                        if (wcschr(component, '%') != NULL || wcschr(component, '#') != NULL) {
+                            /*
+                             * A volume reference:  <cell>{%,#}<volume> -> @vol:<cell>{%,#}<volume>
+                             */
+                            cm_ClientStrCpyN(volref, AFSPATHMAX, _C(CM_PREFIX_VOL), CM_PREFIX_VOL_CCH);
+                            cm_ClientStrCat(volref, AFSPATHMAX, component);
+
+                            code = cm_EvaluateVolumeReference(volref, CM_FLAG_CHECKPATH, userp, reqp, &nscp);
+                        }
+#ifdef AFS_FREELANCE_CLIENT
+                        else if (tscp->fid.cell == AFS_FAKE_ROOT_CELL_ID && tscp->fid.volume == AFS_FAKE_ROOT_VOL_ID &&
+                                  tscp->fid.vnode == 1 && tscp->fid.unique == 1) {
+                            /*
+                             * If this is the Freelance volume root directory then treat unrecognized
+                             * names as cell names and attempt to find the appropriate "root.cell".
+                             */
+                            cm_ClientStrCpyN(volref, AFSPATHMAX, _C(CM_PREFIX_VOL), CM_PREFIX_VOL_CCH);
+                            if (component[0] == L'.') {
+                                cm_ClientStrCat(volref, AFSPATHMAX, &component[1]);
+                                cm_ClientStrCatN(volref, AFSPATHMAX, L"%", sizeof(WCHAR));
+                            } else {
+                                cm_ClientStrCat(volref, AFSPATHMAX, component);
+                                cm_ClientStrCatN(volref, AFSPATHMAX, L"#", sizeof(WCHAR));
+                            }
+                            cm_ClientStrCatN(volref, AFSPATHMAX, L"root.cell", 9 * sizeof(WCHAR));
+
+                            code = cm_EvaluateVolumeReference(volref, CM_FLAG_CHECKPATH, userp, reqp, &nscp);
+                        }
+#endif
+                    }
+                } else {
+                    if ((flags & CM_FLAG_DIRSEARCH) && tc == 0)
+                        extraFlag = CM_FLAG_NOMOUNTCHASE;
+                    code = cm_Lookup(tscp, component,
+                                     flags | extraFlag,
+                                     userp, reqp, &nscp);
+                }
                 if (code == 0) {
                     if (!cm_ClientStrCmp(component,_C("..")) ||
                         !cm_ClientStrCmp(component,_C("."))) {
@@ -2293,7 +2411,7 @@ long cm_TryBulkProc(cm_scache_t *scp, cm_dirEntry_t *dep, void *rockp,
     if (tscp) {
         if (lock_TryWrite(&tscp->rw)) {
             /* we have an entry that we can look at */
-            if (!(tscp->flags & CM_SCACHEFLAG_EACCESS) && cm_HaveCallback(tscp)) {
+            if (!cm_EAccesFindEntry(bsp->userp, &tscp->fid) && cm_HaveCallback(tscp)) {
                 /* we have a callback on it.  Don't bother
                  * fetching this stat entry, since we're happy
                  * with the info we have.
@@ -2317,7 +2435,7 @@ long cm_TryBulkProc(cm_scache_t *scp, cm_dirEntry_t *dep, void *rockp,
           !(tfid.vnode==0x1 && tfid.unique==0x1) )
     {
         osi_Log0(afsd_logp, "cm_TryBulkProc Freelance calls cm_SCache on root.afs mountpoint");
-        return cm_GetSCache(&tfid, &tscp, NULL, NULL);
+        return cm_GetSCache(&tfid, NULL, &tscp, NULL, NULL);
     }
 #endif /* AFS_FREELANCE_CLIENT */
 
@@ -2339,6 +2457,7 @@ cm_TryBulkStatRPC(cm_scache_t *dscp, cm_bulkStat_t *bbp, cm_user_t *userp, cm_re
     long filex;
     AFSVolSync volSync;
     cm_callbackRequest_t cbReq;
+    int lostRace;
     long filesThisCall;
     long i;
     long j;
@@ -2383,16 +2502,27 @@ cm_TryBulkStatRPC(cm_scache_t *dscp, cm_bulkStat_t *bbp, cm_user_t *userp, cm_re
                 continue;
 
             rxconnp = cm_GetRxConn(connp);
-	    if (!(connp->serverp->flags & CM_SERVERFLAG_NOINLINEBULK)) {
+	    if (SERVERHASINLINEBULK(connp)) {
 		code = RXAFS_InlineBulkStatus(rxconnp, &fidStruct,
                                               &statStruct, &callbackStruct, &volSync);
 		if (code == RXGEN_OPCODE) {
-		    cm_SetServerNoInlineBulk(connp->serverp, 0);
+		    SET_SERVERHASNOINLINEBULK(connp);
 		} else {
 		    inlinebulk = 1;
 		}
 	    }
 	    if (!inlinebulk) {
+                /*
+                 * It is important to note that RXAFS_BulkStatus is quite braindead.
+                 * The AFS 3.6 file server implementation returns arrays that are
+                 * sized to hold responses for all of the requested FIDs but it only
+                 * populates their contents up to the point where it detects an error.
+                 * Unfortunately, it does inform the caller which entries were filled
+                 * and which were not.  The caller has no ability to determine which
+                 * FID the RPC return code applies to or which of the FIDs valid status
+                 * info and callbacks have been issued for.  As a result, when an
+                 * error is returned, none of the data received can be trusted.
+                 */
 		code = RXAFS_BulkStatus(rxconnp, &fidStruct,
 					&statStruct, &callbackStruct, &volSync);
 	    }
@@ -2426,7 +2556,7 @@ cm_TryBulkStatRPC(cm_scache_t *dscp, cm_bulkStat_t *bbp, cm_user_t *userp, cm_re
                         code = (&bbp->stats[0])->errorCode;
                 }
             }
-        } while (cm_Analyze(connp, userp, reqp, &tfid, 0, &volSync, NULL, &cbReq, code));
+        } while (cm_Analyze(connp, userp, reqp, &tfid, NULL, 0, &bbp->stats[0], &volSync, NULL, &cbReq, code));
         code = cm_MapRPCError(code, reqp);
 
         /*
@@ -2436,6 +2566,17 @@ cm_TryBulkStatRPC(cm_scache_t *dscp, cm_bulkStat_t *bbp, cm_user_t *userp, cm_re
         if (code) {
             osi_Log2(afsd_logp, "CALL %sBulkStatus FAILURE code 0x%x",
 		      inlinebulk ? "Inline" : "", code);
+            if (!inlinebulk) {
+                /*
+                 * Since an error occurred and it is impossible to determine
+                 * the context in which the returned error code should be
+                 * interpreted, we return the CM_ERROR_BULKSTAT_FAILURE error
+                 * which indicates that Bulk Stat cannot be used for the
+                 * current request.  The caller should fallback to using
+                 * individual RXAFS_FetchStatus calls.
+                 */
+                code = CM_ERROR_BULKSTAT_FAILURE;
+            }
             cm_EndCallbackGrantingCall(NULL, &cbReq, NULL, NULL, 0);
             break;
         }
@@ -2457,9 +2598,17 @@ cm_TryBulkStatRPC(cm_scache_t *dscp, cm_bulkStat_t *bbp, cm_user_t *userp, cm_re
 
             if (inlinebulk && (&bbp->stats[j])->errorCode) {
                 cm_req_t treq = *reqp;
-                cm_Analyze(NULL, userp, &treq, &tfid, 0, &volSync, NULL, &cbReq, (&bbp->stats[j])->errorCode);
+                cm_Analyze(NULL, userp, &treq, &tfid, NULL, 0, &bbp->stats[j], &volSync,
+                           NULL, &cbReq, (&bbp->stats[j])->errorCode);
+                switch ((&bbp->stats[j])->errorCode) {
+                case EACCES:
+                case UAEACCES:
+                case EPERM:
+                case UAEPERM:
+                    cm_EAccesAddEntry(userp, &tfid, &dscp->fid);
+                }
             } else {
-                code = cm_GetSCache(&tfid, &scp, userp, reqp);
+                code = cm_GetSCache(&tfid, &dscp->fid, &scp, userp, reqp);
                 if (code != 0)
                     continue;
 
@@ -2489,15 +2638,17 @@ cm_TryBulkStatRPC(cm_scache_t *dscp, cm_bulkStat_t *bbp, cm_user_t *userp, cm_re
                 if ((scp->cbServerp == NULL &&
                      !(scp->flags & (CM_SCACHEFLAG_FETCHING | CM_SCACHEFLAG_STORING | CM_SCACHEFLAG_SIZESTORING))) ||
                      (scp->flags & CM_SCACHEFLAG_PURERO) ||
-                     (scp->flags & CM_SCACHEFLAG_EACCESS))
+                     cm_EAccesFindEntry(userp, &scp->fid))
                 {
                     lock_ConvertRToW(&scp->rw);
-                    cm_EndCallbackGrantingCall(scp, &cbReq,
-                                               &bbp->callbacks[j],
-                                               &volSync,
-                                               CM_CALLBACK_MAINTAINCOUNT);
-                    InterlockedIncrement(&scp->activeRPCs);
-                    cm_MergeStatus(dscp, scp, &bbp->stats[j], &volSync, userp, reqp, 0);
+                    lostRace = cm_EndCallbackGrantingCall(scp, &cbReq,
+                                                          &bbp->callbacks[j],
+                                                          &volSync,
+                                                          CM_CALLBACK_MAINTAINCOUNT|CM_CALLBACK_BULKSTAT);
+		    if (!lostRace) {
+			InterlockedIncrement(&scp->activeRPCs);
+                        code = cm_MergeStatus(dscp, scp, &bbp->stats[j], &volSync, userp, reqp, CM_MERGEFLAG_BULKSTAT);
+		    }
                     lock_ReleaseWrite(&scp->rw);
                 } else {
                     lock_ReleaseRead(&scp->rw);
@@ -2530,6 +2681,7 @@ cm_TryBulkStat(cm_scache_t *dscp, osi_hyper_t *offsetp, cm_user_t *userp,
 
     bbp = malloc(sizeof(cm_bulkStat_t));
     memset(bbp, 0, sizeof(cm_bulkStat_t));
+    bbp->userp = userp;
     bbp->bufOffset = *offsetp;
 
     lock_ReleaseWrite(&dscp->rw);
@@ -2590,6 +2742,91 @@ void cm_StatusFromAttr(AFSStoreStatus *statusp, cm_scache_t *scp, cm_attr_t *att
     statusp->Mask = mask;
 }
 
+int
+cm_IsSpaceAvailable(cm_fid_t * fidp, osi_hyper_t *sizep, cm_user_t *userp, cm_req_t *reqp)
+{
+    int spaceAvail = 1;
+    afs_uint32  code;
+    cm_conn_t *connp;
+    struct rx_connection * rxconnp;
+    AFSFetchVolumeStatus volStat;
+    cm_volume_t *volp = NULL;
+    afs_uint32   volType;
+    char *Name;
+    char *OfflineMsg;
+    char *MOTD;
+    char volName[32]="(unknown)";
+    char offLineMsg[256]="server temporarily inaccessible";
+    char motd[256]="server temporarily inaccessible";
+    osi_hyper_t freespace;
+    cm_fid_t    vfid;
+    cm_scache_t *vscp;
+
+    if (fidp->cell==AFS_FAKE_ROOT_CELL_ID &&
+        fidp->volume==AFS_FAKE_ROOT_VOL_ID)
+    {
+        goto _done;
+    }
+
+    volp = cm_FindVolumeByFID(fidp, userp, reqp);
+    if (!volp) {
+        spaceAvail = 0;
+        goto _done;
+    }
+    volType = cm_VolumeType(volp, fidp->volume);
+    if (volType == ROVOL || volType == BACKVOL) {
+        spaceAvail = 0;
+        goto _done;
+    }
+
+    cm_SetFid(&vfid, fidp->cell, fidp->volume, 1, 1);
+    code = cm_GetSCache(&vfid, NULL, &vscp, userp, reqp);
+    if (code == 0) {
+        lock_ObtainWrite(&vscp->rw);
+        code = cm_SyncOp(vscp, NULL, userp, reqp, PRSFS_READ,
+                          CM_SCACHESYNC_NEEDCALLBACK | CM_SCACHESYNC_GETSTATUS);
+        lock_ReleaseWrite(&vscp->rw);
+        if (code == 0) {
+            Name = volName;
+            OfflineMsg = offLineMsg;
+            MOTD = motd;
+
+            do {
+                code = cm_ConnFromFID(&vfid, userp, reqp, &connp);
+                if (code) continue;
+
+                rxconnp = cm_GetRxConn(connp);
+                code = RXAFS_GetVolumeStatus(rxconnp, fidp->volume,
+                                             &volStat, &Name, &OfflineMsg, &MOTD);
+                rx_PutConnection(rxconnp);
+
+            } while (cm_Analyze(connp, userp, reqp, &vfid, NULL, 0, NULL, NULL, NULL, NULL, code));
+            code = cm_MapRPCError(code, reqp);
+        }
+
+        lock_ObtainWrite(&vscp->rw);
+        cm_SyncOpDone(vscp, NULL, CM_SCACHESYNC_NEEDCALLBACK | CM_SCACHESYNC_GETSTATUS);
+        lock_ReleaseWrite(&vscp->rw);
+        cm_ReleaseSCache(vscp);
+    }
+
+    if (code == 0) {
+        if (volStat.MaxQuota) {
+            freespace.QuadPart = 1024 * (afs_int64)min(volStat.MaxQuota - volStat.BlocksInUse, volStat.PartBlocksAvail);
+        } else {
+            freespace.QuadPart = 1024 * (afs_int64)volStat.PartBlocksAvail;
+        }
+        spaceAvail = LargeIntegerGreaterThanOrEqualTo(freespace, *sizep);
+    }
+    /* the rpc failed, assume there is space and we can fail it later. */
+
+  _done:
+    if (volp)
+        cm_PutVolume(volp);
+
+    return spaceAvail;
+}
+
 /* set the file size, and make sure that all relevant buffers have been
  * truncated.  Ensure that any partially truncated buffers have been zeroed
  * to the end of the buffer.
@@ -2599,6 +2836,7 @@ long cm_SetLength(cm_scache_t *scp, osi_hyper_t *sizep, cm_user_t *userp,
 {
     long code;
     int shrinking;
+    int available;
 
     /* start by locking out buffer creation */
     lock_ObtainWrite(&scp->bufCreateLock);
@@ -2657,8 +2895,12 @@ long cm_SetLength(cm_scache_t *scp, osi_hyper_t *sizep, cm_user_t *userp,
          * than where we're truncating the file, set truncPos to this
          * new value.
          */
-        if (!shrinking)
+	if (!shrinking) {
+	    cm_SyncOpDone(scp, NULL,
+			  CM_SCACHESYNC_NEEDCALLBACK | CM_SCACHESYNC_GETSTATUS
+			  | CM_SCACHESYNC_SETSTATUS | CM_SCACHESYNC_SETSIZE);
             goto startover;
+	}
         if (!(scp->mask & CM_SCACHEMASK_TRUNCPOS)
              || LargeIntegerLessThan(*sizep, scp->length)) {
             /* set trunc pos */
@@ -2670,14 +2912,44 @@ long cm_SetLength(cm_scache_t *scp, osi_hyper_t *sizep, cm_user_t *userp,
         scp->mask |= CM_SCACHEMASK_LENGTH;
     }
     else if (LargeIntegerGreaterThan(*sizep, scp->length)) {
-        /* really extending the file */
-        scp->length = *sizep;
-        scp->mask |= CM_SCACHEMASK_LENGTH;
+        /*
+         * Really extending the file so must check to see if we
+         * have sufficient quota.  cm_IsSpaceAvailable() obtains
+         * the cm_scache.rw lock on the volume root directory.
+         * vnode 1 < scp->fid.vnode therefore calling cm_IsSpaceAvailable
+         * while holding scp->rw is a lock order violation.
+         * Dropping it is ok because we are holding scp->bufCreateLock
+         * which prevents the size of the file from changing.
+         */
+        afs_uint64 nextChunk = scp->length.QuadPart;
+
+        nextChunk -= (nextChunk & 0xFFFFF);
+        nextChunk += 0x100000;
+
+        if (sizep->QuadPart > nextChunk) {
+            lock_ReleaseWrite(&scp->rw);
+            available = cm_IsSpaceAvailable(&scp->fid, sizep, userp, reqp);
+            lock_ObtainWrite(&scp->rw);
+        } else {
+            /*
+             * The file server permits 1MB quota overruns so only check
+             * when the file size increases by at least that much.
+             */
+            available = 1;
+        }
+        if (available) {
+            scp->length = *sizep;
+            scp->mask |= CM_SCACHEMASK_LENGTH;
+        } else {
+            code = CM_ERROR_SPACE;
+            goto syncopdone;
+        }
     }
 
     /* done successfully */
     code = 0;
 
+  syncopdone:
     cm_SyncOpDone(scp, NULL,
 		   CM_SCACHESYNC_NEEDCALLBACK | CM_SCACHESYNC_GETSTATUS
 		   | CM_SCACHESYNC_SETSTATUS | CM_SCACHESYNC_SETSIZE);
@@ -2746,7 +3018,7 @@ long cm_SetAttr(cm_scache_t *scp, cm_attr_t *attrp, cm_user_t *userp,
         rx_PutConnection(rxconnp);
 
     } while (cm_Analyze(connp, userp, reqp,
-                         &scp->fid, 1, &volSync, NULL, NULL, code));
+                         &scp->fid, NULL, 1, &afsOutStatus, &volSync, NULL, NULL, code));
     code = cm_MapRPCError(code, reqp);
 
     if (code)
@@ -2756,8 +3028,8 @@ long cm_SetAttr(cm_scache_t *scp, cm_attr_t *attrp, cm_user_t *userp,
 
     lock_ObtainWrite(&scp->rw);
     if (code == 0)
-        cm_MergeStatus(NULL, scp, &afsOutStatus, &volSync, userp, reqp,
-                        CM_MERGEFLAG_FORCE|CM_MERGEFLAG_STOREDATA);
+        code = cm_MergeStatus( NULL, scp, &afsOutStatus, &volSync, userp, reqp,
+                               CM_MERGEFLAG_FORCE|CM_MERGEFLAG_STOREDATA);
     else
         InterlockedDecrement(&scp->activeRPCs);
     cm_SyncOpDone(scp, NULL, CM_SCACHESYNC_STORESTATUS);
@@ -2782,6 +3054,7 @@ long cm_Create(cm_scache_t *dscp, clientchar_t *cnamep, long flags, cm_attr_t *a
     cm_fid_t newFid;
     cm_scache_t *scp = NULL;
     int didEnd;
+    int lostRace;
     AFSStoreStatus inStatus;
     AFSFetchStatus updatedDirStatus;
     AFSFetchStatus newFileStatus;
@@ -2796,7 +3069,7 @@ long cm_Create(cm_scache_t *dscp, clientchar_t *cnamep, long flags, cm_attr_t *a
     /* can't create names with @sys in them; must expand it manually first.
      * return "invalid request" if they try.
      */
-    if (cm_ExpandSysName(cnamep, NULL, 0, 0)) {
+    if (cm_ExpandSysName(NULL, cnamep, NULL, 0, 0)) {
         return CM_ERROR_ATSYS;
     }
 
@@ -2857,7 +3130,7 @@ long cm_Create(cm_scache_t *dscp, clientchar_t *cnamep, long flags, cm_attr_t *a
         rx_PutConnection(rxconnp);
 
     } while (cm_Analyze(connp, userp, reqp,
-                         &dscp->fid, 1, &volSync, NULL, &cbReq, code));
+                         &dscp->fid, NULL, 1, &updatedDirStatus, &volSync, NULL, &cbReq, code));
     code = cm_MapRPCError(code, reqp);
 
     if (code)
@@ -2870,10 +3143,20 @@ long cm_Create(cm_scache_t *dscp, clientchar_t *cnamep, long flags, cm_attr_t *a
         dirop.lockType = CM_DIRLOCK_WRITE;
     }
     lock_ObtainWrite(&dscp->rw);
-    if (code == 0)
-        cm_MergeStatus(NULL, dscp, &updatedDirStatus, &volSync, userp, reqp, CM_MERGEFLAG_DIROP);
-    else
+    if (code == 0) {
+        code = cm_MergeStatus(NULL, dscp, &updatedDirStatus, &volSync, userp, reqp, CM_MERGEFLAG_DIROP);
+        cm_SetFid(&newFid, dscp->fid.cell, dscp->fid.volume, newAFSFid.Vnode, newAFSFid.Unique);
+        if (cm_CheckDirOpForSingleChange(&dirop)) {
+            lock_ReleaseWrite(&dscp->rw);
+            cm_DirCreateEntry(&dirop, fnamep, &newFid);
+#ifdef USE_BPLUS
+            cm_BPlusDirCreateEntry(&dirop, cnamep, &newFid);
+#endif
+            lock_ObtainWrite(&dscp->rw);
+        }
+    } else {
         InterlockedDecrement(&dscp->activeRPCs);
+    }
     cm_SyncOpDone(dscp, NULL, CM_SCACHESYNC_STOREDATA);
     lock_ReleaseWrite(&dscp->rw);
 
@@ -2883,17 +3166,18 @@ long cm_Create(cm_scache_t *dscp, clientchar_t *cnamep, long flags, cm_attr_t *a
      * info.
      */
     if (code == 0) {
-        cm_SetFid(&newFid, dscp->fid.cell, dscp->fid.volume, newAFSFid.Vnode, newAFSFid.Unique);
-        code = cm_GetSCache(&newFid, &scp, userp, reqp);
+        code = cm_GetSCache(&newFid, &dscp->fid, &scp, userp, reqp);
         if (code == 0) {
             lock_ObtainWrite(&scp->rw);
 	    scp->creator = userp;		/* remember who created it */
             if (!cm_HaveCallback(scp)) {
-                cm_EndCallbackGrantingCall(scp, &cbReq,
-                                           &newFileCallback, &volSync, 0);
-                InterlockedIncrement(&scp->activeRPCs);
-                cm_MergeStatus(dscp, scp, &newFileStatus, &volSync,
-                               userp, reqp, 0);
+                lostRace = cm_EndCallbackGrantingCall(scp, &cbReq,
+                                                      &newFileCallback, &volSync, 0);
+		if (!lostRace) {
+		    InterlockedIncrement(&scp->activeRPCs);
+                    code = cm_MergeStatus( dscp, scp, &newFileStatus, &volSync,
+                                           userp, reqp, 0);
+		}
                 didEnd = 1;
             }
             lock_ReleaseWrite(&scp->rw);
@@ -2904,12 +3188,6 @@ long cm_Create(cm_scache_t *dscp, clientchar_t *cnamep, long flags, cm_attr_t *a
     if (!didEnd)
         cm_EndCallbackGrantingCall(NULL, &cbReq, NULL, NULL, 0);
 
-    if (scp && cm_CheckDirOpForSingleChange(&dirop)) {
-        cm_DirCreateEntry(&dirop, fnamep, &newFid);
-#ifdef USE_BPLUS
-        cm_BPlusDirCreateEntry(&dirop, cnamep, &newFid);
-#endif
-    }
     cm_EndDirOp(&dirop);
 
     if (fnamep)
@@ -2970,6 +3248,7 @@ long cm_MakeDir(cm_scache_t *dscp, clientchar_t *cnamep, long flags, cm_attr_t *
     cm_fid_t newFid;
     cm_scache_t *scp = NULL;
     int didEnd;
+    int lostRace;
     AFSStoreStatus inStatus;
     AFSFetchStatus updatedDirStatus;
     AFSFetchStatus newDirStatus;
@@ -2984,7 +3263,7 @@ long cm_MakeDir(cm_scache_t *dscp, clientchar_t *cnamep, long flags, cm_attr_t *
     /* can't create names with @sys in them; must expand it manually first.
      * return "invalid request" if they try.
      */
-    if (cm_ExpandSysName(cnamep, NULL, 0, 0)) {
+    if (cm_ExpandSysName(NULL, cnamep, NULL, 0, 0)) {
         return CM_ERROR_ATSYS;
     }
 
@@ -3044,7 +3323,7 @@ long cm_MakeDir(cm_scache_t *dscp, clientchar_t *cnamep, long flags, cm_attr_t *
         rx_PutConnection(rxconnp);
 
     } while (cm_Analyze(connp, userp, reqp,
-                        &dscp->fid, 1, &volSync, NULL, &cbReq, code));
+                        &dscp->fid, NULL, 1, &updatedDirStatus, &volSync, NULL, &cbReq, code));
     code = cm_MapRPCError(code, reqp);
 
     if (code)
@@ -3057,10 +3336,20 @@ long cm_MakeDir(cm_scache_t *dscp, clientchar_t *cnamep, long flags, cm_attr_t *
         dirop.lockType = CM_DIRLOCK_WRITE;
     }
     lock_ObtainWrite(&dscp->rw);
-    if (code == 0)
-        cm_MergeStatus(NULL, dscp, &updatedDirStatus, &volSync, userp, reqp, CM_MERGEFLAG_DIROP);
-    else
+    if (code == 0) {
+        code = cm_MergeStatus(NULL, dscp, &updatedDirStatus, &volSync, userp, reqp, CM_MERGEFLAG_DIROP);
+        cm_SetFid(&newFid, dscp->fid.cell, dscp->fid.volume, newAFSFid.Vnode, newAFSFid.Unique);
+        if (cm_CheckDirOpForSingleChange(&dirop)) {
+            lock_ReleaseWrite(&dscp->rw);
+            cm_DirCreateEntry(&dirop, fnamep, &newFid);
+#ifdef USE_BPLUS
+            cm_BPlusDirCreateEntry(&dirop, cnamep, &newFid);
+#endif
+            lock_ObtainWrite(&dscp->rw);
+        }
+    } else {
         InterlockedDecrement(&dscp->activeRPCs);
+    }
     cm_SyncOpDone(dscp, NULL, CM_SCACHESYNC_STOREDATA);
     lock_ReleaseWrite(&dscp->rw);
 
@@ -3070,16 +3359,17 @@ long cm_MakeDir(cm_scache_t *dscp, clientchar_t *cnamep, long flags, cm_attr_t *
      * info.
      */
     if (code == 0) {
-        cm_SetFid(&newFid, dscp->fid.cell, dscp->fid.volume, newAFSFid.Vnode, newAFSFid.Unique);
-        code = cm_GetSCache(&newFid, &scp, userp, reqp);
+        code = cm_GetSCache(&newFid, &dscp->fid, &scp, userp, reqp);
         if (code == 0) {
             lock_ObtainWrite(&scp->rw);
             if (!cm_HaveCallback(scp)) {
-                cm_EndCallbackGrantingCall(scp, &cbReq,
-                                            &newDirCallback, &volSync, 0);
-                InterlockedIncrement(&scp->activeRPCs);
-                cm_MergeStatus(dscp, scp, &newDirStatus, &volSync,
-                                userp, reqp, 0);
+                lostRace = cm_EndCallbackGrantingCall(scp, &cbReq,
+                                                      &newDirCallback, &volSync, 0);
+		if (!lostRace) {
+		    InterlockedIncrement(&scp->activeRPCs);
+                    code = cm_MergeStatus( dscp, scp, &newDirStatus, &volSync,
+                                           userp, reqp, 0);
+		}
                 didEnd = 1;
             }
             lock_ReleaseWrite(&scp->rw);
@@ -3090,12 +3380,6 @@ long cm_MakeDir(cm_scache_t *dscp, clientchar_t *cnamep, long flags, cm_attr_t *
     if (!didEnd)
         cm_EndCallbackGrantingCall(NULL, &cbReq, NULL, NULL, 0);
 
-    if (scp && cm_CheckDirOpForSingleChange(&dirop)) {
-        cm_DirCreateEntry(&dirop, fnamep, &newFid);
-#ifdef USE_BPLUS
-        cm_BPlusDirCreateEntry(&dirop, cnamep, &newFid);
-#endif
-    }
     cm_EndDirOp(&dirop);
 
     free(fnamep);
@@ -3124,6 +3408,7 @@ long cm_Link(cm_scache_t *dscp, clientchar_t *cnamep, cm_scache_t *sscp, long fl
     struct rx_connection * rxconnp;
     cm_dirOp_t dirop;
     fschar_t * fnamep = NULL;
+    int invalidate = 0;
 
     memset(&volSync, 0, sizeof(volSync));
 
@@ -3170,7 +3455,7 @@ long cm_Link(cm_scache_t *dscp, clientchar_t *cnamep, cm_scache_t *sscp, long fl
         rx_PutConnection(rxconnp);
         osi_Log1(afsd_logp,"  RXAFS_Link returns 0x%x", code);
 
-    } while (cm_Analyze(connp, userp, reqp, &dscp->fid, 1, &volSync, NULL, NULL, code));
+    } while (cm_Analyze(connp, userp, reqp, &dscp->fid, NULL, 1, &updatedDirStatus, &volSync, NULL, NULL, code));
 
     code = cm_MapRPCError(code, reqp);
 
@@ -3185,28 +3470,35 @@ long cm_Link(cm_scache_t *dscp, clientchar_t *cnamep, cm_scache_t *sscp, long fl
     }
     lock_ObtainWrite(&dscp->rw);
     if (code == 0) {
-        cm_MergeStatus(NULL, dscp, &updatedDirStatus, &volSync, userp, reqp, CM_MERGEFLAG_DIROP);
+        code = cm_MergeStatus(NULL, dscp, &updatedDirStatus, &volSync, userp, reqp, CM_MERGEFLAG_DIROP);
+        invalidate = 1;
+
+        if (cm_CheckDirOpForSingleChange(&dirop)) {
+            lock_ReleaseWrite(&dscp->rw);
+            cm_DirCreateEntry(&dirop, fnamep, &sscp->fid);
+#ifdef USE_BPLUS
+            cm_BPlusDirCreateEntry(&dirop, cnamep, &sscp->fid);
+#endif
+            lock_ObtainWrite(&dscp->rw);
+        }
     } else {
         InterlockedDecrement(&dscp->activeRPCs);
     }
     cm_SyncOpDone(dscp, NULL, CM_SCACHESYNC_STOREDATA);
     lock_ReleaseWrite(&dscp->rw);
 
-    if (code == 0) {
-        if (cm_CheckDirOpForSingleChange(&dirop)) {
-            cm_DirCreateEntry(&dirop, fnamep, &sscp->fid);
-#ifdef USE_BPLUS
-            cm_BPlusDirCreateEntry(&dirop, cnamep, &sscp->fid);
-#endif
-        }
-    }
     cm_EndDirOp(&dirop);
+
+    if (invalidate && RDR_Initialized)
+        RDR_InvalidateObject(dscp->fid.cell, dscp->fid.volume, dscp->fid.vnode,
+                             dscp->fid.unique, dscp->fid.hash,
+                             dscp->fileType, AFS_INVALIDATE_DATA_VERSION);
 
     /* Update the linked object status */
     if (code == 0) {
         lock_ObtainWrite(&sscp->rw);
         InterlockedIncrement(&sscp->activeRPCs);
-        cm_MergeStatus(NULL, sscp, &newLinkStatus, &volSync, userp, reqp, 0);
+        code = cm_MergeStatus(NULL, sscp, &newLinkStatus, &volSync, userp, reqp, 0);
         lock_ReleaseWrite(&sscp->rw);
     }
 
@@ -3279,7 +3571,7 @@ long cm_SymLink(cm_scache_t *dscp, clientchar_t *cnamep, fschar_t *contentsp, lo
         rx_PutConnection(rxconnp);
 
     } while (cm_Analyze(connp, userp, reqp,
-                         &dscp->fid, 1, &volSync, NULL, NULL, code));
+                         &dscp->fid, NULL, 1, &updatedDirStatus, &volSync, NULL, NULL, code));
     code = cm_MapRPCError(code, reqp);
 
     if (code)
@@ -3292,23 +3584,25 @@ long cm_SymLink(cm_scache_t *dscp, clientchar_t *cnamep, fschar_t *contentsp, lo
         dirop.lockType = CM_DIRLOCK_WRITE;
     }
     lock_ObtainWrite(&dscp->rw);
-    if (code == 0)
-        cm_MergeStatus(NULL, dscp, &updatedDirStatus, &volSync, userp, reqp, CM_MERGEFLAG_DIROP);
-    else
-        InterlockedDecrement(&dscp->activeRPCs);
-    cm_SyncOpDone(dscp, NULL, CM_SCACHESYNC_STOREDATA);
-    lock_ReleaseWrite(&dscp->rw);
-
     if (code == 0) {
+        code = cm_MergeStatus(NULL, dscp, &updatedDirStatus, &volSync, userp, reqp, CM_MERGEFLAG_DIROP);
+        cm_SetFid(&newFid, dscp->fid.cell, dscp->fid.volume, newAFSFid.Vnode, newAFSFid.Unique);
         if (cm_CheckDirOpForSingleChange(&dirop)) {
+            lock_ReleaseWrite(&dscp->rw);
             cm_SetFid(&newFid, dscp->fid.cell, dscp->fid.volume, newAFSFid.Vnode, newAFSFid.Unique);
 
             cm_DirCreateEntry(&dirop, fnamep, &newFid);
 #ifdef USE_BPLUS
             cm_BPlusDirCreateEntry(&dirop, cnamep, &newFid);
 #endif
+            lock_ObtainWrite(&dscp->rw);
         }
+    } else {
+        InterlockedDecrement(&dscp->activeRPCs);
     }
+    cm_SyncOpDone(dscp, NULL, CM_SCACHESYNC_STOREDATA);
+    lock_ReleaseWrite(&dscp->rw);
+
     cm_EndDirOp(&dirop);
 
     /* now try to create the new dir's entry, too, but be careful to
@@ -3317,14 +3611,13 @@ long cm_SymLink(cm_scache_t *dscp, clientchar_t *cnamep, fschar_t *contentsp, lo
      * info.
      */
     if (code == 0) {
-        cm_SetFid(&newFid, dscp->fid.cell, dscp->fid.volume, newAFSFid.Vnode, newAFSFid.Unique);
-        code = cm_GetSCache(&newFid, &scp, userp, reqp);
+        code = cm_GetSCache(&newFid, &dscp->fid, &scp, userp, reqp);
         if (code == 0) {
             lock_ObtainWrite(&scp->rw);
             if (!cm_HaveCallback(scp)) {
                 InterlockedIncrement(&scp->activeRPCs);
-                cm_MergeStatus(dscp, scp, &newLinkStatus, &volSync,
-                                userp, reqp, 0);
+                code = cm_MergeStatus( dscp, scp, &newLinkStatus, &volSync,
+                                       userp, reqp, 0);
             }
             lock_ReleaseWrite(&scp->rw);
 
@@ -3435,7 +3728,7 @@ long cm_RemoveDir(cm_scache_t *dscp, fschar_t *fnamep, clientchar_t *cnamep, cm_
         rx_PutConnection(rxconnp);
 
     } while (cm_Analyze(connp, userp, reqp,
-                        &dscp->fid, 1, &volSync, NULL, NULL, code));
+                        &dscp->fid, NULL, 1, &updatedDirStatus, &volSync, NULL, NULL, code));
     code = cm_MapRPCErrorRmdir(code, reqp);
 
     if (code)
@@ -3450,34 +3743,37 @@ long cm_RemoveDir(cm_scache_t *dscp, fschar_t *fnamep, clientchar_t *cnamep, cm_
     lock_ObtainWrite(&dscp->rw);
     if (code == 0) {
         cm_dnlcRemove(dscp, cnamep);
-        cm_MergeStatus(NULL, dscp, &updatedDirStatus, &volSync, userp, reqp, CM_MERGEFLAG_DIROP);
+        code = cm_MergeStatus(NULL, dscp, &updatedDirStatus, &volSync, userp, reqp, CM_MERGEFLAG_DIROP);
+        if (cm_CheckDirOpForSingleChange(&dirop) && cnamep != NULL) {
+            lock_ReleaseWrite(&dscp->rw);
+            cm_DirDeleteEntry(&dirop, fnamep);
+#ifdef USE_BPLUS
+            cm_BPlusDirDeleteEntry(&dirop, cnamep);
+#endif
+            lock_ObtainWrite(&dscp->rw);
+        }
     } else {
         InterlockedDecrement(&dscp->activeRPCs);
     }
     cm_SyncOpDone(dscp, NULL, CM_SCACHESYNC_STOREDATA);
     lock_ReleaseWrite(&dscp->rw);
 
-    if (code == 0) {
-        if (cm_CheckDirOpForSingleChange(&dirop) && cnamep != NULL) {
-            cm_DirDeleteEntry(&dirop, fnamep);
-#ifdef USE_BPLUS
-            cm_BPlusDirDeleteEntry(&dirop, cnamep);
-#endif
-        }
-    }
     cm_EndDirOp(&dirop);
 
     if (scp) {
-        cm_ReleaseSCache(scp);
         if (code == 0) {
 	    lock_ObtainWrite(&scp->rw);
-            scp->flags |= CM_SCACHEFLAG_DELETED;
+	    _InterlockedOr(&scp->flags, CM_SCACHEFLAG_DELETED);
             lock_ObtainWrite(&cm_scacheLock);
             cm_AdjustScacheLRU(scp);
-            cm_RemoveSCacheFromHashTable(scp);
             lock_ReleaseWrite(&cm_scacheLock);
 	    lock_ReleaseWrite(&scp->rw);
+            if (RDR_Initialized && !(reqp->flags & CM_REQ_SOURCE_REDIR))
+                RDR_InvalidateObject(scp->fid.cell, scp->fid.volume, scp->fid.vnode,
+                                     scp->fid.unique, scp->fid.hash,
+                                     scp->fileType, AFS_INVALIDATE_DELETED);
         }
+        cm_ReleaseSCache(scp);
     }
 
   done:
@@ -3535,14 +3831,14 @@ long cm_Rename(cm_scache_t *oldDscp, fschar_t *oldNamep, clientchar_t *cOldNamep
                cm_req_t *reqp)
 {
     cm_conn_t *connp;
-    long code;
+    long code = 0;
     AFSFid oldDirAFSFid;
     AFSFid newDirAFSFid;
-    int didEnd;
     AFSFetchStatus updatedOldDirStatus;
     AFSFetchStatus updatedNewDirStatus;
     AFSVolSync volSync;
-    int oneDir;
+    int oneDir = 0;
+    int bTargetExists = 0;
     struct rx_connection * rxconnp;
     cm_dirOp_t oldDirOp;
     cm_fid_t   fileFid;
@@ -3550,7 +3846,8 @@ long cm_Rename(cm_scache_t *oldDscp, fschar_t *oldNamep, clientchar_t *cOldNamep
     cm_dirOp_t newDirOp;
     fschar_t * newNamep = NULL;
     int free_oldNamep = FALSE;
-    cm_scache_t *oldScp = NULL, *newScp = NULL;
+    cm_scache_t *oldScp = NULL, *oldTargetScp = NULL;
+    int rpc_skipped = 0;
 
     memset(&volSync, 0, sizeof(volSync));
 
@@ -3559,53 +3856,18 @@ long cm_Rename(cm_scache_t *oldDscp, fschar_t *oldNamep, clientchar_t *cOldNamep
         cm_ClientStrLen(cNewNamep) == 0)
         return CM_ERROR_INVAL;
 
-    /*
-     * Before we permit the operation, make sure that we do not already have
-     * an object in the destination directory that has a case-insensitive match
-     * for this name UNLESS the matching object is the object we are renaming.
-     */
-    code = cm_Lookup(oldDscp, cOldNamep, 0, userp, reqp, &oldScp);
-    if (code) {
-        osi_Log2(afsd_logp, "cm_Rename oldDscp 0x%p cOldName %S old name lookup failed",
-                 oldDscp, osi_LogSaveStringW(afsd_logp, cOldNamep));
-        goto done;
-    }
-
-    /* Case sensitive lookup.  If this succeeds we are done. */
-    code = cm_Lookup(newDscp, cNewNamep, 0, userp, reqp, &newScp);
-    if (code) {
-        /*
-         * Case insensitive lookup.  If this succeeds, it could have found the
-         * same file with a name that differs only by case or it could be a
-         * different file entirely.
-         */
-        code = cm_Lookup(newDscp, cNewNamep, CM_FLAG_CASEFOLD, userp, reqp, &newScp);
-        if (code == 0) {
-            /* found a matching object with the new name */
-            if (cm_FidCmp(&oldScp->fid, &newScp->fid)) {
-                /* and they don't match so return an error */
-                osi_Log2(afsd_logp, "cm_Rename newDscp 0x%p cNewName %S new name already exists",
-                          newDscp, osi_LogSaveStringW(afsd_logp, cNewNamep));
-                code = CM_ERROR_EXISTS;
-            }
-            cm_ReleaseSCache(newScp);
-            newScp = NULL;
-        } else if (code == CM_ERROR_AMBIGUOUS_FILENAME) {
-            code = CM_ERROR_EXISTS;
-        } else {
-            /* The target does not exist.  Clear the error and perform the rename. */
-            code = 0;
-        }
+    /* check for identical names */
+    if (oldDscp == newDscp &&
+        cm_ClientStrCmp(cOldNamep, cNewNamep) == 0) {
+        osi_Log2(afsd_logp, "cm_Rename oldDscp 0x%p newDscp 0x%p CM_ERROR_RENAME_IDENTICAL",
+                  oldDscp, newDscp);
+        return CM_ERROR_RENAME_IDENTICAL;
     }
 
     /* Check for RO volume */
-    if (code == 0 &&
-        (oldDscp->flags & CM_SCACHEFLAG_RO) || (newDscp->flags & CM_SCACHEFLAG_RO)) {
-        code = CM_ERROR_READONLY;
+    if ((oldDscp->flags & CM_SCACHEFLAG_RO) || (newDscp->flags & CM_SCACHEFLAG_RO)) {
+        return CM_ERROR_READONLY;
     }
-
-    if (code)
-        goto done;
 
     if (oldNamep == NULL) {
         code = -1;
@@ -3626,21 +3888,12 @@ long cm_Rename(cm_scache_t *oldDscp, fschar_t *oldNamep, clientchar_t *cOldNamep
         }
     }
 
-
     /* before starting the RPC, mark that we're changing the directory data,
      * so that someone who does a chmod on the dir will wait until our call
      * completes.  We do this in vnode order so that we don't deadlock,
      * which makes the code a little verbose.
      */
     if (oldDscp == newDscp) {
-        /* check for identical names */
-        if (cm_ClientStrCmp(cOldNamep, cNewNamep) == 0) {
-            osi_Log2(afsd_logp, "cm_Rename oldDscp 0x%p newDscp 0x%p CM_ERROR_RENAME_IDENTICAL",
-                      oldDscp, newDscp);
-            code = CM_ERROR_RENAME_IDENTICAL;
-            goto done;
-        }
-
         oneDir = 1;
         cm_BeginDirOp(oldDscp, userp, reqp, CM_DIRLOCK_NONE,
                       CM_DIROP_FLAG_NONE, &oldDirOp);
@@ -3742,7 +3995,55 @@ long cm_Rename(cm_scache_t *oldDscp, fschar_t *oldNamep, clientchar_t *cOldNamep
     if (code)
         goto done;
 
-    didEnd = 0;
+    /*
+     * The source and destination directories are now locked and no other local
+     * changes can occur.
+     *
+     * Before we permit the operation, make sure that we do not already have
+     * an object in the destination directory that has a case-insensitive match
+     * for this name UNLESS the matching object is the object we are renaming.
+     */
+    code = cm_Lookup(oldDscp, cOldNamep, 0, userp, reqp, &oldScp);
+    if (code) {
+        osi_Log2(afsd_logp, "cm_Rename oldDscp 0x%p cOldName %S old name lookup failed",
+                 oldDscp, osi_LogSaveStringW(afsd_logp, cOldNamep));
+        rpc_skipped = 1;
+        goto post_rpc;
+    }
+
+    /* Case sensitive lookup.  If this succeeds we are done. */
+    code = cm_Lookup(newDscp, cNewNamep, 0, userp, reqp, &oldTargetScp);
+    if (code) {
+        /*
+         * Case insensitive lookup.  If this succeeds, it could have found the
+         * same file with a name that differs only by case or it could be a
+         * different file entirely.
+         */
+        code = cm_Lookup(newDscp, cNewNamep, CM_FLAG_CASEFOLD, userp, reqp, &oldTargetScp);
+        if (code == 0) {
+            /* found a matching object with the new name */
+            if (cm_FidCmp(&oldScp->fid, &oldTargetScp->fid)) {
+                /* and they don't match so return an error */
+                osi_Log2(afsd_logp, "cm_Rename newDscp 0x%p cNewName %S new name already exists",
+                          newDscp, osi_LogSaveStringW(afsd_logp, cNewNamep));
+                code = CM_ERROR_EXISTS;
+            }
+            cm_ReleaseSCache(oldTargetScp);
+            oldTargetScp = NULL;
+        } else if (code == CM_ERROR_AMBIGUOUS_FILENAME) {
+            code = CM_ERROR_EXISTS;
+        } else {
+            /* The target does not exist.  Clear the error and perform the rename. */
+            code = 0;
+        }
+    } else {
+        bTargetExists = 1;
+    }
+
+    if (code) {
+        rpc_skipped = 1;
+        goto post_rpc;
+    }
 
     newNamep = cm_ClientStringToFsStringAlloc(cNewNamep, -1, NULL);
 
@@ -3771,8 +4072,8 @@ long cm_Rename(cm_scache_t *oldDscp, fschar_t *oldNamep, clientchar_t *cOldNamep
                             &volSync);
         rx_PutConnection(rxconnp);
 
-    } while (cm_Analyze(connp, userp, reqp, &oldDscp->fid, 1,
-                         &volSync, NULL, NULL, code));
+    } while (cm_Analyze(connp, userp, reqp, &oldDscp->fid, NULL, 1,
+                        &updatedOldDirStatus, &volSync, NULL, NULL, code));
     code = cm_MapRPCError(code, reqp);
 
     if (code)
@@ -3780,46 +4081,58 @@ long cm_Rename(cm_scache_t *oldDscp, fschar_t *oldNamep, clientchar_t *cOldNamep
     else
         osi_Log0(afsd_logp, "CALL Rename SUCCESS");
 
+  post_rpc:
     /* update the individual stat cache entries for the directories */
     if (oldDirOp.scp) {
         lock_ObtainWrite(&oldDirOp.scp->dirlock);
         oldDirOp.lockType = CM_DIRLOCK_WRITE;
     }
-    lock_ObtainWrite(&oldDscp->rw);
 
-    if (code == 0)
-        cm_MergeStatus(NULL, oldDscp, &updatedOldDirStatus, &volSync,
-                       userp, reqp, CM_MERGEFLAG_DIROP);
-    else
-        InterlockedDecrement(&oldDscp->activeRPCs);
+    lock_ObtainWrite(&oldDscp->rw);
+    if (code == 0) {
+        code = cm_MergeStatus( NULL, oldDscp, &updatedOldDirStatus, &volSync,
+                               userp, reqp, CM_MERGEFLAG_DIROP);
+        if (cm_CheckDirOpForSingleChange(&oldDirOp)) {
+            lock_ReleaseWrite(&oldDscp->rw);
+            if (bTargetExists && oneDir) {
+                diropCode = cm_DirDeleteEntry(&oldDirOp, newNamep);
+#ifdef USE_BPLUS
+                cm_BPlusDirDeleteEntry(&oldDirOp, cNewNamep);
+#endif
+            }
+
+#ifdef USE_BPLUS
+            diropCode = cm_BPlusDirLookup(&oldDirOp, cOldNamep, &fileFid);
+            if (diropCode == CM_ERROR_INEXACT_MATCH)
+                diropCode = 0;
+            else if (diropCode == EINVAL)
+#endif
+                diropCode = cm_DirLookup(&oldDirOp, oldNamep, &fileFid);
+
+            if (diropCode == 0) {
+                if (oneDir) {
+                    diropCode = cm_DirCreateEntry(&oldDirOp, newNamep, &fileFid);
+#ifdef USE_BPLUS
+                    cm_BPlusDirCreateEntry(&oldDirOp, cNewNamep, &fileFid);
+#endif
+                }
+
+                if (diropCode == 0) {
+                    diropCode = cm_DirDeleteEntry(&oldDirOp, oldNamep);
+#ifdef USE_BPLUS
+                    cm_BPlusDirDeleteEntry(&oldDirOp, cOldNamep);
+#endif
+                }
+            }
+            lock_ObtainWrite(&oldDscp->rw);
+        }
+    } else {
+        if (!rpc_skipped)
+            InterlockedDecrement(&oldDscp->activeRPCs);
+    }
     cm_SyncOpDone(oldDscp, NULL, CM_SCACHESYNC_STOREDATA);
     lock_ReleaseWrite(&oldDscp->rw);
 
-    if (code == 0 && cm_CheckDirOpForSingleChange(&oldDirOp)) {
-#ifdef USE_BPLUS
-        diropCode = cm_BPlusDirLookup(&oldDirOp, cOldNamep, &fileFid);
-        if (diropCode == CM_ERROR_INEXACT_MATCH)
-            diropCode = 0;
-        else if (diropCode == EINVAL)
-#endif
-            diropCode = cm_DirLookup(&oldDirOp, oldNamep, &fileFid);
-
-        if (diropCode == 0) {
-            if (oneDir) {
-                diropCode = cm_DirCreateEntry(&oldDirOp, newNamep, &fileFid);
-#ifdef USE_BPLUS
-                cm_BPlusDirCreateEntry(&oldDirOp, cNewNamep, &fileFid);
-#endif
-            }
-
-            if (diropCode == 0) {
-                diropCode = cm_DirDeleteEntry(&oldDirOp, oldNamep);
-#ifdef USE_BPLUS
-                cm_BPlusDirDeleteEntry(&oldDirOp, cOldNamep);
-#endif
-            }
-        }
-    }
     cm_EndDirOp(&oldDirOp);
 
     /* and update it for the new one, too, if necessary */
@@ -3829,52 +4142,71 @@ long cm_Rename(cm_scache_t *oldDscp, fschar_t *oldNamep, clientchar_t *cOldNamep
             newDirOp.lockType = CM_DIRLOCK_WRITE;
         }
         lock_ObtainWrite(&newDscp->rw);
-        if (code == 0)
-            cm_MergeStatus(NULL, newDscp, &updatedNewDirStatus, &volSync,
-                            userp, reqp, CM_MERGEFLAG_DIROP);
-        else
-            InterlockedIncrement(&newDscp->activeRPCs);
-        cm_SyncOpDone(newDscp, NULL, CM_SCACHESYNC_STOREDATA);
-        lock_ReleaseWrite(&newDscp->rw);
-
-#if 0
-        /*
-         * The following optimization does not work.
-         * When the file server processed a RXAFS_Rename() request the
-         * FID of the object being moved between directories is not
-         * preserved.  The client does not know the new FID nor the
-         * version number of the target.  Not only can we not create
-         * the directory entry in the new directory, but we can't
-         * preserve the cached data for the file.  It must be re-read
-         * from the file server.  - jaltman, 2009/02/20
-         */
         if (code == 0) {
-            /* we only make the local change if we successfully made
-               the change in the old directory AND there was only one
-               change in the new directory */
+            code = cm_MergeStatus( NULL, newDscp, &updatedNewDirStatus, &volSync,
+                                   userp, reqp, CM_MERGEFLAG_DIROP);
+
+            /*
+             * we only make the local change if we successfully made
+             * the change in the old directory AND there was only one
+             * change in the new directory
+             */
             if (diropCode == 0 && cm_CheckDirOpForSingleChange(&newDirOp)) {
+                lock_ReleaseWrite(&newDscp->rw);
+
+                if (bTargetExists && !oneDir) {
+                    diropCode = cm_DirDeleteEntry(&newDirOp, newNamep);
+#ifdef USE_BPLUS
+                    cm_BPlusDirDeleteEntry(&newDirOp, cNewNamep);
+#endif
+                }
+
                 cm_DirCreateEntry(&newDirOp, newNamep, &fileFid);
 #ifdef USE_BPLUS
                 cm_BPlusDirCreateEntry(&newDirOp, cNewNamep, &fileFid);
 #endif
+                lock_ObtainWrite(&newDscp->rw);
             }
+        } else {
+            if (!rpc_skipped)
+                InterlockedIncrement(&newDscp->activeRPCs);
         }
-#endif /* 0 */
+        cm_SyncOpDone(newDscp, NULL, CM_SCACHESYNC_STOREDATA);
+        lock_ReleaseWrite(&newDscp->rw);
+
         cm_EndDirOp(&newDirOp);
     }
 
-    /*
-     * After the rename the file server has invalidated the callbacks
-     * on the file that was moved nor do we have a directory reference
-     * to it anymore.
-     */
-    lock_ObtainWrite(&oldScp->rw);
-    cm_DiscardSCache(oldScp);
-    lock_ReleaseWrite(&oldScp->rw);
+    if (code == 0) {
+        /*
+         * After the rename the file server has invalidated the callbacks
+         * on the file that was moved and destroyed any target file.
+         */
+        lock_ObtainWrite(&oldScp->rw);
+        cm_DiscardSCache(oldScp);
+        lock_ReleaseWrite(&oldScp->rw);
+
+        if (RDR_Initialized)
+            RDR_InvalidateObject(oldScp->fid.cell, oldScp->fid.volume, oldScp->fid.vnode, oldScp->fid.unique,
+                                  oldScp->fid.hash, oldScp->fileType, AFS_INVALIDATE_CALLBACK);
+
+        if (oldTargetScp) {
+            lock_ObtainWrite(&oldTargetScp->rw);
+            cm_DiscardSCache(oldTargetScp);
+            lock_ReleaseWrite(&oldTargetScp->rw);
+
+            if (RDR_Initialized)
+                RDR_InvalidateObject(oldTargetScp->fid.cell, oldTargetScp->fid.volume, oldTargetScp->fid.vnode, oldTargetScp->fid.unique,
+                                     oldTargetScp->fid.hash, oldTargetScp->fileType, AFS_INVALIDATE_CALLBACK);
+        }
+    }
 
   done:
     if (oldScp)
         cm_ReleaseSCache(oldScp);
+
+    if (oldTargetScp)
+        cm_ReleaseSCache(oldTargetScp);
 
     if (free_oldNamep)
         free(oldNamep);
@@ -4198,8 +4530,8 @@ static void cm_LockRangeSubtract(cm_range_t * pos, const cm_range_t * neg)
     afs_int64 int_begin;
     afs_int64 int_end;
 
-    int_begin = MAX(pos->offset, neg->offset);
-    int_end = MIN(pos->offset+pos->length, neg->offset+neg->length);
+    int_begin = max(pos->offset, neg->offset);
+    int_end = min(pos->offset+pos->length, neg->offset+neg->length);
 
     if (int_begin < int_end) {
         if (int_begin == pos->offset) {
@@ -4406,14 +4738,28 @@ long cm_IntSetLock(cm_scache_t * scp, cm_user_t * userp, int lockType,
     AFSVolSync volSync;
     afs_uint32 reqflags = reqp->flags;
 
+    osi_Log2(afsd_logp, "CALL SetLock scp 0x%p for lock %d", scp, lockType);
+
+#if 0
+    /*
+     * The file server prior to 1.6.2 does not report an accurate value
+     * and callbacks are not issued if the lock is dropped due to expiration.
+     */
+    if ((lockType != LOCKING_ANDX_SHARED_LOCK && scp->fsLockCount != 0) ||
+         (lockType == LOCKING_ANDX_SHARED_LOCK && scp->fsLockCount < 0))
+    {
+        code = CM_ERROR_LOCK_NOT_GRANTED;
+        osi_Log2(afsd_logp, "CALL SetLock FAILURE, fsLockCount %d code 0x%x", scp->fsLockCount, code);
+        return code;
+    }
+#endif
+
     memset(&volSync, 0, sizeof(volSync));
 
     tfid.Volume = scp->fid.volume;
     tfid.Vnode = scp->fid.vnode;
     tfid.Unique = scp->fid.unique;
     cfid = scp->fid;
-
-    osi_Log2(afsd_logp, "CALL SetLock scp 0x%p for lock %d", scp, lockType);
 
     reqp->flags |= CM_REQ_NORETRY;
     lock_ReleaseWrite(&scp->rw);
@@ -4428,7 +4774,7 @@ long cm_IntSetLock(cm_scache_t * scp, cm_user_t * userp, int lockType,
                              &volSync);
         rx_PutConnection(rxconnp);
 
-    } while (cm_Analyze(connp, userp, reqp, &cfid, 1, &volSync,
+    } while (cm_Analyze(connp, userp, reqp, &cfid, NULL, 1, NULL, &volSync,
                         NULL, NULL, code));
 
     code = cm_MapRPCError(code, reqp);
@@ -4438,8 +4784,20 @@ long cm_IntSetLock(cm_scache_t * scp, cm_user_t * userp, int lockType,
         osi_Log0(afsd_logp, "CALL SetLock SUCCESS");
     }
 
-    lock_ObtainWrite(&scp->rw);
     reqp->flags = reqflags;
+
+    lock_ObtainWrite(&scp->rw);
+    if (code == 0) {
+        /*
+         * The file server does not return a status structure so we must
+         * locally track the file server lock count to the best of our
+         * ability.
+         */
+        if (lockType == LockWrite)
+            scp->fsLockCount = -1;
+        else
+            scp->fsLockCount++;
+    }
     return code;
 }
 
@@ -4478,7 +4836,7 @@ long cm_IntReleaseLock(cm_scache_t * scp, cm_user_t * userp,
         code = RXAFS_ReleaseLock(rxconnp, &tfid, &volSync);
         rx_PutConnection(rxconnp);
 
-    } while (cm_Analyze(connp, userp, reqp, &cfid, 1, &volSync,
+    } while (cm_Analyze(connp, userp, reqp, &cfid, NULL, 1, NULL, &volSync,
                         NULL, NULL, code));
     code = cm_MapRPCError(code, reqp);
     if (code)
@@ -4489,6 +4847,16 @@ long cm_IntReleaseLock(cm_scache_t * scp, cm_user_t * userp,
                  "CALL ReleaseLock SUCCESS");
 
     lock_ObtainWrite(&scp->rw);
+    if (code == 0) {
+        /*
+         * The file server does not return a status structure so we must
+         * locally track the file server lock count to the best of our
+         * ability.
+         */
+        scp->fsLockCount--;
+        if (scp->fsLockCount < 0)
+            scp->fsLockCount = 0;
+    }
 
     return (code != CM_ERROR_BADFD ? code : 0);
 }
@@ -4888,15 +5256,15 @@ long cm_Lock(cm_scache_t *scp, unsigned char sLockType,
         if (force_client_lock && code != CM_ERROR_WOULDBLOCK)
             code = 0;
 
+        cm_HoldUser(userp);
+
         lock_ObtainWrite(&cm_scacheLock);
         fileLock = cm_GetFileLock();
-        lock_ReleaseWrite(&cm_scacheLock);
 #ifdef DEBUG
         fileLock->fid = scp->fid;
 #endif
         fileLock->key = key;
         fileLock->lockType = Which;
-        cm_HoldUser(userp);
         fileLock->userp = userp;
         fileLock->range = range;
         fileLock->flags = (code == 0 ? 0 :
@@ -4909,7 +5277,6 @@ long cm_Lock(cm_scache_t *scp, unsigned char sLockType,
 
         fileLock->lastUpdate = (code == 0 && !force_client_lock) ? time(NULL) : 0;
 
-        lock_ObtainWrite(&cm_scacheLock);
         osi_QAddT(&scp->fileLocksH, &scp->fileLocksT, &fileLock->fileq);
         cm_HoldSCacheNoLock(scp);
         fileLock->scp = scp;
@@ -5116,8 +5483,6 @@ long cm_UnlockByKey(cm_scache_t * scp,
                     fileLock->range.length,
                     fileLock->lockType);
 
-            if (scp->fileLocksT == q)
-                scp->fileLocksT = osi_QPrev(q);
             osi_QRemoveHT(&scp->fileLocksH, &scp->fileLocksT, q);
 
             if (IS_LOCK_CLIENTONLY(fileLock)) {
@@ -5151,11 +5516,9 @@ long cm_UnlockByKey(cm_scache_t * scp,
         return 0;
     }
 
-    osi_Log1(afsd_logp, "cm_UnlockByKey done with %d locks", n_unlocks);
-
     code = cm_IntUnlock(scp, userp, reqp);
-
     osi_Log1(afsd_logp, "cm_UnlockByKey code 0x%x", code);
+
     osi_Log4(afsd_logp, "   Leaving scp with excl[%d], shared[%d], client[%d], serverLock[%d]",
              scp->exclusiveLocks, scp->sharedLocks, scp->clientLocks,
              (int)(signed char) scp->serverLock);
@@ -5163,6 +5526,7 @@ long cm_UnlockByKey(cm_scache_t * scp,
     return code;
 }
 
+/* Called with scp->rw held */
 long cm_Unlock(cm_scache_t *scp,
                unsigned char sLockType,
                LARGE_INTEGER LOffset, LARGE_INTEGER LLength,
@@ -5248,8 +5612,6 @@ long cm_Unlock(cm_scache_t *scp,
 
     /* discard lock record */
     lock_ConvertRToW(&cm_scacheLock);
-    if (scp->fileLocksT == q)
-        scp->fileLocksT = osi_QPrev(q);
     osi_QRemoveHT(&scp->fileLocksH, &scp->fileLocksT, q);
 
     /*
@@ -5267,14 +5629,15 @@ long cm_Unlock(cm_scache_t *scp,
     }
 
     fileLock->flags |= CM_FILELOCK_FLAG_DELETED;
+
     if (userp != NULL) {
         cm_ReleaseUser(fileLock->userp);
     } else {
         userp = fileLock->userp;
         release_userp = TRUE;
     }
-    fileLock->userp = NULL;
     cm_ReleaseSCacheNoLock(scp);
+    fileLock->userp = NULL;
     fileLock->scp = NULL;
     lock_ReleaseWrite(&cm_scacheLock);
 
@@ -5360,7 +5723,21 @@ void cm_CheckLocks()
 	code = -1;
 
         if (IS_LOCK_DELETED(fileLock)) {
+            cm_user_t *userp = fileLock->userp;
+            cm_scache_t *scp = fileLock->scp;
+            fileLock->userp = NULL;
+            fileLock->scp = NULL;
 
+            if (scp && userp) {
+                lock_ReleaseWrite(&cm_scacheLock);
+                lock_ObtainWrite(&scp->rw);
+                code = cm_IntUnlock(scp, userp, &req);
+                lock_ReleaseWrite(&scp->rw);
+
+                cm_ReleaseUser(userp);
+                lock_ObtainWrite(&cm_scacheLock);
+                cm_ReleaseSCacheNoLock(scp);
+            }
             osi_QRemove(&cm_allFileLocks, q);
             cm_PutFileLock(fileLock);
 
@@ -5407,9 +5784,7 @@ void cm_CheckLocks()
                     goto post_syncopdone;
 
                 code = cm_SyncOp(scp, NULL, fileLock->userp, &req, 0,
-                                 CM_SCACHESYNC_NEEDCALLBACK
-                                 | CM_SCACHESYNC_GETSTATUS
-                                 | CM_SCACHESYNC_LOCK);
+				 CM_SCACHESYNC_LOCK);
 
                 if (code) {
                     osi_Log1(afsd_logp,
@@ -5453,7 +5828,7 @@ void cm_CheckLocks()
                         osi_Log1(afsd_logp, "   ExtendLock returns %d", code);
 
                     } while (cm_Analyze(connp, userp, &req,
-                                        &cfid, 1, &volSync, NULL, NULL,
+                                        &cfid, NULL, 1, NULL, &volSync, NULL, NULL,
                                         code));
 
                     code = cm_MapRPCError(code, &req);
@@ -5462,6 +5837,7 @@ void cm_CheckLocks()
 
                     if (code) {
                         osi_Log1(afsd_logp, "CALL ExtendLock FAILURE, code 0x%x", code);
+                        scp->fsLockCount = 0;
                     } else {
                         osi_Log0(afsd_logp, "CALL ExtendLock SUCCESS");
                         scp->lockDataVersion = scp->dataVersion;
@@ -5733,9 +6109,7 @@ long cm_RetryLock(cm_file_lock_t *oldFileLock, int client_is_dead)
         cm_user_t * userp;
 
         code = cm_SyncOp(scp, NULL, oldFileLock->userp, &req, 0,
-                         CM_SCACHESYNC_NEEDCALLBACK
-			 | CM_SCACHESYNC_GETSTATUS
-			 | CM_SCACHESYNC_LOCK);
+			 CM_SCACHESYNC_LOCK);
         if (code) {
             osi_Log1(afsd_logp, "cm_RetryLock SyncOp failure code 0x%x", code);
             lock_ReleaseWrite(&cm_scacheLock);
@@ -5823,8 +6197,6 @@ long cm_RetryLock(cm_file_lock_t *oldFileLock, int client_is_dead)
   handleCode:
     if (code != 0 && code != CM_ERROR_WOULDBLOCK) {
 	lock_ObtainWrite(&cm_scacheLock);
-        if (scp->fileLocksT == &oldFileLock->fileq)
-            scp->fileLocksT = osi_QPrev(&oldFileLock->fileq);
         osi_QRemoveHT(&scp->fileLocksH, &scp->fileLocksT, &oldFileLock->fileq);
 	lock_ReleaseWrite(&cm_scacheLock);
     }
@@ -5848,7 +6220,7 @@ long cm_RetryLock(cm_file_lock_t *oldFileLock, int client_is_dead)
     return code;
 }
 
-cm_key_t cm_GenerateKey(afs_uint16 session_id, afs_offs_t process_id, afs_uint16 file_id)
+cm_key_t cm_GenerateKey(afs_uint16 session_id, afs_offs_t process_id, afs_uint64 file_id)
 {
     cm_key_t key;
 
@@ -5862,7 +6234,7 @@ cm_key_t cm_GenerateKey(afs_uint16 session_id, afs_offs_t process_id, afs_uint16
 int cm_KeyEquals(cm_key_t *k1, cm_key_t *k2, int flags)
 {
     return (k1->session_id == k2->session_id) && (k1->file_id == k2->file_id) &&
-        ((flags & CM_UNLOCK_BY_FID) || (k1->process_id == k2->process_id));
+        ((flags & CM_UNLOCK_FLAG_BY_FID) || (k1->process_id == k2->process_id));
 }
 
 void cm_ReleaseAllLocks(void)

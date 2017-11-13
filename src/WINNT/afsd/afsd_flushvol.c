@@ -6,7 +6,10 @@
 //
 /////////////////////////////////////////////////////////////////////
 
+#include <afsconfig.h>
 #include <afs/param.h>
+#include <roken.h>
+
 #include <afs/stds.h>
 
 #include <windows.h>
@@ -78,7 +81,7 @@ afsd_ServicePerformFlushVolumes()
     char        *pszShareName, *pc;
     afs_int32	afsRet = 0;
 
-    if ( lana_OnlyLoopback() ) {
+    if (cm_noIPAddr == 0) {
         // Nothing to do if we only have a loopback interface
         return TRUE;
     }

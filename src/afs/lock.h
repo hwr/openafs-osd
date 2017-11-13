@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -19,38 +19,11 @@
  * LICENSED MATERIALS - PROPERTY OF IBM
  */
 
-#if	(defined(AFS_SUN5_ENV))
-#define	AFS_NOBOZO_LOCK
-#endif
-
 #define INSTRUMENT_LOCKS
 /* This is the max lock number in use. Please update it if you add any new
  * lock numbers.
  */
 #define MAX_LOCK_NUMBER 780
-
-struct afs_bozoLock {
-    short count;		/* count of excl locks */
-    char flags;			/* bit 1: is anyone waiting? */
-    char spare;			/* for later */
-    char *proc;			/* process holding the lock, really an afs_proc_t * */
-};
-#ifndef	AFS_NOBOZO_LOCK
-typedef struct afs_bozoLock afs_bozoLock_t;
-#else
-#ifdef	AFS_SUN5_ENV
-typedef kmutex_t afs_bozoLock_t;
-#else
-typedef struct afs_bozoLock afs_bozoLock_t;
-#endif
-#define afs_BozonLock(lock, avc)
-#define afs_BozonUnlock(lock, avc)
-#define afs_BozonInit(lock, nm)
-#define	afs_CheckBozonLock(lock)		0
-#define afs_CheckBozonLockBlocking(lock)	0
-#endif
-
-#define	AFS_BOZONWAITING    1	/* someone is waiting for this lock */
 
 #define	AFS_RWLOCK_INIT(lock, nm)	Lock_Init(lock)
 #undef	LOCK_INIT
@@ -74,7 +47,7 @@ typedef struct afs_bozoLock afs_bozoLock_t;
 typedef unsigned int afs_lock_tracker_t;
 # define MyPidxx (get_user_struct()->u_procp->p_pid )
 # define MyPidxx2Pid(x) (x)
-#elif defined(AFS_SUN57_ENV)
+#elif defined(AFS_SUN5_ENV)
 typedef kthread_t * afs_lock_tracker_t;
 # define MyPidxx (curthread)
 # define MyPidxx2Pid(x) (x ? ttoproc(x)->p_pid : 0)
@@ -144,7 +117,7 @@ struct afs_lock {
     unsigned short spare;	/* not used now */
     osi_timeval_t time_waiting;	/* for statistics gathering */
 #if defined(INSTRUMENT_LOCKS)
-    /* the following are useful for debugging 
+    /* the following are useful for debugging
      ** the field 'src_indicator' is updated only by ObtainLock() and
      ** only for writes/shared  locks. Hence, it indictes where in the
      ** source code the shared/write lock was set.

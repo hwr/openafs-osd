@@ -15,11 +15,6 @@
 #ifndef OSI_MACHDEP_H_
 #define OSI_MACHDEP_H_
 
-#include <linux/version.h>
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,4)
-# define AFS_LINUX26_ONEGROUP_ENV 1
-#endif
-
 /* Only needed for xdr.h in glibc 2.1.x */
 #ifndef quad_t
 # define quad_t __quad_t
@@ -111,7 +106,12 @@ static inline time_t osi_Time(void) {
 #define VN_RELE(V) iput((V))
 
 #define afs_suser(x) capable(CAP_SYS_ADMIN)
-#define wakeup afs_osi_Wakeup
+extern int afs_osi_Wakeup(void *event);
+static inline void
+wakeup(void *event)
+{
+    afs_osi_Wakeup(event);
+}
 
 #define vType(V) ((AFSTOV((V)))->i_mode & S_IFMT)
 #define vSetType(V, type) AFSTOV((V))->i_mode = ((type) | (AFSTOV((V))->i_mode & ~S_IFMT))	/* preserve mode */
@@ -133,12 +133,17 @@ static inline long copyinstr(char *from, char *to, int count, int *length) {
 #define copyout(F, T, C) (copy_to_user ((char*)(T), (char*)(F), (C)) > 0 ? EFAULT : 0)
 
 /* kernel print statements */
-#define printf printk
-#define uprintf printk
+#define printf(args...) printk(args)
+#define uprintf(args...) printk(args)
 
 
 #ifndef NGROUPS
 #define NGROUPS NGROUPS_SMALL
+#endif
+
+#ifdef STRUCT_GROUP_INFO_HAS_GID
+/* compat macro for Linux 4.9 */
+#define GROUP_AT(gi,x)  ((gi)->gid[x])
 #endif
 
 typedef struct task_struct afs_proc_t;

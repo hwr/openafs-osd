@@ -10,24 +10,12 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
+#include <roken.h>
 
-
-#include <sys/types.h>
 #ifdef AFS_NT40_ENV
-#include <winsock2.h>
 #include <rpc.h>
-#else
-#ifdef HAVE_NETINET_IN_H
-#include <netinet/in.h>
 #endif
-#include <sys/socket.h>
-#include <netdb.h>
-#endif
-#include <stdio.h>
-#include <string.h>
-#ifdef	AFS_AIX32_ENV
-#include <signal.h>
-#endif
+
 #include <afs/afscbint.h>
 #include <afs/cmd.h>
 #include <rx/rx.h>
@@ -37,7 +25,6 @@
 #include <afs/com_err.h>
 
 static int print_ctime = 0;
-static int PrintLock(struct AFSDBLockDesc *alock);
 
 static int
 PrintCacheConfig(struct rx_connection *aconn)
@@ -76,141 +63,6 @@ PrintCacheConfig(struct rx_connection *aconn)
 	printf("Cache size:    %d kB\n", c1->cacheSize);
 	printf("Set time:      %s\n", c1->setTime ? "yes" : "no");
 	printf("Cache type:    %s\n", c1->memCache ? "memory" : "disk");
-    } else {
-	printf("cmdebug: unsupported server version %d\n", srv_ver);
-    }
-    return 0;
-}
-
-static int
-PrintDCacheEntries(struct rx_connection *aconn)
-{
-    struct cacheConfig c;
-    afs_uint32 srv_ver, conflen;
-    int code, i;
-    struct AFSDCacheEntry dc;
-
-    c.cacheConfig_len = 0;
-    c.cacheConfig_val = NULL;
-    code = RXAFSCB_GetCacheConfig(aconn, 1, &srv_ver, &conflen, &c);
-    if (code) {
-	printf("cmdebug: error checking cache config: %s\n",
-	       afs_error_message(code));
-	return 0;
-    }
-
-    if (srv_ver == AFS_CLIENT_RETRIEVAL_FIRST_EDITION) {
-	struct cm_initparams_v1 *c1;
-
-	if (c.cacheConfig_len != sizeof(*c1) / sizeof(afs_uint32)) {
-	    printf("cmdebug: configuration data size mismatch (%d != %" AFS_SIZET_FMT ")\n",
-		   c.cacheConfig_len, sizeof(*c1) / sizeof(afs_uint32));
-	    return 0;
-	}
-
-	c1 = (struct cm_initparams_v1 *)c.cacheConfig_val;
-	printf("Chunk files:   %d\n", c1->nChunkFiles);
-	printf("Stat caches:   %d\n", c1->nStatCaches);
-	printf("Data caches:   %d\n", c1->nDataCaches);
-	printf("Volume caches: %d\n", c1->nVolumeCaches);
-	printf("Chunk size:    %d", c1->otherChunkSize);
-	if (c1->firstChunkSize != c1->otherChunkSize)
-	    printf(" (first: %d)", c1->firstChunkSize);
-	printf("\n");
-	printf("Cache size:    %d kB\n", c1->cacheSize);
-	printf("Set time:      %s\n", c1->setTime ? "yes" : "no");
-	printf("Cache type:    %s\n", c1->memCache ? "memory" : "disk");
-	for (i=0; i<c1->nDataCaches; i++) {
-	    code = RXAFSCB_GetDCacheEntry(aconn, i, &dc);
-	    if (!code && dc.chunk >= 0) {
-                time_t t = dc.modTime;
-		i = dc.index;
-		printf("index %d, Fid %u.%u.%u.%u versionNo %llu",
-			dc.index, dc.cell, dc.netFid.Volume,
-			dc.netFid.Vnode, dc.netFid.Unique,
-			dc.versionNo);
-		if (dc.modTime)
-			printf(" modified %s", ctime(&t));
-		printf("\n\tchunk %d, bytes %d, validPos %llu\n",
-			dc.chunk, dc.chunkBytes, dc.validPos);
-		printf("\trefcnt %d, dflags 0x%x, mflags 0x%x, states 0x%x\n",
-			(dc.refcntFlags >> 16) & 0xffff,
-			(dc.refcntFlags >> 8) & 0xff,
-			dc.refcntFlags & 0xff,
-			dc.states);
-	    }
-	}
-    } else {
-	printf("cmdebug: unsupported server version %d\n", srv_ver);
-    }
-    return 0;
-}
-
-static int
-PrintDCacheEntriesWithLocks(struct rx_connection *aconn)
-{
-    struct cacheConfig c;
-    afs_uint32 srv_ver, conflen;
-    int code, i;
-    struct AFSDCacheEntryL dc;
-
-    c.cacheConfig_len = 0;
-    c.cacheConfig_val = NULL;
-    code = RXAFSCB_GetCacheConfig(aconn, 1, &srv_ver, &conflen, &c);
-    if (code) {
-	printf("cmdebug: error checking cache config: %s\n",
-	       afs_error_message(code));
-	return 0;
-    }
-
-    if (srv_ver == AFS_CLIENT_RETRIEVAL_FIRST_EDITION) {
-	struct cm_initparams_v1 *c1;
-
-	if (c.cacheConfig_len != sizeof(*c1) / sizeof(afs_uint32)) {
-	    printf("cmdebug: configuration data size mismatch (%d != %" AFS_SIZET_FMT ")\n",
-		   c.cacheConfig_len, sizeof(*c1) / sizeof(afs_uint32));
-	    return 0;
-	}
-
-	c1 = (struct cm_initparams_v1 *)c.cacheConfig_val;
-	printf("Chunk files:   %d\n", c1->nChunkFiles);
-	printf("Stat caches:   %d\n", c1->nStatCaches);
-	printf("Data caches:   %d\n", c1->nDataCaches);
-	printf("Volume caches: %d\n", c1->nVolumeCaches);
-	printf("Chunk size:    %d", c1->otherChunkSize);
-	if (c1->firstChunkSize != c1->otherChunkSize)
-	    printf(" (first: %d)", c1->firstChunkSize);
-	printf("\n");
-	printf("Cache size:    %d kB\n", c1->cacheSize);
-	printf("Set time:      %s\n", c1->setTime ? "yes" : "no");
-	printf("Cache type:    %s\n", c1->memCache ? "memory" : "disk");
-	for (i=0; i<c1->nDataCaches; i++) {
-	    code = RXAFSCB_GetDCacheEntryL(aconn, i, &dc);
-	    if (!code && dc.chunk >= 0) {
-                time_t t = dc.modTime;
-		i = dc.index;
-		printf("index %d, Fid %u.%u.%u.%u versionNo %llu",
-			dc.index, dc.cell, dc.netFid.Volume,
-			dc.netFid.Vnode, dc.netFid.Unique,
-			dc.versionNo);
-		if (dc.modTime)
-			printf(" modified %s", ctime(&t));
-		printf("\n\tchunk %d, bytes %d, validPos %llu\n",
-			dc.chunk, dc.chunkBytes, dc.validPos);
-		printf("\trefcnt %d, dflags 0x%x, mflags 0x%x, states 0x%x",
-			(dc.refcntFlags >> 16) & 0xffff,
-			(dc.refcntFlags >> 8) & 0xff,
-			dc.refcntFlags & 0xff,
-			dc.states);
-		printf("\n\tlock: ");
-		PrintLock(&dc.lock);
-		printf("\n\ttlock: ");
-		PrintLock(&dc.tlock);
-		printf("\n\tmflock: ");
-		PrintLock(&dc.mflock);
-		printf("\n");
-	    }
-	}
     } else {
 	printf("cmdebug: unsupported server version %d\n", srv_ver);
     }
@@ -496,7 +348,6 @@ PrintCacheEntries64(struct rx_connection *aconn, int aint32)
     char *cellname;
 
     for (i = 0; i < 1000000; i++) {
- 	afs_int32 tmp;
 	code = RXAFSCB_GetCE64(aconn, i, &centry);
 	if (code) {
 	    if (code == 1)
@@ -535,16 +386,11 @@ PrintCacheEntries64(struct rx_connection *aconn, int aint32)
 	    PrintLock(&centry.lock);
 	    printf("\n");
 	}
-#ifdef AFS_64BIT_ENV
 #ifdef AFS_NT40_ENV
 	printf("    %12I64d bytes  DV %12d  refcnt %5d\n", centry.Length,
 	       centry.DataVersion, centry.refCount);
 #else
 	printf("    %12llu bytes  DV %12d  refcnt %5d\n", centry.Length,
-	       centry.DataVersion, centry.refCount);
-#endif
-#else
-	printf("    %12d bytes  DV %12d  refcnt %5d\n", centry.Length,
 	       centry.DataVersion, centry.refCount);
 #endif
         if (print_ctime) {
@@ -558,8 +404,6 @@ PrintCacheEntries64(struct rx_connection *aconn, int aint32)
 
 	/* now display states */
 	printf("    ");
-	tmp = centry.mvstat >> 8;
-	centry.mvstat &= 0xff;
 	if (centry.mvstat == 0)
 	    printf("normal file");
 	else if (centry.mvstat == 1)
@@ -576,14 +420,6 @@ PrintCacheEntries64(struct rx_connection *aconn, int aint32)
 	    printf("invalid link");
         else
 	    printf("bogus mvstat %d", centry.mvstat);
-	if (tmp)  {
-	    if (tmp & 2)
-	        printf(", bypass cache");
-	    if (tmp & 1)
-	        printf(", desired bypass");
-	    if (tmp & 4)
-	        printf(", manually set");
-	}
 	printf("\n    states (0x%x)", centry.states);
 	if (centry.states & 1)
 	    printf(", stat'd");
@@ -716,16 +552,6 @@ CommandProc(struct cmd_syndesc *as, void *arock)
 	return 0;
     }
 
-    if (as->parms[9].items) {
-	/* -dcache */
-	if (as->parms[2].items)
-	    /* -long */
-	    PrintDCacheEntriesWithLocks(conn);
-	else
-	    PrintDCacheEntries(conn);
-	return 0;
-    }
-
     if (as->parms[5].items)
         print_ctime = 1;
 
@@ -781,7 +607,7 @@ main(int argc, char **argv)
 
     rx_Init(0);
 
-    ts = cmd_CreateSyntax(NULL, CommandProc, NULL, "query afs cache manager");
+    ts = cmd_CreateSyntax(NULL, CommandProc, NULL, 0, "query afs cache manager");
     cmd_AddParm(ts, "-servers", CMD_SINGLE, CMD_REQUIRED, "server machine");
     cmd_AddParm(ts, "-port", CMD_SINGLE, CMD_OPTIONAL, "IP port");
     cmd_AddParm(ts, "-long", CMD_FLAG, CMD_OPTIONAL, "print all info");
@@ -799,8 +625,6 @@ main(int argc, char **argv)
 		"print only cache configuration");
     cmd_AddParm(ts, "-cellservdb", CMD_FLAG, CMD_OPTIONAL,
                 "print only cellservdb info");
-    cmd_AddParm(ts, "-dcache", CMD_FLAG, CMD_OPTIONAL,
-                "print only dcache entries");
 
     cmd_Dispatch(argc, argv);
     exit(0);

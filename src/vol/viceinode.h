@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -20,7 +20,7 @@
 /* The four inode parameters for most inodes (files, directories,
    symbolic links) */
 struct InodeParams {
-    VolId volumeId;
+    VolumeId volumeId;
     VnodeId vnodeNumber;
     Unique vnodeUniquifier;
     FileVersion inodeDataVersion;
@@ -29,14 +29,14 @@ struct InodeParams {
 /* The four inode parameters for special inodes, i.e. the descriptive
    inodes for a volume */
 struct SpecialInodeParams {
-    VolId volumeId;
+    VolumeId volumeId;
     VnodeId vnodeNumber;	/* this must be INODESPECIAL */
 #ifdef	AFS_3DISPARES
-    VolId parentId;
+    VolumeId parentId;
     int type;
 #else
     int type;
-    VolId parentId;
+    VolumeId parentId;
 #endif
 };
 
@@ -66,7 +66,7 @@ struct ViceInodeInfo {
 #define VI_SMALLINDEX	2	/* The index of small vnodes */
 #define VI_LARGEINDEX	3	/* The index of large vnodes */
 #define VI_ACL		4	/* The volume's access control list */
-#define	VI_OSDMETADATA	5	/* The volume's osd metadata file */
+#define	VI_MOUNTTABLE	5	/* The volume's mount table */
 #define VI_LINKTABLE	6	/* The volume's link counts */
 
 #endif /* _VICEINODE_H_ */

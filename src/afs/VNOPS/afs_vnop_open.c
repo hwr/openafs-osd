@@ -26,7 +26,6 @@
 #include "afs/afs_osidnlc.h"
 
 
-extern afs_uint32 afs_protocols;
 
 /* given a vnode ptr, open flags and credentials, open the file.  No access
  * checks are done here, instead they're done by afs_create or afs_access,
@@ -138,19 +137,7 @@ afs_open(struct vcache **avcp, afs_int32 aflags, afs_ucred_t *acred)
 #endif
 	/* normal file or symlink */
 	osi_FlushText(tvc);	/* only needed to flush text if text locked last time */
-#ifdef AFS_BOZONLOCK_ENV
-	afs_BozonLock(&tvc->pvnLock, tvc);
-#endif
 	osi_FlushPages(tvc, acred);
-#ifdef AFS_BOZONLOCK_ENV
-	afs_BozonUnlock(&tvc->pvnLock, tvc);
-#endif
-        if (tvc->protocol & RX_OSD_NOT_ONLINE) {
-            code = rxosd_bringOnline(tvc, &treq, 0);
-            if (code)
-                goto done;
-            tvc->protocol &= ~RX_OSD_NOT_ONLINE;
-        }
     }
     /* set date on file if open in O_TRUNC mode */
     if (aflags & FTRUNC) {
@@ -181,21 +168,16 @@ afs_open(struct vcache **avcp, afs_int32 aflags, afs_ucred_t *acred)
 	    ObtainSharedLock(&tdc->mflock, 865);
 	    if (!(tdc->mflags & DFFetchReq)) {
 		struct brequest *bp;
-		int dontwait = B_DONTWAIT;
 
 		/* start the daemon (may already be running, however) */
 		UpgradeSToWLock(&tdc->mflock, 666);
 		tdc->mflags |= DFFetchReq;  /* guaranteed to be cleared by BKG or
 					       GetDCache */
-#ifdef STRUCT_TASK_STRUCT_HAS_CRED
-		if (afs_protocols & VICEP_ACCESS)
-		    dontwait = 0;
-#endif
 		/* last parm (1) tells bkg daemon to do an afs_PutDCache when it
 		   is done, since we don't want to wait for it to finish before
 		   doing so ourselves.
 		*/
-		bp = afs_BQueue(BOP_FETCH, tvc, dontwait, 0, acred,
+		bp = afs_BQueue(BOP_FETCH, tvc, B_DONTWAIT, 0, acred,
 				(afs_size_t) 0, (afs_size_t) 1, tdc,
 				(void *)0, (void *)0);
 		if (!bp) {

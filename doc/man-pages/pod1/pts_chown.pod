@@ -9,9 +9,11 @@ pts_chown - Changes the owner of a Protection Database entry
 
 B<pts chown> S<<< B<-name> <I<group name>> >>> S<<< B<-owner> <I<new owner>> >>>
     S<<< [B<-cell> <I<cell name>>] >>> [B<-noauth>] [B<-localauth>] [B<-force>] [B<-help>]
+    [B<-auth>] [B<-encrypt>] S<<< [B<-config> <I<config directory>>] >>>
 
 B<pts cho> S<<< B<-na> <I<group name>> >>> S<<< B<-o> <I<new owner>> >>>
     S<<< [B<-c> <I<cell name>>] >>> [B<-no>] [B<-l>] [B<-f>] [B<-h>]
+    [B<-a>] [B<-e>] S<<< [B<-co> <I<config directory>>] >>>
 
 =for html
 </div>
@@ -52,9 +54,23 @@ Specifies the current name of the group to which to assign a new owner.
 
 Names the user or group to become the group's owner.
 
+=item B<-auth>
+
+Use the calling user's tokens to communicate with the Protection Server. For
+more details, see L<pts(1)>.
+
 =item B<-cell> <I<cell name>>
 
 Names the cell in which to run the command. For more details, see
+L<pts(1)>.
+
+=item B<-config> <I<config directory>>
+
+Use an alternate config directory. For more details, see L<pts(1)>.
+
+=item B<-encrypt>
+
+Encrypts any communication with the Protection Server. For more details, see
 L<pts(1)>.
 
 =item B<-force>

@@ -10,28 +10,9 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
+#include <roken.h>
 
-#include <sys/types.h>
-#include <stdarg.h>
-#include <string.h>
-#include <errno.h>
-
-#ifdef AFS_NT40_ENV
-#include <winsock2.h>
-#include <io.h>
-#include <fcntl.h>
-#else
-#include <sys/file.h>
-#include <netinet/in.h>
-#endif
-#include <sys/stat.h>
-
-/* #ifdef AFS_PTHREAD_ENV */
-#if 0   /* temporary hack - klm */
-/* nothing */
-#else
 #include <lwp.h>
-#endif
 
 #include <lock.h>
 #include <afs/afsutil.h>
@@ -46,10 +27,9 @@
  * etc.
  */
 
-#define	MAXFDCACHE  4 * MAX_UBIK_DBASES
+#define	MAXFDCACHE  4
 static struct fdcache {
     int fd;
-    int index;
     int fileID;
     int refCount;
 } fdcache[MAXFDCACHE];
@@ -67,7 +47,6 @@ uphys_open(struct ubik_dbase *adbase, afs_int32 afid)
     int i;
     struct fdcache *tfd;
     struct fdcache *bestfd;
-    int index = adbase->dbase_number;
 
     /* initialize package */
     if (!initd) {
@@ -75,7 +54,6 @@ uphys_open(struct ubik_dbase *adbase, afs_int32 afid)
 	tfd = fdcache;
 	for (i = 0; i < MAXFDCACHE; tfd++, i++) {
 	    tfd->fd = -1;	/* invalid value */
- 	    tfd->index = -10000; 	/* invalid value */
 	    tfd->fileID = -10000;	/* invalid value */
 	    tfd->refCount = 0;
 	}
@@ -83,8 +61,7 @@ uphys_open(struct ubik_dbase *adbase, afs_int32 afid)
 
     /* scan file descr cache */
     for (tfd = fdcache, i = 0; i < MAXFDCACHE; i++, tfd++) {
-	if (afid == tfd->fileID && index == tfd->index 
-	  && tfd->refCount == 0) {	/* don't use open fd */
+	if (afid == tfd->fileID && tfd->refCount == 0) {	/* don't use open fd */
 	    lseek(tfd->fd, 0, 0);	/* reset ptr just like open would have */
 	    tfd->refCount++;
 	    return tfd->fd;
@@ -92,8 +69,8 @@ uphys_open(struct ubik_dbase *adbase, afs_int32 afid)
     }
 
     /* not found, open it and try to enter in cache */
-    afs_snprintf(pbuffer, sizeof(pbuffer), "%s.DB%s%d", adbase->pathName,
-		 (afid<0)?"SYS":"", (afid<0)?-afid:afid);
+    snprintf(pbuffer, sizeof(pbuffer), "%s.DB%s%d", adbase->pathName,
+	     (afid<0)?"SYS":"", (afid<0)?-afid:afid);
     fd = open(pbuffer, O_CREAT | O_RDWR, 0600);
     if (fd < 0) {
 	/* try opening read-only */
@@ -125,7 +102,6 @@ uphys_open(struct ubik_dbase *adbase, afs_int32 afid)
 	if (tfd->fd >= 0)
 	    close(tfd->fd);
 	tfd->fd = fd;
-	tfd->index = index;
 	tfd->refCount = 1;	/* us */
 	tfd->fileID = afid;
     }
@@ -137,7 +113,7 @@ uphys_open(struct ubik_dbase *adbase, afs_int32 afid)
 /*!
  * \brief Close the file, maintaining ref count in cache structure.
  */
-int
+static int
 uphys_close(int afd)
 {
     int i;
@@ -329,13 +305,11 @@ uphys_invalidate(struct ubik_dbase *adbase, afs_int32 afid)
 {
     int i;
     struct fdcache *tfd;
-    afs_int32 index = adbase->dbase_number;
 
     /* scan file descr cache */
     for (tfd = fdcache, i = 0; i < MAXFDCACHE; i++, tfd++) {
-	if (index == tfd->index && afid == tfd->fileID) {
+	if (afid == tfd->fileID) {
 	    tfd->fileID = -10000;
-	    tfd->index = -10000;
 	    if (tfd->fd >= 0 && tfd->refCount == 0) {
 		close(tfd->fd);
 		tfd->fd = -1;

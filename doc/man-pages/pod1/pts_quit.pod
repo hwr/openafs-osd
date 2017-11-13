@@ -8,9 +8,11 @@ pts_quit - Exit from pts interactive mode
 <div class="synopsis">
 
 B<pts quit> S<<< [B<-cell>] <I<cell name>> >>> [B<-noauth>] [B<-localauth>] 
-    [B<-force>]
+    [B<-force>] [B<-help>] [B<-auth>] [B<-encrypt>]
+    S<<< [B<-config> <I<config directory>>] >>>
 
-B<pts q> S<<< [B<-c>] <I<cell name>> >>> [B<-n>] [B<-l>] [B<-f>]
+B<pts q> S<<< [B<-c>] <I<cell name>> >>> [B<-n>] [B<-l>] [B<-f>] [B<-h>]
+    [B<-a>] [B<-e>] S<<< [B<-co> <I<config directory>>] >>>
 
 =for html
 </div>
@@ -35,9 +37,23 @@ B<pts> options:
 
 =over 4
 
+=item B<-auth>
+
+Use the calling user's tokens to communicate with the Protection Server. For
+more details, see L<pts(1)>.
+
 =item B<-cell> <I<cell name>>
 
 Names the cell in which to run the command. For more details, see
+L<pts(1)>.
+
+=item B<-config> <I<config directory>>
+
+Use an alternate config directory. For more details, see L<pts(1)>.
+
+=item B<-encrypt>
+
+Encrypts any communication with the Protection Server. For more details, see
 L<pts(1)>.
 
 =item B<-force>

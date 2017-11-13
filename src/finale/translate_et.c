@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -10,6 +10,7 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
+#include <roken.h>
 
 #include <afs/com_err.h>
 #include <rx/rxkad.h>
@@ -19,12 +20,9 @@
 #include <afs/vlserver.h>
 #include <afs/pterror.h>
 #include <afs/bnode.h>
+#include <afs/afsint.h>
 #include <afs/volser.h>
 #include <ubik.h>
-#ifdef	AFS_AIX32_ENV
-#include <signal.h>
-#endif
-
 
 #define ERRCODE_RANGE 8		/* from error_table.h */
 
@@ -40,8 +38,8 @@ main(int argc, char *argv[])
 
 #ifdef	AFS_AIX32_ENV
     /*
-     * The following signal action for AIX is necessary so that in case of a 
-     * crash (i.e. core is generated) we can include the user's data section 
+     * The following signal action for AIX is necessary so that in case of a
+     * crash (i.e. core is generated) we can include the user's data section
      * in the core dump. Unfortunately, by default, only a partial core is
      * generated which, in many cases, isn't too useful.
      */

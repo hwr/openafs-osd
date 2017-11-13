@@ -66,39 +66,10 @@ struct AFSDBCacheEntry64 {
     short refCount;
     short opens;
     short writers;
-    afs_int32 mvstat;
+    char mvstat;
     char states;
 };
 
-struct AFSDCacheEntry {
-    afs_int32 cell;
-    AFSFid netFid;
-    afs_uint64 validPos;
-    afs_uint64 versionNo;
-    afs_int32 chunk;
-    afs_int32 chunkBytes;
-    afs_int32 modTime;
-    afs_int32 states;
-    afs_int32 index;
-    afs_int32 refcntFlags; 	/* (refcnt << 16) | (dflags << 8) | mflags */
-};
-
-struct AFSDCacheEntryL {
-    afs_int32 cell;
-    AFSFid netFid;
-    afs_uint64 validPos;
-    afs_uint64 versionNo;
-    struct AFSDBLockDesc lock;
-    struct AFSDBLockDesc tlock;
-    struct AFSDBLockDesc mflock;
-    afs_int32 chunk;
-    afs_int32 chunkBytes;
-    afs_int32 modTime;
-    afs_int32 states;
-    afs_int32 index;
-    afs_int32 refcntFlags; 	/* (refcnt << 16) | (dflags << 8) | mflags */
-};
-    
 struct AFSDBLock {
     char name[16];
     struct AFSDBLockDesc lock;
@@ -210,7 +181,6 @@ const VICED_CAPABILITY_ERRORTRANS	= 0x0001;
 const VICED_CAPABILITY_64BITFILES	= 0x0002;
 const VICED_CAPABILITY_WRITELOCKACL     = 0x0004;
 const VICED_CAPABILITY_SANEACLS         = 0x0008;
-const VICED_CAPABILITY_LIBAFSOSD        = 0x0010;
 
 /* Cache Manager Capability Flags */
 const CLIENT_CAPABILITY_ERRORTRANS	= 0x0001;

@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -10,35 +10,26 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
+#include <roken.h>
 
-#include <sys/types.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <time.h>
-#ifdef AFS_NT40_ENV
-#include <io.h>
-#else
-#include <sys/time.h>
-#include <netinet/in.h>
-#endif
-#include <afs/afsutil.h>
 #include <limits.h>
-#include <sys/stat.h>
-#include <stdio.h>
 #include <ctype.h>
+
+#include <afs/afsutil.h>
 #include <lwp.h>
 #include <afs/com_err.h>
 #include <afs/butm.h>
+
 #include "error_macros.h"
 
 int isafile = 0, debugLevel = 1;
 
-/* Format of the config file is now 
+/* Format of the config file is now
  * <capacity devicename portno isafile>
  * capacity - size of tape or file in bytes
  * devicename - tape device or file name to write data into
- * portno - tape coordinator port no. (irrelevant) 
- * isafile - Is this entry a file or a tape? 
+ * portno - tape coordinator port no. (irrelevant)
+ * isafile - Is this entry a file or a tape?
  *
  * test_ftm goes through the lines in the config file and selects the
  * entry that has a port no. of 0 and tries to open the device.
@@ -120,7 +111,7 @@ main(argc, argv)
     if (argc < 2)
 	goto usage;
 
-    files = (char **)malloc(argc * sizeof(char *));
+    files = malloc(argc * sizeof(char *));
     nFiles = 0;
     for (i = 1; i < argc; i++) {
 	if (argv[i][0] == '-') {
@@ -222,7 +213,7 @@ PerformDumpTest(TestInfo * tip)
     int i, past, code;
     struct timeval tp;
 
-    bufferBlock = (struct BufferBlock *)malloc(sizeof(struct BufferBlock));
+    bufferBlock = malloc(sizeof(struct BufferBlock));
 
     info.structVersion = BUTM_MAJORVERSION;
     if (code = butm_file_Instantiate(&info, tip->tc_Infop)) {
@@ -231,7 +222,7 @@ PerformDumpTest(TestInfo * tip)
     }
 
     memset(&label, 0, sizeof(label));
-    gettimeofday(&tp, 0);
+    gettimeofday(&tp, NULL);
     label.structVersion = CUR_TAPE_VERSION;
     label.creationTime = tp.tv_sec;
     label.size = info.tapeSize;

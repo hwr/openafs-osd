@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -12,21 +12,16 @@
  */
 
 #include <afsconfig.h>
-#include "afs/param.h"
-
+#include <afs/param.h>
 
 #if defined(KERNEL) && !defined(UKERNEL)
 #ifdef AFS_LINUX20_ENV
 #include "h/string.h"
-#if 0
-#define bzero(A, C) memset((A), 0, (C))
-#endif
 #else
 #include <sys/param.h>
 #include <sys/systm.h>
 #endif
-#else
-#include <stdio.h>
+#include <roken.h>
 #endif
 #include "xdr.h"
 

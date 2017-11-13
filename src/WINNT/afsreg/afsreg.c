@@ -7,14 +7,13 @@
  * directory or online at http://www.openafs.org/dl/license10.html
  */
 
+#include <afsconfig.h>
 #include <afs/param.h>
 #include <afs/stds.h>
 
+#include <roken.h>
+
 #include <windows.h>
-#include <stdlib.h>
-#include <stddef.h>
-#include <string.h>
-#include <stdio.h>
 
 #include "afsreg.h"
 
@@ -303,7 +302,7 @@ long
 RegDeleteEntryAlt(const char *entryName, regentry_t entryType)
 {
     long status = ERROR_SUCCESS;
-    char *entryBuf = _strdup(entryName);
+    char *entryBuf = strdup(entryName);
 
     if (entryBuf == NULL) {
 	status = ERROR_NOT_ENOUGH_MEMORY;

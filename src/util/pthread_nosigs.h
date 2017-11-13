@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -59,6 +59,7 @@
 #endif
 #define AFS_SIGSET_CLEAR() \
 do { \
+         int b; \
 	 sigfillset(&i_tset); \
          _SETSEGV \
          _SETBUS \
@@ -66,12 +67,14 @@ do { \
          _SETTRAP \
          _SETABRT \
          _SETFPE \
-	 assert(AFS_SET_SIGMASK(SIG_BLOCK, &i_tset, &i_oset) == 0); \
+	 b = (AFS_SET_SIGMASK(SIG_BLOCK, &i_tset, &i_oset) == 0); \
+         opr_Assert(b); \
 } while (0)
 
 #define AFS_SIGSET_RESTORE() \
 do { \
-	 assert(AFS_SET_SIGMASK(SIG_SETMASK, &i_oset, NULL) == 0); \
+	 int b = (AFS_SET_SIGMASK(SIG_SETMASK, &i_oset, NULL) == 0); \
+         opr_Assert(b); \
 } while (0)
 #endif /* AFS_NT40_ENV */
 

@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -360,7 +360,7 @@ afs_lhash_search(afs_lhash * lh, unsigned key, const void *data)
 	     * This optimization is both easy to understand
 	     * and cheap to execute, so we go ahead and do
 	     * it.
-	     * 
+	     *
 	     */
 
 	    if (previous) {
@@ -406,7 +406,7 @@ afs_lhash_remove(afs_lhash * lh, unsigned key, const void *data)
 	 pprev = &cur->next, cur = cur->next) {
 	lh->remove_tests++;
 	if (lh->equal(data, cur->data)) {
-	    void *data = cur->data;
+	    void *ptr = cur->data;
 
 	    if (pprev) {
 		*pprev = cur->next;
@@ -418,7 +418,7 @@ afs_lhash_remove(afs_lhash * lh, unsigned key, const void *data)
 
 	    lh->ndata--;
 
-	    return data;
+	    return ptr;
 	}
     }
 

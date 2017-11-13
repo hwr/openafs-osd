@@ -13,13 +13,17 @@
 /* bulk I/O descriptor */
 typedef struct cm_bulkIO {
     struct cm_scache *scp;		/* typically unheld vnode ptr */
+    struct cm_user *userp;              /* the user of the request */
     struct cm_req *reqp;                /* the request ptr */
     osi_hyper_t offset;		        /* offset of buffers */
-    long length;			/* # of bytes to be transferred */
-    int reserved;			/* did we reserve multiple buffers? */
+    afs_uint32 length;			/* # of bytes to be transferred */
+    afs_uint64 reserved;		/* # of reserved buffers? */
 
-    /* all of these buffers are held */
-    osi_queueData_t *bufListp;	/* list of buffers involved in I/O */
+    /*
+     * all of these buffers are held.
+     * the lowest offset buffer is at the end of the list.
+     */
+    osi_queueData_t *bufListp;	        /* list of buffers involved in I/O */
     osi_queueData_t *bufListEndp;	/* list of buffers involved in I/O */
 } cm_bulkIO_t;
 
@@ -33,7 +37,7 @@ extern long cm_GetBuffer(struct cm_scache *, struct cm_buf *, int *,
 	struct cm_user *, struct cm_req *);
 
 extern long cm_GetData(cm_scache_t *scp, osi_hyper_t *offsetp, char *datap, int data_length,
-                       cm_user_t *userp, cm_req_t *reqp);
+                       int * bytes_readp, cm_user_t *userp, cm_req_t *reqp);
 
 extern afs_int32 cm_CheckFetchRange(cm_scache_t *scp, osi_hyper_t *startBasep,
                                     osi_hyper_t *length, cm_user_t *up,
@@ -47,11 +51,19 @@ extern void cm_ReleaseBIOD(cm_bulkIO_t *biop, int isStore, long failed, int scp_
 extern long cm_SetupStoreBIOD(cm_scache_t *scp, osi_hyper_t *inOffsetp,
 	long inSize, cm_bulkIO_t *biop, cm_user_t *userp, cm_req_t *reqp);
 
-extern afs_int32 cm_BkgPrefetch(cm_scache_t *scp, afs_uint32 p1, afs_uint32 p2, afs_uint32 p3, afs_uint32 p4,
-	struct cm_user *userp, cm_req_t *reqp);
+typedef struct rock_BkgFetch {
+    osi_hyper_t base;
+    osi_hyper_t length;
+} rock_BkgFetch_t;
 
-extern afs_int32 cm_BkgStore(cm_scache_t *scp, afs_uint32 p1, afs_uint32 p2, afs_uint32 p3, afs_uint32 p4,
-	struct cm_user *userp, cm_req_t *reqp);
+extern afs_int32 cm_BkgPrefetch(cm_scache_t *scp, void *rockp, struct cm_user *userp, cm_req_t *reqp);
+
+typedef struct rock_BkgStore {
+    osi_hyper_t offset;
+    afs_uint32 length;
+} rock_BkgStore_t;
+
+extern afs_int32 cm_BkgStore(cm_scache_t *scp, void *rockp, struct cm_user *userp, cm_req_t *reqp);
 
 extern void cm_ConsiderPrefetch(cm_scache_t *scp, osi_hyper_t *offsetp,
                                 afs_uint32 count,
@@ -63,5 +75,7 @@ extern long cm_ShutdownDCache(void);
 
 extern long cm_BufWrite(void *vscp, osi_hyper_t *offsetp, long length, long flags,
                  cm_user_t *userp, cm_req_t *reqp);
+
+extern long cm_VerifyStoreData(cm_bulkIO_t *biod, cm_scache_t *scp);
 
 #endif /*  OPENAFS_WINNT_AFSD_CM_DCACHE_H */

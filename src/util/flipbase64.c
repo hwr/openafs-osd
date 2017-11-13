@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -12,14 +12,12 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
+#include <roken.h>
 
-
-#if defined(AFS_NAMEI_ENV)
-#include <sys/types.h>
 #include "afsutil.h"
 
 /* This version of base64 gets it right and starts converting from the low
- * bits to the high bits. 
+ * bits to the high bits.
  */
 /* This table needs to be in lexical order to efficiently map back from
  * characters to the numerical value.
@@ -76,20 +74,11 @@ static char c_reverse[] = {
  * The supplied string 's' must be at least 12 bytes long.
  * lb64_string in stds.h provides a typedef to get the length.
  */
-#ifdef AFS_64BIT_ENV
 char *
 int64_to_flipbase64(lb64_string_t s, afs_uint64 a)
-#else
-char *
-int64_to_flipbase64(lb64_string_t s, u_int64_t a)
-#endif
 {
     int i;
-#ifdef AFS_64BIT_ENV
     afs_uint64 n;
-#else
-    u_int64_t n;
-#endif
 
     i = 0;
     if (a == 0)
@@ -104,21 +93,11 @@ int64_to_flipbase64(lb64_string_t s, u_int64_t a)
 }
 
 
-#ifdef AFS_64BIT_ENV
 afs_int64
 flipbase64_to_int64(char *s)
-#else
-int64_t
-flipbase64_to_int64(char *s)
-#endif
 {
-#ifdef AFS_64BIT_ENV
     afs_int64 n = 0;
     afs_int64 result = 0;
-#else
-    int64_t n = 0;
-    int64_t result = 0;
-#endif
     int shift;
 
     for (shift = 0; *s; s++) {
@@ -131,6 +110,3 @@ flipbase64_to_int64(char *s)
     }
     return result;
 }
-
-
-#endif /* AFS_NAMEI_ENV */

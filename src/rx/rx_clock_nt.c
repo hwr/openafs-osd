@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -13,10 +13,9 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
+#include <roken.h>
 
 #ifdef AFS_NT40_ENV
-#include <stdio.h>
-#include <stdlib.h>
 #include <windef.h>
 #include <winbase.h>
 #include "rx_clock.h"
@@ -49,7 +48,7 @@ clock_Init(void)
 	exit(1);
     }
     clockInitialized = 1;
-    
+
     clock_UpdateTime();
 }
 

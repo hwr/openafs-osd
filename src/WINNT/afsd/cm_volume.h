@@ -10,6 +10,8 @@
 #ifndef OPENAFS_WINNT_AFSD_CM_VOLUME_H
 #define OPENAFS_WINNT_AFSD_CM_VOLUME_H 1
 
+#include <opr/jhash.h>
+
 #define VL_MAXNAMELEN                   65
 
 #define CM_VOLUME_MAGIC    ('V' | 'O' <<8 | 'L'<<16 | 'M'<<24)
@@ -48,14 +50,18 @@ typedef struct cm_volume {
     afs_int32 refCount;		        /* by Interlocked operations */
     struct cm_server *cbServerpRO;      /* server granting RO callback; by cm_scacheLock */
     time_t cbExpiresRO;                 /* latest RO expiration time; by cm_scacheLock */
+    time_t cbIssuedRO;                  /* latest RO issue time; by cm_scacheLock */
     time_t creationDateRO;              /* latest volume creation date; 0 if unknown; by cm_scacheLock */
     time_t lastUpdateTime;              /* most recent volume location update cm_volumeLock */
+    afs_uint64 volumeSizeRO;            /* latest RO volume size */
 } cm_volume_t;
 
 #define CM_VOLUMEFLAG_RESET	   1	/* reload this info on next use */
+#define CM_VOLUMEFLAG_RO_MIXED     2
 #define CM_VOLUMEFLAG_UPDATING_VL  8
 #define CM_VOLUMEFLAG_DFS_VOLUME  16
 #define CM_VOLUMEFLAG_NOEXIST     32
+#define CM_VOLUMEFLAG_RO_SIZE_VALID 64
 
 #define CM_VOLUME_QFLAG_IN_HASH      1
 #define CM_VOLUME_QFLAG_IN_LRU_QUEUE 2
@@ -75,6 +81,9 @@ extern long cm_FindVolumeByID(struct cm_cell *cellp, afs_uint32 volumeID,
                              cm_user_t *userp, cm_req_t *reqp,
                              afs_uint32 flags, cm_volume_t **outVolpp);
 
+extern cm_volume_t *cm_FindVolumeByFID(cm_fid_t *fidp,
+				       cm_user_t *userp, cm_req_t *reqp);
+
 #define CM_GETVOL_FLAG_CREATE               1
 #define CM_GETVOL_FLAG_NO_LRU_UPDATE        2
 #define CM_GETVOL_FLAG_NO_RESET		    4
@@ -84,8 +93,9 @@ extern long cm_FindVolumeByID(struct cm_cell *cellp, afs_uint32 volumeID,
  * doesn't necessarily know the cell in the case of a multihomed server
  * contacting us from a mystery address.
  */
-#define CM_VOLUME_ID_HASH(volid)   ((unsigned long) volid \
-					% cm_data.volumeHashTableSize)
+
+#define CM_VOLUME_ID_HASH(volid) \
+    (opr_jhash_int((volid), 0) & (cm_data.volumeHashTableSize - 1))
 
 #define CM_VOLUME_NAME_HASH(name)  (SDBMHash(name) % cm_data.volumeHashTableSize)
 
@@ -99,11 +109,14 @@ extern void cm_PutVolume(cm_volume_t *volp);
 
 extern long cm_GetROVolumeID(cm_volume_t *volp);
 
+extern LONG_PTR cm_ChecksumVolumeServerList(struct cm_fid *fidp,
+                                            cm_user_t *userp, cm_req_t *reqp);
+
 extern long cm_ForceUpdateVolume(struct cm_fid *fidp, cm_user_t *userp,
 	cm_req_t *reqp);
 
 extern cm_serverRef_t **cm_GetVolServers(cm_volume_t *volp, afs_uint32 volume,
-                                         cm_user_t *userp, cm_req_t *reqp);
+                                         cm_user_t *userp, cm_req_t *reqp, afs_uint32 *replicated);
 
 extern void cm_ChangeRankVolume(cm_server_t *tsp);
 
@@ -154,6 +167,11 @@ extern cm_vol_state_t * cm_VolumeStateByID(cm_volume_t *volp, afs_uint32 id);
 extern cm_vol_state_t * cm_VolumeStateByName(cm_volume_t *volp, char *volname);
 
 extern afs_int32 cm_VolumeType(cm_volume_t *volp, afs_uint32 id);
+
+extern long cm_UpdateVolumeLocation(struct cm_cell *cellp, cm_user_t *userp, cm_req_t *reqp,
+                                    cm_volume_t *volp);
+
+extern afs_int32 cm_IsVolumeReplicated(cm_fid_t *fidp);
 
 extern osi_rwlock_t cm_volumeLock;
 #endif /*  OPENAFS_WINNT_AFSD_CM_VOLUME_H */

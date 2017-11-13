@@ -13,8 +13,9 @@
 #include <shellapi.h>
 
 extern "C" {
+#include <afsconfig.h>
 #include <afs/param.h>
-#include <afs/stds.h>
+#include <roken.h>
 #include <afs/afskfw.h>
 }
 #include <WINNT\afsreg.h>
@@ -80,10 +81,6 @@ BOOL CALLBACK Advanced_DlgProc (HWND hDlg, UINT msg, WPARAM wp, LPARAM lp)
                Advanced_DlgProc (hDlg, WM_HELP, 0, 0);
                break;
             }
-         break;
-
-      case WM_HELP:
-         WinHelp (hDlg, g.szHelpFile, HELP_CONTEXT, IDH_AFSCREDS_TAB_ADVANCED);
          break;
       }
    return FALSE;

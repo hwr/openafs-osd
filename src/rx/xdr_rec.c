@@ -4,23 +4,23 @@
  * may copy or modify Sun RPC without charge, but are not authorized
  * to license or distribute it to anyone else except as part of a product or
  * program developed by the user.
- * 
+ *
  * SUN RPC IS PROVIDED AS IS WITH NO WARRANTIES OF ANY KIND INCLUDING THE
  * WARRANTIES OF DESIGN, MERCHANTIBILITY AND FITNESS FOR A PARTICULAR
  * PURPOSE, OR ARISING FROM A COURSE OF DEALING, USAGE OR TRADE PRACTICE.
- * 
+ *
  * Sun RPC is provided with no support and without any obligation on the
  * part of Sun Microsystems, Inc. to assist in its use, correction,
  * modification or enhancement.
- * 
+ *
  * SUN MICROSYSTEMS, INC. SHALL HAVE NO LIABILITY WITH RESPECT TO THE
  * INFRINGEMENT OF COPYRIGHTS, TRADE SECRETS OR ANY PATENTS BY SUN RPC
  * OR ANY PART THEREOF.
- * 
+ *
  * In no event will Sun Microsystems, Inc. be liable for any lost revenue
  * or profits or other special, indirect and consequential damages, even if
  * Sun has been advised of the possibility of such damages.
- * 
+ *
  * Sun Microsystems, Inc.
  * 2550 Garcia Avenue
  * Mountain View, California  94043
@@ -39,26 +39,15 @@
  * by n bytes of data, where n is contained in the header.  The header
  * is represented as a htonl(afs_uint32).  Thegh order bit encodes
  * whether or not the fragment is the last fragment of the record
- * (1 => fragment is last, 0 => more fragments to follow. 
+ * (1 => fragment is last, 0 => more fragments to follow.
  * The other 31 bits encode the byte length of the fragment.
  */
 
 #include <afsconfig.h>
 #include <afs/param.h>
 
-
-#include <stdio.h>
-#ifdef HAVE_STDLIB_H
-#include <stdlib.h>
-#endif
+#include <roken.h>
 #include "xdr.h"
-#ifndef AFS_NT40_ENV
-#include <sys/time.h>
-#include <netinet/in.h>
-#endif
-
-#include <string.h>
-
 
 /*  * A record is composed of one or more record fragments.
  * A record fragment is a two-byte header followed by zero to
@@ -72,7 +61,7 @@
  * meet the needs of xdr and rpc based on tcp.
  */
 
-#define LAST_FRAG ((afs_uint32)(1 << 31))
+#define LAST_FRAG ((afs_uint32)(1u << 31))
 
 typedef struct rec_strm {
     caddr_t tcp_handle;
@@ -118,12 +107,8 @@ static u_int fix_buf_size(u_int s);
 
 static struct xdr_ops xdrrec_ops = {
 #ifdef AFS_NT40_ENV
-#ifdef AFS_XDR_64BITOPS
-    NULL,
-    NULL,
-#endif
     /* Windows does not support labeled assignments */
-#if !(defined(KERNEL) && defined(AFS_SUN57_ENV))
+#if !(defined(KERNEL) && defined(AFS_SUN5_ENV))
     xdrrec_getint32,    /* deserialize an afs_int32 */
     xdrrec_putint32,    /* serialize an afs_int32 */
 #endif
@@ -133,16 +118,12 @@ static struct xdr_ops xdrrec_ops = {
     xdrrec_setpos,      /* set offset in the stream: not supported. */
     xdrrec_inline,      /* prime stream for inline macros */
     xdrrec_destroy,     /* destroy stream */
-#if (defined(KERNEL) && defined(AFS_SUN57_ENV))
+#if (defined(KERNEL) && defined(AFS_SUN5_ENV))
     NULL,
     xdrrec_getint32,    /* deserialize an afs_int32 */
     xdrrec_putint32,    /* serialize an afs_int32 */
 #endif
 #else
-#ifdef AFS_XDR_64BITOPS
-    .x_getint64 = NULL,
-    .x_putint64 = NULL,
-#endif
     .x_getint32 = xdrrec_getint32,
     .x_putint32 = xdrrec_putint32,
     .x_getbytes = xdrrec_getbytes,
@@ -175,8 +156,8 @@ xdrrec_create(XDR * xdrs, u_int sendsize, u_int recvsize,
     RECSTREAM *rstrm = (RECSTREAM *) osi_alloc(sizeof(RECSTREAM));
 
     if (rstrm == NULL) {
-	/* 
-	 *  This is bad.  Should rework xdrrec_create to 
+	/*
+	 *  This is bad.  Should rework xdrrec_create to
 	 *  return a handle, and in this case return NULL
 	 */
 	return;
@@ -423,7 +404,7 @@ xdrrec_skiprecord(XDR * xdrs)
 
 /*
  * Look ahead fuction.
- * Returns TRUE iff there is no more input in the buffer 
+ * Returns TRUE iff there is no more input in the buffer
  * after consuming the rest of the current record.
  */
 bool_t

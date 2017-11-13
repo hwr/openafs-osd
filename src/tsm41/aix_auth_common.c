@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -46,7 +46,7 @@ afs_authenticate(char *userName, char *response, int *reenter, char **message)
 	if (strlen(pword) == 0) {
 	    printf
 		("Unable to read password because zero length passord is illegal\n");
-	    *message = (char *)malloc(256);
+	    *message = malloc(256);
 	    sprintf(*message,
 		    "Unable to read password because zero length passord is illegal\n");
 	    return AUTH_FAILURE;
@@ -54,7 +54,7 @@ afs_authenticate(char *userName, char *response, int *reenter, char **message)
     }
 
     if ((pwd = getpwnam(userName)) == NULL) {
-	*message = (char *)malloc(256);
+	*message = malloc(256);
 	sprintf(*message, "getpwnam for user failed\n");
 	return AUTH_FAILURE;
     }
@@ -65,7 +65,7 @@ afs_authenticate(char *userName, char *response, int *reenter, char **message)
 				   &password_expires, 0, &reason)) {
 	if (code == KANOENT)
 	    return AUTH_NOTFOUND;
-	*message = (char *)malloc(1024);
+	*message = malloc(1024);
 	sprintf(*message, "Unable to authenticate to AFS because %s.\n",
 		reason);
 	return AUTH_FAILURE;

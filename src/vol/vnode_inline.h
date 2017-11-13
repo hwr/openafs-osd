@@ -1,7 +1,7 @@
 /*
  * Copyright 2007-2008, Sine Nomine Associates and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -11,281 +11,6 @@
 #define _AFS_VOL_VNODE_INLINE_H 1
 
 #include "vnode.h"
-
-
-#ifdef AFS_DEMAND_ATTACH_FS
-/**
- * change state, and notify other threads,
- * return previous state to caller.
- *
- * @param[in] vnp        pointer to vnode object
- * @param[in] new_state  new vnode state value
- *
- * @pre VOL_LOCK held
- *
- * @post vnode state changed
- *
- * @return previous vnode state
- *
- * @note DEMAND_ATTACH_FS only
- *
- * @internal vnode package internal use only
- */
-static_inline VnState
-VnChangeState_r(Vnode * vnp, VnState new_state)
-{
-    VnState old_state = Vn_state(vnp);
-
-    Vn_state(vnp) = new_state;
-    CV_BROADCAST(&Vn_stateCV(vnp));
-    return old_state;
-}
-
-/**
- * tells caller whether or not the current state requires
- * exclusive access without holding glock.
- *
- * @param[in] state  vnode state enumeration
- *
- * @return whether vnode state is a mutually exclusive state
- *   @retval 0  no, state is re-entrant
- *   @retval 1  yes, state is mutually exclusive
- *
- * @note DEMAND_ATTACH_FS only
- */
-static_inline int
-VnIsExclusiveState(VnState state)
-{
-    switch (state) {
-    case VN_STATE_RELEASING:
-    case VN_STATE_CLOSING:
-    case VN_STATE_ALLOC:
-    case VN_STATE_LOAD:
-    case VN_STATE_EXCLUSIVE:
-    case VN_STATE_STORE:
-	return 1;
-    default: 
-	return 0;
-    }
-}
-
-/**
- * tells caller whether or not the current state requires
- * exclusive access without holding glock.
- *
- * @param[in] state  vnode state enumeration
- *
- * @return whether vnode state is a mutually exclusive state
- *   @retval 0  no, state is re-entrant
- *   @retval 1  yes, state is mutually exclusive
- *
- * @note DEMAND_ATTACH_FS only
- */
-static_inline int
-VnIsExclusiveOrSharedState(VnState state)
-{
-    switch (state) {
-    case VN_STATE_RELEASING:
-    case VN_STATE_CLOSING:
-    case VN_STATE_ALLOC:
-    case VN_STATE_LOAD:
-    case VN_STATE_EXCLUSIVE:
-    case VN_STATE_SHARED:
-    case VN_STATE_STORE:
-	return 1;
-    default: 
-	return 0;
-    }
-}
-
-/**
- * tell caller whether vnode state is an error condition.
- *
- * @param[in] state  vnode state enumeration
- *
- * @return whether vnode state is in error state
- *   @retval 0  state is not an error state
- *   @retval 1  state is an error state
- *
- * @note DEMAND_ATTACH_FS only
- */
-static_inline int
-VnIsErrorState(VnState state)
-{
-    switch (state) {
-    case VN_STATE_ERROR:
-	return 1;
-    default:
-	return 0;
-    }
-}
-
-/**
- * tell caller whether vnode state is valid.
- *
- * @param[in] state  vnode state enumeration
- *
- * @return whether vnode state is a mutually exclusive state
- *   @retval 0  no, state is not valid
- *   @retval 1  yes, state is a valid enumeration member
- *
- * @note DEMAND_ATTACH_FS only
- */
-static_inline int
-VnIsValidState(VnState state)
-{
-    if ((state >= 0) && 
-	(state < VN_STATE_COUNT)) {
-	return 1;
-    }
-    return 0;
-}
-
-/**
- * wait for the vnode to change states.
- *
- * @param[in] vnp  vnode object pointer
- *
- * @pre VOL_LOCK held; ref held on vnode
- *
- * @post VOL_LOCK held; vnode state has changed from previous value
- *
- * @note DEMAND_ATTACH_FS only
- */
-static_inline void
-VnWaitStateChange_r(Vnode * vnp)
-{
-    VnState state_save = Vn_state(vnp);
-
-    osi_Assert(Vn_refcount(vnp));
-    do {
-	VOL_CV_WAIT(&Vn_stateCV(vnp));
-    } while (Vn_state(vnp) == state_save);
-    osi_Assert(!(Vn_stateFlags(vnp) & VN_ON_LRU));
-}
-
-/**
- * wait for blocking ops to end.
- *
- * @pre VOL_LOCK held; ref held on vnode
- *
- * @post VOL_LOCK held; vnode not in exclusive state
- *
- * @param[in] vnp  vnode object pointer
- *
- * @note DEMAND_ATTACH_FS only
- */
-static_inline void
-VnWaitExclusiveState_r(Vnode * vnp)
-{
-    osi_Assert(Vn_refcount(vnp));
-    while (VnIsExclusiveState(Vn_state(vnp))) {
-	VOL_CV_WAIT(&Vn_stateCV(vnp));
-    }
-    osi_Assert(!(Vn_stateFlags(vnp) & VN_ON_LRU));
-}
-
-/**
- * wait until vnode is in non-exclusive state, and there are no active readers.
- *
- * @param[in] vnp  vnode object pointer
- *
- * @pre VOL_LOCK held; ref held on vnode
- *
- * @post VOL_LOCK held; vnode is in non-exclusive state and has no active readers
- *
- * @note DEMAND_ATTACH_FS only
- */
-static_inline void
-VnWaitQuiescent_r(Vnode * vnp)
-{
-    osi_Assert(Vn_refcount(vnp));
-    while (VnIsExclusiveOrSharedState(Vn_state(vnp)) ||
-	   Vn_readers(vnp)) {
-	VOL_CV_WAIT(&Vn_stateCV(vnp));
-    }
-    osi_Assert(!(Vn_stateFlags(vnp) & VN_ON_LRU));
-}
-
-/**
- * wait until vnode is in non-exclusive state.
- *
- * @param[in] vnp  vnode object pointer
- *
- * @pre VOL_LOCK held; ref held on vnode
- *
- * @post VOL_LOCK held; vnode is in non-exclusive state and has no active readers
- *
- * @note DEMAND_ATTACH_FS only
- */
-static_inline void
-VnWaitOtherWriter_r(Vnode * vnp)
-{
-    osi_Assert(Vn_refcount(vnp));
-    while (VnIsExclusiveOrSharedState(Vn_state(vnp))) {
-	VOL_CV_WAIT(&Vn_stateCV(vnp));
-    }
-    osi_Assert(!(Vn_stateFlags(vnp) & VN_ON_LRU));
-}
-
-
-/**
- * register a new reader on a vnode.
- *
- * @param[in] vnp  vnode object pointer
- *
- * @pre VOL_LOCK held.
- *      ref held on vnode.
- *      vnode in VN_STATE_READ or VN_STATE_ONLINE
- *
- * @post refcount incremented.
- *       state set to VN_STATE_READ.
- *
- * @note DEMAND_ATTACH_FS only
- *
- * @internal vnode package internal use only
- */
-static_inline void
-VnBeginRead_r(Vnode * vnp)
-{
-    if (!Vn_readers(vnp)) {
-	osi_Assert(Vn_state(vnp) == VN_STATE_ONLINE || Vn_state(vnp) == VN_STATE_SHARED);
-	if (Vn_state(vnp) == VN_STATE_ONLINE)
-	    VnChangeState_r(vnp, VN_STATE_READ);
-    }
-    Vn_readers(vnp)++;
-    osi_Assert(Vn_state(vnp) == VN_STATE_READ || Vn_state(vnp) == VN_STATE_SHARED);
-}
-
-/**
- * deregister a reader on a vnode.
- *
- * @param[in] vnp  vnode object pointer
- *
- * @pre VOL_LOCK held.
- *      ref held on vnode.
- *      read ref held on vnode.
- *      vnode in VN_STATE_READ.
- *
- * @post refcount decremented.
- *       when count reaches zero, state set to VN_STATE_ONLINE.
- *
- * @note DEMAND_ATTACH_FS only
- *
- * @internal vnode package internal use only
- */
-static_inline void
-VnEndRead_r(Vnode * vnp)
-{
-    osi_Assert(Vn_readers(vnp) > 0);
-    Vn_readers(vnp)--;
-    if (!Vn_readers(vnp)) {
-	osi_Assert(pthread_cond_broadcast(&Vn_stateCV(vnp)) == 0);
-	VnChangeState_r(vnp, VN_STATE_ONLINE);
-    }
-}
-
-#endif /* AFS_DEMAND_ATTACH_FS */
 
 /***************************************************/
 /* demand attach vnode state machine routines      */
@@ -334,7 +59,7 @@ VnCancelReservation_r(Vnode * vnp)
     if (--Vn_refcount(vnp) == 0) {
 	AddToVnLRU(Vn_class(vnp), vnp);
 
-	/* If caching is turned off, 
+	/* If caching is turned off,
 	 * disassociate vnode cache entry from volume object */
 	if (!TrustVnodeCacheEntry) {
 	    DeleteFromVVnList(vnp);
@@ -374,7 +99,7 @@ static_inline void
 VnLock(Vnode * vnp, int type, int held, int safe)
 {
 #ifdef AFS_DEMAND_ATTACH_FS
-    if (type == WRITE_LOCK || type == SHARED_LOCK) {
+    if (type == WRITE_LOCK) {
 	VN_SET_WRITER_THREAD_ID(vnp);
     }
 #else /* !AFS_DEMAND_ATTACH_FS */
@@ -384,10 +109,7 @@ VnLock(Vnode * vnp, int type, int held, int safe)
     if (type == READ_LOCK) {
 	ObtainReadLock(&vnp->lock);
     } else {
-	if (type == SHARED_LOCK)
-	    ObtainSharedLock(&vnp->lock);
- 	else
-	    ObtainWriteLock(&vnp->lock);
+	ObtainWriteLock(&vnp->lock);
 	VN_SET_WRITER_THREAD_ID(vnp);
     }
     if (held && !safe) {
@@ -413,22 +135,235 @@ VnUnlock(Vnode * vnp, int type)
 #ifndef AFS_DEMAND_ATTACH_FS
 	ReleaseReadLock(&vnp->lock);
 #endif
-    } else if (type == SHARED_LOCK) {
-	vnp->writer = 0;
-#ifdef AFS_DEMAND_ATTACH_FS
-	if (Vn_readers(vnp))
-	    VnChangeState_r(vnp, VN_STATE_READ);
-#else
-	ReleaseSharedLock(&vnp->lock);
-	if (Vn_refcount(vnp) > 1)
-	    ObtainReadLock(&vnp->lock);
-#endif
-    } else /* if (type == WRITE_LOCK) */ {
+    } else {
 	vnp->writer = 0;
 #ifndef AFS_DEMAND_ATTACH_FS
 	ReleaseWriteLock(&vnp->lock);
 #endif
     }
 }
+
+
+#ifdef AFS_DEMAND_ATTACH_FS
+/**
+ * change state, and notify other threads,
+ * return previous state to caller.
+ *
+ * @param[in] vnp        pointer to vnode object
+ * @param[in] new_state  new vnode state value
+ *
+ * @pre VOL_LOCK held
+ *
+ * @post vnode state changed
+ *
+ * @return previous vnode state
+ *
+ * @note DEMAND_ATTACH_FS only
+ *
+ * @internal vnode package internal use only
+ */
+static_inline VnState
+VnChangeState_r(Vnode * vnp, VnState new_state)
+{
+    VnState old_state = Vn_state(vnp);
+
+    Vn_state(vnp) = new_state;
+    opr_cv_broadcast(&Vn_stateCV(vnp));
+    return old_state;
+}
+
+/**
+ * tells caller whether or not the current state requires
+ * exclusive access without holding glock.
+ *
+ * @param[in] state  vnode state enumeration
+ *
+ * @return whether vnode state is a mutually exclusive state
+ *   @retval 0  no, state is re-entrant
+ *   @retval 1  yes, state is mutually exclusive
+ *
+ * @note DEMAND_ATTACH_FS only
+ */
+static_inline int
+VnIsExclusiveState(VnState state)
+{
+    switch (state) {
+    case VN_STATE_RELEASING:
+    case VN_STATE_CLOSING:
+    case VN_STATE_ALLOC:
+    case VN_STATE_LOAD:
+    case VN_STATE_EXCLUSIVE:
+    case VN_STATE_STORE:
+	return 1;
+    default:
+	return 0;
+    }
+}
+
+/**
+ * tell caller whether vnode state is an error condition.
+ *
+ * @param[in] state  vnode state enumeration
+ *
+ * @return whether vnode state is in error state
+ *   @retval 0  state is not an error state
+ *   @retval 1  state is an error state
+ *
+ * @note DEMAND_ATTACH_FS only
+ */
+static_inline int
+VnIsErrorState(VnState state)
+{
+    switch (state) {
+    case VN_STATE_ERROR:
+	return 1;
+    default:
+	return 0;
+    }
+}
+
+/**
+ * tell caller whether vnode state is valid.
+ *
+ * @param[in] state  vnode state enumeration
+ *
+ * @return whether vnode state is a mutually exclusive state
+ *   @retval 0  no, state is not valid
+ *   @retval 1  yes, state is a valid enumeration member
+ *
+ * @note DEMAND_ATTACH_FS only
+ */
+static_inline int
+VnIsValidState(VnState state)
+{
+    if (((int) state >= 0) &&
+	(state < VN_STATE_COUNT)) {
+	return 1;
+    }
+    return 0;
+}
+
+/**
+ * wait for the vnode to change states.
+ *
+ * @param[in] vnp  vnode object pointer
+ *
+ * @pre VOL_LOCK held; ref held on vnode
+ *
+ * @post VOL_LOCK held; vnode state has changed from previous value
+ *
+ * @note DEMAND_ATTACH_FS only
+ */
+static_inline void
+VnWaitStateChange_r(Vnode * vnp)
+{
+    VnState state_save = Vn_state(vnp);
+
+    opr_Assert(Vn_refcount(vnp));
+    do {
+	VOL_CV_WAIT(&Vn_stateCV(vnp));
+    } while (Vn_state(vnp) == state_save);
+    opr_Assert(!(Vn_stateFlags(vnp) & VN_ON_LRU));
+}
+
+/**
+ * wait for blocking ops to end.
+ *
+ * @pre VOL_LOCK held; ref held on vnode
+ *
+ * @post VOL_LOCK held; vnode not in exclusive state
+ *
+ * @param[in] vnp  vnode object pointer
+ *
+ * @note DEMAND_ATTACH_FS only
+ */
+static_inline void
+VnWaitExclusiveState_r(Vnode * vnp)
+{
+    opr_Assert(Vn_refcount(vnp));
+    while (VnIsExclusiveState(Vn_state(vnp))) {
+	VOL_CV_WAIT(&Vn_stateCV(vnp));
+    }
+    opr_Assert(!(Vn_stateFlags(vnp) & VN_ON_LRU));
+}
+
+/**
+ * wait until vnode is in non-exclusive state, and there are no active readers.
+ *
+ * @param[in] vnp  vnode object pointer
+ *
+ * @pre VOL_LOCK held; ref held on vnode
+ *
+ * @post VOL_LOCK held; vnode is in non-exclusive state and has no active readers
+ *
+ * @note DEMAND_ATTACH_FS only
+ */
+static_inline void
+VnWaitQuiescent_r(Vnode * vnp)
+{
+    opr_Assert(Vn_refcount(vnp));
+    while (VnIsExclusiveState(Vn_state(vnp)) ||
+	   Vn_readers(vnp)) {
+	VOL_CV_WAIT(&Vn_stateCV(vnp));
+    }
+    opr_Assert(!(Vn_stateFlags(vnp) & VN_ON_LRU));
+}
+
+/**
+ * register a new reader on a vnode.
+ *
+ * @param[in] vnp  vnode object pointer
+ *
+ * @pre VOL_LOCK held.
+ *      ref held on vnode.
+ *      vnode in VN_STATE_READ or VN_STATE_ONLINE
+ *
+ * @post refcount incremented.
+ *       state set to VN_STATE_READ.
+ *
+ * @note DEMAND_ATTACH_FS only
+ *
+ * @internal vnode package internal use only
+ */
+static_inline void
+VnBeginRead_r(Vnode * vnp)
+{
+    if (!Vn_readers(vnp)) {
+	opr_Assert(Vn_state(vnp) == VN_STATE_ONLINE);
+	VnChangeState_r(vnp, VN_STATE_READ);
+    }
+    Vn_readers(vnp)++;
+    opr_Assert(Vn_state(vnp) == VN_STATE_READ);
+}
+
+/**
+ * deregister a reader on a vnode.
+ *
+ * @param[in] vnp  vnode object pointer
+ *
+ * @pre VOL_LOCK held.
+ *      ref held on vnode.
+ *      read ref held on vnode.
+ *      vnode in VN_STATE_READ.
+ *
+ * @post refcount decremented.
+ *       when count reaches zero, state set to VN_STATE_ONLINE.
+ *
+ * @note DEMAND_ATTACH_FS only
+ *
+ * @internal vnode package internal use only
+ */
+static_inline void
+VnEndRead_r(Vnode * vnp)
+{
+    opr_Assert(Vn_readers(vnp) > 0);
+    Vn_readers(vnp)--;
+    if (!Vn_readers(vnp)) {
+	opr_cv_broadcast(&Vn_stateCV(vnp));
+	VnChangeState_r(vnp, VN_STATE_ONLINE);
+    }
+}
+
+#endif /* AFS_DEMAND_ATTACH_FS */
 
 #endif /* _AFS_VOL_VNODE_INLINE_H */

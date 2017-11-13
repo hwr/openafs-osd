@@ -145,13 +145,17 @@ static int DoDirSet(struct cmd_syndesc *as, void *arock)
 
 static int DoBosCfg(struct cmd_syndesc *as, void *arock)
 {
-    char bosSvcPath[AFSDIR_PATH_MAX];
-    SC_HANDLE scmHandle, svcHandle;
+    char *bosSvcPath = NULL;
+    SC_HANDLE scmHandle = NULL, svcHandle = NULL;
+    int code;
 
     /* determine if using specified or default service binary path */
     if (as->parms[0].items) {
 	/* BOS control service binary path specified */
-	sprintf(bosSvcPath, "\"%s\"", as->parms[0].items->data);
+	if (asprintf(&bosSvcPath, "\"%s\"", as->parms[0].items->data) < 0) {
+	    afs_com_err(whoami, 0, "out of memory building binary path");
+	    return 1;
+	}
     } else {
 	/* no BOS control service binary path specified; check for default */
 	char *dirBuf;
@@ -161,10 +165,13 @@ static int DoBosCfg(struct cmd_syndesc *as, void *arock)
 		    "binary path not specified and AFS server installation directory not set");
 	    return 1;
 	}
-	sprintf(bosSvcPath, "\"%s%s/%s\"",
-		dirBuf,
-		AFSDIR_CANONICAL_SERVER_BIN_DIRPATH,
-		AFSREG_SVR_SVC_IMAGENAME_DATA);
+	if (asprintf(&bosSvcPath, "\"%s%s/%s\"",
+		     dirBuf,
+		     AFSDIR_CANONICAL_SERVER_BIN_DIRPATH,
+		     AFSREG_SVR_SVC_IMAGENAME_DATA) < 0) {
+	    afs_com_err(whoami, 0, "out of memory building binary path");
+	    return 1;
+	}
     }
 
     /* create BOS control service */
@@ -178,7 +185,8 @@ static int DoBosCfg(struct cmd_syndesc *as, void *arock)
 	    reason = "(insufficient privilege)";
 	}
 	afs_com_err(whoami, 0, "unable to connect to the SCM %s", reason);
-	return 1;
+	code = 1;
+	goto out;
     }
 
     svcHandle = CreateService(scmHandle,
@@ -203,13 +211,18 @@ static int DoBosCfg(struct cmd_syndesc *as, void *arock)
 	    reason = "(service or display name already exists)";
 	}
 	afs_com_err(whoami, 0, "unable to create service %s", reason);
-	CloseServiceHandle(scmHandle);
-	return 1;
+	code = 1;
+    } else {
+	code = 0;
     }
 
-    CloseServiceHandle(svcHandle);
-    CloseServiceHandle(scmHandle);
-    return (0);
+out:
+    free(bosSvcPath);
+    if (svcHandle != NULL)
+	CloseServiceHandle(svcHandle);
+    if (scmHandle != NULL)
+	CloseServiceHandle(scmHandle);
+    return code;
 }
 
 
@@ -286,15 +299,15 @@ SetupVptCmd(void)
 {
     struct cmd_syndesc	*ts;
 
-    ts = cmd_CreateSyntax("vptlist", DoVptList, NULL,
+    ts = cmd_CreateSyntax("vptlist", DoVptList, NULL, 0,
 			  "list vice partition table");
 
-    ts = cmd_CreateSyntax("vptadd", DoVptAdd, NULL,
+    ts = cmd_CreateSyntax("vptadd", DoVptAdd, NULL, 0,
 			  "add entry to vice partition table");
     cmd_AddParm(ts, "-partition", CMD_SINGLE, CMD_REQUIRED, "partition name");
     cmd_AddParm(ts, "-dev", CMD_SINGLE, CMD_REQUIRED, "device name");
 
-    ts = cmd_CreateSyntax("vptdel", DoVptDel, NULL,
+    ts = cmd_CreateSyntax("vptdel", DoVptDel, NULL, 0,
 			  "remove entry from vice partition table");
     cmd_AddParm(ts, "-partition", CMD_SINGLE, CMD_REQUIRED, "partition name");
 }
@@ -304,10 +317,10 @@ SetupDirCmd(void)
 {
     struct cmd_syndesc	*ts;
 
-    ts = cmd_CreateSyntax("dirget", DoDirGet, NULL,
+    ts = cmd_CreateSyntax("dirget", DoDirGet, NULL, 0,
 			  "display the AFS server installation directory");
 
-    ts = cmd_CreateSyntax("dirset", DoDirSet, NULL,
+    ts = cmd_CreateSyntax("dirset", DoDirSet, NULL, 0,
 			  "set the AFS server installation directory");
     cmd_AddParm(ts, "-path", CMD_SINGLE, CMD_REQUIRED, "directory path");
 }
@@ -317,11 +330,11 @@ SetupBosCmd(void)
 {
     struct cmd_syndesc	*ts;
 
-    ts = cmd_CreateSyntax("boscfg", DoBosCfg, NULL,
+    ts = cmd_CreateSyntax("boscfg", DoBosCfg, NULL, 0,
 			  "configure the AFS BOS control service");
     cmd_AddParm(ts, "-path", CMD_SINGLE, CMD_OPTIONAL, "service binary path");
 
-    ts = cmd_CreateSyntax("bosdel", DoBosDel, NULL,
+    ts = cmd_CreateSyntax("bosdel", DoBosDel, NULL, 0,
 			  "delete (unconfigure) the AFS BOS control service");
 }
 
@@ -330,7 +343,7 @@ SetupVersionCmd(void)
 {
     struct cmd_syndesc	*ts;
 
-    ts = cmd_CreateSyntax("version", DoVersionGet, NULL,
+    ts = cmd_CreateSyntax("version", DoVersionGet, NULL, 0,
 			  "display AFS version information");
 }
 

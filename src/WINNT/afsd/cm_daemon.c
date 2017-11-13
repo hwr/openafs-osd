@@ -7,7 +7,10 @@
  * directory or online at http://www.openafs.org/dl/license10.html
  */
 
+#include <afsconfig.h>
 #include <afs/param.h>
+#include <roken.h>
+
 #include <afs/stds.h>
 
 #include <windows.h>
@@ -37,27 +40,34 @@ long cm_daemonTokenCheckInterval = 180;
 long cm_daemonCheckOfflineVolInterval = 600;
 long cm_daemonPerformanceTuningInterval = 0;
 long cm_daemonRankServerInterval = 600;
+long cm_daemonRDRShakeExtentsInterval = 0;
+long cm_daemonAfsdHookReloadInterval = 0;
+long cm_daemonEAccesCheckInterval = 1800;
 
-osi_rwlock_t cm_daemonLock;
+typedef struct daemon_state {
+    osi_rwlock_t lock;
+    afs_uint32   queueCount;
+    cm_bkgRequest_t *head;
+    cm_bkgRequest_t *tail;
+    afs_uint64   completeCount;
+    afs_uint64   retryCount;
+    afs_uint64   errorCount;
+} daemon_state_t;
 
-long cm_bkgQueueCount;		/* # of queued requests */
-
-int cm_bkgWaitingForCount;	/* true if someone's waiting for cm_bkgQueueCount to drop */
-
-cm_bkgRequest_t *cm_bkgListp;		/* first elt in the list of requests */
-cm_bkgRequest_t *cm_bkgListEndp;	/* last elt in the list of requests */
+daemon_state_t *cm_daemons = NULL;
+int cm_nDaemons = 0;
 
 extern int powerStateSuspended;
 int daemon_ShutdownFlag = 0;
-static int cm_nDaemons = 0;
 static time_t lastIPAddrChange = 0;
 
 static EVENT_HANDLE cm_Daemon_ShutdownEvent = NULL;
+static EVENT_HANDLE cm_LockDaemon_ShutdownEvent = NULL;
 static EVENT_HANDLE cm_IPAddrDaemon_ShutdownEvent = NULL;
 static EVENT_HANDLE cm_BkgDaemon_ShutdownEvent[CM_MAX_DAEMONS] =
        {NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL};
 
-void cm_IpAddrDaemon(long parm)
+void * cm_IpAddrDaemon(void * vparm)
 {
     extern void smb_CheckVCs(void);
     char * name = "cm_IPAddrDaemon_ShutdownEvent";
@@ -75,21 +85,64 @@ void cm_IpAddrDaemon(long parm)
         Result = NotifyAddrChange(NULL,NULL);
         if (Result == NO_ERROR && daemon_ShutdownFlag == 0) {
             lastIPAddrChange = osi_Time();
-            smb_SetLanAdapterChangeDetected();
+            if (smb_Enabled)
+                smb_SetLanAdapterChangeDetected();
             cm_SetLanAdapterChangeDetected();
             thrd_ResetEvent(cm_IPAddrDaemon_ShutdownEvent);
+
+            cm_ServerClearRPCStats();
 	}
     }
 
     thrd_SetEvent(cm_IPAddrDaemon_ShutdownEvent);
+    pthread_exit(NULL);
+    return NULL;
 }
 
-void cm_BkgDaemon(void * parm)
+afs_int32 cm_RequestWillBlock(cm_bkgRequest_t *rp)
+{
+    afs_int32 willBlock = 0;
+
+    if (rp->procp == cm_BkgStore) {
+        /*
+         * If the datastoring flag is set, it means that another
+         * thread is already performing an exclusive store operation
+         * on this file.  The exclusive state will be cleared once
+         * the file server locks the vnode.  Therefore, at most two
+         * threads can be actively involved in storing data at a time
+         * on a file.
+         */
+        lock_ObtainRead(&rp->scp->rw);
+        willBlock = (rp->scp->flags & CM_SCACHEFLAG_DATASTORING);
+        lock_ReleaseRead(&rp->scp->rw);
+    }
+    else if (rp->procp == RDR_BkgFetch || rp->procp == cm_BkgPrefetch) {
+        /*
+         * Attempt to determine if there is a conflict on the requested
+         * range of the file.  If the first in the range does not exist
+         * in the cache assume there is no conflict.  If the buffer does
+         * exist, check to see if an I/O operation is in progress
+         * by using the writing and reading flags as an indicator.
+         */
+        cm_buf_t *bufp = NULL;
+        rock_BkgFetch_t *rockp = (rock_BkgFetch_t *)rp->rockp;
+
+        bufp = buf_Find(&rp->scp->fid, &rockp->base);
+        if (bufp) {
+            willBlock = (bufp->flags & (CM_BUF_WRITING|CM_BUF_READING));
+            buf_Release(bufp);
+        }
+    }
+
+    return willBlock;
+}
+
+void * cm_BkgDaemon(void * vparm)
 {
     cm_bkgRequest_t *rp;
     afs_int32 code;
     char name[32] = "";
-    long daemonID = (long)(LONG_PTR)parm;
+    long daemonID = (long)(LONG_PTR)vparm;
 
     snprintf(name, sizeof(name), "cm_BkgDaemon_ShutdownEvent%u", daemonID);
 
@@ -99,49 +152,78 @@ void cm_BkgDaemon(void * parm)
 
     rx_StartClientThread();
 
-    lock_ObtainWrite(&cm_daemonLock);
+    lock_ObtainWrite(&cm_daemons[daemonID].lock);
     while (daemon_ShutdownFlag == 0) {
+        int willBlock = 0;
+
         if (powerStateSuspended) {
             Sleep(1000);
             continue;
         }
-        if (!cm_bkgListEndp) {
-            osi_SleepW((LONG_PTR)&cm_bkgListp, &cm_daemonLock);
-            lock_ObtainWrite(&cm_daemonLock);
+        if (!cm_daemons[daemonID].tail) {
+            osi_SleepW((LONG_PTR)&cm_daemons[daemonID].head, &cm_daemons[daemonID].lock);
+            lock_ObtainWrite(&cm_daemons[daemonID].lock);
             continue;
         }
 
         /* we found a request */
-        for (rp = cm_bkgListEndp; rp; rp = (cm_bkgRequest_t *) osi_QPrev(&rp->q))
+        for (rp = cm_daemons[daemonID].tail; rp; rp = (cm_bkgRequest_t *) osi_QPrev(&rp->q))
 	{
-	    if (cm_ServerAvailable(&rp->scp->fid, rp->userp) ||
-                rp->scp->flags & CM_SCACHEFLAG_DELETED)
+            if (rp->scp->flags & CM_SCACHEFLAG_DELETED)
 		break;
+
+            /*
+             * If the request has active I/O such that this worker would
+             * be forced to block, leave the request in the queue and move
+             * on to one that might be available for servicing.
+             */
+            if (cm_RequestWillBlock(rp)) {
+                willBlock++;
+                continue;
+            }
+
+            if (cm_ServerAvailable(&rp->scp->fid, rp->userp))
+                break;
 	}
-	if (rp == NULL) {
-	    /* we couldn't find a request that we could process at the current time */
-	    lock_ReleaseWrite(&cm_daemonLock);
-	    Sleep(1000);
-	    lock_ObtainWrite(&cm_daemonLock);
+
+        if (rp == NULL) {
+	    /*
+             * Couldn't find a request that we could process at the
+             * current time.  If there were requests that would cause
+             * the worker to block, sleep for 25ms so it can promptly
+             * respond when it is available.  Otherwise, sleep for 1s.
+             *
+             * This polling cycle needs to be replaced with a proper
+             * producer/consumer dynamic worker pool.
+             */
+            osi_Log2(afsd_logp,"cm_BkgDaemon[%u] sleeping %dms all tasks would block",
+                     daemonID, willBlock ? 100 : 1000);
+
+	    lock_ReleaseWrite(&cm_daemons[daemonID].lock);
+	    Sleep(willBlock ? 100 : 1000);
+	    lock_ObtainWrite(&cm_daemons[daemonID].lock);
 	    continue;
 	}
 
-        osi_QRemoveHT((osi_queue_t **) &cm_bkgListp, (osi_queue_t **) &cm_bkgListEndp, &rp->q);
-        osi_assertx(cm_bkgQueueCount-- > 0, "cm_bkgQueueCount 0");
-        lock_ReleaseWrite(&cm_daemonLock);
+        osi_QRemoveHT((osi_queue_t **) &cm_daemons[daemonID].head, (osi_queue_t **) &cm_daemons[daemonID].tail, &rp->q);
+        osi_assertx(cm_daemons[daemonID].queueCount-- > 0, "cm_bkgQueueCount 0");
+        lock_ReleaseWrite(&cm_daemons[daemonID].lock);
 
-	osi_Log1(afsd_logp,"cm_BkgDaemon processing request 0x%p", rp);
+	osi_Log2(afsd_logp,"cm_BkgDaemon[%u] processing request 0x%p", daemonID, rp);
 
         if (rp->scp->flags & CM_SCACHEFLAG_DELETED) {
-            osi_Log1(afsd_logp,"cm_BkgDaemon DELETED scp 0x%x",rp->scp);
+            osi_Log2(afsd_logp,"cm_BkgDaemon[%u] DELETED scp 0x%x", daemonID, rp->scp);
             code = CM_ERROR_BADFD;
+            if (rp->procp == cm_BkgDirectWrite) {
+                cm_BkgDirectWriteDone(rp->scp, rp->rockp, code);
+            }
         } else {
 #ifdef DEBUG_REFCOUNT
-            osi_Log2(afsd_logp,"cm_BkgDaemon (before) scp 0x%x ref %d",rp->scp, rp->scp->refCount);
+            osi_Log3(afsd_logp,"cm_BkgDaemon[%u] (before) scp 0x%x ref %d", daemonID, rp->scp, rp->scp->refCount);
 #endif
-            code = (*rp->procp)(rp->scp, rp->p1, rp->p2, rp->p3, rp->p4, rp->userp, &rp->req);
+            code = (*rp->procp)(rp->scp, rp->rockp, rp->userp, &rp->req);
 #ifdef DEBUG_REFCOUNT
-            osi_Log2(afsd_logp,"cm_BkgDaemon (after) scp 0x%x ref %d",rp->scp, rp->scp->refCount);
+            osi_Log3(afsd_logp,"cm_BkgDaemon[%u] (after) scp 0x%x ref %d", daemonID, rp->scp, rp->scp->refCount);
 #endif
         }
 
@@ -159,37 +241,47 @@ void cm_BkgDaemon(void * parm)
         case CM_ERROR_ALLDOWN:
         case CM_ERROR_ALLOFFLINE:
         case CM_ERROR_PARTIALWRITE:
-            if (rp->procp == cm_BkgStore) {
-                osi_Log2(afsd_logp,
-                         "cm_BkgDaemon re-queueing failed request 0x%p code 0x%x",
-                         rp, code);
-                lock_ObtainWrite(&cm_daemonLock);
-                cm_bkgQueueCount++;
-                osi_QAddT((osi_queue_t **) &cm_bkgListp, (osi_queue_t **)&cm_bkgListEndp, &rp->q);
+            if (rp->procp == cm_BkgStore ||
+                rp->procp == cm_BkgDirectWrite ||
+                rp->procp == RDR_BkgFetch) {
+                osi_Log3(afsd_logp,
+                         "cm_BkgDaemon[%u] re-queueing failed request 0x%p code 0x%x",
+                         daemonID, rp, code);
+                lock_ObtainWrite(&cm_daemons[daemonID].lock);
+                cm_daemons[daemonID].queueCount++;
+                cm_daemons[daemonID].retryCount++;
+                osi_QAddT((osi_queue_t **) &cm_daemons[daemonID].head, (osi_queue_t **)&cm_daemons[daemonID].tail, &rp->q);
                 break;
             } /* otherwise fall through */
         case 0:  /* success */
         default: /* other error */
             if (code == 0) {
-                osi_Log1(afsd_logp,"cm_BkgDaemon SUCCESS: request 0x%p", rp);
+                osi_Log2(afsd_logp,"cm_BkgDaemon[%u] SUCCESS: request 0x%p", daemonID, rp);
+                cm_daemons[daemonID].completeCount++;
             } else {
-                osi_Log2(afsd_logp,"cm_BkgDaemon FAILED: request dropped 0x%p code 0x%x",
-                         rp, code);
+                osi_Log3(afsd_logp,"cm_BkgDaemon[%u] FAILED: request dropped 0x%p code 0x%x",
+                         daemonID, rp, code);
+                cm_daemons[daemonID].errorCount++;
             }
             cm_ReleaseUser(rp->userp);
             cm_ReleaseSCache(rp->scp);
+            free(rp->rockp);
             free(rp);
-            lock_ObtainWrite(&cm_daemonLock);
+            lock_ObtainWrite(&cm_daemons[daemonID].lock);
         }
     }
-    lock_ReleaseWrite(&cm_daemonLock);
+    lock_ReleaseWrite(&cm_daemons[daemonID].lock);
     thrd_SetEvent(cm_BkgDaemon_ShutdownEvent[daemonID]);
+    pthread_exit(NULL);
+    return NULL;
 }
 
-void cm_QueueBKGRequest(cm_scache_t *scp, cm_bkgProc_t *procp, afs_uint32 p1, afs_uint32 p2, afs_uint32 p3, afs_uint32 p4,
-	cm_user_t *userp, cm_req_t *reqp)
+int cm_QueueBKGRequest(cm_scache_t *scp, cm_bkgProc_t *procp, void *rockp,
+                        cm_user_t *userp, cm_req_t *reqp)
 {
-    cm_bkgRequest_t *rp;
+    cm_bkgRequest_t *rp, *rpq;
+    afs_uint32 daemonID;
+    int duplicate = 0;
 
     rp = malloc(sizeof(*rp));
     memset(rp, 0, sizeof(*rp));
@@ -199,20 +291,61 @@ void cm_QueueBKGRequest(cm_scache_t *scp, cm_bkgProc_t *procp, afs_uint32 p1, af
     cm_HoldUser(userp);
     rp->userp = userp;
     rp->procp = procp;
-    rp->p1 = p1;
-    rp->p2 = p2;
-    rp->p3 = p3;
-    rp->p4 = p4;
+    rp->rockp = rockp;
     rp->req = *reqp;
 
-    lock_ObtainWrite(&cm_daemonLock);
-    cm_bkgQueueCount++;
-    osi_QAdd((osi_queue_t **) &cm_bkgListp, &rp->q);
-    if (!cm_bkgListEndp)
-        cm_bkgListEndp = rp;
-    lock_ReleaseWrite(&cm_daemonLock);
+    /* Use separate queues for fetch and store operations */
+    daemonID = scp->fid.hash % (cm_nDaemons/2) * 2;
+    if (procp == cm_BkgStore ||
+        procp == cm_BkgDirectWrite)
+        daemonID++;
 
-    osi_Wakeup((LONG_PTR) &cm_bkgListp);
+    /* Check to see if this is a duplicate request */
+    lock_ObtainWrite(&cm_daemons[daemonID].lock);
+    if ( procp == cm_BkgStore || procp == RDR_BkgFetch || procp == cm_BkgPrefetch ) {
+        for (rpq = cm_daemons[daemonID].head; rpq; rpq = (cm_bkgRequest_t *) osi_QNext(&rpq->q))
+        {
+            if ( rpq->procp == procp &&
+                 rpq->scp == scp &&
+                 rpq->userp == userp)
+            {
+                if (rp->procp == cm_BkgStore) {
+                    rock_BkgStore_t *rock1p = (rock_BkgStore_t *)rp->rockp;
+                    rock_BkgStore_t *rock2p = (rock_BkgStore_t *)rpq->rockp;
+
+                    duplicate = (memcmp(rock1p, rock2p, sizeof(*rock1p)) == 0);
+                }
+                else if (rp->procp == RDR_BkgFetch || rp->procp == cm_BkgPrefetch) {
+                    rock_BkgFetch_t *rock1p = (rock_BkgFetch_t *)rp->rockp;
+                    rock_BkgFetch_t *rock2p = (rock_BkgFetch_t *)rpq->rockp;
+
+                    duplicate = (memcmp(rock1p, rock2p, sizeof(*rock1p)) == 0);
+                }
+
+                if (duplicate) {
+                    /* found a duplicate; update request with latest info */
+                    break;
+                }
+            }
+        }
+    }
+
+    if (!duplicate) {
+        cm_daemons[daemonID].queueCount++;
+        osi_QAddH((osi_queue_t **) &cm_daemons[daemonID].head, (osi_queue_t **)&cm_daemons[daemonID].tail, &rp->q);
+    }
+    lock_ReleaseWrite(&cm_daemons[daemonID].lock);
+
+    if (duplicate) {
+        cm_ReleaseSCache(scp);
+        cm_ReleaseUser(userp);
+        free(rp->rockp);
+        free(rp);
+        return -1;
+    } else {
+        osi_Wakeup((LONG_PTR) &cm_daemons[daemonID].head);
+        return 0;
+    }
 }
 
 static int
@@ -345,6 +478,13 @@ cm_DaemonCheckInit(void)
     afsi_log("daemonCheckOfflineVolInterval is %d", cm_daemonCheckOfflineVolInterval);
 
     dummyLen = sizeof(DWORD);
+    code = RegQueryValueEx(parmKey, "daemonRDRShakeExtentsInterval", NULL, NULL,
+			    (BYTE *) &dummy, &dummyLen);
+    if (code == ERROR_SUCCESS && dummy)
+	cm_daemonRDRShakeExtentsInterval = dummy;
+    afsi_log("daemonRDRShakeExtentsInterval is %d", cm_daemonRDRShakeExtentsInterval);
+
+    dummyLen = sizeof(DWORD);
     code = RegQueryValueEx(parmKey, "daemonPerformanceTuningInterval", NULL, NULL,
 			    (BYTE *) &dummy, &dummyLen);
     if (code == ERROR_SUCCESS)
@@ -358,17 +498,61 @@ cm_DaemonCheckInit(void)
 	cm_daemonRankServerInterval = dummy;
     afsi_log("daemonRankServerInterval is %d", cm_daemonRankServerInterval);
 
+    dummyLen = sizeof(DWORD);
+    code = RegQueryValueEx(parmKey, "daemonAfsdHookReloadInterval", NULL, NULL,
+			    (BYTE *) &dummy, &dummyLen);
+    if (code == ERROR_SUCCESS && dummy)
+	cm_daemonAfsdHookReloadInterval = dummy;
+    afsi_log("daemonAfsdHookReloadInterval is %d", cm_daemonAfsdHookReloadInterval);
+
     RegCloseKey(parmKey);
 
     if (cm_daemonPerformanceTuningInterval)
         cm_PerformanceTuningInit();
 }
 
-/* periodic check daemon */
-void cm_Daemon(long parm)
+/* periodic lock check daemon */
+void * cm_LockDaemon(void * vparm)
 {
     time_t now;
     time_t lastLockCheck;
+    char * name = "cm_LockDaemon_ShutdownEvent";
+
+    cm_LockDaemon_ShutdownEvent = thrd_CreateEvent(NULL, FALSE, FALSE, name);
+    if ( GetLastError() == ERROR_ALREADY_EXISTS )
+        afsi_log("Event Object Already Exists: %s", name);
+
+    now = osi_Time();
+    lastLockCheck = now - cm_daemonCheckLockInterval/2 + (rand() % cm_daemonCheckLockInterval);
+
+    while (daemon_ShutdownFlag == 0) {
+        if (powerStateSuspended) {
+            Sleep(1000);
+            continue;
+        }
+
+        now = osi_Time();
+
+        if (now > lastLockCheck + cm_daemonCheckLockInterval &&
+            daemon_ShutdownFlag == 0 &&
+            powerStateSuspended == 0) {
+            lastLockCheck = now;
+            cm_CheckLocks();
+            if (daemon_ShutdownFlag == 1)
+                break;
+        }
+
+        thrd_Sleep(1000);		/* sleep 1 second */
+    }
+    thrd_SetEvent(cm_LockDaemon_ShutdownEvent);
+    pthread_exit(NULL);
+    return NULL;
+}
+
+/* periodic check daemon */
+void * cm_Daemon(void *vparm)
+{
+    time_t now;
     time_t lastVolCheck;
     time_t lastCBExpirationCheck;
     time_t lastVolCBRenewalCheck;
@@ -378,10 +562,14 @@ void cm_Daemon(long parm)
     time_t lastBusyVolCheck;
     time_t lastPerformanceCheck;
     time_t lastServerRankCheck;
+    time_t lastRDRShakeExtents;
+    time_t lastAfsdHookReload;
+    time_t lastEAccesCheck;
     char thostName[200];
     unsigned long code;
     struct hostent *thp;
-    HMODULE hHookDll;
+    HMODULE hHookDll = NULL;
+    AfsdDaemonHook daemonHook = NULL;
     char * name = "cm_Daemon_ShutdownEvent";
     int configureFirewall = IsWindowsFirewallPresent();
     int bAddrChangeCheck = 0;
@@ -424,7 +612,6 @@ void cm_Daemon(long parm)
     lastCBExpirationCheck = now - cm_daemonCheckCBInterval/2 + (rand() % cm_daemonCheckCBInterval);
     if (cm_daemonCheckVolCBInterval)
         lastVolCBRenewalCheck = now - cm_daemonCheckVolCBInterval/2 + (rand() % cm_daemonCheckVolCBInterval);
-    lastLockCheck = now - cm_daemonCheckLockInterval/2 + (rand() % cm_daemonCheckLockInterval);
     lastDownServerCheck = now - cm_daemonCheckDownInterval/2 + (rand() % cm_daemonCheckDownInterval);
     lastUpServerCheck = now - cm_daemonCheckUpInterval/2 + (rand() % cm_daemonCheckUpInterval);
     lastTokenCacheCheck = now - cm_daemonTokenCheckInterval/2 + (rand() % cm_daemonTokenCheckInterval);
@@ -433,6 +620,15 @@ void cm_Daemon(long parm)
     if (cm_daemonPerformanceTuningInterval)
         lastPerformanceCheck = now - cm_daemonPerformanceTuningInterval/2 * (rand() % cm_daemonPerformanceTuningInterval);
     lastServerRankCheck = now - cm_daemonRankServerInterval/2 * (rand() % cm_daemonRankServerInterval);
+    if (cm_daemonRDRShakeExtentsInterval)
+        lastRDRShakeExtents = now - cm_daemonRDRShakeExtentsInterval/2 * (rand() % cm_daemonRDRShakeExtentsInterval);
+    if (cm_daemonAfsdHookReloadInterval)
+        lastAfsdHookReload = now;
+    lastEAccesCheck = now;
+
+    hHookDll = cm_LoadAfsdHookLib();
+    if (hHookDll)
+        daemonHook = ( AfsdDaemonHook ) GetProcAddress(hHookDll, AFSD_DAEMON_HOOK);
 
     while (daemon_ShutdownFlag == 0) {
         if (powerStateSuspended) {
@@ -449,7 +645,7 @@ void cm_Daemon(long parm)
 
         if (configureFirewall) {
 	    /* Open Microsoft Firewall to allow in port 7001 */
-	    switch (icf_CheckAndAddAFSPorts(AFS_PORTSET_CLIENT)) {
+	    switch (icf_CheckAndAddAFSPorts(cm_callbackport)) {
 	    case 0:
 		afsi_log("Windows Firewall Configuration succeeded");
 		configureFirewall = 0;
@@ -494,8 +690,9 @@ void cm_Daemon(long parm)
 
         if (bAddrChangeCheck &&
             daemon_ShutdownFlag == 0 &&
-            powerStateSuspended == 0)
+            powerStateSuspended == 0) {
             cm_ForceNewConnectionsAllServers();
+        }
 
         /* check up servers */
         if ((bAddrChangeCheck || now > lastUpServerCheck + cm_daemonCheckUpInterval) &&
@@ -574,16 +771,6 @@ void cm_Daemon(long parm)
 	    now = osi_Time();
         }
 
-        if (now > lastLockCheck + cm_daemonCheckLockInterval &&
-            daemon_ShutdownFlag == 0 &&
-            powerStateSuspended == 0) {
-            lastLockCheck = now;
-            cm_CheckLocks();
-            if (daemon_ShutdownFlag == 1)
-                break;
-	    now = osi_Time();
-        }
-
         if (now > lastTokenCacheCheck + cm_daemonTokenCheckInterval &&
             daemon_ShutdownFlag == 0 &&
             powerStateSuspended == 0) {
@@ -594,18 +781,47 @@ void cm_Daemon(long parm)
 	    now = osi_Time();
         }
 
+        if (now > lastEAccesCheck + cm_daemonEAccesCheckInterval &&
+             daemon_ShutdownFlag == 0 &&
+             powerStateSuspended == 0) {
+            lastEAccesCheck = now;
+            cm_EAccesClearOutdatedEntries();
+            if (daemon_ShutdownFlag == 1)
+                break;
+	    now = osi_Time();
+        }
+
+        if (cm_daemonRDRShakeExtentsInterval &&
+            now > lastRDRShakeExtents + cm_daemonRDRShakeExtentsInterval &&
+            daemon_ShutdownFlag == 0 &&
+            powerStateSuspended == 0) {
+            cm_req_t req;
+            cm_InitReq(&req);
+            lastRDRShakeExtents = now;
+            if (cm_data.buf_redirCount > cm_data.buf_freeCount)
+                buf_RDRShakeSomeExtentsFree(&req, FALSE, 10 /* seconds */);
+            if (daemon_ShutdownFlag == 1)
+                break;
+	    now = osi_Time();
+        }
+
         /* allow an exit to be called prior to stopping the service */
-        hHookDll = cm_LoadAfsdHookLib();
-        if (hHookDll)
-        {
-            BOOL hookRc = TRUE;
-            AfsdDaemonHook daemonHook = ( AfsdDaemonHook ) GetProcAddress(hHookDll, AFSD_DAEMON_HOOK);
-            if (daemonHook)
-            {
-                hookRc = daemonHook();
+        if (cm_daemonAfsdHookReloadInterval &&
+            lastAfsdHookReload != 0 && lastAfsdHookReload < now) {
+            if (hHookDll) {
+                FreeLibrary(hHookDll);
+                hHookDll = NULL;
+                daemonHook = NULL;
             }
-            FreeLibrary(hHookDll);
-            hHookDll = NULL;
+
+            hHookDll = cm_LoadAfsdHookLib();
+            if (hHookDll)
+                daemonHook = ( AfsdDaemonHook ) GetProcAddress(hHookDll, AFSD_DAEMON_HOOK);
+        }
+
+        if (daemonHook)
+        {
+            BOOL hookRc = daemonHook();
 
             if (hookRc == FALSE)
             {
@@ -629,9 +845,21 @@ void cm_Daemon(long parm)
 	    now = osi_Time();
         }
 
-        thrd_Sleep(10000);		/* sleep 10 seconds */
+        /*
+         * sleep .5 seconds.  if the thread blocks for a long time
+         * we risk not being able to close the cache before Windows
+         * kills our process during system shutdown.
+         */
+        thrd_Sleep(500);
     }
+
+    if (hHookDll) {
+        FreeLibrary(hHookDll);
+    }
+
     thrd_SetEvent(cm_Daemon_ShutdownEvent);
+    pthread_exit(NULL);
+    return NULL;
 }
 
 void cm_DaemonShutdown(void)
@@ -640,53 +868,77 @@ void cm_DaemonShutdown(void)
     DWORD code;
 
     daemon_ShutdownFlag = 1;
-    osi_Wakeup((LONG_PTR) &cm_bkgListp);
 
     /* wait for shutdown */
-    if (cm_Daemon_ShutdownEvent)
-        code = thrd_WaitForSingleObject_Event(cm_Daemon_ShutdownEvent, INFINITE);
-
     for ( i=0; i<cm_nDaemons; i++) {
+        osi_Wakeup((LONG_PTR) &cm_daemons[i].head);
         if (cm_BkgDaemon_ShutdownEvent[i])
             code = thrd_WaitForSingleObject_Event(cm_BkgDaemon_ShutdownEvent[i], INFINITE);
     }
 
+    if (cm_Daemon_ShutdownEvent)
+        code = thrd_WaitForSingleObject_Event(cm_Daemon_ShutdownEvent, INFINITE);
+
+    if (cm_LockDaemon_ShutdownEvent)
+        code = thrd_WaitForSingleObject_Event(cm_LockDaemon_ShutdownEvent, INFINITE);
+
+#if 0
+    /*
+     * Do not waste precious time waiting for the ipaddr daemon to shutdown.
+     * When it does it means we have lost our network connection and we need
+     * it during cache shutdown in order to notify the file servers that this
+     * client is giving up all callbacks.
+     */
     if (cm_IPAddrDaemon_ShutdownEvent)
         code = thrd_WaitForSingleObject_Event(cm_IPAddrDaemon_ShutdownEvent, INFINITE);
+#endif
 }
 
 void cm_InitDaemon(int nDaemons)
 {
     static osi_once_t once;
-    long pid;
-    thread_t phandle;
+    pthread_t phandle;
+    pthread_attr_t tattr;
+    int pstatus;
     int i;
 
-    cm_nDaemons = (nDaemons > CM_MAX_DAEMONS) ? CM_MAX_DAEMONS : nDaemons;
+    pthread_attr_init(&tattr);
+    pthread_attr_setdetachstate(&tattr, PTHREAD_CREATE_DETACHED);
+
+    if (nDaemons > CM_MAX_DAEMONS)
+        cm_nDaemons = CM_MAX_DAEMONS;
+    else if (nDaemons < CM_MIN_DAEMONS)
+        cm_nDaemons = CM_MIN_DAEMONS;
+    else
+        cm_nDaemons = (nDaemons / 2) * 2; /* must be divisible by two */
 
     if (osi_Once(&once)) {
-        lock_InitializeRWLock(&cm_daemonLock, "cm_daemonLock",
-                               LOCK_HIERARCHY_DAEMON_GLOBAL);
-        osi_EndOnce(&once);
-
 	/* creating IP Address Change monitor daemon */
-        phandle = thrd_Create((SecurityAttrib) 0, 0,
-                               (ThreadFunc) cm_IpAddrDaemon, 0, 0, &pid, "cm_IpAddrDaemon");
-        osi_assertx(phandle != NULL, "cm_IpAddrDaemon thread creation failure");
-        thrd_CloseHandle(phandle);
+        pstatus = pthread_create(&phandle, &tattr, cm_IpAddrDaemon, 0);
+        osi_assertx(pstatus == 0, "cm_IpAddrDaemon thread creation failure");
 
         /* creating pinging daemon */
-        phandle = thrd_Create((SecurityAttrib) 0, 0,
-                               (ThreadFunc) cm_Daemon, 0, 0, &pid, "cm_Daemon");
-        osi_assertx(phandle != NULL, "cm_Daemon thread creation failure");
-        thrd_CloseHandle(phandle);
+        pstatus = pthread_create(&phandle, &tattr, cm_Daemon, 0);
+        osi_assertx(pstatus == 0, "cm_Daemon thread creation failure");
+
+        pstatus = pthread_create(&phandle, &tattr, cm_LockDaemon, 0);
+        osi_assertx(pstatus == 0, "cm_LockDaemon thread creation failure");
+
+        cm_daemons = malloc(nDaemons * sizeof(daemon_state_t));
 
 	for(i=0; i < cm_nDaemons; i++) {
-            phandle = thrd_Create((SecurityAttrib) 0, 0,
-                                   (ThreadFunc) cm_BkgDaemon, (LPVOID)(LONG_PTR)i, 0, &pid,
-                                   "cm_BkgDaemon");
-            osi_assertx(phandle != NULL, "cm_BkgDaemon thread creation failure");
-            thrd_CloseHandle(phandle);
+            lock_InitializeRWLock(&cm_daemons[i].lock, "cm_daemonLock",
+                                  LOCK_HIERARCHY_DAEMON_GLOBAL);
+            cm_daemons[i].head = cm_daemons[i].tail = NULL;
+            cm_daemons[i].queueCount=0;
+            cm_daemons[i].completeCount=0;
+            cm_daemons[i].retryCount=0;
+            cm_daemons[i].errorCount=0;
+            pstatus = pthread_create(&phandle, &tattr, cm_BkgDaemon, (LPVOID)(LONG_PTR)i);
+            osi_assertx(pstatus == 0, "cm_BkgDaemon thread creation failure");
         }
+        osi_EndOnce(&once);
     }
+
+    pthread_attr_destroy(&tattr);
 }

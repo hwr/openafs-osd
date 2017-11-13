@@ -10,22 +10,17 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
+#include <afs/procmgmt.h>
+#include <roken.h>
 
-#include <sys/types.h>
-#include <errno.h>
-#include <sys/stat.h>
 #include <lwp.h>
 #include <rx/rx.h>
-#ifdef AFS_NT40_ENV
-#include <io.h>
-#endif
-
-#include <string.h>
-#include <stdlib.h>
 
 #include <afs/afsutil.h>
-#include <afs/procmgmt.h>	/* signal(), kill(), wait(), etc. */
+#include <opr/queue.h>
+
 #include "bnode.h"
+#include "bnode_internal.h"
 #include "bosprototypes.h"
 
 extern char *DoPidFiles;
@@ -119,8 +114,7 @@ ez_create(char *ainstance, char *acommand, char *unused1, char *unused2,
 	return NULL;
     }
 
-    te = (struct ezbnode *)malloc(sizeof(struct ezbnode));
-    memset(te, 0, sizeof(struct ezbnode));
+    te = calloc(1, sizeof(struct ezbnode));
     if (bnode_InitBnode((struct bnode *)te, &ezbnode_ops, ainstance) != 0) {
 	free(te);
 	return NULL;
@@ -192,14 +186,9 @@ ez_setstat(struct bnode *bn, afs_int32 astatus)
 	return 0;
     } else if (astatus == BSTAT_SHUTDOWN && abnode->running) {
 	/* start shutdown */
-        bnode_SetTimeout((struct bnode *)abnode, SDTIME);
-        if (!strcmp(abnode->b.type->name, "osd"))  {
-            /* Allow rxosd to complete running RPCs */
-            bnode_StopProc(abnode->proc, SIGQUIT);
-            bnode_SetTimeout((struct bnode *)abnode, 5 * SDTIME);
-	} 
 	bnode_StopProc(abnode->proc, SIGTERM);
 	abnode->waitingForShutdown = 1;
+	bnode_SetTimeout((struct bnode *)abnode, SDTIME);
 	return 0;
     }
     return 0;
