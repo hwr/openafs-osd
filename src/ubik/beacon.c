@@ -651,6 +651,7 @@ ubeacon_Interact(void *dummy)
 
 	/* now decide if we have enough votes to become sync site.
 	 * Note that we can still get enough votes even if we didn't for ourself. */
+	becameSyncSite = 0;
 	if (yesVotes > nServers) {	/* yesVotes is bumped by 2 or 3 for each site */
 	    UBIK_BEACON_LOCK;
 	    if (!beacon_globals.ubik_amSyncSite) {
