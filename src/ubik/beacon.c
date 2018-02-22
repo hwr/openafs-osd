@@ -33,6 +33,7 @@
 #include "ubik_int.h"
 
 extern int haveAlwaysSyncSite;
+int otherSyncSiteSeen = 0;
 
 /* These global variables were used to set the function to use to initialise
  * the client security layer. They are retained for backwards compatiblity with
@@ -45,7 +46,7 @@ void *ubik_CRXSecurityRock;
 
 /*! \name statics used to determine if we're the sync site */
 static int nServers;		/*!< total number of servers */
-static char amIMagic = 0;	/*!< is this host the magic host */
+char amIMagic = 0;		/*!< is this host the magic host */
 char amIClone = 0;		/*!< is this a clone which doesn't vote */
 static char ubik_singleServer = 0;
 /*\}*/
@@ -127,7 +128,7 @@ amSyncSite(void)
 	now = FT_ApproxTime();
 	if (beacon_globals.syncSiteUntil <= now) {	/* if my votes have expired, say so */
 	    if (beacon_globals.ubik_amSyncSite)
-		ubik_dprint("Ubik: I am no longer the sync site\n");
+		ubik_print("Ubik: I am no longer the sync site (timed out)\n");
 	    beacon_globals.ubik_amSyncSite = 0;
 	    beacon_globals.ubik_syncSiteAdvertised = 0;
 	    rcode = 0;
@@ -471,6 +472,7 @@ ubeacon_Interact(void *dummy)
     lastWakeupTime = 0;		/* keep track of time we last started a vote collection */
     while (1) {
 	struct ubik_db_state buffer[MAX_UBIK_DBASES];
+	int nDeadServers = 0;
 
 	/* don't wakeup more than every POLLTIME seconds */
 	temp = (lastWakeupTime + POLLTIME) - FT_ApproxTime();
@@ -508,6 +510,8 @@ ubeacon_Interact(void *dummy)
 		servers[i] = ts;
 		connections[i++] = ts->vote_rxcid;
 	    }
+	    if (!ts->up)
+		nDeadServers++;
 	}
 	UBIK_ADDR_UNLOCK;
 	UBIK_BEACON_UNLOCK;
@@ -602,6 +606,7 @@ ubeacon_Interact(void *dummy)
 			ubik_dprint("token error %d from host %s\n",
 				    code, afs_inet_ntoa_r(ts->addr[0], hoststr));
 			ts->up = 0;
+			nDeadServers++;
 			ts->beaconSinceDown = 0;
 			urecovery_LostServer(ts);
 		    } else {
@@ -634,8 +639,8 @@ ubeacon_Interact(void *dummy)
 		UBIK_BEACON_UNLOCK;
 	    }
 	    multi_End;
-	} else if (haveAlwaysSyncSite)
-	    yesVotes = 1; /* Let's become sync site if all other servers are switched off */
+	} 
+
 	/* now call our own voter module to see if we'll vote for ourself.  Note that
 	 * the same restrictions apply for our voting for ourself as for our voting
 	 * for anyone else. */
@@ -648,14 +653,19 @@ ubeacon_Interact(void *dummy)
 	    if (i < oldestYesVote)
 		oldestYesVote = i;
 	}
-
+	
+	if (otherSyncSiteSeen)
+	    yesVotes--;
 	/* now decide if we have enough votes to become sync site.
 	 * Note that we can still get enough votes even if we didn't for ourself. */
 	becameSyncSite = 0;
-	if (yesVotes > nServers) {	/* yesVotes is bumped by 2 or 3 for each site */
+        ubik_print("beacon: %d yesVotes, %d servers, %d of them dead.\n", 
+			yesVotes, nServers, nDeadServers);
+	if ((yesVotes > nServers) || /* yesVotes is bumped by 2 or 3 for each site */
+		(haveAlwaysSyncSite && (yesVotes > (nServers - nDeadServers)))) {
 	    UBIK_BEACON_LOCK;
 	    if (!beacon_globals.ubik_amSyncSite) {
-		ubik_dprint("Ubik: I am the sync site\n");
+		ubik_print("Ubik: I became the sync site\n");
 		/* Defer actually changing any variables until we can take the
 		 * DB lock (which is before the beacon lock in the lock order). */
 		becameSyncSite = 1;
@@ -669,8 +679,9 @@ ubeacon_Interact(void *dummy)
 	} else {
 	    UBIK_BEACON_LOCK;
 	    if (beacon_globals.ubik_amSyncSite)
-		ubik_dprint("Ubik: I am no longer the sync site\n");
+		ubik_print("Ubik: I am no longer the sync site\n");
 	    beacon_globals.ubik_amSyncSite = 0;
+	    otherSyncSiteSeen = 0;
 	    beacon_globals.ubik_syncSiteAdvertised = 0;
 	    UBIK_BEACON_UNLOCK;
 	    DBHOLD(ubik_dbase[0]);

@@ -1126,6 +1126,10 @@ DoSalvage(struct rx_connection * aconn, char * aparm1, char * aparm2,
 	}
     } else {
 	/* partition salvage */
+	if (dafs) {
+	    fprintf(stderr, "bos: dasalvager not supported presently.\n");
+	    return EINVAL;
+        }
 	strncpy(tbuffer, AFSDIR_CANONICAL_SERVER_SALVAGER_FILEPATH, BOZO_BSSIZE);
 	if ((strlen(tbuffer) + 4 + strlen(partName) + 1) > BOZO_BSSIZE) {
 	    fprintf(stderr, "bos: command line too big\n");

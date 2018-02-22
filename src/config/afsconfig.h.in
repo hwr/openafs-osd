@@ -495,6 +495,9 @@
 /* Define if your kernel has the kernel_setsockopt function */
 #undef HAVE_LINUX_KERNEL_SETSOCKOPT
 
+/* Define if your kernel has the kernel_write function */
+#undef HAVE_LINUX_KERNEL_WRITE
+
 /* Define if your kernel has linux/key-type.h */
 #undef HAVE_LINUX_KEY_TYPE_H
 
@@ -576,8 +579,8 @@
 /* Define if your kernel has the zero_user_segments function */
 #undef HAVE_LINUX_ZERO_USER_SEGMENTS
 
-/* Define if your kernel has the __vfs_read function */
-#undef HAVE_LINUX___VFS_READ
+/* Define if your kernel has the __vfs_write function */
+#undef HAVE_LINUX___VFS_WRITE
 
 /* Define to 1 if you have the `localtime_r' function. */
 #undef HAVE_LOCALTIME_R
@@ -1065,6 +1068,9 @@
 /* define if irix has memcpy and friends */
 #undef IRIX_HAS_MEM_FUNCS
 
+/* define if your kernel_read has offset as the last argument */
+#undef KERNEL_READ_OFFSET_IS_LAST
+
 /* define if key_alloc takes credentials */
 #undef KEY_ALLOC_NEEDS_CRED
 
@@ -1129,6 +1135,9 @@
 
 /* Define to the version of this package. */
 #undef PACKAGE_VERSION
+
+/* define if your kernel uses 2 arguments for pagevec_init */
+#undef PAGEVEC_INIT_COLD_ARG
 
 /* Define to const if PAM uses const in pam_get_item, empty otherwise. */
 #undef PAM_CONST
@@ -1443,7 +1452,7 @@
  * Always use 64-bit file offsets for UKERNEL code. Needed for UKERNEL stuff to
  * play nice with some other interfaces like FUSE. We technically only would
  * need to define this when building for such interfaces, but set it always to
- * try and reduce potential confusion. 
+ * try and reduce potential confusion.
  */
 # define _FILE_OFFSET_BITS 64
 # define AFS_CACHE_VNODE_PATH

@@ -325,7 +325,7 @@ UpdateCache(struct ubik_trans *trans, void *rock)
     /* now, if can't read, or header is wrong, write a new header */
     if (ubcode || vldbversion == 0) {
 	if (builddb) {
-	    VLog(0, ("Can't read VLDB header, re-initialising...\n"));
+	    VLog(0, ("Can't read VLDB header, (ubcode == %d) re-initialising...\n", ubcode));
 
 	    /* try to write a good header */
 	    /* The read cache will be sync'ed to this new header

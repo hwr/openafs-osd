@@ -79,7 +79,7 @@ struct ubik_dbase *ubik_dbase[MAX_UBIK_DBASES];
 struct ubik_stats ubik_stats;
 afs_uint32 ubik_host[UBIK_MAX_INTERFACE_ADDR];
 afs_int32 urecovery_state[MAX_UBIK_DBASES];
-int (*ubik_SyncWriterCacheProc) (void);
+int (*ubik_SyncWriterCacheProc)(void);
 struct ubik_server *ubik_servers;
 short ubik_callPortal;
 
@@ -110,6 +110,7 @@ static void *securityRock = NULL;
 struct version_data version_globals;
 
 #define	CStampVersion	    1	/* meaning set ts->version */
+#define	CCheckSyncAdvertised	2	/* check if the remote knows we are the sync-site */
 
 static_inline struct rx_connection *
 Quorum_StartIO(struct ubik_trans *atrans, struct ubik_server *as)
@@ -185,7 +186,10 @@ ContactQuorum_iterate(struct ubik_trans *atrans, int aflags, struct ubik_server 
     if (!(*ts))
 	return 1;
     UBIK_BEACON_LOCK;
-    if (!(*ts)->up || !(*ts)->currentDB[i]) {
+    if (!(*ts)->up || !(*ts)->currentDB[i] ||
+	/* do not call DISK_Begin until we know that lastYesState is set on the
+	 * remote in question; otherwise, DISK_Begin will fail. */
+	((aflags & CCheckSyncAdvertised) && !((*ts)->beaconSinceDown && (*ts)->lastVote))) {
 	UBIK_BEACON_UNLOCK;
 	(*ts)->currentDB[i] = 0;	/* db is no longer current; we just missed an update */
 	return 0;		/* not up-to-date, don't bother.  NULL conn will tell caller not to use */
@@ -651,7 +655,7 @@ BeginTrans(struct ubik_dbase *dbase, afs_int32 transMode,
     struct ubik_trans *tt;
     afs_int32 code;
 
-    if (readAny > 1 && ubik_SyncWriterCacheProc == NULL) {
+    if (readAny > 1 && dbase->dbase_number == 0 && ubik_SyncWriterCacheProc == NULL) {
 	/* it's not safe to use ubik_BeginTransReadAnyWrite without a
 	 * cache-syncing function; fall back to ubik_BeginTransReadAny,
 	 * which is safe but slower */
@@ -725,7 +729,7 @@ BeginTrans(struct ubik_dbase *dbase, afs_int32 transMode,
 
     if (transMode == UBIK_WRITETRANS) {
 	/* next try to start transaction on appropriate number of machines */
-	code = ContactQuorum_NoArguments(DISK_Begin, tt, 0);
+	code = ContactQuorum_NoArguments(DISK_Begin, tt, CCheckSyncAdvertised);
 	if (code) {
 	    /* we must abort the operation */
 	    udisk_abort(tt);
@@ -830,7 +834,7 @@ static void
 WritebackApplicationCache(struct ubik_dbase *dbase)
 {
     int code = 0;
-    if (ubik_SyncWriterCacheProc) {
+    if (ubik_SyncWriterCacheProc && dbase->dbase_number == 0) {
 	code = ubik_SyncWriterCacheProc();
     }
     if (code) {

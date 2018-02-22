@@ -2467,15 +2467,11 @@ SalvageVolumeHeaderFile(struct SalvInfo *salvinfo, struct InodeSummary *isp,
 			struct init_salv_outputs output = {
 			    &osdvol
 			};
-#ifdef AFS_PTHREAD_ENV
 			code = load_libafsosd("init_salv_afsosd", (void *)&input,
 						(void *)&output);
-#else
-			code = ENOENT;
-#endif
 		    }
 		    if (code) {
-			Log("Couldn't load libafsosd.so for OSD volume %" AFS_VOLID_FMT ", code was %d, aborting\n",
+			Log("Couldn't load libdafsosd.so for OSD volume %" AFS_VOLID_FMT ", code was %d, aborting\n",
 					afs_printable_VolumeId_lu(isp->volumeId), code);
 			return -1;
 		    } else
@@ -2784,7 +2780,7 @@ SalvageIndex(struct SalvInfo *salvinfo, Inode ino, VnodeClass class, int RW,
 	    } else {
 		osdEntryLength = (osdvol->op_salv_GetOsdEntryLength)
 						(osdMetadataFd, &osdrock);
-		if (!osdrock) {
+		if (!osdrock && salvinfo->VolInfo.osdPolicy) {
 		    Log("SalvageIndex: couldn't get OSD metadata entry length for volume %" AFS_VOLID_FMT "\n",
 		    afs_printable_VolumeId_lu(volSummary->header.id));
 		    return EIO;

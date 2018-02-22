@@ -286,6 +286,8 @@ uphys_setlabel(struct ubik_dbase *adbase, afs_int32 afile,
     thdr.version.counter = htonl(aversion->counter);
     thdr.magic = htonl(UBIK_MAGIC);
     thdr.size = htons(HDRSIZE);
+    ubik_dprint("setlabel %s.DB%s %u.%u\n", adbase->pathName, afile<0 ? "SYS1": "0", 
+		aversion->epoch, aversion->counter);
     code = write(fd, &thdr, sizeof(thdr));
     fsync(fd);			/* preserve over crash */
     uphys_close(fd);

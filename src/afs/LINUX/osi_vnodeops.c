@@ -825,7 +825,7 @@ struct file_operations afs_file_fops = {
 #ifdef STRUCT_FILE_OPERATIONS_HAS_READ_ITER
   .read_iter =	afs_linux_read_iter,
   .write_iter =	afs_linux_write_iter,
-# if !defined(HAVE_LINUX___VFS_READ)
+# if !defined(HAVE_LINUX___VFS_WRITE) && !defined(HAVE_LINUX_KERNEL_WRITE)
   .read =	new_sync_read,
   .write =	new_sync_write,
 # endif
@@ -890,11 +890,7 @@ canonical_dentry(struct inode *ip)
 
     d_prune_aliases(ip);
 
-# ifdef HAVE_DCACHE_LOCK
-    spin_lock(&dcache_lock);
-# else
-    spin_lock(&ip->i_lock);
-# endif
+    afs_d_alias_lock(ip);
 
 #if defined(D_ALIAS_IS_HLIST)
 # if defined(HLIST_ITERATOR_NO_NODE)
@@ -921,17 +917,10 @@ canonical_dentry(struct inode *ip)
 
     vcp->target_link = ret;
 
-# ifdef HAVE_DCACHE_LOCK
     if (ret) {
-	dget_locked(ret);
+	afs_linux_dget(ret);
     }
-    spin_unlock(&dcache_lock);
-# else
-    if (ret) {
-	dget(ret);
-    }
-    spin_unlock(&ip->i_lock);
-# endif
+    afs_d_alias_unlock(ip);
 
     return ret;
 }
@@ -1136,7 +1125,30 @@ parent_vcache_dv(struct inode *inode, cred_t *credp)
     return hgetlo(pvcp->f.m.DataVersion);
 }
 
-#ifdef D_SPLICE_ALIAS_RACE
+#ifndef D_SPLICE_ALIAS_RACE
+
+static inline void dentry_race_lock(void) {}
+static inline void dentry_race_unlock(void) {}
+
+#else
+
+# if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,16)
+static DEFINE_MUTEX(dentry_race_sem);
+# else
+static DECLARE_MUTEX(dentry_race_sem);
+# endif
+
+static inline void
+dentry_race_lock(void)
+{
+    mutex_lock(&dentry_race_sem);
+}
+static inline void
+dentry_race_unlock(void)
+{
+    mutex_unlock(&dentry_race_sem);
+}
+
 /* Leave some trace that this code is enabled; otherwise it's pretty hard to
  * tell. */
 static __attribute__((used)) const char dentry_race_marker[] = "d_splice_alias race workaround enabled";
@@ -1146,8 +1158,6 @@ check_dentry_race(struct dentry *dp)
 {
     int raced = 0;
     if (!dp->d_inode) {
-        struct dentry *parent = dget_parent(dp);
-
         /* In Linux, before commit 4919c5e45a91b5db5a41695fe0357fbdff0d5767,
          * d_splice_alias can momentarily hash a dentry before it's fully
          * populated. This only happens for a moment, since it's unhashed again
@@ -1155,20 +1165,17 @@ check_dentry_race(struct dentry *dp)
          * __d_lookup, and then given to us.
          *
          * So check if the dentry is unhashed; if it is, then the dentry is not
-         * valid. We lock the parent inode to ensure that d_splice_alias is no
-         * longer running (the inode mutex will be held during
-         * afs_linux_lookup). Locking d_lock is required to check the dentry's
+         * valid. We lock dentry_race_lock() to ensure that d_splice_alias is
+         * no longer running. Locking d_lock is required to check the dentry's
          * flags, so lock that, too.
          */
-        afs_linux_lock_inode(parent->d_inode);
+	dentry_race_lock();
         spin_lock(&dp->d_lock);
         if (d_unhashed(dp)) {
             raced = 1;
         }
         spin_unlock(&dp->d_lock);
-        afs_linux_unlock_inode(parent->d_inode);
-
-        dput(parent);
+        dentry_race_unlock();
     }
     return raced;
 }
@@ -1647,7 +1654,9 @@ afs_linux_lookup(struct inode *dip, struct dentry *dp)
 	igrab(ip);
 #endif
 
+    dentry_race_lock();
     newdp = d_splice_alias(ip, dp);
+    dentry_race_unlock();
 
  done:
     crfree(credp);
@@ -2077,7 +2086,7 @@ afs_linux_read_cache(struct file *cachefp, struct page *page,
         cachepage = find_get_page(cachemapping, pageindex);
 	if (!cachepage) {
 	    if (!newpage)
-		newpage = page_cache_alloc_cold(cachemapping);
+		newpage = page_cache_alloc(cachemapping);
 	    if (!newpage) {
 		code = -ENOMEM;
 		goto out;
@@ -2235,7 +2244,11 @@ afs_linux_readpage_fastpath(struct file *fp, struct page *pp, int *codep)
 	AFS_GLOCK();
 	goto out;
     }
+#if defined(PAGEVEC_INIT_COLD_ARG)
     pagevec_init(&lrupv, 0);
+#else
+    pagevec_init(&lrupv);
+#endif
 
     code = afs_linux_read_cache(cacheFp, pp, tdc->f.chunk, &lrupv, NULL);
 
@@ -2395,7 +2408,11 @@ afs_linux_bypass_readpages(struct file *fp, struct address_space *mapping,
     ancr->offset = auio->uio_offset;
     ancr->length = auio->uio_resid;
 
+#if defined(PAGEVEC_INIT_COLD_ARG)
     pagevec_init(&lrupv, 0);
+#else
+    pagevec_init(&lrupv);
+#endif
 
     for(page_ix = 0; page_ix < num_pages; ++page_ix) {
 
@@ -2527,14 +2544,16 @@ afs_linux_bypass_readpage(struct file *fp, struct page *pp)
 
 static inline int
 afs_linux_can_bypass(struct inode *ip) {
-
+    struct vcache *avc = VTOAFS(ip);
+    if (avc->execsOrWriters)
+	return 0;
     switch(cache_bypass_strategy) {
 	case NEVER_BYPASS_CACHE:
 	    return 0;
 	case ALWAYS_BYPASS_CACHE:
 	    return 1;
 	case LARGE_FILES_BYPASS_CACHE:
-	    if (i_size_read(ip) > cache_bypass_threshold)
+	    if (cache_bypass_threshold >= 0 && i_size_read(ip) > cache_bypass_threshold)
 		return 1;
 	default:
 	    return 0;
@@ -2616,7 +2635,11 @@ afs_linux_readpages(struct file *fp, struct address_space *mapping,
     task = afs_pagecopy_init_task();
 
     tdc = NULL;
+#if defined(PAGEVEC_INIT_COLD_ARG)
     pagevec_init(&lrupv, 0);
+#else
+    pagevec_init(&lrupv);
+#endif
     for (page_idx = 0; page_idx < num_pages; page_idx++) {
 	struct page *page = list_entry(page_list->prev, struct page, lru);
 	list_del(&page->lru);

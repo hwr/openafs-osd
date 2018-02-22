@@ -62,6 +62,8 @@
  */
 int ubikPrimaryAddrOnly;
 extern int haveAlwaysSyncSite;
+extern char amIMagic;
+extern int otherSyncSiteSeen;
 int
 urecovery_ResetState(void)
 {
@@ -456,7 +458,7 @@ urecovery_Interact(void *dummy)
     afs_int32 lastProbeTime;
     /* if we're the sync site, the best db version we've found yet */
     static struct ubik_version bestDBVersion[MAX_UBIK_DBASES];
-    struct ubik_version tversion;
+    struct ubik_version tversion, keepVersion;
     struct timeval tv;
     int length, tlen, offset, file, nbytes;
     struct rx_call *rxcall;
@@ -616,7 +618,7 @@ main_continue:
 	    /* If we, the sync site, do not have the best db version, then
 	     * go and get it from the server that does.
 	     */
-	    if ((urecovery_state[i] & UBIK_RECHAVEDB) || !bestServer) {
+	    if ((urecovery_state[i] & UBIK_RECHAVEDB) || !bestServer[i]) {
 	        urecovery_state[i] |= UBIK_RECHAVEDB;
 	    } else {
 	        /* we don't have the best version; we should fetch it. */
@@ -628,8 +630,9 @@ main_continue:
 	        UBIK_ADDR_LOCK;
 	        rxcall = rx_NewCall(bestServer[i]->disk_rxcid);
 
-	        ubik_print("Ubik: Synchronize database[%u] with server %s\n",
-		           i, afs_inet_ntoa_r(bestServer[i]->addr[0], hoststr));
+	        ubik_print("Ubik: Synchronize database %s with server %s\n",
+		           ubik_dbase[i]->pathName, 
+			   afs_inet_ntoa_r(bestServer[i]->addr[0], hoststr));
 	        UBIK_ADDR_UNLOCK;
 
 	        code = StartDISK_GetFile(rxcall, file, i);
@@ -647,6 +650,7 @@ main_continue:
 
 	        /* give invalid label during file transit */
 	        UBIK_VERSION_LOCK;
+                keepVersion = ubik_dbase[i]->version;
 	        tversion.epoch = 0;
 	        code = (*ubik_dbase[i]->setlabel) (ubik_dbase[i], file, &tversion);
 	        UBIK_VERSION_UNLOCK;
@@ -741,14 +745,26 @@ main_continue:
 		     * We will effectively invalidate the old data forever now.
 		     * Unclear if we *should* but we do.
 		     */
+		    /* better not !
 		    UBIK_VERSION_LOCK;
 		    ubik_dbase[i]->version.epoch = 0;
 		    ubik_dbase[i]->version.counter = 0;
 		    UBIK_VERSION_UNLOCK;
+		     */
 		    ubik_print("Ubik: Synchronize database[%u] failed (error = %d)\n",
 			       i, code);
+	            UBIK_VERSION_LOCK;
+		    (*ubik_dbase[i]->open) (ubik_dbase[i], file);
+		    memcpy(&ubik_dbase[i]->version, &keepVersion,
+		           sizeof(struct ubik_version));
+	            code = (*ubik_dbase[i]->setlabel) (ubik_dbase[i], file, &keepVersion);
+	            UBIK_VERSION_UNLOCK;
+		    ubik_print("Ubik: Synchronize database[%u] old database reactivated.\n");
 	        } else {
-		    ubik_print("Ubik: Synchronize database[%u] completed\n", i);
+		    ubik_print("Ubik: Synchronize %s.%u.%u from %s completed\n",
+				ubik_dbase[i]->pathName, ubik_dbase[i]->version.epoch, 
+				ubik_dbase[i]->version.counter, 
+				afs_inet_ntoa_r(bestServer[i]->addr[0], hoststr));
 		    urecovery_state[i] |= UBIK_RECHAVEDB;
 	        }
 	        udisk_Invalidate(ubik_dbase[i], 0);	/* data has changed */
@@ -883,8 +899,12 @@ main_continue:
 			    /* we set a new file, process its header */
 			    ts->version[i] = ubik_dbase[i]->version;
 			    ts->currentDB[i] = 1;
-		        } else
+		        } else {
 			    dbok = 0;
+			    if (code == USYNC && haveAlwaysSyncSite && !amIMagic) {
+				otherSyncSiteSeen = 1;
+			    }
+			}
 		    } else {
 		        /* mark file up to date */
 		        ts->currentDB[i] = 1;

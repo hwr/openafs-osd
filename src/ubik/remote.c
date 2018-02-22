@@ -30,6 +30,8 @@
 #include "ubik.h"
 #include "ubik_int.h"
 
+extern int haveAlwaysSyncSite;
+extern char amIMagic;
 static void printServerInfo(void);
 
 /*! \file
@@ -534,6 +536,8 @@ SDISK_SendFile(struct rx_call *rxcall, afs_int32 file, afs_int32 index,
     /* send the file back to the requester */
 
     dbase = ubik_dbase[index];
+    memcpy(&tversion, &dbase->version, sizeof(struct ubik_version));
+    epoch = tversion.epoch;	/* Keep th current version to restore it later */ 
     pbuffer[0] = '\0';
 
     if ((code = ubik_CheckAuth(rxcall))) {
@@ -558,6 +562,7 @@ SDISK_SendFile(struct rx_call *rxcall, afs_int32 file, afs_int32 index,
     if (offset && offset != otherHost) {
 	/* we *know* this is the wrong guy */
 	code = USYNC;
+	ubik_dprint_25("offset = 0x%x, otherHost = 0x%x\n", offset, otherHost);
 	ubik_dprint_25("USYNC %s:%u\n", __FILE__, __LINE__);
 	DBHOLD(dbase);
 	goto failed;
@@ -568,12 +573,12 @@ SDISK_SendFile(struct rx_call *rxcall, afs_int32 file, afs_int32 index,
     /* abort any active trans that may scribble over the database */
     urecovery_AbortAll(dbase);
 
-    ubik_print("Ubik: Synchronize database %s with server %s\n",
+    ubik_print("Ubik(remote): Synchronize database %s with server %s\n",
 	       dbase->pathName, afs_inet_ntoa_r(otherHost, hoststr));
 
     offset = 0;
     UBIK_VERSION_LOCK;
-    epoch = tversion.epoch = 0;		/* start off by labelling in-transit db as invalid */
+    tversion.epoch = 0;		/* start off by labelling in-transit db as invalid */
     (*dbase->setlabel) (dbase, file, &tversion);	/* setlabel does sync */
     snprintf(pbuffer, sizeof(pbuffer), "%s.DB%s%d.TMP",
 	     dbase->pathName, (file<0)?"SYS":"",
@@ -668,10 +673,16 @@ failed:
 	    UBIK_VERSION_UNLOCK;
 	}
 	ubik_print
-	    ("Ubik: Synchronize database %s with server %s failed (error = %d)\n",
+	    ("Ubik(remote): Synchronize database %s with server %s failed (error = %d)\n",
 	     dbase->pathName, afs_inet_ntoa_r(otherHost, hoststr), code);
+	if (code = USYNC && haveAlwaysSyncSite) {
+	     /* Prabably another dbserver claims to be sync site */
+	   if (!amIMagic)     
+	 	ubik_print("ubik (remote): there seems to be a better sync site.\n");
+	}
     } else {
-	ubik_print("Ubik: Synchronize database %s completed\n", dbase->pathName);
+	uvote_set_dbVersion(*avers, index);
+	ubik_print("Ubik(remote): Synchronize database %s completed\n", dbase->pathName);
     }
     DBRELE(dbase);
     return code;
