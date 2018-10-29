@@ -213,6 +213,7 @@ MainCommand(struct cmd_syndesc *as, void *arock)
     }
 
     if (version_flag) {
+        memset(version, 0, sizeof(version));
 
 	code = rx_GetServerVersion(s, host, port, length, version);
 	if (code < 0) {
@@ -220,6 +221,7 @@ MainCommand(struct cmd_syndesc *as, void *arock)
 		   errno);
 	    exit(1);
 	}
+        version[sizeof(version) - 1] = '\0';
 	printf("AFS version: %s\n", version);
 	fflush(stdout);
 
@@ -407,9 +409,10 @@ MainCommand(struct cmd_syndesc *as, void *arock)
 	    }
 	    printf("security index %d, ", tconn.securityIndex);
 	    if (tconn.type == RX_CLIENT_CONNECTION)
-		printf("client conn\n");
+		printf("client conn to service %d\n", ntohl(tconn.sparel[0]));
 	    else
-		printf("server conn\n");
+		printf("server conn for service %d (%d/%d)\n", ntohl(tconn.sparel[0]),
+			ntohl(tconn.sparel[1]), ntohl(tconn.sparel[2]));
 
 	    if (withSecStats) {
 		switch ((int)tconn.secStats.type) {
@@ -520,6 +523,9 @@ MainCommand(struct cmd_syndesc *as, void *arock)
 		    printf(", has_input_packets");
 		if (tconn.callOther[j] & RX_OTHER_OUT)
 		    printf(", has_output_packets");
+		/* We abuse the spare fields for the moment */
+		if (tconn.sparel[j+4])
+		    printf(", error %d", ntohl(tconn.sparel[j+4]));
 		printf("\n");
 	    }
 	}
