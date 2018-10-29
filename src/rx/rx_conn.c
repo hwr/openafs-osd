@@ -124,7 +124,8 @@ rx_ConnError(struct rx_connection *conn)
 
 int
 rx_decryptRxosdCAP(afs_uint32 cid, afs_uint32 epoch, void *derivationConstant,
-                  struct rx_opaque *in, struct rx_opaque *out)
+                  struct rx_opaque *in, struct rx_opaque *out, 
+		  afs_uint32 *fs_host, afs_uint16 *fs_port)
 {
     afs_int32 i;
     struct rx_connection *tc;
@@ -142,6 +143,10 @@ rx_decryptRxosdCAP(afs_uint32 cid, afs_uint32 epoch, void *derivationConstant,
 	    }
 	    (*(so)->ops->op_EncryptDecrypt)(tc, derivationConstant, in, out,
 						rx_securityDecrypt);
+	    if (fs_host)
+		*fs_host = rx_HostOf(rx_PeerOf(tc));
+	    if (fs_port)
+		*fs_port = rx_PortOf(rx_PeerOf(tc));
 	    MUTEX_EXIT(&tc->conn_data_lock);
 	    return 0;
 	}

@@ -2734,6 +2734,8 @@ afsd_syscall_populate(struct afsd_syscall_args *args, int syscall, va_list ap)
     case AFSOP_GO:
     case AFSOP_SET_RMTSYS_FLAG:
     case AFSOP_SET_INUMCALC:
+	params[0] = CAST_SYSCALL_PARAM((va_arg(ap, int)));
+	break;
     case AFSOP_SET_VOLUME_TTL:
 	params[0] = CAST_SYSCALL_PARAM((va_arg(ap, int)));
 	break;

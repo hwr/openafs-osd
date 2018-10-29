@@ -88,7 +88,7 @@ extern u_short rx_ServiceIdOf(struct rx_connection *);
 extern int rx_SecurityClassOf(struct rx_connection *);
 extern struct rx_service *rx_ServiceOf(struct rx_connection *);
 extern int rx_ConnError(struct rx_connection *);
-extern int rx_decryptRxosdCAP(afs_uint32, afs_uint32, void *, struct rx_opaque *, struct rx_opaque *);
+extern int rx_decryptRxosdCAP(afs_uint32, afs_uint32, void *, struct rx_opaque *, struct rx_opaque *, afs_uint32 *, afs_uint16 *);
 
 /* Call management */
 extern struct rx_connection *rx_ConnectionOf(struct rx_call *call);

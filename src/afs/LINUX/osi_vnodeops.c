@@ -53,6 +53,16 @@
 # define D_SPLICE_ALIAS_RACE
 #endif
 
+/* Workaround for RH 7.5 which introduced file operation iterate() but requires
+ * each file->f_mode to be marked with FMODE_KABI_ITERATE.  Instead OpenAFS will
+ * continue to use file opearation readdir() in this case.
+ */
+#if defined(STRUCT_FILE_OPERATIONS_HAS_ITERATE) && !defined(FMODE_KABI_ITERATE)
+#define USE_FOP_ITERATE 1
+#else
+#undef USE_FOP_ITERATE
+#endif
+
 int cachefs_noreadpage = 0;
 
 extern struct backing_dev_info *afs_backing_dev_info;
@@ -302,7 +312,7 @@ extern int BlobScan(struct dcache * afile, afs_int32 ablob, afs_int32 *ablobOut)
  * handling and use of bulkstats will need to be reflected here as well.
  */
 static int
-#if defined(STRUCT_FILE_OPERATIONS_HAS_ITERATE)
+#if defined(USE_FOP_ITERATE)
 afs_linux_readdir(struct file *fp, struct dir_context *ctx)
 #else
 afs_linux_readdir(struct file *fp, void *dirbuf, filldir_t filldir)
@@ -385,7 +395,7 @@ afs_linux_readdir(struct file *fp, void *dirbuf, filldir_t filldir)
      * takes an offset in units of blobs, rather than bytes.
      */
     code = 0;
-#if defined(STRUCT_FILE_OPERATIONS_HAS_ITERATE)
+#if defined(USE_FOP_ITERATE)
     offset = ctx->pos;
 #else
     offset = (int) fp->f_pos;
@@ -455,7 +465,7 @@ afs_linux_readdir(struct file *fp, void *dirbuf, filldir_t filldir)
 	     * holding the GLOCK.
 	     */
 	    AFS_GUNLOCK();
-#if defined(STRUCT_FILE_OPERATIONS_HAS_ITERATE)
+#if defined(USE_FOP_ITERATE)
 	    /* dir_emit returns a bool - true when it succeeds.
 	     * Inverse the result to fit with how we check "code" */
 	    code = !dir_emit(ctx, de->name, len, ino, type);
@@ -475,7 +485,7 @@ afs_linux_readdir(struct file *fp, void *dirbuf, filldir_t filldir)
     code = 0;
 
 unlock_out:
-#if defined(STRUCT_FILE_OPERATIONS_HAS_ITERATE)
+#if defined(USE_FOP_ITERATE)
     ctx->pos = (loff_t) offset;
 #else
     fp->f_pos = (loff_t) offset;
@@ -798,7 +808,7 @@ out:
 
 struct file_operations afs_dir_fops = {
   .read =	generic_read_dir,
-#if defined(STRUCT_FILE_OPERATIONS_HAS_ITERATE)
+#if defined(USE_FOP_ITERATE)
   .iterate =	afs_linux_readdir,
 #else
   .readdir =	afs_linux_readdir,
@@ -1169,7 +1179,7 @@ check_dentry_race(struct dentry *dp)
          * no longer running. Locking d_lock is required to check the dentry's
          * flags, so lock that, too.
          */
-	dentry_race_lock();
+        dentry_race_lock();
         spin_lock(&dp->d_lock);
         if (d_unhashed(dp)) {
             raced = 1;
@@ -2544,9 +2554,9 @@ afs_linux_bypass_readpage(struct file *fp, struct page *pp)
 
 static inline int
 afs_linux_can_bypass(struct inode *ip) {
-    struct vcache *avc = VTOAFS(ip);
+struct vcache *avc = VTOAFS(ip);
     if (avc->execsOrWriters)
-	return 0;
+       return 0;
     switch(cache_bypass_strategy) {
 	case NEVER_BYPASS_CACHE:
 	    return 0;
