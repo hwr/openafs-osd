@@ -381,7 +381,7 @@ struct util_ops_v0 {
     char *(*afs_inet_ntoa_r) (afs_uint32 addr, char *buf);
     afs_int32 (*afs_uuid_create) (afsUUID * uuid);
     afs_int64 (*flipbase64_to_int64) (char *s);
-    const char *(*getDirPath) (afsdir_id_t string_id);
+    const char *(*afs_getDirPath) (afsdir_id_t string_id);
     char *(*int64_to_flipbase64) (lb64_string_t s, afs_uint64 a);
     size_t (*strlcpy) (char *dst, const char *src, size_t siz);
     afs_int32 (*util_GetInt32) (char *as, afs_int32 * aval);
@@ -677,7 +677,7 @@ extern void SetDirHandle(DirHandle * dir, Vnode * vnode);
     util->afs_uuid_create = afs_uuid_create;
     util->flipbase64_to_int64 = flipbase64_to_int64;
     util->int64_to_flipbase64 = int64_to_flipbase64;
-    util->getDirPath = getDirPath;
+    util->afs_getDirPath = afs_getDirPath;
 #ifdef HAVE_STRLCPY
     util->strlcpy = strlcpy;
 #else
@@ -1764,9 +1764,9 @@ hostutil_GetHostByName(char *ahost)
 }
 
 const char *
-getDirPath(afsdir_id_t string_id)
+afs_getDirPath(afsdir_id_t string_id)
 {
-    return (util->getDirPath)(string_id);
+    return (util->afs_getDirPath)(string_id);
 }
 
 char *

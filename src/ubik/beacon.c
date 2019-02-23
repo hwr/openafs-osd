@@ -712,7 +712,7 @@ ubeacon_Interact(void *dummy)
 	    beacon_globals.ubik_amSyncSite = 1;
 	}
     }				/* while loop */
-    return NULL;
+    AFS_UNREACHED(return(NULL));
 }
 
 /*!

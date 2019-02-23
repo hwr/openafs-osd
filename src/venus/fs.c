@@ -763,21 +763,21 @@ AclToString(struct Acl *acl)
 {
     static char mydata[AFS_PIOCTL_MAXSIZE];
     char tstring[AFS_PIOCTL_MAXSIZE];
-    char dfsstring[30];
+    char dfsstring[AFS_PIOCTL_MAXSIZE];
     struct AclEntry *tp;
 
     if (acl->dfs)
-	sprintf(dfsstring, " dfs:%d %s", acl->dfs, acl->cell);
+	snprintf(dfsstring, sizeof(dfsstring), " dfs:%d %s", acl->dfs, acl->cell);
     else
 	dfsstring[0] = '\0';
-    sprintf(mydata, "%d%s\n%d\n", acl->nplus, dfsstring, acl->nminus);
+    snprintf(mydata, sizeof(mydata), "%d%s\n%d\n", acl->nplus, dfsstring, acl->nminus);
     for (tp = acl->pluslist; tp; tp = tp->next) {
-	sprintf(tstring, "%s %d\n", tp->name, tp->rights);
-	strcat(mydata, tstring);
+	snprintf(tstring, sizeof(tstring), "%s %d\n", tp->name, tp->rights);
+	strlcat(mydata, tstring, sizeof(mydata));
     }
     for (tp = acl->minuslist; tp; tp = tp->next) {
-	sprintf(tstring, "%s %d\n", tp->name, tp->rights);
-	strcat(mydata, tstring);
+	snprintf(tstring, sizeof(tstring), "%s %d\n", tp->name, tp->rights);
+	strlcat(mydata, tstring, sizeof(mydata));
     }
     return mydata;
 }
@@ -2402,7 +2402,7 @@ ListCellsCmd(struct cmd_syndesc *as, void *arock)
 		name = hostutil_GetNameByINet(addr);
 	    } else {
 		addr = ntohl(addr);
-		sprintf(tbuffer, "%d.%d.%d.%d", (addr >> 24) & 0xff,
+		snprintf(tbuffer, sizeof(tbuffer), "%d.%d.%d.%d", (addr >> 24) & 0xff,
 			(addr >> 16) & 0xff, (addr >> 8) & 0xff, addr & 0xff);
 		name = tbuffer;
 	    }
@@ -3343,7 +3343,7 @@ GetPrefCmd(struct cmd_syndesc *as, void *arock)
 		name = hostutil_GetNameByINet(out->servers[i].server.s_addr);
 	    } else {
 		addr = ntohl(out->servers[i].server.s_addr);
-		sprintf(tbuffer, "%d.%d.%d.%d", (addr >> 24) & 0xff,
+		snprintf(tbuffer, sizeof(tbuffer), "%d.%d.%d.%d", (addr >> 24) & 0xff,
 			(addr >> 16) & 0xff, (addr >> 8) & 0xff, addr & 0xff);
 		name = tbuffer;
 	    }
@@ -3631,6 +3631,7 @@ main(int argc, char **argv)
 {
     afs_int32 code;
     struct cmd_syndesc *ts;
+
     int libafsosd = 0;
 
 #ifdef AFS_PTHREAD_ENV
@@ -3874,12 +3875,11 @@ defect 3069
     cmd_AddParm(ts, "-path", CMD_LIST, CMD_OPTIONAL, "dir/file path");
 
     if (!libafsosd) {
-        ts = cmd_CreateSyntax("whereis", WhereIsCmd, NULL, 0, "list file's location");
-        cmd_AddParm(ts, "-path", CMD_LIST, CMD_OPTIONAL, "dir/file path");
+	ts = cmd_CreateSyntax("whereis", WhereIsCmd, NULL, 0, "list file's location");
+	cmd_AddParm(ts, "-path", CMD_LIST, CMD_OPTIONAL, "dir/file path");
 
-        cmd_CreateSyntax("wscell", WSCellCmd, NULL, 0, "list workstation's cell");
+	cmd_CreateSyntax("wscell", WSCellCmd, NULL, 0, "list workstation's cell");
     }
-
 /*
     ts = cmd_CreateSyntax("primarycell", PrimaryCellCmd, NULL, "obsolete (listed primary cell)");
 */
@@ -4065,9 +4065,9 @@ GetClientAddrsCmd(struct cmd_syndesc *as, void *arock)
 	    out = (struct sprefinfo *)blob.out;
 	    for (i = 0; i < out->num_servers; i++) {
 		afs_int32 addr;
-		char tbuffer[32];
+		char tbuffer[20];
 		addr = ntohl(out->servers[i].server.s_addr);
-		sprintf(tbuffer, "%d.%d.%d.%d", (addr >> 24) & 0xff,
+		snprintf(tbuffer, sizeof(tbuffer), "%d.%d.%d.%d", (addr >> 24) & 0xff,
 			(addr >> 16) & 0xff, (addr >> 8) & 0xff, addr & 0xff);
 		printf("%-50s\n", tbuffer);
 	    }

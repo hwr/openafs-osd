@@ -1,5 +1,111 @@
                        User-Visible OpenAFS Changes
 
+OpenAFS 1.8.2
+
+  All platforms
+
+    * Fix OPENAFS-SA-2018-002: information leakage in RPC output variables
+      Various RPC routines did not always initialize all output fields,
+      exposing memory contents to network attackers.  The relevant RPCs include
+      an AFSCB_ RPC, so cache managers are affected as well as servers.
+
+  All server platforms
+
+    * Fix OPENAFS-SA-2018-003: denial of service due to excess resource consumption
+      Various RPCs were defined as allowing unbounded arrays as input, allowing
+      an unauthenticated attacker to cause excess memory allocation and tie up
+      network bandwidth by sending (or claiming to send) large input arrays.
+
+    * Fix OPENAFS-SA-2018-001: unauthenticated volume operations via butc
+      On systems using the in-tree backup system, the butc process was running
+      with administrative credentials, but accepted incoming RPCs over
+      unauthenticated connections; these incoming RPCs in turn triggered
+      outgoing RPCs using the administrative credentials.  Unauthenticated
+      attackers could construct volue dumps containing arbitrary contents
+      and cause these dumps to be restored and overwrite arbitrary volume
+      contents; afterward, the backup database could be restored to its
+      initial state, hiding evidence of the unauthorized changes.
+
+      Running butc with -localauth now requires authenticated incoming
+      connections, and the backup utility makes authenticated connections to
+      the butc.  Audit capabilities have been added to the butc RPC handlers.
+      Command-line arguments are provided to retain the (insecure) historical
+      behavior until all systems have been upgraded.
+
+OpenAFS 1.8.1.1
+
+  Linux Clients
+
+    * Support for mainline kernel 4.18 and distribution kernels with backports
+      from it (13268)
+
+OpenAFS 1.8.1
+
+  All Platforms
+
+    * Improve the usability and consistency of the public API: install missing
+      headers, and add additional symbols to the export list for shared libraries.
+
+    * Improved Rx abort generation: use the proper serial number for an existing
+      connection if possible, and 0 otherwise (to improve debugging).
+
+    * Assorted minor fixes in response to static analysis of the codebase.
+
+    * Fix memory-safety error in XDR decoding of enumerated types.
+
+  All Server Platforms
+
+    * Fix reference counting error that could cause an assertion failure
+      in some workloads.
+
+    * vldb_check -fix will no longer corrupt the vldb when multiple MH blocks are present.
+
+    * Assorted cleanups and efficiency improvements in the ubik implementation.
+
+    * Return a valid InlineBulkStatus response in error cases.
+
+    * The fileserver now rejects invalid partition names when attaching partitions.
+
+  All Client Platforms
+
+    * Fix volume callbacks (e.g., when running 'vos release').
+
+    * Treat failure to obtain a DSlot as a hard error for that cache partition,
+      avoiding a flood of "disk cache read error in CacheItems" log messages,
+      and reducing the chance of subsequent panic.
+
+    * Improve error messages for invalid values with -volume-ttl.
+
+    * Remove useless error message:
+      "find_preferred_connection: no connection and !create".
+
+    * Avoid passing NULL to a kernel memory deallocator, which is not guaranteed
+      to be safe on all systems.
+
+  Linux
+
+    * Add support for 64-bit ARM clients ("arm64").
+
+    * Fix panic when cache bypass is enabled.
+
+    * Improve cache manager behavior when unable to open cache files.
+
+    * Improvements to the RPM packaging.
+
+    * Detect out-of-memory when using kernel pages for writing.
+
+  Solaris
+
+    * Fix various issues in the build process for recent Solaris versions.
+
+  MacOS
+
+    * Fix clients on OS X 10.13.
+
+  FreeBSD / NetBSD / OpenBSD
+
+    * Fix panic triggered during periodic cleanup operations and shutdown.
+
 OpenAFS 1.8.0
 
   All Platforms

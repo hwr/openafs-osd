@@ -1133,7 +1133,7 @@ afs_GetDSlotFromList(afs_int32 *indexp)
 {
     struct dcache *tdc;
 
-    for ( ; *indexp != NULLIDX; indexp = &afs_dvnextTbl[*indexp]) {
+    if (*indexp != NULLIDX) {
 	tdc = afs_GetUnusedDSlot(*indexp);
 	if (tdc) {
 	    osi_Assert(tdc->refCount == 1);
@@ -1188,6 +1188,7 @@ afs_FreeDiscardedDCache(void)
      * Truncate the element to reclaim its space
      */
     tfile = afs_CFileOpen(&tdc->f.inode);
+    osi_Assert(tfile);
     afs_CFileTruncate(tfile, 0);
     afs_CFileClose(tfile);
     afs_AdjustSize(tdc, 0);
@@ -1408,9 +1409,9 @@ afs_TryToSmush(struct vcache *avc, afs_ucred_t *acred, int sync)
 	    tdc = afs_GetValidDSlot(index);
 	    if (!tdc) {
 		/* afs_TryToSmush is best-effort; we may not actually discard
-		 * everything, so failure to discard a dcache due to an i/o
+		 * everything, so failure to discard dcaches due to an i/o
 		 * error is okay. */
-		continue;
+		break;
 	    }
 	    if (!FidCmp(&tdc->f.fid, &avc->f.fid)) {
 		if (sync) {
@@ -1501,13 +1502,14 @@ afs_DCacheMissingChunks(struct vcache *avc)
         i = afs_dvnextTbl[index];
         if (afs_indexUnique[index] == avc->f.fid.Fid.Unique) {
             tdc = afs_GetValidDSlot(index);
-	    if (tdc) {
-		if (!FidCmp(&tdc->f.fid, &avc->f.fid)) {
-		    totalChunks--;
-		}
-		ReleaseReadLock(&tdc->tlock);
-		afs_PutDCache(tdc);
+	    if (!tdc) {
+		break;
 	    }
+	    if (!FidCmp(&tdc->f.fid, &avc->f.fid)) {
+		totalChunks--;
+	    }
+	    ReleaseReadLock(&tdc->tlock);
+	    afs_PutDCache(tdc);
         }
     }
     ReleaseWriteLock(&afs_xdcache);
@@ -1560,7 +1562,8 @@ afs_FindDCache(struct vcache *avc, afs_size_t abyte)
 		/* afs_FindDCache is best-effort; we may not find the given
 		 * file/offset, so if we cannot find the given dcache due to
 		 * i/o errors, that is okay. */
-		continue;
+		index = NULLIDX;
+		break;
 	    }
 	    ReleaseReadLock(&tdc->tlock);
 	    if (!FidCmp(&tdc->f.fid, &avc->f.fid) && chunk == tdc->f.chunk) {
@@ -1619,6 +1622,7 @@ afs_AllocDiscardDSlot(afs_int32 lock)
     if ((lock & 2)) {
 	/* Truncate the chunk so zeroes get filled properly */
 	file = afs_CFileOpen(&tdc->f.inode);
+	osi_Assert(file);
 	afs_CFileTruncate(file, 0);
 	afs_CFileClose(file);
 	afs_AdjustSize(tdc, 0);
@@ -1906,12 +1910,13 @@ afs_GetDCache(struct vcache *avc, afs_size_t abyte,
 	    if (afs_indexUnique[index] == avc->f.fid.Fid.Unique) {
 		tdc = afs_GetValidDSlot(index);
 		if (!tdc) {
-		    /* we got an i/o error when trying to get the given dslot,
-		     * but do not bail out just yet; it is possible the dcache
-		     * we're looking for is elsewhere, so it doesn't matter if
-		     * we can't load this one. */
+                    /* we got an i/o error when trying to get the given dslot.
+                     * it's possible the dslot we're looking for is elsewhere,
+                     * but most likely the disk cache is currently unusable, so
+                     * all afs_GetValidDSlot calls will fail, so just bail out. */
 		    dslot_error = 1;
-		    continue;
+		    index = NULLIDX;
+		    break;
 		}
 		ReleaseReadLock(&tdc->tlock);
 		/*
@@ -1969,17 +1974,35 @@ afs_GetDCache(struct vcache *avc, afs_size_t abyte,
 	    }
 	    tdc = afs_AllocDCache(avc, chunk, aflags, NULL);
 	    if (!tdc) {
-		/* If we can't get space for 5 mins we give up and panic */
-		if (++downDCount > 300)
-		    osi_Panic("getdcache");
 		ReleaseWriteLock(&afs_xdcache);
-		/*
-		 * Locks held:
-		 * avc->lock(R) if setLocks
-		 * avc->lock(W) if !setLocks
-		 */
-		afs_osi_Wait(1000, 0, 0);
-		goto RetryLookup;
+		if (afs_discardDCList == NULLIDX && afs_freeDCList == NULLIDX) {
+                    /* It looks like afs_AllocDCache failed because we don't
+                     * have any free dslots to use. Maybe if we wait a little
+                     * while, we'll be able to free up some slots, so try for 5
+                     * minutes, then bail out. */
+                    if (++downDCount > 300) {
+                        afs_warn("afs: Unable to get free cache space for file "
+                                 "%u:%u.%u.%u for 5 minutes; failing with an i/o error\n",
+                                 avc->f.fid.Cell,
+                                 avc->f.fid.Fid.Volume,
+                                 avc->f.fid.Fid.Vnode,
+                                 avc->f.fid.Fid.Unique);
+                        goto done;
+                    }
+                    afs_osi_Wait(1000, 0, 0);
+                    goto RetryLookup;
+                }
+
+                /* afs_AllocDCache failed, but not because we're out of free
+                 * dslots. Something must be screwy with the cache, so bail out
+                 * immediately without waiting. */
+                afs_warn("afs: Error while alloc'ing cache slot for file "
+                         "%u:%u.%u.%u; failing with an i/o error\n",
+                         avc->f.fid.Cell,
+                         avc->f.fid.Fid.Volume,
+                         avc->f.fid.Fid.Vnode,
+                         avc->f.fid.Fid.Unique);
+                goto done;
 	    }
 
 	    /*
@@ -2076,6 +2099,7 @@ afs_GetDCache(struct vcache *avc, afs_size_t abyte,
 	    /* no data in file to read at this position */
 	    UpgradeSToWLock(&tdc->lock, 607);
 	    file = afs_CFileOpen(&tdc->f.inode);
+            osi_Assert(file);
 	    afs_CFileTruncate(file, 0);
 	    afs_CFileClose(file);
 	    afs_AdjustSize(tdc, 0);
@@ -2295,6 +2319,14 @@ afs_GetDCache(struct vcache *avc, afs_size_t abyte,
 	 */
 	DZap(tdc);	/* pages in cache may be old */
 	file = afs_CFileOpen(&tdc->f.inode);
+        if (!file) {
+            /* We can't access the file in the disk cache backing this dcache;
+             * bail out. */
+            ReleaseWriteLock(&tdc->lock);
+            afs_PutDCache(tdc);
+            tdc = NULL;
+            goto done;
+        }
 	afs_RemoveVCB(&avc->f.fid);
 	tdc->f.states |= DWriting;
 	tdc->dflags |= DFFetching;
@@ -2652,11 +2684,12 @@ afs_GetDCache(struct vcache *avc, afs_size_t abyte,
  * Environment:
  *	The afs_xdcache is write-locked through this whole affair.
  */
-void
+int
 afs_WriteThroughDSlots(void)
 {
     struct dcache *tdc;
     afs_int32 i, touchedit = 0;
+    int code = 0;
 
     struct afs_q DirtyQ, *tq;
 
@@ -2692,7 +2725,7 @@ afs_WriteThroughDSlots(void)
 
 #define DQTODC(q)	((struct dcache *)(((char *) (q)) - sizeof(struct afs_q)))
 
-    for (tq = DirtyQ.prev; tq != &DirtyQ; tq = QPrev(tq)) {
+    for (tq = DirtyQ.prev; tq != &DirtyQ && code == 0; tq = QPrev(tq)) {
 	tdc = DQTODC(tq);
 	if (tdc->dflags & DFEntryMod) {
 	    int wrLock;
@@ -2703,15 +2736,25 @@ afs_WriteThroughDSlots(void)
 	    if (wrLock && (tdc->dflags & DFEntryMod)) {
 		tdc->dflags &= ~DFEntryMod;
 		ObtainWriteLock(&afs_xdcache, 620);
-		osi_Assert(afs_WriteDCache(tdc, 1) == 0);
+		code = afs_WriteDCache(tdc, 1);
 		ReleaseWriteLock(&afs_xdcache);
-		touchedit = 1;
+                if (code) {
+                    /* We didn't successfully write out the dslot; make sure we
+                     * try again later */
+                    tdc->dflags |= DFEntryMod;
+                } else {
+                    touchedit = 1;
+                }
 	    }
 	    if (wrLock)
 		ReleaseWriteLock(&tdc->lock);
 	}
 
 	afs_PutDCache(tdc);
+    }
+
+    if (code) {
+        return code;
     }
 
     ObtainWriteLock(&afs_xdcache, 617);
@@ -3616,6 +3659,8 @@ afs_MakeShadowDir(struct vcache *avc, struct dcache *adc)
     /* Open the files. */
     tfile_src = afs_CFileOpen(&adc->f.inode);
     tfile_dst = afs_CFileOpen(&new_dc->f.inode);
+    osi_Assert(tfile_src);
+    osi_Assert(tfile_dst);
 
     /* And now copy dir dcache data into this dcache,
      * 4k at a time.

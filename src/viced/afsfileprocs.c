@@ -2826,6 +2826,7 @@ SRXAFS_InlineBulkStatus(struct rx_call * acall, struct AFSCBFids * Fids,
 			      &rights, &anyrights))) {
 	    tstatus = &OutStats->AFSBulkStats_val[i];
 
+	    tstatus->InterfaceVersion = 1;
 	    if (thost->z.hostFlags & HERRORTRANS) {
 		tstatus->errorCode = sys_error_to_et(errorCode);
 	    } else {
@@ -2854,6 +2855,7 @@ SRXAFS_InlineBulkStatus(struct rx_call * acall, struct AFSCBFids * Fids,
 					CHK_FETCHSTATUS, 0))) {
 		tstatus = &OutStats->AFSBulkStats_val[i];
 
+		tstatus->InterfaceVersion = 1;
 		if (thost->z.hostFlags & HERRORTRANS) {
 		    tstatus->errorCode = sys_error_to_et(errorCode);
 		} else {

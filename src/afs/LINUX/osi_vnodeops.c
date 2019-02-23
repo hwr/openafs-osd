@@ -2249,6 +2249,7 @@ afs_linux_readpage_fastpath(struct file *fp, struct page *pp, int *codep)
     /* XXX - I suspect we should be locking the inodes before we use them! */
     AFS_GUNLOCK();
     cacheFp = afs_linux_raw_open(&tdc->f.inode);
+    osi_Assert(cacheFp);
     if (!cacheFp->f_dentry->d_inode->i_mapping->a_ops->readpage) {
 	cachefs_noreadpage = 1;
 	AFS_GLOCK();
@@ -2679,6 +2680,7 @@ afs_linux_readpages(struct file *fp, struct address_space *mapping,
 	    AFS_GUNLOCK();
 	    if (tdc) {
 		cacheFp = afs_linux_raw_open(&tdc->f.inode);
+                osi_Assert(cacheFp);
 		if (!cacheFp->f_dentry->d_inode->i_mapping->a_ops->readpage) {
 		    cachefs_noreadpage = 1;
 		    goto out;
@@ -3082,6 +3084,10 @@ afs_linux_write_begin(struct file *file, struct address_space *mapping,
     int code;
 
     page = grab_cache_page_write_begin(mapping, index, flags);
+    if (!page) {
+        return -ENOMEM;
+    }
+
     *pagep = page;
 
     code = afs_linux_prepare_write(file, page, from, from + len);

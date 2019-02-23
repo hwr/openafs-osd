@@ -23,7 +23,11 @@
 #include "osi_compat.h"
 
 #ifndef CURRENT_TIME
-#define CURRENT_TIME		(current_kernel_time())
+# ifdef IATTR_TAKES_64BIT_TIME
+#  define CURRENT_TIME		(current_kernel_time64())
+# else
+#  define CURRENT_TIME            (current_kernel_time())
+# endif
 #endif
 
 int cache_fh_type = -1;
@@ -66,8 +70,12 @@ afs_linux_raw_open(afs_dcache_id_t *ainode)
 #else
     filp = dentry_open(dget(dp), mntget(afs_cacheMnt), O_RDWR);
 #endif
-    if (IS_ERR(filp))
-	osi_Panic("Can't open file: %d\n", (int) PTR_ERR(filp));
+    if (IS_ERR(filp)) {
+	afs_warn("afs: Cannot open cache file (code %d). Trying to continue, "
+                 "but AFS accesses may return errors or panic the system\n",
+                 (int) PTR_ERR(filp));
+        filp = NULL;
+    }
 
     dput(dp);
 
@@ -99,8 +107,16 @@ osi_UFSOpen(afs_dcache_id_t *ainode)
     memset(afile, 0, sizeof(struct osi_file));
 
     afile->filp = afs_linux_raw_open(ainode);
-    afile->size = i_size_read(FILE_INODE(afile->filp));
+    if (afile->filp) {
+        afile->size = i_size_read(FILE_INODE(afile->filp));
+    }
     AFS_GLOCK();
+
+    if (!afile->filp) {
+        osi_FreeLargeSpace(afile);
+        return NULL;
+    }
+
     afile->offset = 0;
     afile->proc = (int (*)())0;
     return (void *)afile;

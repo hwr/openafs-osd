@@ -542,7 +542,7 @@ SDISK_SendFile(struct rx_call *rxcall, afs_int32 file, afs_int32 index,
 
     if ((code = ubik_CheckAuth(rxcall))) {
 	DBHOLD(dbase);
-	goto failed;
+	return code;
     }
 
     /* next, we do a sanity check to see if the guy sending us the database is
@@ -561,11 +561,14 @@ SDISK_SendFile(struct rx_call *rxcall, afs_int32 file, afs_int32 index,
     otherHost = ubikGetPrimaryInterfaceAddr(rx_HostOf(tpeer));
     if (offset && offset != otherHost) {
 	/* we *know* this is the wrong guy */
-	code = USYNC;
+        char sync_hoststr[16];
+	ubik_print
+	    ("Ubik: Refusing synchronization with server %s since it is not the sync-site (%s).\n",
+	     afs_inet_ntoa_r(otherHost, hoststr),
+	     afs_inet_ntoa_r(offset, sync_hoststr));
 	ubik_dprint_25("offset = 0x%x, otherHost = 0x%x\n", offset, otherHost);
 	ubik_dprint_25("USYNC %s:%u\n", __FILE__, __LINE__);
-	DBHOLD(dbase);
-	goto failed;
+	return USYNC;
     }
 
     DBHOLD(dbase);

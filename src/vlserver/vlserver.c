@@ -222,6 +222,7 @@ main(int argc, char **argv)
     osi_audit_init();
 
     memset(&logopts, 0, sizeof(logopts));
+    LogLevel = 25;
 
     /* Initialize dirpaths */
     if (!(initAFSDirPath() & AFSDIR_SERVER_PATHS_OK)) {

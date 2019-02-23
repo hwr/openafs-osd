@@ -71,10 +71,6 @@ urecovery_ResetState(void)
 
     for (i=0; i<MAX_UBIK_DBASES; i++)
 	urecovery_state[i] = 0;
-#if !defined(AFS_PTHREAD_ENV)
-    /*  No corresponding LWP_WaitProcess found anywhere for this -- klm */
-    LWP_NoYieldSignal(&urecovery_state);
-#endif
     return 0;
 }
 
@@ -91,10 +87,6 @@ int
 urecovery_LostServer(struct ubik_server *ts)
 {
     ubeacon_ReinitServer(ts);
-#if !defined(AFS_PTHREAD_ENV)
-    /*  No corresponding LWP_WaitProcess found anywhere for this -- klm */
-    LWP_NoYieldSignal(&urecovery_state);
-#endif
     return 0;
 }
 
@@ -916,7 +908,7 @@ main_continue:
 	    DBRELE(ubik_dbase[i]);
 	}	/* loop over data bases */
     }
-    return NULL;
+    AFS_UNREACHED(return(NULL));
 }
 
 /*!

@@ -586,7 +586,7 @@ afs_PrefetchNoCache(struct vcache *avc,
     } else
 	afs_ProcessFS(avc, &tcallspec->OutStatus, areq);
 
-    osi_Free(areq, sizeof(struct vrequest));
+    afs_DestroyReq(areq);
     osi_Free(tcallspec, sizeof(struct afs_FetchOutput));
     osi_Free(bparms, sizeof(struct nocache_read_request));
 #ifndef UKERNEL

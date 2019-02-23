@@ -651,7 +651,7 @@ idToName(struct rx_call *call, idlist *aid, namelist *aname, afs_int32 *cid)
 	return 0;
     if (size < 0 || size > INT_MAX / PR_MAXNAMELEN)
 	return PRTOOMANY;
-    aname->namelist_val = malloc(size * PR_MAXNAMELEN);
+    aname->namelist_val = calloc(size, PR_MAXNAMELEN);
     aname->namelist_len = 0;
     if (aname->namelist_val == 0)
 	return PRNOMEM;
@@ -1238,7 +1238,7 @@ SPR_GetHostCPS(struct rx_call *call, afs_int32 ahost, prlist *alist,
 
     code = getHostCPS(call, ahost, alist, over, &cid);
     osi_auditU(call, PTS_GetHCPSEvent, code, AUD_HOST, htonl(ahost), AUD_END);
-    ViceLog(125, ("PTS_GetHostCPS: code %d ahost %d\n", code, ahost));
+    ViceLog(125, ("PTS_GetHostCPS: code %d ahost %u (0x%x)\n", code, ahost, ahost));
     return code;
 }
 
@@ -1538,6 +1538,7 @@ put_prentries(struct prentry *tentry, prentries *bulkentries)
     entry = bulkentries->prentries_val;
     entry += bulkentries->prentries_len;
 
+    memset(entry, 0, sizeof(*entry));
     entry->flags = tentry->flags >> PRIVATE_SHIFT;
     if (entry->flags == 0) {
 	entry->flags =
@@ -1552,7 +1553,6 @@ put_prentries(struct prentry *tentry, prentries *bulkentries)
     entry->nusers = tentry->nusers;
     entry->count = tentry->count;
     strncpy(entry->name, tentry->name, PR_MAXNAMELEN);
-    memset(entry->reserved, 0, sizeof(entry->reserved));
     bulkentries->prentries_len++;
     return 0;
 }

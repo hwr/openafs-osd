@@ -1026,6 +1026,9 @@
 /* define if hlist iterators don't need a node parameter */
 #undef HLIST_ITERATOR_NO_NODE
 
+/* define if struct iattr->ia_ctime takes struct timespec64 */
+#undef IATTR_TAKES_64BIT_TIME
+
 /* define to disable some gcc warnings in warnings-as-errors mode */
 #undef IGNORE_SOME_GCC_WARNINGS
 

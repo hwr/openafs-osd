@@ -67,6 +67,7 @@ statindex 16
 %#define     VOLDUMPV2_METADATADUMP 8
 
 const SIZE = 1024;
+const NMAXNSERVERS = 13;
 
 struct volser_status {
 	afs_uint32 volID;		/* Volume id--unique over all systems */
@@ -249,7 +250,7 @@ struct volintSize {
     afs_uint64 dump_size;
 };
 
-typedef  replica manyDests<>;
+typedef  replica manyDests<NMAXNSERVERS>;
 typedef  afs_int32 manyResults<>;
 typedef  transDebugInfo transDebugEntries<>;
 typedef  volintInfo volEntries<>;
@@ -258,7 +259,7 @@ typedef  volintXInfo volXEntries<>;
 
 proc CreateVolume(
   IN afs_int32 partition,
-  string name<>,
+  string name<VNAMESIZE>,
   IN afs_int32 type,
   IN afs_uint32 parent,
   INOUT afs_uint32 *volid,
@@ -292,7 +293,7 @@ proc Clone(
   IN afs_int32 trans,
   IN afs_uint32 purgeVol,
   IN afs_int32 newType,
-  IN string newName<>,
+  IN string newName<VNAMESIZE>,
   INOUT afs_uint32 *newVol
 ) = VOLCLONE;
 
@@ -340,7 +341,7 @@ proc GetStatus(
 ) = VOLGETSTATUS;
 
 proc SignalRestore(
-  IN string name<>,
+  IN string name<VNAMESIZE>,
   int type,
   afs_uint32 pid,
   afs_uint32 cloneid
@@ -358,7 +359,7 @@ proc ListVolumes(
 
 proc SetIdsTypes(
   IN afs_int32 tId,
-  string name<>,
+  string name<VNAMESIZE>,
   afs_int32 type,
   afs_uint32 pId,
   afs_uint32 cloneId,
@@ -370,7 +371,7 @@ proc Monitor(
 ) = VOLMONITOR;
 
 proc PartitionInfo(
-  IN string name<>,
+  IN string name<4096>,
   OUT struct diskPartition *partition
 ) = VOLDISKPART;
 
@@ -443,7 +444,7 @@ proc DumpV2(
 ) split = VOLDUMPV2;
 
 proc PartitionInfo64(
-    IN string name<>,
+    IN string name<4096>,
     OUT struct diskPartition64 *partition
 ) = VOLDISKPART64;
 

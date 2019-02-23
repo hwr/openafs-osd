@@ -72,13 +72,15 @@ afs_FindDCacheByFid(struct VenusFid *afid)
     for (index = afs_dvhashTbl[i]; index != NULLIDX;) {
 	if (afs_indexUnique[index] == afid->Fid.Unique) {
 	    tdc = afs_GetValidDSlot(index);
-	    if (tdc) {
-		ReleaseReadLock(&tdc->tlock);
-		if (!FidCmp(&tdc->f.fid, afid)) {
-		    break;		/* leaving refCount high for caller */
-		}
-		afs_PutDCache(tdc);
-	    }
+	    if (!tdc) {
+                index = NULLIDX;
+                break;
+            }
+            ReleaseReadLock(&tdc->tlock);
+            if (!FidCmp(&tdc->f.fid, afid)) {
+                break;		/* leaving refCount high for caller */
+            }
+            afs_PutDCache(tdc);
 	}
 	index = afs_dvnextTbl[index];
     }
@@ -707,6 +709,7 @@ afs_ProcessOpCreate(struct vcache *avc, struct vrequest *areq,
 	}
 	ObtainReadLock(&tdc->lock);
 	tfile = afs_CFileOpen(&tdc->f.inode);
+        osi_Assert(tfile);
 	code = afs_CFileRead(tfile, 0, ttargetName, tlen);
 	ttargetName[tlen-1] = '\0';
 	afs_CFileClose(tfile);
@@ -858,6 +861,11 @@ afs_ProcessOpCreate(struct vcache *avc, struct vrequest *areq,
     for (index = afs_dvhashTbl[hash]; index != NULLIDX; index = hash) {
         hash = afs_dvnextTbl[index];
         tdc = afs_GetValidDSlot(index);
+        if (!tdc) {
+            ReleaseWriteLock(&afs_xdcache);
+            code = EIO;
+            goto end;
+        }
         ReleaseReadLock(&tdc->tlock);
 	if (afs_indexUnique[index] == avc->f.fid.Fid.Unique) {
             if (!FidCmp(&tdc->f.fid, &avc->f.fid)) {
@@ -878,8 +886,7 @@ afs_ProcessOpCreate(struct vcache *avc, struct vrequest *areq,
 		memcpy(&tdc->f.fid, &newFid, sizeof(struct VenusFid));
            }                   /* if fid match */
 	}                       /* if uniquifier match */
-    	if (tdc)
-	    afs_PutDCache(tdc);
+        afs_PutDCache(tdc);
     }                           /* for all dcaches in this hash bucket */
     ReleaseWriteLock(&afs_xdcache);
 
