@@ -748,7 +748,7 @@ afs_LoopServers(int adown, struct cell *acellp, int vlalso, int rxosdalso,
 	/* check rxosd with special code */
 	if (sa->sa_portal != AFS_VLPORT && sa->sa_portal != AFS_FSPORT) {
 	    if (rxosdalso)
-		CheckRxosdServer(sa, &treq);
+		CheckRxosdServer(sa, treq);
 	    continue;
 	}
 

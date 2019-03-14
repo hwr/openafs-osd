@@ -38,6 +38,10 @@
 #include "../rxosd/vicedosd.h"
 #include "../rxosd/rxosd.h"
 
+#ifndef PAGE_CACHE_SIZE
+#define PAGE_CACHE_SIZE PAGE_SIZE
+#endif
+
 /* conditional GLOCK macros */
 #define COND_GLOCK(var) \
         do { \

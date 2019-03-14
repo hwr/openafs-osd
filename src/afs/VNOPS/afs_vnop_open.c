@@ -141,7 +141,7 @@ afs_open(struct vcache **avcp, afs_int32 aflags, afs_ucred_t *acred)
 	osi_FlushPages(tvc, acred);
 	if (tvc->protocol & RX_OSD_NOT_ONLINE) {
 	    if (osd_procs->rxosd_bringOnline) {
-		code = (osd_procs->rxosd_bringOnline)(tvc, &treq);
+		code = (osd_procs->rxosd_bringOnline)(tvc, treq);
 		if (code)
 		    goto done;
 		tvc->protocol &= ~RX_OSD_NOT_ONLINE;
